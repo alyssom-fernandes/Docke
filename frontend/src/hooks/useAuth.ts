@@ -34,6 +34,7 @@ export function useAuth(): AuthState {
       .then((res) => {
         const u: AuthUser = {
           id: res.data.user_id,
+          email: res.data.email,
           username: res.data.username,
           full_name: res.data.full_name,
           role: res.data.role,
@@ -55,6 +56,7 @@ export function useAuth(): AuthState {
     const me = await api.get("/auth/me");
     const u: AuthUser = {
       id: me.data.user_id,
+      email: me.data.email,
       username: me.data.username,
       full_name: me.data.full_name,
       role: me.data.role,

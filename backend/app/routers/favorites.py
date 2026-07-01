@@ -49,6 +49,8 @@ async def list_favorites(
         LEFT JOIN public.documents d ON d.id = fav.document_id AND d.deleted_at IS NULL
         LEFT JOIN public.folders   f ON f.id = fav.folder_id   AND f.deleted_at IS NULL
         WHERE fav.user_id = auth.uid()
+          AND (fav.document_id IS NULL OR d.id IS NOT NULL)
+          AND (fav.folder_id   IS NULL OR f.id IS NOT NULL)
         ORDER BY fav.created_at DESC
         """
     )

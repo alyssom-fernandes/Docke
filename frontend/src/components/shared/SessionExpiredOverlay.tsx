@@ -30,8 +30,8 @@ export default function SessionExpiredOverlay() {
     setLoading(true);
     setError("");
     try {
-      // Re-authenticate using the stored username as email identifier
-      await login(user.username, password);
+      // Supabase Auth exige o e-mail real para login, não o username de exibição
+      await login(user.email ?? user.username, password);
       setVisible(false);
       setPassword("");
     } catch {

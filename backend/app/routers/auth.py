@@ -73,7 +73,8 @@ async def get_me(
           u.username,
           u.full_name,
           u.role,
-          u.is_active
+          u.is_active,
+          auth.email()::text AS email
         FROM public.users u
         WHERE u.id = auth.uid()
         """

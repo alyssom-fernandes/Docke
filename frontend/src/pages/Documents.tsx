@@ -240,7 +240,7 @@ function CreateFolderModal({ parentId, companyId, onClose, onDone }: { parentId:
 
 // ─── Detail Drawer ────────────────────────────────────────────────────────────
 
-function DetailDrawer({ doc, onClose, onFavorite, onPreview }: { doc: Document; onClose: () => void; onFavorite: () => void; onPreview: () => void }) {
+function DetailDrawer({ doc, onClose, onFavorite, onPreview, onDelete }: { doc: Document; onClose: () => void; onFavorite: () => void; onPreview: () => void; onDelete: () => void }) {
   const { success, error: showError } = useToast();
   const [favorited, setFavorited] = useState(false);
 
@@ -325,6 +325,13 @@ function DetailDrawer({ doc, onClose, onFavorite, onPreview }: { doc: Document; 
           >
             {favorited ? <StarOff className="w-4 h-4" /> : <Star className="w-4 h-4" />}
             {favorited ? "Remover favorito" : "Favoritar"}
+          </button>
+          <button
+            onClick={onDelete}
+            className="w-full h-9 flex items-center justify-center gap-2 text-sm border border-red-200 dark:border-red-900/40 rounded-[8px] text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors duration-fast"
+          >
+            <Trash2 className="w-4 h-4" />
+            Excluir
           </button>
         </div>
       </div>
@@ -429,9 +436,8 @@ export default function Documents() {
     setSelected(selected.size === allIds.length ? new Set() : new Set(allIds));
   }
 
-  function deleteSelected() {
-    if (!selected.size) return;
-    const ids = [...selected];
+  function deleteDocuments(ids: string[]) {
+    if (!ids.length) return;
     const count = ids.length;
     const label = `${count} documento${count > 1 ? "s" : ""} movido${count > 1 ? "s" : ""} para a lixeira.`;
 
@@ -463,6 +469,10 @@ export default function Documents() {
         },
       },
     });
+  }
+
+  function deleteSelected() {
+    deleteDocuments([...selected]);
   }
 
   async function deleteFolder(folder: Folder) {
@@ -618,7 +628,7 @@ export default function Documents() {
                       }`}
                       onClick={() => setDetailDoc(d)}
                     >
-                      <td className="px-4 py-2.5" onClick={(e) => { e.stopPropagation(); toggleSelect(d.id); }}>
+                      <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -663,6 +673,7 @@ export default function Documents() {
           onClose={() => setDetailDoc(null)}
           onPreview={() => setPreviewDoc(detailDoc)}
           onFavorite={() => {}}
+          onDelete={() => { deleteDocuments([detailDoc.id]); setDetailDoc(null); }}
         />
       )}
 

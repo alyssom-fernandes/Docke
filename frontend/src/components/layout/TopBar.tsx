@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Search, Upload, ChevronDown, LogOut, User, Sun, Moon, Menu } from "lucide-react";
 import { toggleTheme, getTheme } from "@/lib/theme";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuthContext } from "@/lib/AuthContext";
 import { useCompany } from "@/lib/CompanyContext";
 import { useCommandPalette } from "@/hooks/useCommandPalette";
@@ -19,6 +19,8 @@ export default function TopBar({ onUploadClick, onMenuClick }: TopBarProps) {
   const { companies, current, setCurrent } = useCompany();
   const { open: openPalette } = useCommandPalette();
   const navigate = useNavigate();
+  const location = useLocation();
+  const onDocumentsPage = location.pathname.startsWith("/documents");
 
   const [companyOpen, setCompanyOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
@@ -97,11 +99,13 @@ export default function TopBar({ onUploadClick, onMenuClick }: TopBarProps) {
 
       <div className="flex-1" />
 
-      {/* Upload */}
-      <Button size="sm" onClick={onUploadClick}>
-        <Upload className="w-3.5 h-3.5" />
-        Upload
-      </Button>
+      {/* Upload — oculto na página Documentos, que já tem seu próprio botão */}
+      {!onDocumentsPage && (
+        <Button size="sm" onClick={onUploadClick}>
+          <Upload className="w-3.5 h-3.5" />
+          Upload
+        </Button>
+      )}
 
       {/* Theme toggle */}
       <button
