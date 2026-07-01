@@ -1,0 +1,107 @@
+import { useEffect, useState } from "react";
+import { FolderOpen, Star, Trash2 } from "lucide-react";
+import { getFileStyle } from "@/lib/fileType";
+import { Link } from "react-router-dom";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import api from "@/lib/api";
+import { useCompany } from "@/lib/CompanyContext";
+import { useToast } from "@/lib/toast";
+import EmptyState from "@/components/shared/EmptyState";
+
+interface Favorite {
+  id: string;
+  item_type: "document" | "folder";
+  item_id: string;
+  item_name: string;
+  created_at: string;
+}
+
+export default function Favorites() {
+  usePageTitle("Favoritos");
+  const { current } = useCompany();
+  const { success, error: showError } = useToast();
+  const [favorites, setFavorites] = useState<Favorite[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  function load() {
+    if (!current) return;
+    setLoading(true);
+    api
+      .get<Favorite[]>("/favorites", { params: { company_id: current.id } })
+      .then((r) => setFavorites(Array.isArray(r.data) ? r.data : []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(load, [current?.id]);
+
+  async function removeFavorite(fav: Favorite) {
+    try {
+      await api.delete(`/favorites/${fav.id}`);
+      setFavorites((prev) => prev.filter((f) => f.id !== fav.id));
+      success(`"${fav.item_name}" removido dos favoritos.`);
+    } catch {
+      showError("Não foi possível remover o favorito.");
+    }
+  }
+
+  return (
+    <div className="max-w-[800px] mx-auto space-y-6">
+      <h1 className="text-xl font-semibold text-[var(--text-primary)]">Favoritos</h1>
+
+      {loading ? (
+        <div className="space-y-2">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-12 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[8px] animate-pulse" />
+          ))}
+        </div>
+      ) : favorites.length === 0 ? (
+        <EmptyState
+          title="Nenhum favorito"
+          description="Favorite documentos e pastas para acessá-los rapidamente aqui."
+          icon={<Star className="w-6 h-6" />}
+          action={
+            <Link
+              to="/documents"
+              className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-[8px] hover:bg-teal-500 transition-colors duration-fast"
+            >
+              Explorar documentos
+            </Link>
+          }
+        />
+      ) : (
+        <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] overflow-hidden">
+          <ul>
+            {favorites.map((fav) => (
+              <li
+                key={fav.id}
+                className="flex items-center gap-3 px-5 py-3 hover:bg-[var(--bg-hover)] transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 group"
+              >
+                {fav.item_type === "folder" ? (
+                  <FolderOpen className="w-4 h-4 text-teal-500 flex-shrink-0" />
+                ) : (
+                  (() => { const s = getFileStyle(fav.item_name); const Icon = s.icon; return (
+                    <div className={`w-6 h-6 rounded-[4px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
+                      <Icon className={`w-3.5 h-3.5 ${s.iconColor}`} />
+                    </div>
+                  ); })()
+                )}
+                <span className="flex-1 text-sm text-[var(--text-primary)] truncate">{fav.item_name}</span>
+                <span className="text-xs text-[var(--text-tertiary)] mr-2">
+                  {fav.item_type === "folder" ? "Pasta" : "Documento"}
+                </span>
+                <button
+                  onClick={() => removeFavorite(fav)}
+                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-[6px] text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-fast"
+                  title="Remover favorito"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "autoPort": false,
+  "configurations": [
+    {
+      "name": "Docke Frontend (Vite)",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": ["./frontend/node_modules/vite/bin/vite.js", "./frontend"],
+      "port": 5173
+    },
+    {
+      "name": "Docke Backend (Uvicorn)",
+      "runtimeExecutable": "C:\\Users\\alyss\\OneDrive\\Desktop\\Docke\\backend\\venv\\Scripts\\python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--reload", "--port", "8000", "--app-dir", "backend"],
+      "port": 8000
+    }
+  ]
+}

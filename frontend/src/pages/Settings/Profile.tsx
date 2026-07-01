@@ -1,0 +1,72 @@
+import { useState, FormEvent, useEffect } from "react";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { useAuthContext } from "@/lib/AuthContext";
+import { useToast } from "@/lib/toast";
+import Input from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
+
+export default function Profile() {
+  usePageTitle("Perfil");
+  const { user } = useAuthContext();
+  const { success } = useToast();
+  const [saving, setSaving] = useState(false);
+  const [fullName, setFullName] = useState(user?.full_name ?? "");
+
+  useEffect(() => {
+    if (user) setFullName(user.full_name);
+  }, [user]);
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setTimeout(() => {
+      setSaving(false);
+      success("Perfil atualizado.");
+    }, 800);
+  }
+
+  return (
+    <div className="max-w-[560px] mx-auto space-y-6">
+      <h1 className="text-xl font-semibold text-[var(--text-primary)]">Perfil</h1>
+
+      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] p-6 space-y-6">
+        {/* Avatar section */}
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-full bg-teal-600 flex items-center justify-center text-white text-lg font-semibold flex-shrink-0">
+            {(user?.full_name ?? user?.username ?? "?")
+              .split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase()}
+          </div>
+          <div>
+            <p className="text-base font-semibold text-[var(--text-primary)]">{user?.full_name}</p>
+            <p className="text-sm text-[var(--text-secondary)]">@{user?.username}</p>
+            {user?.role && (
+              <span className="inline-block mt-1 text-xs px-2 py-0.5 rounded-full bg-teal-600/10 text-teal-600 font-medium capitalize">
+                {user.role}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Input
+            label="Nome completo"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            placeholder="Seu nome completo"
+          />
+          <Input
+            label="Nome de usuário"
+            value={user?.username ?? ""}
+            placeholder="username"
+            disabled
+          />
+          <div className="flex justify-end">
+            <Button type="submit" loading={saving} size="sm">
+              Salvar alterações
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
