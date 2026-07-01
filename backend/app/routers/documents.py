@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 import io
 import tempfile
 import zipfile
+import xml.etree.ElementTree as ET
 from urllib.parse import quote
 
 import asyncpg
@@ -654,6 +655,81 @@ async def get_preview_url(
         "mime_type": doc["mime_type"],
         "name": doc["name"],
     }
+
+
+# ---------------------------------------------------------------------------
+# GET /documents/:id/xml-fields — extrai campos-chave de XML fiscal (NFe/NFCe)
+# ---------------------------------------------------------------------------
+
+# Namespace padrão dos XMLs de NFe/NFCe (portal fiscal SEFAZ)
+_NFE_NS = {"nfe": "http://www.portalfiscal.inf.br/nfe"}
+
+
+def _extract_nfe_fields(xml_bytes: bytes) -> dict[str, Any] | None:
+    """
+    Faz parsing de um XML de NFe/NFCe e extrai os campos mais relevantes
+    para conferência rápida sem precisar abrir o XML bruto.
+    Retorna None se o XML não seguir o schema reconhecido (não é NFe).
+    """
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError:
+        return None
+
+    inf_nfe = root.find(".//nfe:infNFe", _NFE_NS)
+    if inf_nfe is None:
+        return None
+
+    def text(path: str) -> str | None:
+        el = inf_nfe.find(path, _NFE_NS)
+        return el.text.strip() if el is not None and el.text else None
+
+    chave_acesso = (inf_nfe.get("Id") or "").replace("NFe", "") or None
+
+    return {
+        "recognized": True,
+        "chave_acesso": chave_acesso,
+        "numero": text("nfe:ide/nfe:nNF"),
+        "serie": text("nfe:ide/nfe:serie"),
+        "data_emissao": text("nfe:ide/nfe:dhEmi") or text("nfe:ide/nfe:dEmi"),
+        "natureza_operacao": text("nfe:ide/nfe:natOp"),
+        "emitente_nome": text("nfe:emit/nfe:xNome"),
+        "emitente_cnpj": text("nfe:emit/nfe:CNPJ"),
+        "destinatario_nome": text("nfe:dest/nfe:xNome"),
+        "destinatario_cnpj": text("nfe:dest/nfe:CNPJ") or text("nfe:dest/nfe:CPF"),
+        "valor_total": text("nfe:total/nfe:ICMSTot/nfe:vNF"),
+    }
+
+
+@router.get("/{document_id}/xml-fields")
+async def get_xml_fields(
+    document_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Extrai campos-chave (emitente, CNPJ, valor, data, número, chave de acesso)
+    de um documento XML fiscal (NFe/NFCe padrão SEFAZ).
+    Retorna {"recognized": false} se o documento não for XML ou não seguir o schema NFe.
+    """
+    doc = await conn.fetchrow(
+        "SELECT id, name, storage_path, mime_type, file_type FROM public.documents WHERE id = $1 AND deleted_at IS NULL",
+        document_id,
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+
+    ext = doc["name"].rsplit(".", 1)[-1].lower() if "." in doc["name"] else ""
+    if ext != "xml" and doc["mime_type"] != "application/xml":
+        return {"recognized": False, "reason": "Documento não é um arquivo XML."}
+
+    data = storage_service.read_object(doc["storage_path"])
+    if data is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Arquivo não encontrado no storage.")
+
+    fields = _extract_nfe_fields(data)
+    if fields is None:
+        return {"recognized": False, "reason": "XML não segue o schema de NFe/NFCe reconhecido."}
+    return fields
 
 
 # ---------------------------------------------------------------------------

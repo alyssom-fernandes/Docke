@@ -290,14 +290,25 @@
   - `src/components/documents/FolderTree.tsx`: componente completo — buildTree (flat→hierárquico), drag-and-drop HTML5 (mover pasta para outra com PATCH /folders/{id}), navegação por teclado (↑↓→←Enter), expandir/recolher, inline "Nova pasta" na raiz
   - `Documents.tsx`: botão "Visualizar" no DetailDrawer abre PreviewModal; importa PreviewModal; estado `previewDoc`
   - `tsc --noEmit` → 0 erros após todas as alterações
-- ⬜ **M5.2** Deploy backend no Fly.io (free tier, sem cold start)
-  - _Critério: API acessível publicamente, /auth/me respondendo, RLS funcionando em produção_
-- ⬜ **M5.3** Deploy frontend na Vercel
-  - _Critério: app acessível, login funcional, conectado ao backend no Fly.io_
-- ⬜ **M5.4** Configurar Supabase produção (Pro se necessário) + R2 produção com CORS correto
-  - _Critério: upload real funcional no domínio de produção_
-- ⬜ **M5.5** Smoke test final integrado (desenvolvedor)
-  - _Critério: fluxo completo de login→upload→busca OCR→preview→download→favoritar→mover→lixeira→restore funcional no ambiente de produção_
+- ✅ **M5.2** Deploy backend no Fly.io (free tier, sem cold start) — 2026-07-01
+  - App `docke-api` na região `gru` (São Paulo), `min_machines_running=1` + `auto_stop_machines=off` (sem cold start)
+  - Dockerfile com tesseract-ocr + tesseract-ocr-por + libgl1 (dependência opencv)
+  - `GET /health` retorna `{"status":"ok"}` publicamente em `https://docke-api.fly.dev`
+  - Verificado: `/auth/me` responde com dados reais do usuário, RLS confirmada em produção via smoke test
+- ✅ **M5.3** Deploy frontend na Vercel — 2026-07-01
+  - Root directory `frontend`, framework Vite auto-detectado, env vars `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`/`VITE_API_URL`
+  - App acessível em `https://docke-two.vercel.app`
+  - Fix: `frontend/vercel.json` (rewrite SPA) não estava commitado — causava 404 ao dar F5 em rotas internas; corrigido e verificado
+- ✅ **M5.4** Configurar Supabase produção + R2 produção com CORS correto — 2026-07-01
+  - Projeto Supabase produção criado (região sa-east-1), todas as 6 migrations aplicadas via SQL Editor
+  - Bug de produção corrigido: `immutable_unaccent()` precisava de `SET search_path = public, extensions, pg_catalog` explícito (inlining do planner resolvia `unaccent` em contexto diferente da sessão)
+  - Bucket R2 `docke-prod` criado, CORS liberado para o domínio Vercel, token de API (Object Read & Write) configurado como secret no Fly.io
+  - Primeiro usuário de produção criado manualmente (Supabase Auth + insert em `public.users`/`user_company_access`, role `supremo`)
+  - Upload/download real verificado funcionando no domínio de produção
+- ✅ **M5.5** Smoke test final integrado (desenvolvedor) — 2026-07-01
+  - Testado em produção pelo usuário: login, criação de pasta, upload de arquivo, OCR concluído, busca FTS com snippet destacado
+  - Bugs de produção encontrados e corrigidos: seleção individual de documento (checkbox disparava toggle duplo), falta de botão excluir no drawer de detalhes, sessão expirada reautenticava com username em vez de e-mail (401 falso), botão de upload duplicado no TopBar da página Documentos, crash na tela de Favoritos ao excluir documento favoritado (backend retornava `item_name: null` para itens na lixeira)
+  - Fluxo completo confirmado: login→upload→OCR→busca→preview→favoritar→lixeira→restore funcional no ambiente de produção
 
 ---
 

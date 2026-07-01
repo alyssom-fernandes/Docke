@@ -6,6 +6,8 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from openpyxl import Workbook
+from openpyxl.styles import Font
 
 from app.dependencies import get_current_user, get_db, get_db_admin
 
@@ -14,6 +16,19 @@ router = APIRouter(prefix="/activity", tags=["activity"])
 # Máximo de linhas retornadas / exportadas
 _PAGE_SIZE_MAX = 200
 _EXPORT_LIMIT = 5000
+
+_ACTION_LABELS: dict[str, str] = {
+    "upload": "Envio",
+    "view": "Visualização",
+    "move": "Movimentação",
+    "rename": "Renomeação",
+    "delete": "Exclusão",
+    "restore": "Restauração",
+    "download": "Download",
+    "favorite": "Favoritado",
+    "unfavorite": "Desfavoritado",
+    "undo": "Desfeito",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -99,12 +114,13 @@ async def export_activity_csv(
     item_type: str | None = Query(None),
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
+    format: str = Query("csv", pattern="^(csv|xlsx)$"),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> Response:
     """
-    Exporta eventos do activity_log como CSV.
+    Exporta eventos do activity_log como CSV (padrão) ou XLSX (?format=xlsx).
     Máximo de _EXPORT_LIMIT linhas (5000).
-    Retorna application/octet-stream com Content-Disposition: attachment.
+    Retorna Content-Disposition: attachment.
     """
     rows = await conn.fetch(
         """
@@ -136,6 +152,38 @@ async def export_activity_csv(
         date_to,
         _EXPORT_LIMIT,
     )
+
+    if format == "xlsx":
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Atividade"
+        headers = ["Data/Hora", "Ação", "Tipo", "Item", "Usuário", "Usuário (login)"]
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+        for r in rows:
+            ws.append([
+                r["created_at"].strftime("%d/%m/%Y %H:%M") if r["created_at"] else "",
+                _ACTION_LABELS.get(r["action"], r["action"]),
+                "Pasta" if r["item_type"] == "folder" else "Documento",
+                r["item_name_snapshot"] or "",
+                r["user_name"] or "",
+                r["user_username"] or "",
+            ])
+        for col_idx, header in enumerate(headers, start=1):
+            ws.column_dimensions[chr(64 + col_idx)].width = max(len(header) + 2, 18)
+
+        buf_bytes = io.BytesIO()
+        wb.save(buf_bytes)
+        xlsx_bytes = buf_bytes.getvalue()
+        return Response(
+            content=xlsx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": 'attachment; filename="activity_log.xlsx"',
+                "Content-Length": str(len(xlsx_bytes)),
+            },
+        )
 
     buf = io.StringIO()
     writer = csv.writer(buf)

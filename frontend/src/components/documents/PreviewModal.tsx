@@ -26,6 +26,51 @@ function resolveType(name: string, mime: string): PreviewType {
   return "unsupported";
 }
 
+interface XmlFields {
+  recognized: boolean;
+  chave_acesso?: string | null;
+  numero?: string | null;
+  serie?: string | null;
+  data_emissao?: string | null;
+  natureza_operacao?: string | null;
+  emitente_nome?: string | null;
+  emitente_cnpj?: string | null;
+  destinatario_nome?: string | null;
+  destinatario_cnpj?: string | null;
+  valor_total?: string | null;
+}
+
+function fmtCurrency(value?: string | null) {
+  if (!value) return "—";
+  const n = Number(value);
+  if (Number.isNaN(n)) return value;
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function fmtCnpj(value?: string | null) {
+  if (!value) return "—";
+  return value.length === 14
+    ? value.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5")
+    : value;
+}
+
+function fmtXmlDate(value?: string | null) {
+  if (!value) return "—";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleDateString("pt-BR");
+}
+
+function XmlField({ label, value, mono, span }: { label: string; value: string; mono?: boolean; span?: boolean }) {
+  return (
+    <div className={span ? "col-span-2" : undefined}>
+      <dt className="text-xs text-[var(--text-secondary)]">{label}</dt>
+      <dd className={`text-sm text-[var(--text-primary)] mt-0.5 break-words ${mono ? "font-mono text-xs" : ""}`}>
+        {value}
+      </dd>
+    </div>
+  );
+}
+
 export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   useFocusTrap(containerRef);
@@ -34,8 +79,11 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
   const [textContent, setTextContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [xmlFields, setXmlFields] = useState<XmlFields | null>(null);
+  const [showRawXml, setShowRawXml] = useState(false);
 
   const type = resolveType(doc.name, doc.mime_type);
+  const isXml = doc.name.toLowerCase().endsWith(".xml") || doc.mime_type === "application/xml";
   const { icon: Icon, iconColor, bgColor } = getFileStyle(doc.name);
 
   useEffect(() => {
@@ -63,6 +111,13 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
       .catch((e) => setError(e?.message ?? "Erro ao carregar preview."))
       .finally(() => setLoading(false));
   }, [doc.id, type]);
+
+  useEffect(() => {
+    if (!isXml) return;
+    api.get<XmlFields>(`/documents/${doc.id}/xml-fields`)
+      .then(({ data }) => setXmlFields(data))
+      .catch(() => setXmlFields(null));
+  }, [doc.id, isXml]);
 
   async function download() {
     try {
@@ -165,10 +220,48 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
             </div>
           )}
 
-          {!loading && !error && type === "text" && textContent !== null && (
-            <pre className="w-full h-full overflow-auto p-5 text-xs font-mono text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap break-words">
-              {textContent}
-            </pre>
+          {!loading && !error && type === "text" && textContent !== null && isXml && xmlFields?.recognized && !showRawXml && (
+            <div className="w-full h-full overflow-auto p-5">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm font-medium text-[var(--text-primary)]">Nota fiscal eletrônica</p>
+                <button
+                  onClick={() => setShowRawXml(true)}
+                  className="text-xs text-teal-600 hover:underline"
+                >
+                  Ver XML bruto
+                </button>
+              </div>
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-4">
+                <XmlField label="Número" value={xmlFields.numero ?? "—"} />
+                <XmlField label="Série" value={xmlFields.serie ?? "—"} />
+                <XmlField label="Data de emissão" value={fmtXmlDate(xmlFields.data_emissao)} />
+                <XmlField label="Valor total" value={fmtCurrency(xmlFields.valor_total)} />
+                <XmlField label="Natureza da operação" value={xmlFields.natureza_operacao ?? "—"} span />
+                <XmlField label="Emitente" value={xmlFields.emitente_nome ?? "—"} span />
+                <XmlField label="CNPJ emitente" value={fmtCnpj(xmlFields.emitente_cnpj)} />
+                <XmlField label="Destinatário" value={xmlFields.destinatario_nome ?? "—"} span />
+                <XmlField label="CNPJ/CPF destinatário" value={fmtCnpj(xmlFields.destinatario_cnpj)} />
+                <XmlField label="Chave de acesso" value={xmlFields.chave_acesso ?? "—"} mono span />
+              </dl>
+            </div>
+          )}
+
+          {!loading && !error && type === "text" && textContent !== null && (!isXml || !xmlFields?.recognized || showRawXml) && (
+            <div className="w-full h-full overflow-auto">
+              {isXml && xmlFields?.recognized && (
+                <div className="sticky top-0 bg-[var(--bg-card)] border-b border-[var(--border-default)] px-5 py-2 flex justify-end">
+                  <button
+                    onClick={() => setShowRawXml(false)}
+                    className="text-xs text-teal-600 hover:underline"
+                  >
+                    Ver campos extraídos
+                  </button>
+                </div>
+              )}
+              <pre className="p-5 text-xs font-mono text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap break-words">
+                {textContent}
+              </pre>
+            </div>
           )}
         </div>
       </div>
