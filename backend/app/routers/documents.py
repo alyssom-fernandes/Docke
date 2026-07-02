@@ -121,7 +121,7 @@ async def create_upload_url(
     )
     if folder is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada.")
-    if folder["permission"] not in ("editor", "manager"):
+    if folder["permission"] != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para fazer upload nesta pasta.")
 
     # --- Conflito de nome na mesma pasta ---
@@ -457,7 +457,7 @@ async def bulk_move(
     )
     if target is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta destino não encontrada.")
-    if target["permission"] not in ("editor", "manager"):
+    if target["permission"] != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão na pasta destino.")
 
     doc_ids = [str(did) for did in body.document_ids]
@@ -541,7 +541,7 @@ async def bulk_delete(
     )
 
     # Filtra apenas os que o usuário tem permissão de editor+
-    deletable_ids = [r["id"] for r in visible if r["permission"] in ("editor", "manager")]
+    deletable_ids = [r["id"] for r in visible if r["permission"] == "admin"]
     if not deletable_ids:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para deletar nenhum dos documentos informados.")
 
@@ -912,7 +912,7 @@ async def delete_document(
     )
     if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
-    if doc["permission"] not in ("editor", "manager"):
+    if doc["permission"] != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para deletar este documento.")
 
     await admin_conn.execute(
@@ -982,7 +982,7 @@ async def restore_document(
         str(target_folder["path"]),
         str(target_folder["company_id"]),
     )
-    if permission not in ("editor", "manager"):
+    if permission != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão na pasta de destino.")
 
     row = await admin_conn.fetchrow(

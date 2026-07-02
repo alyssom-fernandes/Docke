@@ -145,3 +145,16 @@ async def get_db_admin() -> AsyncGenerator[asyncpg.Connection, None]:
     pool = _require_pool()
     async with pool.acquire() as conn:
         yield conn
+
+
+async def get_app_role(conn: asyncpg.Connection, claims: dict[str, Any]) -> str:
+    """
+    Retorna o papel de aplicação (public.users.role: supremo/admin/usuario) do
+    usuário autenticado. NUNCA usar claims["role"] para isso — esse campo do
+    JWT do Supabase é sempre "authenticated" (o role do Postgres), não o papel
+    de negócio do usuário.
+    """
+    role = await conn.fetchval("SELECT role FROM public.users WHERE id = $1", claims.get("sub"))
+    if role is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não encontrado.")
+    return role

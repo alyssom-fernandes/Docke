@@ -54,9 +54,12 @@ function TaskRow({ task, onRemove }: { task: Task; onRemove: () => void }) {
   );
 }
 
+const SEEN_KEY = "docke_task_center_seen";
+
 export default function TaskCenter() {
   const { tasks, removeTask, clearDone } = useTaskCenter();
   const [open, setOpen] = useState(false);
+  const [everSeen, setEverSeen] = useState(() => localStorage.getItem(SEEN_KEY) === "true");
   const ref = useRef<HTMLDivElement>(null);
 
   const running = tasks.filter((t) => t.status === "running").length;
@@ -71,18 +74,30 @@ export default function TaskCenter() {
     return () => document.removeEventListener("mousedown", handle);
   }, []);
 
+  function handleToggle() {
+    setOpen((v) => !v);
+    if (!everSeen) {
+      localStorage.setItem(SEEN_KEY, "true");
+      setEverSeen(true);
+    }
+  }
+
   return (
     <div className="relative" ref={ref}>
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={handleToggle}
         className="relative p-2 rounded-[8px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors duration-fast"
-        title="Task Center"
+        title="Central de tarefas — acompanhe uploads e processamentos"
+        aria-label="Central de tarefas"
       >
         <ListTodo className="w-4 h-4" />
         {(running > 0 || failed > 0) && (
           <span className={`absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full text-[10px] font-bold text-white flex items-center justify-center ${failed > 0 ? "bg-red-500" : "bg-teal-600"}`}>
             {failed > 0 ? failed : running}
           </span>
+        )}
+        {!everSeen && running === 0 && failed === 0 && (
+          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-teal-600 ring-2 ring-[var(--bg-card)]" aria-hidden="true" />
         )}
       </button>
 

@@ -138,17 +138,30 @@ async def create_folder(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta pai não encontrada.")
         if str(parent["company_id"]) != str(body.company_id):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pasta pai pertence a outra empresa.")
+        check_path = parent["path"]
         # Gera label ltree único: sequência numérica curta (evita caracteres inválidos)
         new_label = await conn.fetchval(
             "SELECT 'f' || floor(extract(epoch FROM now()) * 1000)::text || lpad((random()*9999)::int::text, 4, '0')"
         )
         new_path = f"{parent['path']}.{new_label}"
     else:
+        check_path = None
         # Raiz da empresa — gera path único sem pontos
         new_label = await conn.fetchval(
             "SELECT 'f' || floor(extract(epoch FROM now()) * 1000)::text || lpad((random()*9999)::int::text, 4, '0')"
         )
         new_path = new_label
+
+    # Checagem explícita ANTES do INSERT: sem isso, quem não tem permissão de
+    # escrita esbarra só na RLS, que rejeita a linha com uma exceção crua do
+    # Postgres — isso não vira um 403 limpo, derruba a conexão (net::ERR_FAILED
+    # no browser, sem resposta HTTP nenhuma chegando ao cliente).
+    permission = await conn.fetchval(
+        "SELECT public.user_has_access($1::uuid, $2::ltree, $3::uuid)",
+        user_id, check_path, body.company_id,
+    )
+    if permission != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para criar pasta aqui.")
 
     row = await conn.fetchrow(
         """
@@ -289,7 +302,7 @@ async def delete_folder(
     )
     if folder is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada.")
-    if folder["permission"] not in ("editor", "manager"):
+    if folder["permission"] != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para deletar esta pasta.")
 
     # Soft delete via service role (bypassa RLS para evitar o bloqueio implícito)

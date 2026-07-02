@@ -10,10 +10,12 @@ import Search from "@/pages/Search";
 import Trash from "@/pages/Trash";
 import Activity from "@/pages/Activity";
 import Favorites from "@/pages/Favorites";
+import SettingsLayout from "@/pages/Settings/SettingsLayout";
 import Profile from "@/pages/Settings/Profile";
-import Companies from "@/pages/Settings/Companies";
+import Organization from "@/pages/Settings/Organization";
 import Users from "@/pages/Settings/Users";
-import Permissions from "@/pages/Settings/Permissions";
+import Security from "@/pages/Settings/Security";
+import Preferences from "@/pages/Settings/Preferences";
 import Onboarding, { isOnboardingComplete } from "@/components/shared/Onboarding";
 import SessionExpiredOverlay from "@/components/shared/SessionExpiredOverlay";
 
@@ -64,10 +66,17 @@ function ProtectedRoutes() {
             <Route path="/trash" element={<Trash />} />
             <Route path="/activity" element={<Activity />} />
             <Route path="/favorites" element={<Favorites />} />
-            <Route path="/settings/profile" element={<Profile />} />
-            <Route path="/settings/companies" element={<Companies />} />
-            <Route path="/settings/users" element={<Users />} />
-            <Route path="/settings/permissions" element={<Permissions />} />
+            <Route path="/settings" element={<SettingsLayout />}>
+              <Route index element={<Navigate to="/settings/profile" replace />} />
+              <Route path="profile" element={<Profile />} />
+              <Route path="organization" element={<Organization />} />
+              <Route path="users" element={<Users />} />
+              <Route path="security" element={<Security />} />
+              <Route path="preferences" element={<Preferences />} />
+              {/* Rotas antigas — mantidas para links/favoritos existentes */}
+              <Route path="companies" element={<Navigate to="/settings/organization" replace />} />
+              <Route path="permissions" element={<Navigate to="/settings/users" replace />} />
+            </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </AppShell>

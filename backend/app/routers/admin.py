@@ -5,16 +5,21 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
-from app.dependencies import get_current_user, get_db, get_db_admin
+from app.dependencies import get_app_role, get_current_user, get_db, get_db_admin
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-def _require_manager(claims: dict[str, Any]) -> dict[str, Any]:
-    """Raises 403 if the caller does not have the 'manager' system role."""
-    if claims.get("role") not in ("manager", "admin"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso restrito a gerentes.")
-    return claims
+async def _require_manager(conn: asyncpg.Connection, claims: dict[str, Any]) -> None:
+    """
+    Raises 403 se o usuário não tiver papel de aplicação admin/supremo.
+    Corrigido: antes checava claims["role"] (sempre "authenticated" no JWT do
+    Supabase — nunca batia, bloqueando 100% dos usuários). Agora consulta
+    public.users.role via get_app_role().
+    """
+    role = await get_app_role(conn, claims)
+    if role not in ("admin", "supremo"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso restrito a administradores.")
 
 
 # ---------------------------------------------------------------------------
@@ -28,7 +33,7 @@ async def list_users(
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
     """Lista usuários. Se company_id fornecido, filtra pelos membros daquela empresa."""
-    _require_manager(claims)
+    await _require_manager(admin_conn, claims)
 
     if company_id:
         rows = await admin_conn.fetch(
@@ -76,7 +81,7 @@ async def create_user(
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Cria usuário diretamente na tabela users (sem Supabase Auth — apenas para testes/seed)."""
-    _require_manager(claims)
+    await _require_manager(admin_conn, claims)
 
     existing = await admin_conn.fetchval(
         "SELECT id FROM public.users WHERE username = $1", body.username
@@ -108,7 +113,7 @@ async def list_permissions(
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
     """Lista todas as entradas de user_company_access para a empresa."""
-    _require_manager(claims)
+    await _require_manager(admin_conn, claims)
 
     rows = await admin_conn.fetch(
         """
@@ -138,7 +143,7 @@ async def list_permissions(
 class PermissionUpsert(BaseModel):
     user_id: UUID
     company_id: UUID
-    permission_level: str  # viewer | editor | manager
+    permission_level: str  # visualizador | auditor | admin
     folder_path: str | None = None
 
 
@@ -149,12 +154,12 @@ async def upsert_permission(
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Insere ou atualiza permissão. ON CONFLICT atualiza o permission_level."""
-    _require_manager(claims)
+    await _require_manager(admin_conn, claims)
 
-    if body.permission_level not in ("viewer", "editor", "manager"):
+    if body.permission_level not in ("visualizador", "auditor", "admin"):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="permission_level deve ser viewer, editor ou manager.",
+            detail="permission_level deve ser visualizador, auditor ou admin.",
         )
 
     row = await admin_conn.fetchrow(
@@ -184,7 +189,7 @@ async def storage_usage(
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
     """Retorna uso de armazenamento (soma de size_bytes) por empresa."""
-    _require_manager(claims)
+    await _require_manager(admin_conn, claims)
 
     if company_id:
         rows = await admin_conn.fetch(

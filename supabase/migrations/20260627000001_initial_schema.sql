@@ -30,8 +30,9 @@ END$$;
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.immutable_unaccent(text)
 RETURNS text
-LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS
-$$
+LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE
+SET search_path = public, extensions, pg_catalog
+AS $$
   SELECT unaccent($1);
 $$;
 

@@ -7,7 +7,7 @@ NUNCA exposto como endpoint HTTP — executado como script administrativo:
     python -m app.seed.demo_data
 
 Dados criados:
-  - 1 usuário demo  (username=demo@docke.app, manager nas 3 empresas)
+  - 1 usuário demo  (username=demo@docke.app, admin nas 3 empresas)
   - 3 empresas fictícias
   - 4 pastas raiz por empresa (Fiscal, RH, Bancário, Contratos)
   - ~50 documentos distribuídos (ocr=done maioria, 2-3 failed, 3 na lixeira)
@@ -32,9 +32,9 @@ from app.config import settings
 # ---------------------------------------------------------------------------
 
 COMPANIES = [
-    ("Posto Sol Nascente", "CNPJ: 12.345.678/0001-90"),
-    ("Hotel Serra Azul",   "CNPJ: 23.456.789/0001-01"),
-    ("Restaurante Sabor & Arte", "CNPJ: 34.567.890/0001-12"),
+    ("Comércio Alfa Modelo Ltda",   "CNPJ: 12.345.678/0001-90"),
+    ("Serviços Beta Referência SA", "CNPJ: 23.456.789/0001-01"),
+    ("Indústria Gama Exemplo Ltda", "CNPJ: 34.567.890/0001-12"),
 ]
 
 FOLDERS = ["Fiscal", "RH", "Bancário", "Contratos"]
@@ -130,7 +130,7 @@ async def run_seed() -> None:
         await conn.execute(
             """
             INSERT INTO public.users (id, username, full_name, role)
-            VALUES ($1::uuid, $2, $3, 'manager')
+            VALUES ($1::uuid, $2, $3, 'admin')
             ON CONFLICT (username) DO UPDATE SET full_name = EXCLUDED.full_name
             """,
             demo_user_id,
@@ -151,13 +151,13 @@ async def run_seed() -> None:
             )
 
             # ---------------------------------------------------------------
-            # 3. Conceder acesso manager ao usuário demo
+            # 3. Conceder acesso admin ao usuário demo
             # ---------------------------------------------------------------
             await conn.execute(
                 """
                 INSERT INTO public.user_company_access
                     (user_id, company_id, permission_level, folder_path)
-                VALUES ($1::uuid, $2::uuid, 'manager', NULL)
+                VALUES ($1::uuid, $2::uuid, 'admin', NULL)
                 """,
                 demo_user_id,
                 company_id,
@@ -293,7 +293,7 @@ async def run_seed() -> None:
         await conn.execute("COMMIT")
         print("\n✅ Seed concluído com sucesso!")
         print(f"   Usuário demo: {DEMO_USER_USERNAME}")
-        print("   Empresas: Posto Sol Nascente | Hotel Serra Azul | Restaurante Sabor & Arte")
+        print("   Empresas: Comércio Alfa Modelo Ltda | Serviços Beta Referência SA | Indústria Gama Exemplo Ltda")
 
     except Exception as exc:
         await conn.execute("ROLLBACK")

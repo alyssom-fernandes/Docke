@@ -3,12 +3,14 @@ from typing import Any
 import asyncpg
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from app.config import settings
 from app.dependencies import get_current_user, get_db
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+_bearer = HTTPBearer()
 
 
 class LoginRequest(BaseModel):
@@ -85,3 +87,56 @@ async def get_me(
             detail="Usuário não encontrado no banco. Verifique se o cadastro foi sincronizado.",
         )
     return dict(row)
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/change-password — troca de senha (ADR-015, seção Segurança)
+# ---------------------------------------------------------------------------
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@router.post("/change-password")
+async def change_password(
+    body: ChangePasswordRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> dict[str, str]:
+    """
+    Troca a senha do usuário autenticado.
+    Exige a senha atual: reautentica contra o Supabase Auth antes de aceitar a
+    nova senha, para não permitir troca com apenas um token de sessão roubado.
+    """
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A nova senha deve ter no mínimo 8 caracteres.")
+
+    email = await conn.fetchval("SELECT auth.email()")
+    if not email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Não foi possível identificar o e-mail da conta.")
+
+    async with httpx.AsyncClient() as client:
+        verify = await client.post(
+            f"{settings.SUPABASE_URL}/auth/v1/token?grant_type=password",
+            headers={"apikey": settings.SUPABASE_ANON_KEY, "Content-Type": "application/json"},
+            json={"email": email, "password": body.current_password},
+            timeout=10.0,
+        )
+        if verify.status_code != 200:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Senha atual incorreta.")
+
+        update = await client.put(
+            f"{settings.SUPABASE_URL}/auth/v1/user",
+            headers={
+                "apikey": settings.SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {credentials.credentials}",
+                "Content-Type": "application/json",
+            },
+            json={"password": body.new_password},
+            timeout=10.0,
+        )
+        if update.status_code != 200:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Não foi possível atualizar a senha.")
+
+    return {"status": "ok"}

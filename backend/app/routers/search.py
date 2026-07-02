@@ -85,7 +85,11 @@ async def search(
           ts_rank_cd(to_tsvector('portuguese', public.immutable_unaccent(d.name || ' ' || coalesce(d.ocr_text, ''))), sq.tsq, 4) AS rank,
           ts_headline(
             'portuguese',
-            coalesce(d.ocr_text, d.name),
+            -- ADR-035 (Adendo 07): trunca o texto antes do ts_headline — gerar o
+            -- snippet a partir do documento inteiro degrada performance em OCRs
+            -- longos sem ganho de qualidade (o termo buscado quase sempre aparece
+            -- bem antes dos primeiros 8000 caracteres).
+            left(coalesce(d.ocr_text, d.name), 8000),
             sq.tsq,
             'StartSel=<mark>, StopSel=</mark>, MaxWords=40, MinWords=10, ShortWord=3, HighlightAll=false, MaxFragments=2'
           ) AS snippet,

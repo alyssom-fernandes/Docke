@@ -9,8 +9,7 @@ import {
   FolderPlus,
   Upload,
   Trash2,
-  Star,
-  StarOff,
+  Anchor,
   ChevronRight,
   X,
   MoreHorizontal,
@@ -321,9 +320,13 @@ function DetailDrawer({ doc, onClose, onFavorite, onPreview, onDelete }: { doc: 
           </button>
           <button
             onClick={toggleFavorite}
-            className="w-full h-9 flex items-center justify-center gap-2 text-sm border border-[var(--border-default)] rounded-[8px] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+            className={`w-full h-9 flex items-center justify-center gap-2 text-sm border rounded-[8px] transition-colors duration-fast ${
+              favorited
+                ? "border-teal-200 dark:border-teal-900/40 text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-900/20"
+                : "border-[var(--border-default)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+            }`}
           >
-            {favorited ? <StarOff className="w-4 h-4" /> : <Star className="w-4 h-4" />}
+            <Anchor className={`w-4 h-4 ${favorited ? "fill-current" : ""}`} />
             {favorited ? "Remover favorito" : "Favoritar"}
           </button>
           <button

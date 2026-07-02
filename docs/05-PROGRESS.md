@@ -312,18 +312,62 @@
 
 ---
 
-## Pós-lançamento (v1.1 — alta prioridade)
+## Pós-lançamento (v1.1)
 
-- ⬜ Preview de XML fiscal com extração de campos-chave (emitente, CNPJ, valor, data)
-- ⬜ Export do activity_log em formato Excel (além do CSV já implementado)
+- ✅ Preview de XML fiscal com extração de campos-chave (emitente, CNPJ, valor, data) — 2026-07-01
+- ✅ Export do activity_log em formato Excel (além do CSV já implementado) — 2026-07-01
 
-## v2 (roadmap futuro)
+---
 
-- ⬜ Versionamento de documentos (requer rodada de validação de schema própria — ver ADR-008)
-- ⬜ Compartilhamento externo (link público com senha/expiração)
-- ⬜ Notificações (novo documento em pasta com acesso)
-- ⬜ Toggle de densidade de tabela (compacto/confortável)
-- ⬜ PWA (manifest + service worker)
+## Milestone 6 — v2: Correções, Segurança e Permissões (pacote de Adendos 01-07)
+
+> Pacote de handoff com 7 adendos + protótipo visual, executado em 4 frentes.
+> Ordem de execução: Frente 1 (correções) → Frente 4 (segurança/permissões) →
+> Frente 3 (features novas) → Frente 2 (visual). Reordenado a pedido do
+> desenvolvedor: a Frente 4 muda o modelo de permissões que a Frente 3
+> depende, então resolver isso primeiro evita retrabalho.
+
+### ✅ Frente 1 — Correções e Lacunas (ADENDO-01) — 2026-07-01/02
+
+- **Correção 03** (prioridade máxima): vazamento visual do painel de Detalhes atrás do modal de preview. Causa raiz: `.page-enter` (tokens.css) usava `animation-fill-mode: both`, deixando um `transform` computado persistente após a animação — isso torna o elemento um *containing block* para `position: fixed` descendente (spec CSS), quebrando a cobertura de tela cheia dos modais especificamente em páginas que usam `-m-6` (Documentos). Corrigido removendo o fill-mode. Verificado via medição de `getBoundingClientRect()` do overlay (cobre 100% do viewport após a animação terminar).
+- **Correção 01**: ícone de favoritar trocado de estrela para âncora no painel de Detalhes (componente `AnchorFavoriteButton` já existia no código desde o M4.9 mas nunca tinha sido usado em lugar nenhum).
+- **Correção 02**: Task Center ganhou `aria-label`, tooltip explicativo e dot indicator de primeira sessão (localStorage).
+- **ADR-014**: nova tela `/settings/organization` com CRUD de empresas (nome, CNPJ com máscara, ativar/desativar). Migration `20260701000007_companies_org_fields.sql` (colunas `cnpj`, `logo_key`, `is_active`). Logo fica como upload futuro (endpoint de presigned URL já implementado, UI ainda não).
+- **ADR-015**: Configurações reestruturada com sub-navegação (`SettingsLayout.tsx`): Perfil, Organização, Usuários & Papéis, Segurança (troca de senha), Preferências (tema claro/escuro/sistema). Seção "Retenção" fica oculta até a Frente 3 implementar versionamento/retenção configurável.
+- **Bug real encontrado e corrigido de passagem**: `_require_manager` em `admin.py` checava `claims["role"]` — esse campo do JWT do Supabase é sempre `"authenticated"` (role do Postgres), nunca o papel de negócio do usuário. Isso bloqueava 100% das chamadas aos endpoints `/admin/*`, para todo mundo, sempre. Corrigido com `get_app_role()` (nova função em `dependencies.py`) que consulta `public.users.role`.
+
+### ✅ Frente 4 — Segurança, Isolamento e Permissões (ADENDO-06 + ADENDO-07) — 2026-07-02
+
+- **ADR-036/037 (matriz de permissões)**: modelo antigo (`viewer`/`editor`/`manager` por empresa + `supremo`/`admin`/`usuario` global) substituído por 3 papéis por empresa (`visualizador`/`auditor`/`admin`) + `supremo` como papel global. Migration `20260702000008_permission_matrix_v2.sql`: migra dados existentes, recria policies de RLS para escrita exigir `permission_level = 'admin'` (removendo a capacidade de escrita que `editor`/`auditor` tinha — correção do Adendo 07: "auditor" é somente-leitura, nome reservado permanentemente para isso).
+  - **Decisão registrada** (mapeamento de dados sem instrução explícita dos adendos): `viewer→visualizador`, `editor→auditor`, `manager→admin`. Efeito colateral aceito: como não existe mais um papel de empresa com escrita mas sem controle administrativo total, qualquer usuário que precise fazer upload/mover/excluir precisa ser `admin` daquela empresa.
+- **ADR-033**: fluxo de convite por e-mail (recém-criado na Frente 1) removido e substituído por criação direta de usuário — admin/supremo define nome, username, e-mail (só como credencial de login, sem e-mail de convite disparado) e senha inicial gerada automaticamente (editável). Endpoint `POST /companies/{id}/members` usa a Admin API do Supabase Auth com `email_confirm: true`.
+- **ADR-035**: snippet de busca truncando `ocr_text` em 8000 caracteres antes do `ts_headline()` (evita degradação de performance em OCRs longos). `websearch_to_tsquery` (já em uso desde o v1) mantido — já preserva ordem de frase melhor que o `phraseto_tsquery` sugerido no adendo original.
+- **Teste de isolamento entre empresas — executado de verdade, via API direta (não só interface)**: criada uma 2ª empresa e 3 usuários de teste (`admin`, `visualizador`) com acesso restrito a ela. Confirmado com o token do usuário de teste:
+  - `GET /companies` não lista a empresa A
+  - `GET /documents/{id da empresa A}/download-url` → 404 mesmo com o ID exato
+  - `GET /folders`, `GET /documents`, `GET /search` com `company_id` da empresa A explícito no parâmetro → todos retornam vazio (RLS ignora o parâmetro, não confia nele)
+  - usuário `admin` da empresa B consegue criar pasta na própria empresa (201)
+  - usuário `visualizador` da empresa B consegue **ler** (200) mas não **escrever** (403) na própria empresa
+  - Dados de teste removidos do banco de produção ao final.
+- **Bugs reais encontrados e corrigidos durante o teste de isolamento** (não estavam listados nos adendos — apareceram ao testar de verdade, exatamente o motivo do protocolo exigir teste manual):
+  1. Rota `GET /companies/organizations` capturada por `GET /companies/{company_id}` (bug clássico de ordenação de rotas do FastAPI — a rota com parâmetro dinâmico foi registrada antes da rota estática). Corrigido reordenando.
+  2. `_can_manage_company` exigia o papel GLOBAL (`public.users.role`) ser `admin`/`supremo` além do papel por empresa — como usuários criados via ADR-033 sempre nascem com papel global `usuario`, isso bloqueava qualquer admin comum de gerenciar a própria empresa (mesma classe do bug #1 da Frente 1). Mesma correção aplicada em `list_organizations` e no gate de abas do `SettingsLayout.tsx`/`Users.tsx` no frontend (trocado de `user.role` global para `current.permission_level` por empresa).
+  3. `POST /folders` não tinha checagem de permissão explícita em Python — dependia só da RLS rejeitar o INSERT. Quando a RLS rejeitava, o erro cru do Postgres derrubava a conexão HTTP inteira (`net::ERR_FAILED` no browser, nenhuma resposta chega ao cliente) em vez de um 403 limpo. Corrigido com checagem explícita via `user_has_access()` antes do INSERT.
+- **Infraestrutura fora de escopo de código** (ADR-038): backup diário do Postgres + WAL/PITR de 7 dias é responsabilidade do plano do Supabase (não configurável via migration/código) — verificar se o plano atual do projeto cobre isso antes de depender dele para recuperação real. Versionamento de bucket no R2 (proteção contra sobrescrita/exclusão acidental em nível de infraestrutura) precisa ser habilitado manualmente no painel da Cloudflare — ainda não foi feito.
+- **Pedido do desenvolvedor durante esta frente**: removidas todas as menções a "Grupo Zen" e nomes de unidades reais usados como placeholder/exemplo no código (`Organization.tsx` e no seed de demonstração `demo_data.py`) — trocados por nomes genéricos sem relação com negócios reais.
+- **Ajuste de custo de infraestrutura** (a pedido do desenvolvedor, fora do escopo dos adendos): Fly.io encerrou o trial gratuito durante esta frente, exigindo cartão de crédito para continuar fazendo deploy. `fly.toml` ajustado de `auto_stop_machines='off'` + `min_machines_running=1` (sempre ligado, sem cold start) para `auto_stop_machines='stop'` + `min_machines_running=0` (desliga quando ocioso, aceita alguns segundos de cold start) — trade-off aceito nesta fase de demonstração interna, antes de qualquer decisão de adoção real.
+
+**Itens da Frente 4 não testados / pendentes:**
+- Vetores adicionais de isolamento do ADR-037 (extensão): URLs assinadas de download já validam `company_id` via RLS (confirmado no teste acima), mas cache e mascaramento de logs de erro não se aplicam ainda — não há camada de cache implementada no projeto, e logs de erro não foram auditados especificamente por vazamento de dado entre empresas.
+- Restrição do papel "auditor" (leitura + log de atividade, sem escrita) foi implementada via RLS mas não testada isoladamente do papel "visualizador" nesta rodada — ambos têm o mesmo comportamento de escrita (bloqueado), a diferença (acesso ao log de atividade) não foi verificada com um usuário `auditor` real.
+
+### ⬜ Frente 3 — Features Funcionais Novas (ADENDO-04 + ADENDO-05) — não iniciada
+
+Versionamento de documentos, compartilhamento externo, retenção de lixeira configurável, notificações, densidade de tabela. Ordem de dependência técnica definida no handoff: versionamento → compartilhamento → retenção → notificações → densidade (independente).
+
+### ⬜ Frente 2 — Refinamento Visual "Liquid Glass" (ADENDO-02 + ADENDO-03) — não iniciada
+
+Tokens de vidro, modo escuro como padrão, sidebar recolhível 76px, regras de performance de blur, correções de contraste WCAG AA. Referência viva: `docs/docke-liquid-glass-prototype.html`.
 
 ---
 *Fim do progresso. Atualizar após cada tarefa concluída.*

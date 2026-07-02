@@ -143,7 +143,7 @@ async def restore_trash_item(
             "SELECT public.user_has_access($1::uuid, $2::ltree, $3::uuid)",
             user_id, str(target_folder["path"]), str(target_folder["company_id"]),
         )
-        if permission not in ("editor", "manager"):
+        if permission != "admin":
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão na pasta de destino.")
 
         row = await admin_conn.fetchrow(
@@ -173,7 +173,7 @@ async def restore_trash_item(
             "SELECT public.user_has_access($1::uuid, $2::ltree, $3::uuid)",
             user_id, str(folder["path"]), str(folder["company_id"]),
         )
-        if permission not in ("editor", "manager"):
+        if permission != "admin":
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para restaurar esta pasta.")
 
         # Se a pasta pai também está deletada, restaura como raiz (parent_id = NULL)
@@ -243,8 +243,8 @@ async def permanent_delete(
             "SELECT permission_level FROM public.user_company_access WHERE user_id = $1 AND company_id = $2 AND folder_path IS NULL",
             user_id, doc["company_id"],
         )
-        if permission != "manager":
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Apenas managers podem excluir permanentemente.")
+        if permission != "admin":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Apenas administradores da empresa podem excluir permanentemente.")
 
         # Remove do banco e do storage
         async with admin_conn.transaction():
@@ -279,8 +279,8 @@ async def permanent_delete(
             "SELECT permission_level FROM public.user_company_access WHERE user_id = $1 AND company_id = $2 AND folder_path IS NULL",
             user_id, folder["company_id"],
         )
-        if permission != "manager":
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Apenas managers podem excluir permanentemente.")
+        if permission != "admin":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Apenas administradores da empresa podem excluir permanentemente.")
 
         # Hard delete da pasta — CASCADE deleta documentos associados via FK (ON DELETE RESTRICT)
         # Os documentos já devem ter sido deletados previamente (soft delete cascateou para eles)
