@@ -32,11 +32,13 @@ class FolderMove(BaseModel):
 async def list_folders(
     company_id: UUID = Query(...),
     parent_id: UUID | None = Query(None),
+    flat: bool = Query(False, description="Ignora parent_id e retorna todas as pastas da empresa, ordenadas por path (uso: seletor de pasta em telas administrativas)."),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> list[dict[str, Any]]:
     """
     Lista pastas da empresa visíveis ao usuário (RLS filtra automaticamente).
     parent_id=null → pastas raiz; parent_id=<uuid> → filhos diretos.
+    flat=true → árvore inteira achatada, ordenada por path.
     """
     rows = await conn.fetch(
         """
@@ -54,12 +56,15 @@ async def list_folders(
         FROM public.folders f
         WHERE f.company_id = $1
           AND f.deleted_at IS NULL
-          AND ($2::uuid IS NULL AND f.parent_id IS NULL
-               OR f.parent_id = $2)
-        ORDER BY f.name
+          AND (
+            $3::boolean
+            OR ($2::uuid IS NULL AND f.parent_id IS NULL OR f.parent_id = $2)
+          )
+        ORDER BY f.path
         """,
         company_id,
         parent_id,
+        flat,
     )
     return [dict(r) for r in rows]
 
@@ -306,11 +311,14 @@ async def delete_folder(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para deletar esta pasta.")
 
     # Soft delete via service role (bypassa RLS para evitar o bloqueio implícito)
+    # trash_expires_at (ADR-025/030): retention_days da empresa no momento da exclusão.
     await admin_conn.execute(
         """
-        UPDATE public.folders
-        SET deleted_at = now()
-        WHERE path <@ $1::ltree AND deleted_at IS NULL
+        UPDATE public.folders f
+        SET deleted_at = now(),
+            trash_expires_at = now() + (c.retention_days || ' days')::interval
+        FROM public.companies c
+        WHERE f.path <@ $1::ltree AND f.deleted_at IS NULL AND c.id = f.company_id
         """,
         folder["path"],
     )
@@ -318,8 +326,10 @@ async def delete_folder(
         """
         UPDATE public.documents d
         SET deleted_at = now(),
-            deleted_original_folder_id = d.folder_id
+            deleted_original_folder_id = d.folder_id,
+            trash_expires_at = now() + (c.retention_days || ' days')::interval
         FROM public.folders f
+        JOIN public.companies c ON c.id = f.company_id
         WHERE d.folder_id = f.id
           AND f.path <@ $1::ltree
           AND d.deleted_at IS NULL

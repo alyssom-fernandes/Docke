@@ -16,6 +16,7 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
   useEffect(() => {
@@ -41,6 +42,19 @@ export default function Login() {
     }
   }
 
+  async function handleDemoLogin() {
+    setDemoLoading(true);
+    try {
+      await login("demo@docke.app", "DockeDemo2026!");
+      navigate("/dashboard", { replace: true });
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail ?? "Não foi possível acessar o modo demo agora.";
+      showError(msg);
+    } finally {
+      setDemoLoading(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[var(--bg-page)] flex flex-col items-center justify-center px-4">
       <a href="#main-form" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 text-sm text-teal-600">
@@ -57,7 +71,7 @@ export default function Login() {
 
         {/* Card */}
         <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] p-8 shadow-sm">
-          <h1 className="text-lg font-semibold text-[var(--text-primary)] mb-1">Entrar na sua conta</h1>
+          <h1 className="text-lg font-semibold text-[var(--text-primary)] mb-1">Bem-vindo de volta</h1>
           <p className="text-sm text-[var(--text-secondary)] mb-6">Gerenciamento eletrônico de documentos.</p>
 
           <form id="main-form" onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
@@ -86,6 +100,21 @@ export default function Login() {
               Entrar
             </Button>
           </form>
+
+          <div className="flex items-center gap-3 my-5 text-xs text-[var(--text-tertiary)]">
+            <div className="flex-1 h-px bg-[var(--border-default)]" />
+            ou
+            <div className="flex-1 h-px bg-[var(--border-default)]" />
+          </div>
+
+          <button
+            type="button"
+            onClick={handleDemoLogin}
+            disabled={demoLoading || loading}
+            className="w-full h-9 rounded-[8px] border border-[var(--border-default)] bg-[var(--bg-page)] text-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast disabled:opacity-60"
+          >
+            {demoLoading ? "Entrando…" : "Acessar modo demo"}
+          </button>
         </div>
 
         {/* Footer */}

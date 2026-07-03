@@ -143,7 +143,7 @@ async def list_permissions(
 class PermissionUpsert(BaseModel):
     user_id: UUID
     company_id: UUID
-    permission_level: str  # visualizador | auditor | admin
+    permission_level: str  # visualizador | operador | admin
     folder_path: str | None = None
 
 
@@ -156,10 +156,10 @@ async def upsert_permission(
     """Insere ou atualiza permissão. ON CONFLICT atualiza o permission_level."""
     await _require_manager(admin_conn, claims)
 
-    if body.permission_level not in ("visualizador", "auditor", "admin"):
+    if body.permission_level not in ("visualizador", "operador", "admin"):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="permission_level deve ser visualizador, auditor ou admin.",
+            detail="permission_level deve ser visualizador, operador ou admin.",
         )
 
     row = await admin_conn.fetchrow(

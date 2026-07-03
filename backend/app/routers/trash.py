@@ -5,6 +5,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.dependencies import get_current_user, get_db, get_db_admin
+from app.routers.shares import expire_shares_for_resource
 from app.services import storage_service
 
 router = APIRouter(prefix="/trash", tags=["trash"])
@@ -143,7 +144,7 @@ async def restore_trash_item(
             "SELECT public.user_has_access($1::uuid, $2::ltree, $3::uuid)",
             user_id, str(target_folder["path"]), str(target_folder["company_id"]),
         )
-        if permission != "admin":
+        if permission not in ("admin", "operador"):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão na pasta de destino.")
 
         row = await admin_conn.fetchrow(
@@ -253,6 +254,8 @@ async def permanent_delete(
                 "INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot) VALUES ($1::uuid, $2::uuid, 'delete', 'document', $3::uuid, $4)",
                 user_id, str(doc["company_id"]), str(item_id), doc["name"],
             )
+            # ADR-031: shares apontando pra este documento ficam expired (não apontam pro vazio)
+            await expire_shares_for_resource(admin_conn, "document", item_id)
 
         # Remove do storage após commit do banco (falha no storage não desfaz o DELETE)
         if doc["storage_path"]:
@@ -301,3 +304,4 @@ async def permanent_delete(
                 "INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot) VALUES ($1::uuid, $2::uuid, 'delete', 'folder', $3::uuid, $4)",
                 user_id, str(folder["company_id"]), str(item_id), folder["name"],
             )
+            await expire_shares_for_resource(admin_conn, "folder", item_id)

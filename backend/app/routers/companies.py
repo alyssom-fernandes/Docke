@@ -194,19 +194,27 @@ async def company_members(
     conn: asyncpg.Connection = Depends(get_db),
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
-    """Retorna lista de membros da empresa."""
+    """
+    Retorna lista de concessões de acesso da empresa (uma linha por concessão —
+    um mesmo usuário pode ter múltiplas linhas, cada uma escopada a uma pasta
+    diferente, ou uma única linha com folder_id nulo = acesso à empresa toda).
+    """
     rows = await conn.fetch(
         """
         SELECT
+          uca.id::text AS access_id,
           uca.user_id::text,
           uca.permission_level AS role,
           u.full_name,
           u.username,
-          uca.created_at
+          uca.created_at,
+          f.id::text AS folder_id,
+          f.name AS folder_name
         FROM public.user_company_access uca
         JOIN public.users u ON u.id = uca.user_id
+        LEFT JOIN public.folders f ON f.path = uca.folder_path AND f.company_id = uca.company_id
         WHERE uca.company_id = $1
-        ORDER BY u.full_name
+        ORDER BY u.full_name, f.name NULLS FIRST
         """,
         company_id,
     )
@@ -342,7 +350,8 @@ class MemberCreate(BaseModel):
     password: str
     username: str
     full_name: str
-    permission_level: str = "visualizador"  # visualizador | auditor | admin
+    permission_level: str = "visualizador"  # visualizador | operador | admin
+    folder_id: UUID | None = None  # None = acesso à empresa toda
 
 
 @router.post("/{company_id}/members", status_code=status.HTTP_201_CREATED)
@@ -361,7 +370,7 @@ async def create_member(
     role = await get_app_role(conn, claims)
     if not await _can_manage_company(conn, user_id, company_id, role):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
-    if body.permission_level not in ("visualizador", "auditor", "admin"):
+    if body.permission_level not in ("visualizador", "operador", "admin"):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="permission_level inválido.")
     if len(body.password) < 8:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A senha deve ter no mínimo 8 caracteres.")
@@ -369,6 +378,15 @@ async def create_member(
     existing_username = await admin_conn.fetchval("SELECT id FROM public.users WHERE username = $1", body.username)
     if existing_username:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username já existe.")
+
+    folder_path = None
+    if body.folder_id is not None:
+        folder_path = await admin_conn.fetchval(
+            "SELECT path FROM public.folders WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL",
+            body.folder_id, company_id,
+        )
+        if folder_path is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada nesta empresa.")
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(
@@ -395,15 +413,100 @@ async def create_member(
     row = await admin_conn.fetchrow(
         """
         INSERT INTO public.user_company_access (user_id, company_id, permission_level, folder_path, granted_by)
-        VALUES ($1::uuid, $2, $3, NULL, $4::uuid)
+        VALUES ($1::uuid, $2, $3, $4::ltree, $5::uuid)
         RETURNING id::text, user_id::text, company_id::text, permission_level, created_at
         """,
         new_user_id,
         company_id,
         body.permission_level,
+        folder_path,
         user_id,
     )
     return dict(row) | {"username": body.username, "full_name": body.full_name}
+
+
+class AccessGrantCreate(BaseModel):
+    permission_level: str
+    folder_id: UUID | None = None  # None = acesso à empresa toda
+
+
+@router.post("/{company_id}/members/{member_id}/access", status_code=status.HTTP_201_CREATED)
+async def add_access_grant(
+    company_id: UUID,
+    member_id: UUID,
+    body: AccessGrantCreate,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Adiciona uma concessão de acesso extra a um usuário que já tem conta na
+    empresa — permite que um mesmo usuário tenha papéis diferentes em pastas
+    diferentes (ex: 'operador' na pasta RH + 'visualizador' na pasta Fiscal).
+    """
+    user_id = claims["sub"]
+    role = await get_app_role(conn, claims)
+    if not await _can_manage_company(conn, user_id, company_id, role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
+    if body.permission_level not in ("visualizador", "operador", "admin"):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="permission_level inválido.")
+
+    member_exists = await admin_conn.fetchval(
+        "SELECT EXISTS (SELECT 1 FROM public.user_company_access WHERE user_id = $1 AND company_id = $2)",
+        member_id, company_id,
+    )
+    if not member_exists:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não é membro desta empresa.")
+
+    folder_path = None
+    if body.folder_id is not None:
+        folder_path = await admin_conn.fetchval(
+            "SELECT path FROM public.folders WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL",
+            body.folder_id, company_id,
+        )
+        if folder_path is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada nesta empresa.")
+
+    row = await admin_conn.fetchrow(
+        """
+        INSERT INTO public.user_company_access (user_id, company_id, permission_level, folder_path, granted_by)
+        VALUES ($1::uuid, $2, $3, $4::ltree, $5::uuid)
+        RETURNING id::text, user_id::text, company_id::text, permission_level, created_at
+        """,
+        member_id, company_id, body.permission_level, folder_path, user_id,
+    )
+    return dict(row)
+
+
+@router.delete("/{company_id}/access/{access_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_access_grant(
+    company_id: UUID,
+    access_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> None:
+    """Remove uma concessão específica (não necessariamente todas as do usuário)."""
+    user_id = claims["sub"]
+    role = await get_app_role(conn, claims)
+    if not await _can_manage_company(conn, user_id, company_id, role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
+
+    grant = await admin_conn.fetchrow(
+        "SELECT user_id FROM public.user_company_access WHERE id = $1 AND company_id = $2",
+        access_id, company_id,
+    )
+    if grant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Concessão não encontrada.")
+    if str(grant["user_id"]) == str(user_id):
+        remaining = await admin_conn.fetchval(
+            "SELECT count(*) FROM public.user_company_access WHERE user_id = $1 AND company_id = $2",
+            user_id, company_id,
+        )
+        if remaining <= 1:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Você não pode remover seu último acesso a esta empresa.")
+
+    await admin_conn.execute("DELETE FROM public.user_company_access WHERE id = $1", access_id)
 
 
 @router.delete("/{company_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)

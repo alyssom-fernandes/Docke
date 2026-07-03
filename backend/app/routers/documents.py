@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from app.dependencies import get_current_user, get_db, get_db_admin
 from app.config import settings
 from app.services import storage_service
+from app.services.notification_service import notify_folder_favoriters
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -121,7 +122,7 @@ async def create_upload_url(
     )
     if folder is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada.")
-    if folder["permission"] != "admin":
+    if folder["permission"] not in ("admin", "operador"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para fazer upload nesta pasta.")
 
     # --- Conflito de nome na mesma pasta ---
@@ -284,6 +285,11 @@ async def confirm_upload(
             str(document_id),
             row["name"],
         )
+        if row["folder_id"] is not None:
+            await notify_folder_favoriters(
+                admin_conn, row["folder_id"], row["company_id"], claims["sub"],
+                f'Novo documento "{row["name"]}" foi enviado a uma pasta que você favoritou.',
+            )
 
     return dict(row)
 
@@ -457,7 +463,7 @@ async def bulk_move(
     )
     if target is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta destino não encontrada.")
-    if target["permission"] != "admin":
+    if target["permission"] not in ("admin", "operador"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão na pasta destino.")
 
     doc_ids = [str(did) for did in body.document_ids]
@@ -494,6 +500,11 @@ async def bulk_move(
             str(target["company_id"]),
             f'{{"target_folder_id": "{body.target_folder_id}"}}',
         )
+        plural = "s" if len(result) > 1 else ""
+        await notify_folder_favoriters(
+            admin_conn, body.target_folder_id, target["company_id"], user_id,
+            f'{len(result)} documento{plural} movido{plural} para uma pasta que você favoritou.',
+        )
 
     return {
         "moved": len(result),
@@ -528,7 +539,7 @@ async def bulk_delete(
     # Busca docs visíveis + permissão via conn (RLS + user_has_access)
     visible = await conn.fetch(
         """
-        SELECT d.id::text, d.name, d.company_id::text,
+        SELECT d.id::text, d.name, d.company_id::text, d.uploaded_by::text,
                public.user_has_access(
                  auth.uid(),
                  (SELECT f.path FROM public.folders f WHERE f.id = d.folder_id),
@@ -540,19 +551,31 @@ async def bulk_delete(
         doc_ids,
     )
 
-    # Filtra apenas os que o usuário tem permissão de editor+
-    deletable_ids = [r["id"] for r in visible if r["permission"] == "admin"]
+    # admin exclui qualquer documento no seu escopo; operador só os que ele mesmo inseriu.
+    deletable_ids = [
+        r["id"] for r in visible
+        if r["permission"] == "admin" or (r["permission"] == "operador" and r["uploaded_by"] == user_id)
+    ]
     if not deletable_ids:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para deletar nenhum dos documentos informados.")
 
+    # Pastas de origem, coletadas ANTES do soft delete (pra notificar quem favoritou).
+    source_folders = await conn.fetch(
+        "SELECT DISTINCT folder_id, company_id FROM public.documents WHERE id = ANY($1::uuid[]) AND folder_id IS NOT NULL",
+        deletable_ids,
+    )
+
     # Soft delete via admin_conn (bypassa bloqueio de RLS para deleted_at)
+    # trash_expires_at (ADR-025/030): usa o retention_days da empresa NO MOMENTO da exclusão.
     deleted = await admin_conn.fetch(
         """
-        UPDATE public.documents
+        UPDATE public.documents d
         SET deleted_at = now(),
-            deleted_original_folder_id = folder_id
-        WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
-        RETURNING id::text, name, company_id::text
+            deleted_original_folder_id = folder_id,
+            trash_expires_at = now() + (c.retention_days || ' days')::interval
+        FROM public.companies c
+        WHERE d.id = ANY($1::uuid[]) AND d.deleted_at IS NULL AND c.id = d.company_id
+        RETURNING d.id::text, d.name, d.company_id::text
         """,
         deletable_ids,
     )
@@ -571,6 +594,11 @@ async def bulk_delete(
             [r["id"] for r in deleted],
             company_id,
         )
+        for sf in source_folders:
+            await notify_folder_favoriters(
+                admin_conn, sf["folder_id"], sf["company_id"], user_id,
+                "Um ou mais documentos foram excluídos de uma pasta que você favoritou.",
+            )
 
     return {
         "deleted": len(deleted),
@@ -896,10 +924,11 @@ async def delete_document(
     document_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
     admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
 ) -> None:
     doc = await conn.fetchrow(
         """
-        SELECT d.id, d.folder_id, d.company_id,
+        SELECT d.id, d.folder_id, d.company_id, d.uploaded_by,
                public.user_has_access(
                  auth.uid(),
                  (SELECT f.path FROM public.folders f WHERE f.id = d.folder_id),
@@ -912,15 +941,20 @@ async def delete_document(
     )
     if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
-    if doc["permission"] != "admin":
+    user_id = claims["sub"]
+    if doc["permission"] not in ("admin", "operador"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para deletar este documento.")
+    if doc["permission"] == "operador" and str(doc["uploaded_by"]) != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você só pode excluir documentos que você mesmo inseriu.")
 
     await admin_conn.execute(
         """
-        UPDATE public.documents
+        UPDATE public.documents d
         SET deleted_at = now(),
-            deleted_original_folder_id = folder_id
-        WHERE id = $1 AND deleted_at IS NULL
+            deleted_original_folder_id = folder_id,
+            trash_expires_at = now() + (c.retention_days || ' days')::interval
+        FROM public.companies c
+        WHERE d.id = $1 AND d.deleted_at IS NULL AND c.id = d.company_id
         """,
         document_id,
     )
@@ -982,7 +1016,7 @@ async def restore_document(
         str(target_folder["path"]),
         str(target_folder["company_id"]),
     )
-    if permission != "admin":
+    if permission not in ("admin", "operador"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão na pasta de destino.")
 
     row = await admin_conn.fetchrow(

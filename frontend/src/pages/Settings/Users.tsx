@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Users as UsersIcon, UserPlus, X, Trash2, Shield, RefreshCw } from "lucide-react";
+import { Users as UsersIcon, UserPlus, X, Trash2, Shield, RefreshCw, Plus, Folder } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import api from "@/lib/api";
@@ -12,19 +12,28 @@ import Button from "@/components/ui/Button";
 import EmptyState from "@/components/shared/EmptyState";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 
-interface Member {
+interface Grant {
+  access_id: string;
   user_id: string;
   full_name: string;
   username: string;
   role: string;
+  folder_id: string | null;
+  folder_name: string | null;
 }
 
-const ROLE_LABEL: Record<string, string> = { visualizador: "Visualizador", auditor: "Auditor", admin: "Admin" };
-const ROLE_VARIANT: Record<string, "teal" | "info" | "default"> = { admin: "teal", auditor: "info", visualizador: "default" };
+interface FolderOption {
+  id: string;
+  name: string;
+  path: string;
+}
+
+const ROLE_LABEL: Record<string, string> = { visualizador: "Visualizador", operador: "Operador", admin: "Admin" };
+const ROLE_VARIANT: Record<string, "teal" | "info" | "default"> = { admin: "teal", operador: "info", visualizador: "default" };
 
 const ROLES = [
-  { role: "visualizador", label: "Visualizador", description: "Pode ver e baixar documentos, mas não pode criar, mover, excluir ou ver o log de atividade." },
-  { role: "auditor", label: "Auditor", description: "Acesso somente leitura: vê e baixa documentos, e também acompanha o log de atividade da empresa. Não pode alterar nada." },
+  { role: "visualizador", label: "Visualizador", description: "Pode ver, baixar documentos e acompanhar o log de atividade. Não pode criar, mover ou excluir nada." },
+  { role: "operador", label: "Operador", description: "Além de visualizar, pode fazer upload e mover documentos dentro do seu escopo — mas só pode excluir os documentos que ele mesmo inseriu. Não cria, renomeia ou exclui pastas." },
   { role: "admin", label: "Admin", description: "Acesso completo à empresa: upload, mover, excluir, versionar, gerenciar usuários e dados da organização." },
 ];
 
@@ -33,13 +42,35 @@ function generatePassword() {
   return Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 }
 
-function CreateMemberModal({ companyId, onClose, onDone }: { companyId: string; onClose: () => void; onDone: () => void }) {
+function folderDepth(path: string) {
+  return path.split(".").length;
+}
+
+function FolderSelect({ folders, value, onChange }: { folders: FolderOption[]; value: string; onChange: (v: string) => void }) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full h-9 px-3 text-sm bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[8px] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-teal-400"
+    >
+      <option value="">Empresa toda</option>
+      {folders.map((f) => (
+        <option key={f.id} value={f.id}>
+          {"— ".repeat(Math.max(0, folderDepth(f.path) - 1))}{f.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function CreateMemberModal({ companyId, folders, onClose, onDone }: { companyId: string; folders: FolderOption[]; onClose: () => void; onDone: () => void }) {
   const { success, error: showError } = useToast();
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState(generatePassword());
   const [role, setRole] = useState("visualizador");
+  const [folderId, setFolderId] = useState("");
   const [saving, setSaving] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   useFocusTrap(containerRef);
@@ -54,6 +85,7 @@ function CreateMemberModal({ companyId, onClose, onDone }: { companyId: string; 
         username: username.trim(),
         full_name: fullName.trim(),
         permission_level: role,
+        folder_id: folderId || null,
       });
       success(`Usuário ${fullName.trim()} criado. Senha inicial: ${password}`);
       onDone();
@@ -131,10 +163,17 @@ function CreateMemberModal({ companyId, onClose, onDone }: { companyId: string; 
               className="w-full h-9 px-3 text-sm bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[8px] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-teal-400"
             >
               <option value="visualizador">Visualizador</option>
-              <option value="auditor">Auditor</option>
+              <option value="operador">Operador</option>
               <option value="admin">Admin</option>
             </select>
           </div>
+          {role !== "admin" && (
+            <div>
+              <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Escopo (pasta)</label>
+              <FolderSelect folders={folders} value={folderId} onChange={setFolderId} />
+              <p className="text-xs text-[var(--text-tertiary)] mt-1">Restrinja o acesso a uma pasta específica (ex: só o RH), ou deixe "Empresa toda" para acesso amplo.</p>
+            </div>
+          )}
         </div>
         <div className="flex justify-end gap-2 px-5 py-4 border-t border-[var(--border-default)]">
           <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
@@ -147,15 +186,80 @@ function CreateMemberModal({ companyId, onClose, onDone }: { companyId: string; 
   );
 }
 
+function AddGrantModal({ companyId, memberId, memberName, folders, onClose, onDone }: {
+  companyId: string; memberId: string; memberName: string; folders: FolderOption[]; onClose: () => void; onDone: () => void;
+}) {
+  const { success, error: showError } = useToast();
+  const [role, setRole] = useState("visualizador");
+  const [folderId, setFolderId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(containerRef);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await api.post(`/companies/${companyId}/members/${memberId}/access`, {
+        permission_level: role,
+        folder_id: folderId || null,
+      });
+      success(`Nova concessão adicionada para ${memberName}.`);
+      onDone();
+      onClose();
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível adicionar a concessão.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={containerRef} className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] shadow-modal modal-card w-full max-w-[400px]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
+          <h2 className="text-sm font-semibold text-[var(--text-primary)]">Nova concessão — {memberName}</h2>
+          <button onClick={onClose} className="p-1 rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Papel</label>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              className="w-full h-9 px-3 text-sm bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[8px] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-teal-400"
+            >
+              <option value="visualizador">Visualizador</option>
+              <option value="operador">Operador</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Escopo (pasta)</label>
+            <FolderSelect folders={folders} value={folderId} onChange={setFolderId} />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-[var(--border-default)]">
+          <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
+          <Button size="sm" loading={saving} onClick={save}>Adicionar</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Users() {
   usePageTitle("Usuários");
   const { current } = useCompany();
   const { user } = useAuthContext();
   const { success, error: showError } = useToast();
-  const [members, setMembers] = useState<Member[]>([]);
+  const [grants, setGrants] = useState<Grant[]>([]);
+  const [folders, setFolders] = useState<FolderOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const [removing, setRemoving] = useState<Member | null>(null);
+  const [addingGrantFor, setAddingGrantFor] = useState<{ id: string; name: string } | null>(null);
+  const [removingGrant, setRemovingGrant] = useState<Grant | null>(null);
   const [busy, setBusy] = useState(false);
 
   const canManage = user?.role === "supremo" || current?.permission_level === "admin";
@@ -163,29 +267,41 @@ export default function Users() {
   function load() {
     if (!current) return;
     setLoading(true);
-    api
-      .get<Member[]>(`/companies/${current.id}/members`)
-      .then((r) => setMembers(Array.isArray(r.data) ? r.data : []))
+    Promise.all([
+      api.get<Grant[]>(`/companies/${current.id}/members`),
+      api.get<FolderOption[]>(`/folders`, { params: { company_id: current.id, flat: true } }),
+    ])
+      .then(([membersRes, foldersRes]) => {
+        setGrants(Array.isArray(membersRes.data) ? membersRes.data : []);
+        setFolders(Array.isArray(foldersRes.data) ? foldersRes.data : []);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }
 
   useEffect(load, [current?.id]);
 
-  async function removeMember(m: Member) {
+  async function removeGrant(g: Grant) {
     if (!current) return;
     setBusy(true);
     try {
-      await api.delete(`/companies/${current.id}/members/${m.user_id}`);
-      success(`Acesso de ${m.full_name} removido.`);
-      setRemoving(null);
+      await api.delete(`/companies/${current.id}/access/${g.access_id}`);
+      success(`Concessão de ${g.full_name} removida.`);
+      setRemovingGrant(null);
       load();
     } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Não foi possível remover o acesso.");
+      showError(e?.response?.data?.detail ?? "Não foi possível remover a concessão.");
     } finally {
       setBusy(false);
     }
   }
+
+  // Agrupa concessões por usuário — um mesmo usuário pode ter várias linhas
+  // (uma por pasta escopada), cada uma com seu próprio access_id.
+  const byUser = grants.reduce<Record<string, Grant[]>>((acc, g) => {
+    (acc[g.user_id] ??= []).push(g);
+    return acc;
+  }, {});
 
   return (
     <div className="space-y-6">
@@ -203,33 +319,51 @@ export default function Users() {
         <div className="space-y-2">
           {[0, 1, 2].map((i) => <div key={i} className="h-14 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[8px] animate-pulse" />)}
         </div>
-      ) : members.length === 0 ? (
+      ) : Object.keys(byUser).length === 0 ? (
         <EmptyState title="Nenhum usuário" icon={<UsersIcon className="w-6 h-6" />} />
       ) : (
         <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] overflow-hidden">
           <ul>
-            {members.map((m) => (
-              <li
-                key={m.user_id}
-                className="flex items-center gap-3 px-5 py-3 hover:bg-[var(--bg-hover)] border-b border-[var(--border-default)] last:border-0 group"
-              >
-                <Avatar name={m.full_name} size="sm" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-[var(--text-primary)] truncate">{m.full_name}</p>
-                  <p className="text-xs text-[var(--text-secondary)] truncate">@{m.username}</p>
-                </div>
-                <Badge variant={ROLE_VARIANT[m.role] ?? "default"}>{ROLE_LABEL[m.role] ?? m.role}</Badge>
-                {canManage && (
-                  <button
-                    onClick={() => setRemoving(m)}
-                    className="opacity-0 group-hover:opacity-100 p-1.5 rounded-[6px] text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-fast"
-                    title="Remover acesso"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </li>
-            ))}
+            {Object.values(byUser).map((userGrants) => {
+              const first = userGrants[0];
+              return (
+                <li key={first.user_id} className="flex items-start gap-3 px-5 py-3 hover:bg-[var(--bg-hover)] border-b border-[var(--border-default)] last:border-0 group">
+                  <Avatar name={first.full_name} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-[var(--text-primary)] truncate">{first.full_name}</p>
+                    <p className="text-xs text-[var(--text-secondary)] truncate mb-1.5">@{first.username}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {userGrants.map((g) => (
+                        <span key={g.access_id} className="inline-flex items-center gap-1.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-[var(--bg-page)] border border-[var(--border-default)]">
+                          <Badge variant={ROLE_VARIANT[g.role] ?? "default"}>{ROLE_LABEL[g.role] ?? g.role}</Badge>
+                          <span className="text-xs text-[var(--text-secondary)] flex items-center gap-1">
+                            {g.folder_id ? (<><Folder className="w-3 h-3" />{g.folder_name ?? "Pasta"}</>) : "Empresa toda"}
+                          </span>
+                          {canManage && (
+                            <button
+                              onClick={() => setRemovingGrant(g)}
+                              className="text-[var(--text-tertiary)] hover:text-red-500 transition-colors duration-fast"
+                              title="Remover esta concessão"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+                        </span>
+                      ))}
+                      {canManage && (
+                        <button
+                          onClick={() => setAddingGrantFor({ id: first.user_id, name: first.full_name })}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-dashed border-[var(--border-default)] text-xs text-[var(--text-tertiary)] hover:text-teal-600 hover:border-teal-400 transition-colors duration-fast"
+                        >
+                          <Plus className="w-3 h-3" />
+                          Adicionar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}
@@ -250,18 +384,31 @@ export default function Users() {
       </div>
 
       {creating && current && (
-        <CreateMemberModal companyId={current.id} onClose={() => setCreating(false)} onDone={load} />
+        <CreateMemberModal companyId={current.id} folders={folders} onClose={() => setCreating(false)} onDone={load} />
       )}
 
-      {removing && (
+      {addingGrantFor && current && (
+        <AddGrantModal
+          companyId={current.id}
+          memberId={addingGrantFor.id}
+          memberName={addingGrantFor.name}
+          folders={folders}
+          onClose={() => setAddingGrantFor(null)}
+          onDone={load}
+        />
+      )}
+
+      {removingGrant && (
         <ConfirmModal
-          title={`Remover acesso de ${removing.full_name}?`}
-          description="A pessoa deixa de ter acesso a esta empresa. Você pode conceder acesso novamente depois, se precisar."
+          title={`Remover concessão de ${removingGrant.full_name}?`}
+          description={removingGrant.folder_id
+            ? `A pessoa perde o acesso "${ROLE_LABEL[removingGrant.role]}" à pasta "${removingGrant.folder_name}". Outras concessões dela não são afetadas.`
+            : "A pessoa perde o acesso à empresa toda concedido por esta linha. Outras concessões dela não são afetadas."}
           confirmLabel="Remover"
           danger
           loading={busy}
-          onConfirm={() => removeMember(removing)}
-          onClose={() => setRemoving(null)}
+          onConfirm={() => removeGrant(removingGrant)}
+          onClose={() => setRemovingGrant(null)}
         />
       )}
     </div>

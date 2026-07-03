@@ -23,6 +23,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import asyncpg
+import httpx
 
 from app.config import settings
 
@@ -78,6 +79,8 @@ OCR_TEXTS = [
 
 DEMO_USER_USERNAME = "demo@docke.app"
 DEMO_USER_FULLNAME = "Usuário Demo"
+DEMO_USER_EMAIL = "demo@docke.app"
+DEMO_USER_PASSWORD = "DockeDemo2026!"
 
 ACTIONS = ["upload", "view", "download", "view", "view", "download"]
 
@@ -103,7 +106,66 @@ def make_label() -> str:
 # Main seed
 # ---------------------------------------------------------------------------
 
+async def _ensure_demo_auth_account() -> str:
+    """
+    Garante que existe uma conta real no Supabase Auth para o usuário demo
+    (mesmo padrão do ADR-033 em companies.py: Admin API, email_confirm=True,
+    sem disparar e-mail de convite). Idempotente: se já existir, reaproveita
+    o id em vez de recriar — evita acumular contas órfãs no Auth a cada reset.
+    """
+    async with httpx.AsyncClient() as client:
+        # ATENÇÃO: a Admin API do GoTrue/Supabase NÃO filtra por e-mail via
+        # query param — ela ignora silenciosamente qualquer parâmetro
+        # desconhecido e devolve a listagem padrão. Filtrar do lado do
+        # cliente é obrigatório aqui; usar existing[0] sem filtrar pegaria
+        # o primeiro usuário da lista (ex: a conta admin real de produção),
+        # não necessariamente o usuário demo. Isso já causou um incidente
+        # real (senha e nome da conta admin real sobrescritos) — nunca
+        # remover este filtro explícito por e-mail.
+        list_resp = await client.get(
+            f"{settings.SUPABASE_URL}/auth/v1/admin/users",
+            headers={
+                "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
+                "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
+            },
+            params={"per_page": 200},
+            timeout=10.0,
+        )
+        all_users = list_resp.json().get("users", []) if list_resp.status_code == 200 else []
+        existing = [u for u in all_users if u.get("email", "").lower() == DEMO_USER_EMAIL.lower()]
+        if existing:
+            user_id = existing[0]["id"]
+            await client.put(
+                f"{settings.SUPABASE_URL}/auth/v1/admin/users/{user_id}",
+                headers={
+                    "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
+                    "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={"password": DEMO_USER_PASSWORD},
+                timeout=10.0,
+            )
+            return user_id
+
+        create_resp = await client.post(
+            f"{settings.SUPABASE_URL}/auth/v1/admin/users",
+            headers={
+                "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
+                "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={"email": DEMO_USER_EMAIL, "password": DEMO_USER_PASSWORD, "email_confirm": True},
+            timeout=10.0,
+        )
+        if create_resp.status_code not in (200, 201):
+            raise RuntimeError(f"Falha ao criar conta demo no Supabase Auth: {create_resp.text}")
+        return create_resp.json()["id"]
+
+
 async def run_seed() -> None:
+    demo_user_id = await _ensure_demo_auth_account()
+    print(f"✔ Conta demo no Supabase Auth pronta (id={demo_user_id[:8]}…).")
+
     conn = await asyncpg.connect(settings.asyncpg_url)
     print("✔ Conectado ao banco de dados.")
 
@@ -111,27 +173,23 @@ async def run_seed() -> None:
         await conn.execute("BEGIN")
 
         # ------------------------------------------------------------------
-        # 0. Limpar dados de demo anteriores (idempotente)
+        # 0. Limpar dados de demo anteriores (idempotente) — mantém o
+        #    usuário demo (mesmo id do Auth), só limpa as empresas fictícias.
         # ------------------------------------------------------------------
         await conn.execute(
             "DELETE FROM public.companies WHERE name = ANY($1::text[])",
             [c[0] for c in COMPANIES],
         )
-        await conn.execute(
-            "DELETE FROM public.users WHERE username = $1",
-            DEMO_USER_USERNAME,
-        )
         print("✔ Dados anteriores removidos.")
 
         # ------------------------------------------------------------------
-        # 1. Criar usuário demo
+        # 1. Criar/atualizar usuário demo em public.users (mesmo id do Auth)
         # ------------------------------------------------------------------
-        demo_user_id = str(uuid.uuid4())
         await conn.execute(
             """
             INSERT INTO public.users (id, username, full_name, role)
             VALUES ($1::uuid, $2, $3, 'admin')
-            ON CONFLICT (username) DO UPDATE SET full_name = EXCLUDED.full_name
+            ON CONFLICT (id) DO UPDATE SET full_name = EXCLUDED.full_name
             """,
             demo_user_id,
             DEMO_USER_USERNAME,
@@ -238,21 +296,22 @@ async def run_seed() -> None:
                 await conn.execute(
                     """
                     INSERT INTO public.documents
-                        (id, company_id, folder_id, name, mime_type, size_bytes,
+                        (id, company_id, folder_id, name, mime_type, file_type, size_bytes,
                          storage_path, content_hash, ocr_status, ocr_text,
                          ocr_completed_at, deleted_at, deleted_original_folder_id,
-                         created_by, created_at)
+                         uploaded_by, created_at)
                     VALUES
-                        ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6,
-                         $7, $8, $9, $10,
-                         $11, $12, $13,
-                         $14::uuid, $15)
+                        ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7,
+                         $8, $9, $10, $11,
+                         $12, $13, $14,
+                         $15::uuid, $16)
                     """,
                     doc_id,
                     company_id,
                     folder_id,
                     doc_name,
                     mime_type,
+                    ext,
                     size,
                     f"documents/{company_id}/{doc_id}.{ext}",
                     content_hash,
@@ -292,7 +351,7 @@ async def run_seed() -> None:
 
         await conn.execute("COMMIT")
         print("\n✅ Seed concluído com sucesso!")
-        print(f"   Usuário demo: {DEMO_USER_USERNAME}")
+        print(f"   Login demo: {DEMO_USER_EMAIL} / {DEMO_USER_PASSWORD}")
         print("   Empresas: Comércio Alfa Modelo Ltda | Serviços Beta Referência SA | Indústria Gama Exemplo Ltda")
 
     except Exception as exc:

@@ -109,7 +109,7 @@ function OrgModal({ org, onClose, onDone }: { org: Org | null; onClose: () => vo
 export default function Organization() {
   usePageTitle("Organização");
   const { user } = useAuthContext();
-  const { reload: reloadCompanies } = useCompany();
+  const { reload: reloadCompanies, current } = useCompany();
   const { success, error: showError } = useToast();
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [loading, setLoading] = useState(true);
@@ -171,7 +171,10 @@ export default function Organization() {
                   <Building2 className="w-4 h-4 text-teal-600" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-[var(--text-primary)] truncate">{org.name}</p>
+                  <p className="text-sm font-medium text-[var(--text-primary)] truncate flex items-center gap-2">
+                    {org.name}
+                    {current?.id === org.id && <Badge variant="teal">Atual</Badge>}
+                  </p>
                   <p className="text-xs text-[var(--text-secondary)]">
                     {org.cnpj ? formatCnpj(org.cnpj) : "CNPJ não informado"} · {org.document_count} documentos · {org.user_count} usuários
                   </p>
