@@ -16,8 +16,10 @@ import Organization from "@/pages/Settings/Organization";
 import Users from "@/pages/Settings/Users";
 import Security from "@/pages/Settings/Security";
 import Preferences from "@/pages/Settings/Preferences";
+import Retention from "@/pages/Settings/Retention";
 import Onboarding, { isOnboardingComplete } from "@/components/shared/Onboarding";
 import SessionExpiredOverlay from "@/components/shared/SessionExpiredOverlay";
+import PublicShare from "@/pages/PublicShare";
 
 function OnboardingGate({ children }: { children: React.ReactNode }) {
   const { companies } = useCompany();
@@ -73,6 +75,7 @@ function ProtectedRoutes() {
               <Route path="users" element={<Users />} />
               <Route path="security" element={<Security />} />
               <Route path="preferences" element={<Preferences />} />
+              <Route path="retention" element={<Retention />} />
               {/* Rotas antigas — mantidas para links/favoritos existentes */}
               <Route path="companies" element={<Navigate to="/settings/organization" replace />} />
               <Route path="permissions" element={<Navigate to="/settings/users" replace />} />
@@ -90,6 +93,7 @@ export default function App() {
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/s/:token" element={<PublicShare />} />
         <Route path="/*" element={<ProtectedRoutes />} />
       </Routes>
     </BrowserRouter>

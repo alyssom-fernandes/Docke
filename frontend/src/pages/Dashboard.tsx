@@ -92,7 +92,7 @@ function actionIcon(action: string) {
 
 function StatCard({ label, value, icon: Icon, color }: { label: string; value: number; icon: ElementType; color: string }) {
   return (
-    <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[16px] p-5 flex items-center gap-4">
+    <div className="glass-panel glass-blur-card glass-highlight-line glass-interactive relative rounded-[22px] p-5 flex items-center gap-4">
       <div className={`w-10 h-10 rounded-[10px] flex items-center justify-center flex-shrink-0 ${color}`}>
         <Icon className="w-5 h-5" />
       </div>
@@ -153,7 +153,7 @@ export default function Dashboard() {
       {loading ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[16px] p-5 h-[84px] animate-pulse" />
+            <div key={i} className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[22px] p-5 h-[84px] animate-pulse" />
           ))}
         </div>
       ) : stats && (

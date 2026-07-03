@@ -16,6 +16,9 @@ import {
   Home,
   Download,
   Eye,
+  Share2,
+  Rows3,
+  Rows4,
 } from "lucide-react";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
@@ -27,6 +30,8 @@ import EmptyState from "@/components/shared/EmptyState";
 import TruncatedFileName from "@/components/ui/TruncatedFileName";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import PreviewModal from "@/components/documents/PreviewModal";
+import VersionsPanel from "@/components/documents/VersionsPanel";
+import ShareModal from "@/components/documents/ShareModal";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -239,9 +244,10 @@ function CreateFolderModal({ parentId, companyId, onClose, onDone }: { parentId:
 
 // ─── Detail Drawer ────────────────────────────────────────────────────────────
 
-function DetailDrawer({ doc, onClose, onFavorite, onPreview, onDelete }: { doc: Document; onClose: () => void; onFavorite: () => void; onPreview: () => void; onDelete: () => void }) {
+function DetailDrawer({ doc, onClose, onFavorite, onPreview, onDelete, onChanged }: { doc: Document; onClose: () => void; onFavorite: () => void; onPreview: () => void; onDelete: () => void; onChanged: () => void }) {
   const { success, error: showError } = useToast();
   const [favorited, setFavorited] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   async function toggleFavorite() {
     try {
@@ -330,6 +336,13 @@ function DetailDrawer({ doc, onClose, onFavorite, onPreview, onDelete }: { doc: 
             {favorited ? "Remover favorito" : "Favoritar"}
           </button>
           <button
+            onClick={() => setSharing(true)}
+            className="w-full h-9 flex items-center justify-center gap-2 text-sm border border-[var(--border-default)] rounded-[8px] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+          >
+            <Share2 className="w-4 h-4" />
+            Compartilhar
+          </button>
+          <button
             onClick={onDelete}
             className="w-full h-9 flex items-center justify-center gap-2 text-sm border border-red-200 dark:border-red-900/40 rounded-[8px] text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors duration-fast"
           >
@@ -337,7 +350,13 @@ function DetailDrawer({ doc, onClose, onFavorite, onPreview, onDelete }: { doc: 
             Excluir
           </button>
         </div>
+
+        <VersionsPanel documentId={doc.id} onChanged={onChanged} />
       </div>
+
+      {sharing && (
+        <ShareModal resourceType="document" resourceId={doc.id} name={doc.name} onClose={() => setSharing(false)} />
+      )}
     </aside>
   );
 }
@@ -378,6 +397,30 @@ export default function Documents() {
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [confirmDeleteFolder, setConfirmDeleteFolder] = useState<Folder | null>(null);
   const [deletingFolder, setDeletingFolder] = useState(false);
+  const [sharingFolder, setSharingFolder] = useState<Folder | null>(null);
+  // ADR-026: densidade de tabela — compacto reduz padding vertical das linhas
+  const [density, setDensity] = useState<"comfortable" | "compact">(
+    () => (localStorage.getItem("docke_table_density") as "comfortable" | "compact") || "comfortable"
+  );
+  function toggleDensity() {
+    const next = density === "comfortable" ? "compact" : "comfortable";
+    setDensity(next);
+    localStorage.setItem("docke_table_density", next);
+  }
+
+  // ADR-017.2: desabilita o blur da moldura durante scroll ativo (custo de
+  // GPU) e restaura 150ms após o scroll parar — transição imperceptível.
+  const tableWrapRef = useRef<HTMLDivElement>(null);
+  const [tableScrolling, setTableScrolling] = useState(false);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleTableScroll = useCallback(() => {
+    setTableScrolling(true);
+    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    scrollTimeoutRef.current = setTimeout(() => setTableScrolling(false), 150);
+  }, []);
+  useEffect(() => () => {
+    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+  }, []);
 
   const load = useCallback(() => {
     if (!current) return;
@@ -498,11 +541,16 @@ export default function Documents() {
   ];
 
   return (
-    <div className="flex h-full -m-6">
-      {/* Main area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+    <div className="flex h-full -m-6 gap-4 p-2">
+      {/* Main area — moldura de vidro externa (ADR-017: blur raso, sem re-render no scroll) */}
+      <div
+        ref={tableWrapRef}
+        className={`glass-panel glass-highlight-line relative flex-1 flex flex-col min-w-0 overflow-hidden rounded-[22px] glass-shadow ${
+          tableScrolling ? "glass-scroll-active" : ""
+        } glass-blur-table`}
+      >
         {/* Toolbar */}
-        <div className="flex items-center gap-3 px-6 py-3 border-b border-[var(--border-default)] flex-shrink-0 bg-[var(--bg-card)]">
+        <div className="flex items-center gap-3 px-6 py-3 border-b border-[var(--border-default)] flex-shrink-0">
           {/* Breadcrumbs */}
           <nav className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto">
             {breadcrumbs.map((crumb, idx) => (
@@ -524,15 +572,13 @@ export default function Documents() {
 
           {/* Actions */}
           <div className="flex items-center gap-2 flex-shrink-0">
-            {selected.size > 0 && (
-              <button
-                onClick={deleteSelected}
-                className="flex items-center gap-1.5 h-8 px-3 text-xs text-red-600 border border-red-200 dark:border-red-900/40 rounded-[8px] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors duration-fast"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                Excluir {selected.size}
-              </button>
-            )}
+            <button
+              onClick={toggleDensity}
+              title={density === "comfortable" ? "Densidade compacta" : "Densidade confortável"}
+              className="h-8 w-8 flex items-center justify-center rounded-[8px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+            >
+              {density === "comfortable" ? <Rows3 className="w-4 h-4" /> : <Rows4 className="w-4 h-4" />}
+            </button>
             <Button variant="secondary" size="sm" onClick={() => setShowNewFolder(true)}>
               <FolderPlus className="w-3.5 h-3.5" />
               Nova pasta
@@ -545,7 +591,7 @@ export default function Documents() {
         </div>
 
         {/* File list */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto" onScroll={handleTableScroll}>
           {loading ? (
             <div className="p-6 space-y-2">
               {[0, 1, 2, 3].map((i) => (
@@ -567,7 +613,7 @@ export default function Documents() {
               />
             </div>
           ) : (
-            <table className="w-full">
+            <table className={`w-full ${density === "compact" ? "[&_td]:!py-1" : ""}`}>
               <thead className="sticky top-0 bg-[var(--bg-page)] border-b border-[var(--border-default)]">
                 <tr>
                   <th className="w-10 px-4 py-2 text-left">
@@ -608,7 +654,14 @@ export default function Documents() {
                         <td className="px-3 py-2.5 text-xs text-[var(--text-tertiary)]">—</td>
                         <td className="px-3 py-2.5" />
                         <td className="px-3 py-2.5 text-xs text-[var(--text-tertiary)]">—</td>
-                        <td className="px-2 py-2.5">
+                        <td className="px-2 py-2.5 flex items-center gap-1">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setSharingFolder(f); }}
+                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-[6px] text-[var(--text-tertiary)] hover:text-teal-600 hover:bg-[var(--bg-hover)] transition-all duration-fast"
+                            title="Compartilhar pasta"
+                          >
+                            <Share2 className="w-3.5 h-3.5" />
+                          </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); setConfirmDeleteFolder(f); }}
                             className="opacity-0 group-hover:opacity-100 p-1.5 rounded-[6px] text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-fast"
@@ -677,6 +730,7 @@ export default function Documents() {
           onPreview={() => setPreviewDoc(detailDoc)}
           onFavorite={() => {}}
           onDelete={() => { deleteDocuments([detailDoc.id]); setDetailDoc(null); }}
+          onChanged={load}
         />
       )}
 
@@ -708,12 +762,34 @@ export default function Documents() {
           onClose={() => setConfirmDeleteFolder(null)}
         />
       )}
+      {sharingFolder && (
+        <ShareModal resourceType="folder" resourceId={sharingFolder.id} name={sharingFolder.name} onClose={() => setSharingFolder(null)} />
+      )}
       {previewDoc && (
         <PreviewModal
           doc={previewDoc}
           onClose={() => setPreviewDoc(null)}
         />
       )}
+
+      {/* Barra de ações em lote — flutuante, o caso mais puro de "vidro sobre conteúdo" */}
+      <div
+        className={`glass-panel glass-blur-pill fixed bottom-[76px] md:bottom-7 left-1/2 flex items-center gap-1.5 rounded-[50px] pl-[18px] pr-1.5 py-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.55)] z-30 transition-[opacity,transform] duration-normal ${
+          selected.size > 0 ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        }`}
+        style={{ transform: selected.size > 0 ? "translateX(-50%)" : "translateX(-50%) translateY(12px)" }}
+      >
+        <span className="text-sm text-[var(--text-primary)] mr-1.5 pl-2.5">
+          <b className="text-[var(--teal-bright)] font-semibold">{selected.size}</b> selecionado{selected.size !== 1 ? "s" : ""}
+        </span>
+        <button
+          onClick={deleteSelected}
+          className="flex items-center gap-1.5 h-8 px-3.5 rounded-full text-sm text-red-400 bg-white/[0.07] hover:bg-red-500/[0.16] transition-colors duration-fast"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+          Excluir
+        </button>
+      </div>
     </div>
   );
 }

@@ -1,14 +1,15 @@
 import { Outlet, NavLink } from "react-router-dom";
-import { User, Building2, Users as UsersIcon, Lock, Sliders } from "lucide-react";
+import { User, Building2, Users as UsersIcon, Lock, Sliders, Archive } from "lucide-react";
 import { useAuthContext } from "@/lib/AuthContext";
 import { useCompany } from "@/lib/CompanyContext";
 
 const TABS = [
-  { to: "/settings/profile", icon: User, label: "Perfil", adminOnly: false },
-  { to: "/settings/organization", icon: Building2, label: "Organização", adminOnly: true },
-  { to: "/settings/users", icon: UsersIcon, label: "Usuários & Papéis", adminOnly: true },
-  { to: "/settings/security", icon: Lock, label: "Segurança", adminOnly: false },
-  { to: "/settings/preferences", icon: Sliders, label: "Preferências", adminOnly: false },
+  { to: "/settings/profile", icon: User, label: "Perfil", adminOnly: false, supremoOnly: false },
+  { to: "/settings/organization", icon: Building2, label: "Organização", adminOnly: true, supremoOnly: false },
+  { to: "/settings/users", icon: UsersIcon, label: "Usuários & Papéis", adminOnly: true, supremoOnly: false },
+  { to: "/settings/security", icon: Lock, label: "Segurança", adminOnly: false, supremoOnly: false },
+  { to: "/settings/preferences", icon: Sliders, label: "Preferências", adminOnly: false, supremoOnly: false },
+  { to: "/settings/retention", icon: Archive, label: "Retenção", adminOnly: false, supremoOnly: true },
 ];
 
 export default function SettingsLayout() {
@@ -16,8 +17,13 @@ export default function SettingsLayout() {
   const { current } = useCompany();
   // "admin" aqui é por empresa (current.permission_level), não o papel global —
   // um admin comum de empresa tem papel global "usuario". supremo sempre vê tudo.
-  const canManage = user?.role === "supremo" || current?.permission_level === "admin";
-  const visibleTabs = TABS.filter((t) => !t.adminOnly || canManage);
+  const isSupremo = user?.role === "supremo";
+  const canManage = isSupremo || current?.permission_level === "admin";
+  const visibleTabs = TABS.filter((t) => {
+    if (t.supremoOnly) return isSupremo;
+    if (t.adminOnly) return canManage;
+    return true;
+  });
 
   return (
     <div className="max-w-[900px] mx-auto">

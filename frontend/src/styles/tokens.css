@@ -10,10 +10,23 @@
   --bg-hover: #F1F3F5;
   --border-default: #E9ECEF;
   --text-primary: #212529;
-  --text-secondary: #595F66;
+  --text-secondary: #5A6268; /* ADR-018: era #6C757D, abaixo de WCAG AA */
   --text-tertiary: #6C757D;
   --text-placeholder: #ADB5BD;
   --afn-brand: #6b1f2a;
+
+  /* ─── Liquid Glass (Adendo 02/03) — modo claro ─── */
+  --glass-bg: rgba(255,255,255,0.68);
+  --glass-bg-strong: rgba(255,255,255,0.72);
+  --glass-border: rgba(20,20,18,0.08);
+  --glass-panel-bg: linear-gradient(180deg, rgba(255,255,255,0.85), rgba(255,255,255,0.45));
+  --glass-shadow: 0 1px 0 rgba(255,255,255,0.8) inset, 0 10px 26px rgba(20,20,18,0.08);
+  --glass-shadow-hover: 0 1px 0 rgba(255,255,255,0.9) inset, 0 16px 34px rgba(20,20,18,0.12);
+  --glass-highlight: linear-gradient(90deg, transparent, rgba(255,255,255,0.95), transparent);
+  --glass-fallback-bg: rgba(255,255,255,0.92); /* ADR-019: sem suporte a backdrop-filter */
+  --glass-fallback-border: rgba(0,0,0,0.06);
+  --teal-bright: #0E9B86; /* mais escuro que no escuro, mantém contraste sobre branco */
+  --badge-teal-text: #086B61; /* ADR-018: badge de status no claro */
 }
 
 /* ─── Dark mode ─── */
@@ -24,10 +37,105 @@
   --bg-hover: #2A2A2A;
   --border-default: #2A2A2A;
   --text-primary: #F0F0F0;
-  --text-secondary: #A0A0A0;
+  --text-secondary: #A8A8A8; /* ADR-018: era #999999, abaixo de WCAG AA */
   --text-tertiary: #707070;
   --text-placeholder: #505050;
   --afn-brand: #c44a5a;
+
+  /* ─── Liquid Glass (Adendo 02/03) — modo escuro ─── */
+  --glass-bg: rgba(255,255,255,0.055);
+  --glass-bg-strong: rgba(22,23,26,0.65);
+  --glass-border: rgba(255,255,255,0.09);
+  --glass-panel-bg: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.025));
+  --glass-shadow: 0 1px 0 rgba(255,255,255,0.08) inset, 0 12px 30px rgba(0,0,0,0.35);
+  --glass-shadow-hover: 0 1px 0 rgba(255,255,255,0.10) inset, 0 18px 40px rgba(0,0,0,0.45);
+  --glass-highlight: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+  --glass-fallback-bg: rgba(20,20,24,0.94); /* ADR-019: sem suporte a backdrop-filter */
+  --glass-fallback-border: rgba(255,255,255,0.08);
+  --teal-bright: #29C9A8;
+  --badge-teal-text: var(--teal-bright); /* contraste já suficiente no escuro (ADR-018) */
+}
+
+/* ─── Raios de vidro (Adendo 02) ─── */
+:root {
+  --radius-glass-panel: 22px;   /* sidebar, tabela, cards, topbar */
+  --radius-glass-popover: 14px; /* dropdowns, task panel */
+  --radius-glass-pill: 50px;    /* barra de ações em lote */
+}
+
+/*
+ * ADR-019 — fallback explícito para backdrop-filter.
+ * Fora da @supports, assume-se fundo sólido translúcido (opacidade calibrada
+ * para blur fica ilegível sem blur — nunca usar o --glass-bg/--glass-panel-bg
+ * "real" como fallback). Aplicar .glass-panel em qualquer elemento que hoje
+ * usaria --glass-panel-bg diretamente.
+ */
+.glass-panel {
+  background: var(--glass-fallback-bg);
+  border: 1px solid var(--glass-fallback-border);
+}
+@supports (backdrop-filter: blur(12px)) or (-webkit-backdrop-filter: blur(12px)) {
+  .glass-panel {
+    background: var(--glass-panel-bg);
+    border: 1px solid var(--glass-border);
+  }
+}
+
+/* Intensidades de blur (ADR-017/020) — aplicar junto com .glass-panel */
+/* ADR-017.4: will-change só em sidebar/topbar (fixos) — nunca dentro de containers com scroll */
+.glass-blur-panel { backdrop-filter: blur(14px) saturate(150%); -webkit-backdrop-filter: blur(14px) saturate(150%); will-change: backdrop-filter; } /* sidebar, topbar */
+.glass-blur-table { backdrop-filter: blur(10px) saturate(140%); -webkit-backdrop-filter: blur(10px) saturate(140%); } /* moldura da tabela — blur raso, ADR-017.1 */
+.glass-blur-card { backdrop-filter: blur(20px) saturate(150%); -webkit-backdrop-filter: blur(20px) saturate(150%); } /* stat cards */
+.glass-blur-strong { backdrop-filter: blur(24px) saturate(150%); -webkit-backdrop-filter: blur(24px) saturate(150%); } /* popovers (task panel, dropdown) */
+.glass-blur-pill { backdrop-filter: blur(28px) saturate(150%); -webkit-backdrop-filter: blur(28px) saturate(150%); } /* batch bar */
+
+/* ADR-017.2: durante scroll ativo, remove o blur da moldura da tabela */
+.glass-scroll-active.glass-blur-table {
+  backdrop-filter: blur(0px);
+  -webkit-backdrop-filter: blur(0px);
+}
+
+.glass-shadow { box-shadow: var(--glass-shadow); }
+
+/* Elementos interativos de vidro (Adendo 02, item 7): eleva 2px + troca sombra no hover */
+.glass-interactive {
+  box-shadow: var(--glass-shadow);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+.glass-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--glass-shadow-hover);
+}
+
+/* Linha de brilho no topo de qualquer painel de vidro — usar com position:relative no pai */
+.glass-highlight-line::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 14px; right: 14px;
+  height: 1px;
+  background: var(--glass-highlight);
+  pointer-events: none;
+}
+.glass-highlight-line-wide::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 18px; right: 18px;
+  height: 1px;
+  background: var(--glass-highlight);
+  pointer-events: none;
+}
+
+/* Ícone circular em contexto de vidro (stat cards, task rows) */
+.glass-icon-badge {
+  background: rgba(29,184,153,0.16);
+  color: var(--teal-bright);
+  border-radius: 10px;
+}
+
+/* ADR-018: badge de status (ex: "OCR concluído") */
+.status-badge {
+  background: rgba(29,184,153,0.20);
+  color: var(--badge-teal-text);
 }
 
 /* ─── Transição de tema ─── */

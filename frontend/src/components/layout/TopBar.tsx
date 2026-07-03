@@ -46,7 +46,7 @@ export default function TopBar({ onUploadClick, onMenuClick }: TopBarProps) {
   }, []);
 
   return (
-    <header className="h-[56px] flex-shrink-0 flex items-center gap-3 px-4 bg-[var(--bg-card)] border-b border-[var(--border-default)]">
+    <header className="glass-panel glass-blur-panel glass-shadow glass-highlight-line relative h-[56px] flex-shrink-0 flex items-center gap-3 px-4 rounded-[22px]">
       {/* Hamburger — tablet/mobile only */}
       <button
         onClick={onMenuClick}

@@ -428,3 +428,76 @@ async def remove_member(
         company_id,
     )
 
+
+# ---------------------------------------------------------------------------
+# ADR-025/030 — Retenção de lixeira configurável (matriz ADR-036: só supremo)
+# ---------------------------------------------------------------------------
+
+class RetentionUpdate(BaseModel):
+    retention_days: int
+
+
+@router.get("/{company_id}/retention")
+async def get_retention(
+    company_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    row = await conn.fetchrow("SELECT retention_days FROM public.companies WHERE id = $1", company_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empresa não encontrada.")
+    return dict(row)
+
+
+@router.patch("/{company_id}/retention")
+async def update_retention(
+    company_id: UUID,
+    body: RetentionUpdate,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Muda o limite de retenção da lixeira. Só supremo (matriz ADR-036).
+
+    ADR-030 — fórmula de carência ao mudar a configuração:
+      carência_dias = min(nova_retenção, 7)
+      Itens na lixeira há MAIS tempo que a carência mantêm a regra ANTIGA
+      (trash_expires_at intocado). Itens há MENOS tempo passam a valer a
+      regra NOVA imediatamente (trash_expires_at recalculado a partir de
+      deleted_at + nova_retenção).
+    """
+    role = await get_app_role(conn, claims)
+    if role != "supremo":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Apenas supremo pode configurar retenção.")
+    if body.retention_days <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="retention_days deve ser positivo.")
+
+    async with admin_conn.transaction():
+        await admin_conn.execute(
+            "UPDATE public.companies SET retention_days = $2 WHERE id = $1",
+            company_id, body.retention_days,
+        )
+
+        carencia_dias = min(body.retention_days, 7)
+
+        await admin_conn.execute(
+            """
+            UPDATE public.documents
+            SET trash_expires_at = deleted_at + ($2 * interval '1 day')
+            WHERE company_id = $1 AND deleted_at IS NOT NULL
+              AND deleted_at > now() - ($3 * interval '1 day')
+            """,
+            company_id, body.retention_days, carencia_dias,
+        )
+        await admin_conn.execute(
+            """
+            UPDATE public.folders
+            SET trash_expires_at = deleted_at + ($2 * interval '1 day')
+            WHERE company_id = $1 AND deleted_at IS NOT NULL
+              AND deleted_at > now() - ($3 * interval '1 day')
+            """,
+            company_id, body.retention_days, carencia_dias,
+        )
+
+    return {"retention_days": body.retention_days, "carencia_dias": carencia_dias}
+

@@ -10,8 +10,10 @@ interface AppShellProps {
   children: ReactNode;
 }
 
+const SIDEBAR_COLLAPSED_KEY = "docke-sidebar-collapsed";
+
 export default function AppShell({ children }: AppShellProps) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -24,7 +26,7 @@ export default function AppShell({ children }: AppShellProps) {
   }, [location.pathname]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[var(--bg-page)]">
+    <div className="flex h-screen overflow-hidden bg-[var(--bg-page)] p-3 md:p-5 gap-4">
       {/* Drawer overlay (tablet/mobile) */}
       {drawerOpen && (
         <div
@@ -36,19 +38,26 @@ export default function AppShell({ children }: AppShellProps) {
       {/* Sidebar: static on lg+, drawer on tablet/mobile */}
       <div
         className={`
-          fixed lg:static inset-y-0 left-0 z-40 lg:z-auto
+          fixed lg:static inset-y-0 left-0 lg:inset-auto z-40 lg:z-auto
+          p-3 lg:p-0
           transition-transform duration-normal
           ${drawerOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
         `}
       >
         <Sidebar
           collapsed={sidebarCollapsed}
-          onToggle={() => setSidebarCollapsed((v) => !v)}
+          onToggle={() => {
+            setSidebarCollapsed((v) => {
+              const next = !v;
+              localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+              return next;
+            });
+          }}
           onClose={() => setDrawerOpen(false)}
         />
       </div>
 
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden gap-4">
         <TopBar
           onUploadClick={() => navigate("/documents")}
           onMenuClick={() => setDrawerOpen((v) => !v)}

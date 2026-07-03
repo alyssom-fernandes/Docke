@@ -3,7 +3,9 @@ const KEY = "docke-theme";
 export function getTheme(): "light" | "dark" {
   const stored = localStorage.getItem(KEY);
   if (stored === "dark" || stored === "light") return stored;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  // ADR-021: primeira sessão (sem preferência salva) sempre abre em modo
+  // escuro — prefers-color-scheme do sistema não sobrepõe esse padrão.
+  return "dark";
 }
 
 export function applyTheme(theme: "light" | "dark") {
