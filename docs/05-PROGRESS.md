@@ -411,4 +411,67 @@
 - Regra "proibido empilhar vidro sobre vidro" (ADR-017.3) não foi estressada especificamente (ex: abrir o Task Center exatamente sobre a sidebar com blur ativo ao mesmo tempo) — a geometria atual dos popover (Task Center abre abaixo da topbar, sobre a área de conteúdo) evita esse cenário na prática, mas não houve um teste dedicado a forçar a sobreposição.
 
 ---
+
+## Milestone 7 — Papel "Operador" com escopo por pasta, Modo Demo, correções de UX (pós-auditoria)
+
+> Esta frente nasceu de uma auditoria pedida pelo usuário depois da Frente 2, questionando se o pacote de 7 adendos estava sendo seguido à risca e se a ferramenta refletia o planejamento original (não só os adendos). A auditoria encontrou lacunas reais que deveriam ter sido notadas antes, sem precisar vir do usuário — registradas abaixo com honestidade.
+
+### Achados da auditoria contra o planejamento original (não os adendos)
+
+- **Confirmado no planejamento original, nunca implementado na UI**: escopo de permissão por pasta. `02-DECISOES-ARQUITETURA.md` (ADR-001) já definia herança de permissão via `ltree`; `03-MANUAL-EXECUCAO.md` (Regra R5) já especificava a resolução por especificidade de path; o teste obrigatório da Parte 8.1 já pedia um caso de "permissão ampla + restrição em subpasta". A coluna `user_company_access.folder_path` e a função `user_has_access()` já suportavam isso desde a v1 — só a tela de conceder acesso nunca ofereceu escolher uma pasta, sempre gravando `folder_path = NULL` (empresa toda). Lacuna de implementação real, não do planejamento.
+- **Modo demo**: `backend/app/seed/demo_data.py` (seed com 3 empresas fictícias) já existia da v1, mas nunca teve porta de entrada no app — o protótipo Liquid Glass tem um botão "Acessar modo demo" na tela de login que nunca foi implementado.
+- **Violação da Invariante I8** ("nenhum router acessa o banco diretamente — toda query passa pelo service correspondente"): `documents_service.py`/`folders_service.py` nunca existiram como arquivos; os services que existem (`activity_service.py`, `permission_service.py`, `search_service.py`) são classes vazias (`pass`) com docstrings dizendo "implementado em M1.3/M3.1/M3.4", que nunca foram de fato implementadas. Toda a lógica de banco está direto nos routers desde a v1. **Não corrigido nesta frente** — é uma refatoração grande e arriscada de fazer junto com features novas; registrada como pendência separada para tratar com o mesmo cuidado que as outras frentes (schema/RLS não muda, só reorganização de código).
+- **Organization.tsx não destacava a empresa atualmente selecionada** — bug real, corrigido (badge "Atual").
+
+### ✅ Papel "Operador" + escopo por pasta (redesenho do modelo de permissões)
+
+- Migration `20260703000010_papel_operador_escopo_pasta.sql`: funde `visualizador`+`auditor` num só papel (`visualizador` passa a incluir acesso ao log de atividade — a política RLS de `activity_log_select` nunca discriminava por `permission_level` mesmo antes, então isso já era de fato o comportamento; só a cópia da UI dizia o contrário). Novo papel `operador`: lê, faz upload, move e exclui documentos dentro do seu escopo de pasta — mas só exclui os documentos que ele mesmo inseriu (verificado por `uploaded_by`, na aplicação, não via RLS — RLS não distingue de forma limpa "isto é uma exclusão" de outro UPDATE qualquer). Não cria, renomeia nem exclui pastas — isso continua exclusivo de `admin`.
+- `documents_insert`/`documents_update` (RLS) estendidas para aceitar `operador` além de `admin`. `folders_insert`/`folders_update` não mudaram (admin-only).
+- Backend: `documents.py` (upload, bulk-move, restore, delete single/bulk), `versions.py` (`_check_write_access`), `trash.py` (restore de documento) passam a aceitar `operador`. `bulk_delete`/`delete_document` checam `uploaded_by` quando o papel resolvido é `operador`.
+- `POST /companies/{id}/members` ganha `folder_id` opcional (resolve pra `folder_path` via ltree antes de gravar). Novo `POST /companies/{id}/members/{member_id}/access` permite conceder concessões adicionais a um usuário já existente (ex: `operador` na pasta RH + `visualizador` na Fiscal, na mesma empresa — a tabela já suporta múltiplas linhas por usuário). Novo `DELETE /companies/{id}/access/{access_id}` remove uma concessão específica.
+- **Bug real encontrado durante o próprio teste desta feature**: remover a última concessão de um usuário (pra depois recriar escopada a uma pasta) deixava o usuário "órfão" — sem nenhuma linha em `user_company_access`, portanto sem aparecer na listagem de membros e sem nenhuma tela pra reconceder acesso, e a tentativa de recriar esbarrava em "username já existe". Corrigido: `remove_access_grant` agora bloqueia remover a última concessão de qualquer usuário (não só a do próprio admin), com mensagem indicando usar "Remover membro" para isso.
+- Frontend: `Users.tsx` reescrita — 3 papéis, seletor de pasta (árvore) ao conceder acesso não-admin, suporte a múltiplas concessões por usuário na listagem.
+- **Correção de UX encontrada no teste**: o erro de "sem permissão" ao criar pasta aparecia como mensagem genérica ("Não foi possível criar a pasta"), escondendo o motivo real e parecendo bug do site em vez de bloqueio de permissão. Corrigido em `Documents.tsx` (criação de pasta e exclusão em lote) pra sempre repassar o `detail` real do backend.
+
+**Teste de isolamento por pasta — executado de verdade, obrigatório antes de fechar esta frente:**
+- Criadas 2 pastas reais (RH, Fiscal) na empresa de produção, usuário `operador` escopado só à pasta RH.
+- `GET /folders` do operador retorna só RH — Fiscal nunca aparece, nem por listagem nem por acesso direto ao ID (404, não revela que a pasta existe).
+- Upload em RH: 201. Upload em Fiscal: 404. Mover documento pra Fiscal: 404.
+- Exclusão do próprio documento: 204. Exclusão de documento de outra pessoa (admin): 403 com mensagem clara ("Você só pode excluir documentos que você mesmo inseriu.").
+- Dados de teste (usuário, pastas, documentos) removidos ao final.
+
+### ✅ Modo Demo
+
+- `backend/app/seed/demo_data.py` corrigido (dois bugs reais, nunca antes exercitados de ponta a ponta): (1) `_ensure_demo_auth_account()` buscava usuário existente por e-mail via `GET /auth/v1/admin/users?email=...` — esse parâmetro não existe na Admin API do Supabase/GoTrue, que ignora silenciosamente e devolve a listagem padrão; o código pegava `existing[0]` sem filtrar, o que **causou um incidente real** (ver abaixo). Corrigido para filtrar por e-mail no lado do cliente. (2) O INSERT de documentos usava a coluna `created_by` (não existe em `documents`, que usa `uploaded_by`) e não informava `file_type` (`NOT NULL` no schema) — o seed nunca tinha rodado com sucesso até esta frente.
+- Login (`Login.tsx`): cabeçalho trocado para "Bem-vindo de volta" (texto do protótipo) e adicionado o botão "Acessar modo demo" (divider "ou" + `btn-ghost`), que faz login automático com `demo@docke.app`/`DockeDemo2026!`.
+- Seed executado com sucesso em produção: 3 empresas fictícias, ~51 documentos, usuário demo funcional — confirmado ao vivo (login, troca de empresa, dashboard populado).
+- **Limitação conhecida, não corrigida nesta frente**: ao trocar de conta na mesma aba/sessão sem recarregar a página, a lista de empresas exibida pode ficar temporariamente desatualizada (estado do React não é resetado no login) — a API sempre retorna os dados corretos e escopados por usuário; é só a exibição em cache que pode ficar momentaneamente errada até um F5. Não é uma falha de segurança (confirmado comparando a chamada direta à API), mas é um gap de UX pré-existente no fluxo de login (nenhum lugar do código força reload/reset de estado após autenticar), não específico do modo demo.
+
+### ⚠️ Incidente real: bloqueio da conta administrador durante o teste do modo demo
+
+Por causa do bug do `existing[0]` sem filtro (acima), a primeira tentativa de rodar o seed do modo demo **encontrou e alterou a senha da conta administrador real de produção** (mesmo ID, `38aad276-32b3-456d-98d1-142b87801d8f`) em vez de criar uma conta demo nova — a Admin API retornou essa conta como "primeira da lista" simplesmente porque o filtro por e-mail nunca funcionou.
+
+- Efeito: login normal do administrador parou de funcionar (nem a senha original, nem a nova senha aplicada pelo script).
+- Diagnóstico: confirmado via logs de autenticação do próprio Supabase que um evento de recuperação de senha (`/verify`, "Login: request completed") tinha sido processado com sucesso mas nunca efetivamente trocou a senha, porque a URL de redirecionamento do projeto ainda apontava para `localhost:3000` (nunca configurada para produção) e a página de destino nunca carregava para completar a troca.
+- Resolução: senha redefinida com sucesso via Admin API oficial (mesmo mecanismo usado por `create_member`), rodada interativamente via `fly ssh console` com leitura de senha oculta (`getpass`). Uma segunda causa foi descoberta no processo: o `fly ssh console` (sem controle de eco de terminal) inseria um caractere `\r` residual na senha capturada, fazendo com que as duas primeiras tentativas de redefinição parecessem ter funcionado (`Status: 200`) mas na prática gravassem uma senha diferente da digitada. Corrigido com `.rstrip("\r\n")` e uma etapa de confirmação mostrando o comprimento capturado antes de qualquer envio.
+- Acesso restaurado e confirmado. O usuário trocou a senha novamente por um canal que não passou por esta conversa.
+- **Correção permanente**: `demo_data.py` agora filtra por e-mail no lado do cliente (nunca mais confia em filtro de servidor não documentado). Lição registrada em memória (`feedback_test_scripts_before_prod.md`) para nunca mais entregar um script que altera contas de Auth em produção sem antes rastrear a lógica linha a linha, especialmente pressupostos sobre filtros de API.
+
+### ✅ Correções de navegação mobile (encontradas durante o teste desta frente)
+
+- **Bug real**: a barra de navegação inferior (mobile) tinha só 5 abas (Início, Docs, Busca, Favoritos, Atividade) — faltava Configurações. Ao mesmo tempo, o botão hambúrguer (topo) abria um menu-drawer separado e mais completo (incluía Configurações), criando duas navegações inconsistentes na mesma largura de tela.
+- Decisão (confirmada com o usuário via pergunta direta): barra inferior ganha uma 6ª aba ("Ajustes" → `/settings/profile`), e o hambúrguer/drawer mobile foi removido inteiramente — uma única navegação mobile, sem duplicidade. `AppShell.tsx`, `TopBar.tsx`, `Sidebar.tsx` simplificados (sidebar de drawer virou puramente desktop, `hidden lg:block`; `Menu`/`X`/estado de drawer removidos).
+- **Bug real, corrigido**: em larguras reduzidas, o menu de perfil (avatar → Perfil/Sair) ficava difícil de acessar por sobrecarga de elementos na topbar (busca expandida + botão Upload sempre visíveis, mesmo sem espaço). Corrigido escondendo a busca expandida e o botão Upload abaixo de `md`/`sm` respectivamente (busca continua acessível via ícone isolado e via aba "Busca" da barra inferior) — testado em 375px, menu de perfil abre e fecha corretamente, "Sair" plenamente visível e clicável.
+
+### Bug de build encontrado e corrigido
+
+- Deploy do Vercel falhou (`npm run build` saiu com código 2) por um import não utilizado (`Trash2`) em `Users.tsx`, que o `tsc` do build de produção acusa como erro mas o dev server não. Corrigido e validado com `npm run build` local antes de cada push subsequente — nenhuma outra falha de build ocorreu depois disso.
+
+### Itens desta frente não testados / pendências registradas
+
+- Refatoração para services (Invariante I8) — pendência separada, grande, não resolvida nesta frente por design (ver "Achados da auditoria" acima).
+- Exclusão de versão de documento (`DELETE /documents/:id/versions/:id`) não recebeu a mesma restrição de "só exclui o que inseriu" que documentos ganharam — permanece liberado para qualquer `admin`/`operador` com acesso à pasta, já que o usuário não pediu essa granularidade para versões especificamente.
+- Cache de lista de empresas não resetado ao trocar de conta na mesma sessão (ver "Modo Demo" acima) — gap de UX pré-existente, não corrigido nesta frente.
+
+---
 *Fim do progresso. Atualizar após cada tarefa concluída.*

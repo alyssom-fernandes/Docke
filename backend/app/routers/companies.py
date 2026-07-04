@@ -498,13 +498,21 @@ async def remove_access_grant(
     )
     if grant is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Concessão não encontrada.")
-    if str(grant["user_id"]) == str(user_id):
-        remaining = await admin_conn.fetchval(
-            "SELECT count(*) FROM public.user_company_access WHERE user_id = $1 AND company_id = $2",
-            user_id, company_id,
-        )
-        if remaining <= 1:
+
+    remaining = await admin_conn.fetchval(
+        "SELECT count(*) FROM public.user_company_access WHERE user_id = $1 AND company_id = $2",
+        grant["user_id"], company_id,
+    )
+    if remaining <= 1:
+        if str(grant["user_id"]) == str(user_id):
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Você não pode remover seu último acesso a esta empresa.")
+        # Remover a última concessão de outro usuário o deixaria sem nenhum
+        # acesso e sem aparecer mais na listagem de membros (sem forma de
+        # reconceder pela tela) — force usar "remover membro" nesse caso.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Esta é a última concessão deste usuário. Para removê-lo por completo, use \"Remover membro\" em vez de remover a concessão.",
+        )
 
     await admin_conn.execute("DELETE FROM public.user_company_access WHERE id = $1", access_id)
 
