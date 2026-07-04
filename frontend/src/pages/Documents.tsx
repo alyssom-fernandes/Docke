@@ -204,8 +204,8 @@ function CreateFolderModal({ parentId, companyId, onClose, onDone }: { parentId:
       success(`Pasta "${name.trim()}" criada.`);
       onDone();
       onClose();
-    } catch {
-      showError("Não foi possível criar a pasta.");
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível criar a pasta.");
     } finally {
       setSaving(false);
     }
@@ -496,8 +496,8 @@ export default function Documents() {
       if (undone) return;
       try {
         await api.post("/documents/bulk-delete", { document_ids: ids });
-      } catch {
-        showError("Erro ao excluir documentos.");
+      } catch (e: any) {
+        showError(e?.response?.data?.detail ?? "Erro ao excluir documentos.");
         load(); // restore on failure
       }
     }, 5000);

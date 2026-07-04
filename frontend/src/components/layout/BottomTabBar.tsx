@@ -1,12 +1,13 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, FolderOpen, Search, Star, Activity } from "lucide-react";
+import { LayoutDashboard, FolderOpen, Search, Star, Activity, Settings } from "lucide-react";
 
 const TABS = [
-  { to: "/dashboard",  icon: LayoutDashboard, label: "Início" },
-  { to: "/documents",  icon: FolderOpen,       label: "Docs" },
-  { to: "/search",     icon: Search,           label: "Busca" },
-  { to: "/favorites",  icon: Star,             label: "Favoritos" },
-  { to: "/activity",   icon: Activity,         label: "Atividade" },
+  { to: "/dashboard",         icon: LayoutDashboard, label: "Início" },
+  { to: "/documents",         icon: FolderOpen,       label: "Docs" },
+  { to: "/search",            icon: Search,           label: "Busca" },
+  { to: "/favorites",         icon: Star,             label: "Favoritos" },
+  { to: "/activity",          icon: Activity,         label: "Atividade" },
+  { to: "/settings/profile",  icon: Settings,         label: "Ajustes" },
 ];
 
 export default function BottomTabBar() {

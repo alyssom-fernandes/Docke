@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Search, Upload, ChevronDown, LogOut, User, Sun, Moon, Menu } from "lucide-react";
+import { Search, Upload, ChevronDown, LogOut, User, Sun, Moon } from "lucide-react";
 import { toggleTheme, getTheme } from "@/lib/theme";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuthContext } from "@/lib/AuthContext";
@@ -11,10 +11,9 @@ import TaskCenter from "@/components/shared/TaskCenter";
 
 interface TopBarProps {
   onUploadClick?: () => void;
-  onMenuClick?: () => void;
 }
 
-export default function TopBar({ onUploadClick, onMenuClick }: TopBarProps) {
+export default function TopBar({ onUploadClick }: TopBarProps) {
   const { user, logout } = useAuthContext();
   const { companies, current, setCurrent } = useCompany();
   const { open: openPalette } = useCommandPalette();
@@ -47,15 +46,6 @@ export default function TopBar({ onUploadClick, onMenuClick }: TopBarProps) {
 
   return (
     <header className="glass-panel glass-blur-panel glass-shadow glass-highlight-line relative h-[56px] flex-shrink-0 flex items-center gap-3 px-4 rounded-[22px]">
-      {/* Hamburger — tablet/mobile only */}
-      <button
-        onClick={onMenuClick}
-        className="lg:hidden w-8 h-8 flex items-center justify-center rounded-[8px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
-        aria-label="Abrir menu"
-      >
-        <Menu className="w-4 h-4" />
-      </button>
-
       {/* Company selector */}
       {companies.length > 0 && (
         <div className="relative" ref={companyRef}>
@@ -85,10 +75,10 @@ export default function TopBar({ onUploadClick, onMenuClick }: TopBarProps) {
         </div>
       )}
 
-      {/* Search trigger → opens Command Palette */}
+      {/* Search trigger → opens Command Palette (busca já acessível via aba "Busca" na barra inferior no mobile) */}
       <button
         onClick={openPalette}
-        className="flex-1 max-w-[420px] flex items-center gap-2 h-8 pl-3 pr-2 bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[8px] text-sm text-[var(--text-placeholder)] hover:border-teal-400 transition-colors duration-fast"
+        className="hidden md:flex flex-1 max-w-[420px] items-center gap-2 h-8 pl-3 pr-2 bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[8px] text-sm text-[var(--text-placeholder)] hover:border-teal-400 transition-colors duration-fast"
       >
         <Search className="w-4 h-4 flex-shrink-0" />
         <span className="flex-1 text-left">Buscar documentos…</span>
@@ -97,11 +87,20 @@ export default function TopBar({ onUploadClick, onMenuClick }: TopBarProps) {
         </kbd>
       </button>
 
+      {/* Busca — ícone isolado abaixo de md, abre o mesmo Command Palette */}
+      <button
+        onClick={openPalette}
+        className="md:hidden w-8 h-8 flex items-center justify-center rounded-[8px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+        aria-label="Buscar"
+      >
+        <Search className="w-4 h-4" />
+      </button>
+
       <div className="flex-1" />
 
-      {/* Upload — oculto na página Documentos, que já tem seu próprio botão */}
+      {/* Upload — oculto na página Documentos (que já tem seu próprio botão) e abaixo de sm (espaço reservado pro avatar) */}
       {!onDocumentsPage && (
-        <Button size="sm" onClick={onUploadClick}>
+        <Button size="sm" onClick={onUploadClick} className="hidden sm:flex">
           <Upload className="w-3.5 h-3.5" />
           Upload
         </Button>

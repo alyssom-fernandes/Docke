@@ -10,13 +10,11 @@ import {
   Settings,
   ChevronLeft,
   Anchor,
-  X,
 } from "lucide-react";
 
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
-  onClose?: () => void;
 }
 
 const NAV = [
@@ -54,7 +52,7 @@ function NavItem({ to, icon: Icon, label, collapsed }: { to: string; icon: Eleme
   );
 }
 
-export default function Sidebar({ collapsed, onToggle, onClose }: SidebarProps) {
+export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
   return (
     <aside
       className={`glass-panel glass-blur-panel glass-shadow glass-highlight-line relative ${
@@ -70,16 +68,6 @@ export default function Sidebar({ collapsed, onToggle, onClose }: SidebarProps) 
           <span className="text-sm font-semibold text-[var(--text-primary)] whitespace-nowrap flex-1">
             Docke
           </span>
-        )}
-        {/* Close button — only visible in drawer mode (lg hidden) */}
-        {onClose && !collapsed && (
-          <button
-            onClick={onClose}
-            className="lg:hidden w-7 h-7 flex items-center justify-center rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
-            aria-label="Fechar menu"
-          >
-            <X className="w-4 h-4" />
-          </button>
         )}
       </div>
 
