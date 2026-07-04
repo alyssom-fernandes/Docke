@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Users as UsersIcon, UserPlus, X, Trash2, Shield, RefreshCw, Plus, Folder } from "lucide-react";
+import { Users as UsersIcon, UserPlus, X, Shield, RefreshCw, Plus, Folder } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import api from "@/lib/api";
