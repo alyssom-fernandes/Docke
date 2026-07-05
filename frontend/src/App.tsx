@@ -22,10 +22,13 @@ import SessionExpiredOverlay from "@/components/shared/SessionExpiredOverlay";
 import PublicShare from "@/pages/PublicShare";
 
 function OnboardingGate({ children }: { children: React.ReactNode }) {
-  const { companies } = useCompany();
+  const { companies, loading } = useCompany();
   const [done, setDone] = useState(isOnboardingComplete);
 
-  const needsOnboarding = !done && companies.length === 0;
+  // Espera o carregamento real terminar — sem isso, o assistente de primeiro
+  // acesso pisca na tela pra QUALQUER usuário (companies começa vazio antes
+  // do fetch resolver), sumindo assim que a lista real chega.
+  const needsOnboarding = !done && !loading && companies.length === 0;
 
   return (
     <>

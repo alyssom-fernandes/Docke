@@ -4,6 +4,12 @@ import { onSessionExpired } from "@/lib/sessionEvents";
 import { useAuthContext } from "@/lib/AuthContext";
 import Button from "@/components/ui/Button";
 
+// Conta do modo demo — sem senha conhecida pelo usuário, então o token
+// expirado é renovado automaticamente em vez de pedir senha (ver ADR do
+// modo demo: a conta é compartilhada/pública, não faz sentido travar aqui).
+const DEMO_EMAIL = "demo@docke.app";
+const DEMO_PASSWORD = "DockeDemo2026!";
+
 export default function SessionExpiredOverlay() {
   const { user, login, logout } = useAuthContext();
   const [visible, setVisible] = useState(false);
@@ -14,13 +20,23 @@ export default function SessionExpiredOverlay() {
   useEffect(() => {
     return onSessionExpired(() => {
       // Only show if there's a known user to re-authenticate
-      if (localStorage.getItem("docke_token") || localStorage.getItem("docke_user")) {
-        setVisible(true);
-        setPassword("");
-        setError("");
+      if (!(localStorage.getItem("docke_token") || localStorage.getItem("docke_user"))) return;
+
+      if (user?.email === DEMO_EMAIL) {
+        login(DEMO_EMAIL, DEMO_PASSWORD).catch(() => {
+          // se a renovação silenciosa falhar por algum motivo, cai no fluxo normal
+          setVisible(true);
+          setPassword("");
+          setError("");
+        });
+        return;
       }
+
+      setVisible(true);
+      setPassword("");
+      setError("");
     });
-  }, []);
+  }, [user, login]);
 
   if (!visible || !user) return null;
 

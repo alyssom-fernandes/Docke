@@ -10,6 +10,7 @@ export interface Company {
 interface CompanyCtx {
   companies: Company[];
   current: Company | null;
+  loading: boolean;
   setCurrent: (c: Company) => void;
   reload: () => void;
 }
@@ -18,6 +19,7 @@ const Ctx = createContext<CompanyCtx | null>(null);
 
 export function CompanyProvider({ children, enabled }: { children: ReactNode; enabled: boolean }) {
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [loading, setLoading] = useState(true);
   const [current, setCurrent] = useState<Company | null>(() => {
     try { return JSON.parse(localStorage.getItem("docke_company") ?? "null"); } catch { return null; }
   });
@@ -30,7 +32,7 @@ export function CompanyProvider({ children, enabled }: { children: ReactNode; en
         setCurrent(res.data[0]);
         localStorage.setItem("docke_company", JSON.stringify(res.data[0]));
       }
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setLoading(false));
   }
 
   useEffect(load, [enabled]);
@@ -41,7 +43,7 @@ export function CompanyProvider({ children, enabled }: { children: ReactNode; en
   }
 
   return (
-    <Ctx.Provider value={{ companies, current, setCurrent: handleSet, reload: load }}>
+    <Ctx.Provider value={{ companies, current, loading, setCurrent: handleSet, reload: load }}>
       {children}
     </Ctx.Provider>
   );

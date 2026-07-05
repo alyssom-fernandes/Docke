@@ -29,8 +29,8 @@ const ACTION_LABELS: Record<string, string> = {
   delete: "excluiu",
   restore: "restaurou",
   download: "baixou",
-  favorite: "favoritou",
-  unfavorite: "desfavoritou",
+  favorite: "ancorou",
+  unfavorite: "desancorou",
   undo: "desfez",
 };
 

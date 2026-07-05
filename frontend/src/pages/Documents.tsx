@@ -253,16 +253,16 @@ function DetailDrawer({ doc, onClose, onFavorite, onPreview, onDelete, onChanged
     try {
       if (favorited) {
         // need favorite_id — simplified: refetch
-        showError("Use a lista de favoritos para remover.");
+        showError("Use a lista de ancorados para remover.");
       } else {
         await api.post("/favorites", { document_id: doc.id });
         setFavorited(true);
-        success(`"${doc.name}" adicionado aos favoritos.`);
+        success(`"${doc.name}" adicionado aos ancorados.`);
         onFavorite();
       }
     } catch (e: any) {
       if (e?.response?.status === 409) { setFavorited(true); return; }
-      showError("Erro ao favoritar.");
+      showError("Erro ao ancorar.");
     }
   }
 
@@ -333,7 +333,7 @@ function DetailDrawer({ doc, onClose, onFavorite, onPreview, onDelete, onChanged
             }`}
           >
             <Anchor className={`w-4 h-4 ${favorited ? "fill-current" : ""}`} />
-            {favorited ? "Remover favorito" : "Favoritar"}
+            {favorited ? "Remover ancoragem" : "Ancorar como favorito"}
           </button>
           <button
             onClick={() => setSharing(true)}

@@ -23,7 +23,7 @@ export default function AnchorFavoriteButton({ isFavorited, onClick, title, clas
   return (
     <button
       onClick={handle}
-      title={title ?? (isFavorited ? "Remover favorito" : "Favoritar")}
+      title={title ?? (isFavorited ? "Remover ancoragem" : "Ancorar como favorito")}
       className={`p-1.5 rounded-[6px] transition-colors duration-fast ${
         isFavorited
           ? "text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-900/20"

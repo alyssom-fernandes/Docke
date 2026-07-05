@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FolderOpen, Star, Trash2 } from "lucide-react";
+import { FolderOpen, Anchor, Trash2 } from "lucide-react";
 import { getFileStyle } from "@/lib/fileType";
 import { Link } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
@@ -17,7 +17,7 @@ interface Favorite {
 }
 
 export default function Favorites() {
-  usePageTitle("Favoritos");
+  usePageTitle("Ancorados");
   const { current } = useCompany();
   const { success, error: showError } = useToast();
   const [favorites, setFavorites] = useState<Favorite[]>([]);
@@ -39,15 +39,15 @@ export default function Favorites() {
     try {
       await api.delete(`/favorites/${fav.id}`);
       setFavorites((prev) => prev.filter((f) => f.id !== fav.id));
-      success(`"${fav.item_name}" removido dos favoritos.`);
+      success(`"${fav.item_name}" removido dos ancorados.`);
     } catch {
-      showError("Não foi possível remover o favorito.");
+      showError("Não foi possível remover a ancoragem.");
     }
   }
 
   return (
     <div className="max-w-[800px] mx-auto space-y-6">
-      <h1 className="text-xl font-semibold text-[var(--text-primary)]">Favoritos</h1>
+      <h1 className="text-xl font-semibold text-[var(--text-primary)]">Ancorados</h1>
 
       {loading ? (
         <div className="space-y-2">
@@ -57,9 +57,9 @@ export default function Favorites() {
         </div>
       ) : favorites.length === 0 ? (
         <EmptyState
-          title="Nenhum favorito"
-          description="Favorite documentos e pastas para acessá-los rapidamente aqui."
-          icon={<Star className="w-6 h-6" />}
+          title="Nada ancorado ainda"
+          description="Clique no ícone de âncora em qualquer documento ou pasta para fixá-lo aqui."
+          icon={<Anchor className="w-6 h-6" />}
           action={
             <Link
               to="/documents"
@@ -93,7 +93,7 @@ export default function Favorites() {
                 <button
                   onClick={() => removeFavorite(fav)}
                   className="opacity-0 group-hover:opacity-100 p-1.5 rounded-[6px] text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-fast"
-                  title="Remover favorito"
+                  title="Remover ancoragem"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>

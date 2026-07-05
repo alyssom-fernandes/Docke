@@ -6,7 +6,7 @@ import { getFileStyle } from "@/lib/fileType";
 import {
   FileText,
   FolderOpen,
-  Star,
+  Anchor,
   Clock,
   ArrowRight,
   Upload,
@@ -14,7 +14,6 @@ import {
   Move,
   Trash2,
   Download,
-  Heart,
 } from "lucide-react";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
@@ -68,8 +67,8 @@ function actionLabel(action: string) {
     delete: "excluiu",
     restore: "restaurou",
     download: "baixou",
-    favorite: "favoritou",
-    unfavorite: "desfavoritou",
+    favorite: "ancorou",
+    unfavorite: "desancorou",
     undo: "desfez",
   };
   return map[action] ?? action;
@@ -82,7 +81,7 @@ function actionIcon(action: string) {
     download: Download,
     move: Move,
     delete: Trash2,
-    favorite: Heart,
+    favorite: Anchor,
   };
   const Icon = map[action] ?? FileText;
   return <Icon className="w-3.5 h-3.5" />;
@@ -160,7 +159,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard label="Documentos" value={stats.total_documents} icon={FileText} color="bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400" />
           <StatCard label="Pastas" value={stats.total_folders} icon={FolderOpen} color="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400" />
-          <StatCard label="Favoritos" value={stats.total_favorites} icon={Star} color="bg-yellow-50 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400" />
+          <StatCard label="Ancorados" value={stats.total_favorites} icon={Anchor} color="bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400" />
           <StatCard label="Uploads recentes" value={stats.recent_uploads} icon={Clock} color="bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400" />
         </div>
       )}
@@ -202,7 +201,7 @@ export default function Dashboard() {
         {/* Favorites */}
         <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] overflow-hidden">
           <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-default)]">
-            <h2 className="text-sm font-medium text-[var(--text-primary)]">Favoritos</h2>
+            <h2 className="text-sm font-medium text-[var(--text-primary)]">Ancorados</h2>
             <Link to="/favorites" className="flex items-center gap-1 text-xs text-teal-600 hover:underline">
               Ver todos <ArrowRight className="w-3 h-3" />
             </Link>
@@ -213,7 +212,7 @@ export default function Dashboard() {
             </div>
           ) : favorites.length === 0 ? (
             <div className="py-8">
-              <EmptyState title="Nenhum favorito" description="Favorite documentos para acesso rápido." icon={<Star className="w-6 h-6" />} />
+              <EmptyState title="Nada ancorado ainda" description="Clique no ícone de âncora em qualquer documento ou pasta para fixá-lo aqui." icon={<Anchor className="w-6 h-6" />} />
             </div>
           ) : (
             <ul>
