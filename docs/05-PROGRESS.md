@@ -591,5 +591,23 @@ O usuário pediu pra tratar os itens 14 (I4/I5) e 15 (I3) da forma mais assertiv
 - Build do frontend (`tsc && vite build`) limpo em cada etapa.
 - Teste ao vivo completo (login, sidebar, busca, ancorar, exclusão permanente em lote etc.) fica pendente do próximo deploy — backend e frontend só serão testados de ponta a ponta em produção depois que o usuário rodar os comandos de commit/push/deploy.
 
+### Bug real encontrado pelo usuário pós-reseed — empresa cacheada nunca revalidada
+
+Depois do reseed de dados (`python -m app.seed.demo_data`), o usuário reportou que clicar num resultado de busca sempre caía na pasta raiz em vez do local real do documento.
+
+- **Causa raiz**: `CompanyContext.tsx` inicializa `current` a partir do `localStorage` (`docke_company`) de forma síncrona. A função `load()` só substituía `current` por uma empresa nova quando `current` começava `null` — se já havia algo em cache, nunca era revalidado contra a lista real vinda de `GET /companies`. Como todo reseed recria as empresas com UUIDs novos, qualquer navegador com uma empresa em cache de antes do reseed ficava preso num `company_id` morto para sempre, quebrando busca, documentos, pastas — tudo que é filtrado por `current.id`. O sintoma batia exatamente com o relato: a busca encontrava o documento (ela usa `company_id` só para filtrar, e o resultado retornado é de fato o certo), mas o deep-link em `Documents.tsx` procurava a pasta de destino dentro da lista de pastas da empresa (errada) em cache, não achava, e silenciosamente ficava na pasta raiz.
+- **Por que passou despercebido nos meus próprios testes**: em todo teste anterior eu limpava o `localStorage` entre uma tentativa e outra, o que mascarava exatamente esse cenário — um usuário real nunca faz isso.
+- **Correção**: `load()` agora compara `current` contra a lista real recebida de `/companies`; se o id salvo não existe mais na lista, substitui por `res.data[0]` (ou limpa para `null` se a lista vier vazia), atualizando `localStorage` nos dois casos.
+- **Verificação**: build (`tsc && vite build`) limpo; teste ao vivo fiel ao cenário real — injetada manualmente uma empresa falsa/obsoleta no `localStorage`, recarregada a página, confirmado que o app se autocorrigiu para uma empresa real e válida; em seguida busca real por "NF-e" → clique no resultado → confirmado via snapshot que abriu o documento certo (`NF-e_Fornecedor_02.xml`, pasta Fiscal) com o Detail Drawer mostrando metadados corretos — não mais a pasta raiz.
+
+### Busca global (Ctrl+K) x aba "Busca" — diferenciação e bug encontrado
+
+O usuário perguntou qual a diferença entre a busca global do TopBar (Ctrl+K) e a aba "Busca" da sidebar, achando que pareciam redundantes.
+
+- **Propósito pretendido, já diferenciado corretamente no backend**: a busca global abre o `CommandPalette.tsx`, que chama `/search/quick` (prefixo só no nome, sem trecho de conteúdo, máx 10 resultados) — um "ir rápido" tipo Spotlight. A aba "Busca" usa `Search.tsx`, que chama `/search` (FTS completo, nome **e** conteúdo OCR, trecho destacado, paginação) — busca de conteúdo de verdade.
+- **Bug real encontrado nº1**: `CommandPalette.tsx`'s `select()` ignorava completamente qual resultado foi clicado — tanto pasta quanto documento navegavam sempre para `/documents` sem `folder_id`/`doc`, anulando a utilidade da busca rápida (clicar em qualquer resultado sempre caía na raiz). Corrigido para montar a URL com os parâmetros corretos, no mesmo padrão já usado em `Search.tsx`.
+- **Bug real encontrado nº2 (mais sério, mesma classe do bug do `CompanyContext`)**: o efeito de deep-link em `Documents.tsx` só reagia a `searchParams` no *mount* do componente (dependência `[current?.id]`, com eslint-disable) e capturava o `doc` uma única vez via `useState(() => searchParams.get("doc"))`. Isso funcionava quando o deep-link vinha de outra página (ex.: `Search.tsx`, que desmonta/remonta `Documents.tsx`), mas falhava silenciosamente quando o usuário já estava em `/documents` e clicava num resultado do Command Palette — cenário exatamente reproduzido ao vivo durante a investigação (URL mudava corretamente, mas a tela não navegava). Corrigido: `pendingDocId` agora é estado reativo (`setPendingDocId` dentro do efeito) e o efeito de navegação depende também de `searchParams`, não só da empresa atual.
+- **Verificação**: `tsc --noEmit` e `vite build` limpos; teste ao vivo reproduzindo o cenário exato (já em `/documents`, abrir Ctrl+K, buscar "NF", clicar no resultado) — confirmado via snapshot que a tabela passou a mostrar só o documento certo dentro da pasta Fiscal, com o Detail Drawer aberto com os metadados corretos, e a URL atualizada com `folder_id`/`doc` corretos.
+
 ---
 *Fim do progresso. Atualizar após cada tarefa concluída.*
