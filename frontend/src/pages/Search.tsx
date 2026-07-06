@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { relativeDate } from "@/lib/date";
 import { getFileStyle } from "@/lib/fileType";
@@ -15,6 +15,8 @@ interface SearchResult {
   snippet: string;
   rank: number;
   created_at: string;
+  folder_id: string | null;
+  folder_name?: string;
 }
 
 interface SearchResponse {
@@ -30,6 +32,7 @@ const fmtDate = relativeDate;
 export default function Search() {
   usePageTitle("Busca");
   const { current } = useCompany();
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState(params.get("q") ?? "");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -105,7 +108,16 @@ export default function Search() {
             {results.map((r) => (
               <li
                 key={r.id}
-                className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[8px] px-5 py-4 hover:border-teal-400 transition-colors duration-fast"
+                role="button"
+                tabIndex={0}
+                onClick={() => navigate(`/documents?folder_id=${r.folder_id ?? ""}&doc=${r.id}`)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    navigate(`/documents?folder_id=${r.folder_id ?? ""}&doc=${r.id}`);
+                  }
+                }}
+                className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[8px] px-5 py-4 hover:border-teal-400 transition-colors duration-fast cursor-pointer"
               >
                 <div className="flex items-start gap-3">
                   {(() => { const s = getFileStyle(r.name); const Icon = s.icon; return (
@@ -121,7 +133,10 @@ export default function Search() {
                         dangerouslySetInnerHTML={{ __html: r.snippet.replace(/<mark>/g, '<mark class="bg-teal-100 text-teal-700 rounded px-0.5">') }}
                       />
                     )}
-                    <p className="text-xs text-[var(--text-tertiary)] mt-1">{fmtDate(r.created_at)}</p>
+                    <p className="text-xs text-[var(--text-tertiary)] mt-1">
+                      {r.folder_name && <>{r.folder_name} · </>}
+                      {fmtDate(r.created_at)}
+                    </p>
                   </div>
                 </div>
               </li>

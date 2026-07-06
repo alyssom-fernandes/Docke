@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { relativeDate, fullDate } from "@/lib/date";
@@ -445,6 +446,45 @@ export default function Documents() {
   }, [current?.id, currentFolderId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Deep link vindo da busca: /documents?folder_id=<id>&doc=<id>
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [pendingDocId] = useState<string | null>(() => searchParams.get("doc"));
+  useEffect(() => {
+    const linkedFolderId = searchParams.get("folder_id");
+    if (!linkedFolderId || !current) return;
+
+    api.get<Array<Folder & { path: string }>>("/folders", { params: { company_id: current.id, flat: true } })
+      .then((res) => {
+        const all = Array.isArray(res.data) ? res.data : [];
+        const target = all.find((f) => f.id === linkedFolderId);
+        if (!target) return;
+
+        const chain: Array<{ id: string | null; name: string }> = [{ id: null, name: "Início" }];
+        const ancestorIds: string[] = [];
+        let cur: (Folder & { path: string }) | undefined = target;
+        while (cur) {
+          ancestorIds.unshift(cur.id);
+          cur = cur.parent_id ? all.find((f) => f.id === cur!.parent_id) : undefined;
+        }
+        ancestorIds.forEach((id) => {
+          const f = all.find((x) => x.id === id);
+          if (f) chain.push({ id: f.id, name: f.name });
+        });
+
+        setBreadcrumbs(chain);
+        setCurrentFolderId(linkedFolderId);
+      })
+      .finally(() => {
+        setSearchParams({}, { replace: true });
+      });
+  }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!pendingDocId || loading) return;
+    const doc = documents.find((d) => d.id === pendingDocId);
+    if (doc) setDetailDoc(doc);
+  }, [documents, loading, pendingDocId]);
 
   // Persist navigation state in session memory (folder + breadcrumbs only)
   useEffect(() => {
