@@ -61,9 +61,9 @@ export default function CommandPalette() {
   function select(r: QuickResult) {
     close();
     if (r.type === "folder") {
-      navigate("/documents");
+      navigate(`/documents?folder_id=${r.id}`);
     } else {
-      navigate("/documents");
+      navigate(`/documents?folder_id=${r.folder_id ?? ""}&doc=${r.id}`);
     }
   }
 

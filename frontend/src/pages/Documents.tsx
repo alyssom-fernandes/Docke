@@ -452,10 +452,12 @@ export default function Documents() {
 
   // Deep link vindo da busca: /documents?folder_id=<id>&doc=<id>
   const [searchParams, setSearchParams] = useSearchParams();
-  const [pendingDocId] = useState<string | null>(() => searchParams.get("doc"));
+  const [pendingDocId, setPendingDocId] = useState<string | null>(null);
   useEffect(() => {
     const linkedFolderId = searchParams.get("folder_id");
+    const linkedDocId = searchParams.get("doc");
     if (!linkedFolderId || !current) return;
+    if (linkedDocId) setPendingDocId(linkedDocId);
 
     api.get<Array<Folder & { path: string }>>("/folders", { params: { company_id: current.id, flat: true } })
       .then((res) => {
@@ -481,7 +483,10 @@ export default function Documents() {
       .finally(() => {
         setSearchParams({}, { replace: true });
       });
-  }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    // searchParams muda de identidade a cada navegação (mesmo para a mesma rota já montada,
+    // como ao clicar num resultado do Command Palette estando já em /documents) — precisa
+    // reagir a isso, não só ao trocar de empresa.
+  }, [current?.id, searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!pendingDocId || loading) return;
