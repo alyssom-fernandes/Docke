@@ -539,4 +539,57 @@ Por causa do bug do `existing[0]` sem filtro (acima), a primeira tentativa de ro
 - Cadência de teste: o usuário pediu para não parar a cada correção pequena para testar/fazer deploy — itens pequenos ficam anotados para verificação em lote, no fechamento da frente, em vez de um a um.
 
 ---
+
+## Milestone 9 — Auditoria total contra o planejamento + fechamento de todas as lacunas reais encontradas
+
+> O usuário pediu uma varredura completa e repetida (2-3 passadas) contra TODOS os documentos de planejamento (00 a 08 + 7 adendos), sem confiar apenas em relatórios de agentes — cada achado relevante foi confirmado por leitura/grep direto antes de entrar nesta lista. Depois da auditoria, o usuário aprovou corrigir tudo que fosse uma lacuna real (mantendo o limite de versões em 10, já correto).
+
+### Achados confirmados e corrigidos
+
+- **I6/R8 (mover pasta)**: faltava `SELECT ... FOR UPDATE` na pasta antes de iniciar o move (exigido explicitamente pelo manual, Parte 0 R8, pra evitar corrida entre dois moves simultâneos). Corrigido em `folders_service.py::get_folder_for_move`. Como `get_db` já abre uma transação por request, o lock resultante cobre toda a operação.
+- **I2/R6 (`documents.company_id` = `folders.company_id`)**: `restore_single` (restaurar documento da lixeira) atualizava `folder_id` mas nunca resincronizava `company_id` com a pasta de destino. Sem bug ativo hoje (o único chamador sempre resolve a pasta na mesma empresa), mas sem trava alguma para um chamador futuro. Corrigido: o UPDATE agora faz JOIN com `folders` e copia `company_id` de lá.
+- **Invariante I8 (nenhum router acessa o banco direto) estava incompleta** — havia sido dada como resolvida numa sessão anterior, mas 8 dos 13 routers ainda tinham SQL cru: `auth.py` (2 chamadas), `favorites.py` (8), `admin.py` (8), `notifications.py` (4), `companies.py` (26), `trash.py` (22), `versions.py` (25), `shares.py` (20) — 115 chamadas ao todo. Criados `auth_service.py`, `favorites_service.py`, `admin_service.py`, `companies_service.py`, `trash_service.py`, `versions_service.py`, `shares_service.py`, e estendido `notification_service.py` com as funções de leitura. Confirmado por grep: **0 chamadas cruas em todos os 13 routers** depois da refatoração. Todos os 61 endpoints (71 operações, contando GET/POST/etc.) confirmados presentes no schema OpenAPI antes/depois, incluindo os endpoints mock ocultos do schema.
+- **Invariantes I4/I5, ao lado de I8**: aproveitando que cada router precisou ser tocado de qualquer forma, cada uso de `admin_conn` foi reavaliado individualmente. Em `favorites.py`, o INSERT em `activity_log` usava `admin_conn` sem necessidade — a política RLS `activity_log_insert` já permite qualquer `authenticated` inserir sua própria linha (`user_id = auth.uid()`), então passou a usar `conn` normal. Nos demais arquivos (`companies.py`, `trash.py`, `versions.py`, `shares.py`), o uso de `admin_conn` permanece — são operações genuinamente cross-usuário ou cross-empresa (criar empresa, criar conta no Supabase Auth, gerenciar acesso de outros usuários, listar todos os usuários do sistema) ou rotas públicas sem sessão RLS (compartilhamento externo). **Não fizemos a reescrita completa de I4/I5** (tornar toda escrita dependente só de RLS) — o próprio `02-DECISOES-ARQUITETURA.md` (ADR-003) chama esse padrão de "a pior falha de segurança possível" se abusado, mas essa é uma decisão de arquitetura grande e pré-existente desde a v1, com uso disseminado e — no formato atual — sem incidente conhecido; reescrever tudo de uma vez seria arriscado demais pra fazer sem uma conversa dedicada e um plano próprio.
+- **Invariante I11 (nunca deixar arquivo órfão no storage) — bug real e ativo em produção**: a exclusão permanente (manual, em `trash.py`, e automática, no `maintenance_worker.py`) só removia o objeto do R2 quando rodando em modo mock local — em produção (R2 real) o código tinha literalmente um comentário `# R2: seria _s3.delete_object(...)` seguido de `pass`. Todo documento excluído permanentemente desde o início da produção ficou com o arquivo real esquecido no R2 para sempre. Mesmo bug encontrado e corrigido em `versions.py::delete_version` (exclusão manual de versão antiga). Corrigido: nova função `storage_service.delete_object()`, chamada sem condicional de mock em todos os três pontos.
+- **Pastas: exclusão nunca era registrada em `activity_log`** — só a restauração registrava. Isso também impedia o aviso de "será removido em 2 dias" (ADR-031) de funcionar para pastas, já que ele depende de saber quem excluiu via `activity_log`. Corrigido: `folders_service.py` ganhou `log_delete_activity`, chamado por `DELETE /folders/:id`.
+- **ADR-031 (Notificações × Retenção) só cobria documentos**: `maintenance_worker.py::_notify_trash_expiring_soon` agora também avisa 2 dias antes da purga de pastas (dependia do fix acima para funcionar).
+- **ADR-031 (Task Center × Versionamento)**: upload de nova versão nunca aparecia no Task Center com o rótulo "Nova versão de [nome]" — só um toast + notificação no sino. Corrigido: `VersionsPanel.tsx` agora chama `useTaskCenter().addTask()`/`updateTask()` com esse rótulo específico.
+- **Lixeira sem exclusão permanente na tela**: o backend (`DELETE /trash/:id/permanent`) sempre existiu, mas `Trash.tsx` só tinha "Restaurar". Corrigido com os dois níveis do design system: exclusão individual (nível "Médio" — `ConfirmModal` com botão danger) e exclusão em lote (nível "Alto" — `ConfirmModal` estendido com prop `requireTypedConfirmation`, exige digitar "CONFIRMAR" pra habilitar o botão). Barra de ações em lote flutuante segue o mesmo tratamento de vidro já usado em Documents.tsx.
+- **ADR-035 (snippet de busca só para match de OCR)**: o snippet aparecia mesmo quando o match era só no nome do arquivo (ts_headline caía pro nome via `coalesce`). Corrigido em `search_service.py`: snippet só é gerado quando `ocr_text` de fato bate com a tsquery; senão retorna `NULL` e o frontend já escondia a linha nesse caso.
+- **Endpoint morto removido**: `POST /admin/users` criava usuário direto na tabela sem nunca criar a conta correspondente no Supabase Auth (um usuário criado por ele nunca conseguiria logar) — confirmado, via grep, que nenhuma tela do frontend chama esse endpoint (o fluxo real de criação de usuário usa `POST /companies/{id}/members`, que já cria a conta corretamente). Removido.
+
+### Achados registrados, mas deliberadamente não alterados nesta frente
+
+- **ADR-026 (densidade de tabela)**: permanece só em `localStorage`, não em uma tabela `user_preferences` no servidor como o adendo original pedia — baixo impacto (não sincroniza entre dispositivos), alto custo (exigiria nova tabela/coluna só para isso).
+
+### Continuação — I4/I5 e I3 tratados a pedido explícito do usuário
+
+O usuário pediu pra tratar os itens 14 (I4/I5) e 15 (I3) da forma mais assertiva e segura possível, sem reescrever tudo de forma arriscada.
+
+**I3 (`documents.ocr_status` fora do worker) — centralizado:**
+- `retry_ocr_transaction` (retry manual), `confirm_version` e `restore_version` (upload/restauração de versão) cada um reimplementava o par "INSERT em `ocr_jobs` + UPDATE `documents.ocr_status='pending'`" separadamente. Criada `DocumentsService.enqueue_ocr()` como o único ponto do código que faz esse par — os três chamadores agora usam essa mesma função. Isso não muda nenhum comportamento hoje, mas elimina o risco de os dois writes divergirem se algum dos três pontos for alterado no futuro sem lembrar do outro.
+
+**I4/I5 (service role fora de seed/worker/jobs internos) — auditoria completa dos ~30 endpoints que usam `admin_conn`, não reescrita:**
+- Antes de mexer em qualquer coisa, confirmado exatamente o que `get_db_admin` faz: conecta como superusuário do Postgres (mesmo pool do `get_db`, mas sem `SET LOCAL role TO authenticated`) — bypassa RLS por completo, sem exceção. Isso significa que toda decisão de autorização nesses endpoints depende 100% do código Python, sem trava do banco.
+- Auditados, um por um, todos os endpoints que usam essa conexão: `admin.py` (4), `documents.py` (8), `folders.py` (1), `companies.py` (8), `trash.py` (3), `versions.py` (4), `shares.py` (3 públicas), `activity.py` (1).
+- **Achado tranquilizador**: quase toda checagem de permissão no código já passa pela função canônica `public.user_has_access()` (a mesma que o RLS usa internamente), mesmo quando a query em si roda numa conexão que ignora RLS — ou seja, a *decisão* de quem pode fazer o quê está centralizada corretamente; o que falta é só o banco não conseguir vetar independentemente se o Python tiver um bug.
+- **Achado real, corrigido**: `POST /documents/:id/retry-ocr` não verificava permissão de escrita antes de reprocessar o OCR — qualquer usuário com acesso só de leitura (visualizador) conseguia forçar reprocessamento de um documento quantas vezes quisesse (custo de CPU/Tesseract sem necessidade, ainda que não vazasse dado nenhum). Corrigido: `get_document_for_ocr_retry` agora retorna a permissão real via `user_has_access()`, e o router exige `admin`/`operador` antes de continuar — mesmo padrão já usado em upload/mover/excluir.
+- **Decisão consciente de não reescrever admin_conn → RLS em todo lugar**: a maior parte dos usos restantes é genuinamente necessária (criar empresa, criar conta no Supabase Auth, gerenciar acesso de outros usuários, rotas públicas de compartilhamento sem sessão, restaurar itens que o RLS torna invisíveis por estarem soft-deleted). Trocar isso por RLS puro em todo lugar exigiria reescrever políticas de RLS e testar cada uma manualmente — risco real de repetir o tipo de incidente que já tivemos (bloqueio de admin). Ficou registrado como possível iniciativa futura própria, não como algo pendente desta frente.
+
+### Teste de verificação (I3/I4/I5)
+
+- App inteiro importa sem erro, 71 operações no schema OpenAPI (nenhuma perdida).
+- `retry_ocr` agora replica exatamente o mesmo padrão de checagem de permissão usado em upload/mover/excluir/restaurar.
+- **Escala tipográfica exata do design system** (`06-DESIGN-SYSTEM.md`): `text-sm`/`base`/`lg`/`xl` do Tailwind usam os tamanhos padrão da biblioteca, 1-2px diferentes do que o documento especifica (`text-xs` e `text-2xl`/`text-3xl` já batem). Decisão consciente de não mexer: seria uma mudança visual global num sistema já testado e aprovado (Frente 2), com risco de regressão desproporcional ao ganho.
+- **Checagem explícita de `company_id` antes de assinar URL de download (ADR-037)**: hoje depende só do RLS (camada de aplicação não faz o checagem redundante). RLS já impede o vazamento de verdade (confirmado: os endpoints usam `conn`, não `admin_conn`) — tratado como reforço de defesa em profundidade de baixa prioridade, não uma falha ativa.
+
+### Teste de verificação desta frente
+
+- Todos os 13 routers backend confirmados com 0 chamadas SQL cruas (grep).
+- App inteiro importa sem erro (`from app.main import app`), schema OpenAPI com 61 rotas / 71 operações, nenhuma perdida na refatoração (comparado antes/depois).
+- Suíte de testes (`pytest --collect-only`) coleta os 4 testes existentes sem erro de import.
+- Build do frontend (`tsc && vite build`) limpo em cada etapa.
+- Teste ao vivo completo (login, sidebar, busca, ancorar, exclusão permanente em lote etc.) fica pendente do próximo deploy — backend e frontend só serão testados de ponta a ponta em produção depois que o usuário rodar os comandos de commit/push/deploy.
+
+---
 *Fim do progresso. Atualizar após cada tarefa concluída.*

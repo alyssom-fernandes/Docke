@@ -67,6 +67,35 @@ async def _notify_trash_expiring_soon(conn) -> None:
             f'"{doc["name"]}" será removido permanentemente em breve. Restaure-o se necessário.',
         )
 
+    folders = await conn.fetch(
+        """
+        SELECT f.id, f.name, f.company_id, al.user_id AS deleted_by
+        FROM public.folders f
+        LEFT JOIN LATERAL (
+          SELECT user_id FROM public.activity_log
+          WHERE item_id = f.id AND item_type = 'folder' AND action = 'delete'
+          ORDER BY created_at DESC LIMIT 1
+        ) al ON true
+        WHERE f.deleted_at IS NOT NULL
+          AND f.trash_expires_at IS NOT NULL
+          AND f.trash_expires_at BETWEEN now() AND now() + interval '2 days'
+          AND al.user_id IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM public.notifications n
+            WHERE n.type = 'trash_expiring' AND n.resource_id = f.id
+          )
+        """
+    )
+    for folder in folders:
+        await conn.execute(
+            """
+            INSERT INTO public.notifications (user_id, company_id, type, resource_type, resource_id, message)
+            VALUES ($1, $2, 'trash_expiring', 'folder', $3, $4)
+            """,
+            folder["deleted_by"], folder["company_id"], folder["id"],
+            f'"{folder["name"]}" será removida permanentemente em breve. Restaure-a se necessário.',
+        )
+
 
 async def _purge_expired_trash(conn) -> None:
     """Exclui permanentemente (banco + storage) itens que passaram do prazo de retenção."""
@@ -100,10 +129,11 @@ async def _purge_expired_trash(conn) -> None:
                 )
             await expire_shares_for_resource(conn, "document", doc["id"])
 
-        if doc["storage_path"] and storage_service.is_mock():
-            from pathlib import Path
-            safe_key = doc["storage_path"].replace("/", "__")
-            Path(storage_service.MOCK_DIR).joinpath(safe_key).unlink(missing_ok=True)
+        if doc["storage_path"]:
+            try:
+                storage_service.delete_object(doc["storage_path"])
+            except Exception:
+                logger.warning("Falha ao remover objeto do storage para documento %s — pode ficar órfão.", doc["id"])
         logger.info("Purga automática — documento %s (%s) removido por retenção.", doc["id"], doc["name"])
 
     # Pastas vazias (sem documentos remanescentes) que também passaram do prazo

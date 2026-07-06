@@ -22,7 +22,9 @@ from pydantic import BaseModel
 from app.config import settings
 from app.dependencies import get_current_user, get_db, get_db_admin
 from app.services import storage_service
+from app.services.documents_service import DocumentsService
 from app.services.notification_service import notify_document_watchers
+from app.services.versions_service import VersionsService
 
 router = APIRouter(prefix="/documents", tags=["versions"])
 
@@ -51,18 +53,7 @@ class VersionUploadRequest(BaseModel):
 
 async def _check_write_access(conn: asyncpg.Connection, document_id: UUID) -> dict[str, Any]:
     """Documento existe, não está na lixeira, e o usuário tem permissão de escrita (admin)."""
-    doc = await conn.fetchrow(
-        """
-        SELECT d.id, d.name, d.folder_id, d.company_id, d.storage_path, d.current_version_id,
-               CASE
-                 WHEN d.folder_id IS NULL THEN public.user_has_access(auth.uid(), NULL::ltree, d.company_id)
-                 ELSE (SELECT public.user_has_access(auth.uid(), f.path, d.company_id) FROM public.folders f WHERE f.id = d.folder_id)
-               END AS permission
-        FROM public.documents d
-        WHERE d.id = $1 AND d.deleted_at IS NULL
-        """,
-        document_id,
-    )
+    doc = await VersionsService.get_document_for_write_check(conn, document_id)
     if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
     if doc["permission"] not in ("admin", "operador"):
@@ -79,25 +70,11 @@ async def list_versions(
     document_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
 ) -> list[dict[str, Any]]:
-    doc = await conn.fetchrow(
-        "SELECT id, current_version_id FROM public.documents WHERE id = $1 AND deleted_at IS NULL",
-        document_id,
-    )
+    doc = await VersionsService.get_document_basic(conn, document_id)
     if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
 
-    rows = await conn.fetch(
-        """
-        SELECT
-          v.id::text, v.version_number, v.size_bytes, v.mime_type, v.created_at,
-          u.full_name AS uploaded_by_name
-        FROM public.document_versions v
-        LEFT JOIN public.users u ON u.id = v.uploaded_by
-        WHERE v.document_id = $1
-        ORDER BY v.version_number DESC
-        """,
-        document_id,
-    )
+    rows = await VersionsService.list_versions(conn, document_id)
     return [dict(r) | {"is_current": r["id"] == str(doc["current_version_id"])} for r in rows]
 
 
@@ -123,10 +100,7 @@ async def create_version_upload_url(
 
     ext = doc["name"].rsplit(".", 1)[-1].lower() if "." in doc["name"] else "bin"
 
-    version_count = await admin_conn.fetchval(
-        "SELECT count(*) FROM public.document_versions WHERE document_id = $1",
-        document_id,
-    )
+    version_count = await VersionsService.count_versions(admin_conn, document_id)
     if version_count >= _MAX_VERSIONS:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -134,22 +108,15 @@ async def create_version_upload_url(
                    f"Exclua uma versão antiga manualmente ou crie um novo documento.",
         )
 
-    next_number = await admin_conn.fetchval(
-        "SELECT COALESCE(MAX(version_number), 0) + 1 FROM public.document_versions WHERE document_id = $1",
-        document_id,
-    )
+    next_number = await VersionsService.next_version_number(admin_conn, document_id)
     version_id = uuid4()
     key = storage_service.storage_key(str(doc["company_id"]), f"{document_id}-v{next_number}", ext)
     content_type = _MIME_MAP.get(ext, body.content_type)
     user_id = claims["sub"]
 
-    await admin_conn.execute(
-        """
-        INSERT INTO public.document_versions
-          (id, document_id, version_number, storage_key, size_bytes, mime_type, uploaded_by)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        """,
-        version_id, document_id, next_number, key, body.size_bytes, content_type, user_id,
+    await VersionsService.insert_version(
+        admin_conn, version_id=version_id, document_id=document_id, version_number=next_number,
+        storage_key=key, size_bytes=body.size_bytes, mime_type=content_type, uploaded_by=user_id,
     )
 
     upload_url, expires_at = storage_service.generate_upload_url(key=key, content_type=content_type)
@@ -176,10 +143,7 @@ async def confirm_version(
 ) -> dict[str, Any]:
     await _check_write_access(conn, document_id)
 
-    version = await admin_conn.fetchrow(
-        "SELECT id, storage_key, size_bytes, mime_type FROM public.document_versions WHERE id = $1 AND document_id = $2",
-        version_id, document_id,
-    )
+    version = await VersionsService.get_version(admin_conn, version_id, document_id)
     if version is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Versão não encontrada.")
 
@@ -191,33 +155,13 @@ async def confirm_version(
         )
 
     async with admin_conn.transaction():
-        await admin_conn.execute(
-            """
-            UPDATE public.documents
-            SET current_version_id = $2,
-                storage_path = $3,
-                mime_type    = $4,
-                size_bytes   = $5,
-                ocr_status   = 'pending',
-                ocr_text     = NULL,
-                updated_at   = now()
-            WHERE id = $1
-            """,
-            document_id, version_id, version["storage_key"], version["mime_type"], version["size_bytes"],
+        await VersionsService.activate_version(
+            admin_conn, document_id=document_id, version_id=version_id,
+            storage_key=version["storage_key"], mime_type=version["mime_type"], size_bytes=version["size_bytes"],
         )
-        await admin_conn.execute(
-            "INSERT INTO public.ocr_jobs (document_id, status) VALUES ($1, 'pending')",
-            document_id,
-        )
-        await admin_conn.execute(
-            """
-            INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, metadata)
-            SELECT $2::uuid, d.company_id, 'upload', 'document', $1::uuid, d.name, jsonb_build_object('version_upload', true)
-            FROM public.documents d WHERE d.id = $1
-            """,
-            document_id, claims["sub"],
-        )
-        doc_row = await admin_conn.fetchrow("SELECT name, company_id FROM public.documents WHERE id = $1", document_id)
+        await DocumentsService.enqueue_ocr(admin_conn, document_id)
+        await VersionsService.log_version_upload(admin_conn, document_id=document_id, user_id=claims["sub"])
+        doc_row = await VersionsService.get_document_name_and_company(admin_conn, document_id)
         await notify_document_watchers(
             admin_conn, document_id, doc_row["company_id"], claims["sub"],
             f'Nova versão de "{doc_row["name"]}" foi enviada.',
@@ -240,17 +184,11 @@ async def restore_version(
 ) -> dict[str, Any]:
     await _check_write_access(conn, document_id)
 
-    old_version = await admin_conn.fetchrow(
-        "SELECT storage_key, size_bytes, mime_type FROM public.document_versions WHERE id = $1 AND document_id = $2",
-        version_id, document_id,
-    )
+    old_version = await VersionsService.get_version(admin_conn, version_id, document_id)
     if old_version is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Versão não encontrada.")
 
-    version_count = await admin_conn.fetchval(
-        "SELECT count(*) FROM public.document_versions WHERE document_id = $1",
-        document_id,
-    )
+    version_count = await VersionsService.count_versions(admin_conn, document_id)
     if version_count >= _MAX_VERSIONS:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -258,52 +196,27 @@ async def restore_version(
                    f"Exclua uma versão antiga manualmente antes de restaurar.",
         )
 
-    next_number = await admin_conn.fetchval(
-        "SELECT COALESCE(MAX(version_number), 0) + 1 FROM public.document_versions WHERE document_id = $1",
-        document_id,
-    )
+    next_number = await VersionsService.next_version_number(admin_conn, document_id)
     new_version_id = uuid4()
     user_id = claims["sub"]
 
     async with admin_conn.transaction():
         # Clona o storage_key da versão antiga — mesmo conteúdo, sem copiar o arquivo.
-        await admin_conn.execute(
-            """
-            INSERT INTO public.document_versions
-              (id, document_id, version_number, storage_key, size_bytes, mime_type, uploaded_by)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            """,
-            new_version_id, document_id, next_number,
-            old_version["storage_key"], old_version["size_bytes"], old_version["mime_type"], user_id,
+        await VersionsService.insert_version(
+            admin_conn, version_id=new_version_id, document_id=document_id, version_number=next_number,
+            storage_key=old_version["storage_key"], size_bytes=old_version["size_bytes"],
+            mime_type=old_version["mime_type"], uploaded_by=user_id,
         )
-        await admin_conn.execute(
-            """
-            UPDATE public.documents
-            SET current_version_id = $2,
-                storage_path = $3,
-                mime_type    = $4,
-                size_bytes   = $5,
-                ocr_status   = 'pending',
-                ocr_text     = NULL,
-                updated_at   = now()
-            WHERE id = $1
-            """,
-            document_id, new_version_id, old_version["storage_key"], old_version["mime_type"], old_version["size_bytes"],
+        await VersionsService.activate_version(
+            admin_conn, document_id=document_id, version_id=new_version_id,
+            storage_key=old_version["storage_key"], mime_type=old_version["mime_type"], size_bytes=old_version["size_bytes"],
         )
-        await admin_conn.execute(
-            "INSERT INTO public.ocr_jobs (document_id, status) VALUES ($1, 'pending')",
-            document_id,
+        await DocumentsService.enqueue_ocr(admin_conn, document_id)
+        await VersionsService.log_version_restore(
+            admin_conn, document_id=document_id, user_id=user_id,
+            restored_version=next_number - 1, new_version=next_number,
         )
-        await admin_conn.execute(
-            """
-            INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, metadata)
-            SELECT $2::uuid, d.company_id, 'restore', 'document', $1::uuid, d.name,
-                   jsonb_build_object('restored_version', $3::int, 'new_version', $4::int)
-            FROM public.documents d WHERE d.id = $1
-            """,
-            document_id, user_id, next_number - 1, next_number,
-        )
-        doc_row = await admin_conn.fetchrow("SELECT name, company_id FROM public.documents WHERE id = $1", document_id)
+        doc_row = await VersionsService.get_document_name_and_company(admin_conn, document_id)
         await notify_document_watchers(
             admin_conn, document_id, doc_row["company_id"], user_id,
             f'"{doc_row["name"]}" foi restaurado para uma versão anterior.',
@@ -322,17 +235,11 @@ async def get_version_download_url(
     version_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
 ) -> dict[str, Any]:
-    doc = await conn.fetchrow(
-        "SELECT name FROM public.documents WHERE id = $1 AND deleted_at IS NULL",
-        document_id,
-    )
+    doc = await VersionsService.get_document_for_download(conn, document_id)
     if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
 
-    version = await conn.fetchrow(
-        "SELECT storage_key, mime_type, version_number FROM public.document_versions WHERE id = $1 AND document_id = $2",
-        version_id, document_id,
-    )
+    version = await VersionsService.get_version_for_download(conn, version_id, document_id)
     if version is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Versão não encontrada.")
 
@@ -357,30 +264,19 @@ async def delete_version(
 ) -> None:
     await _check_write_access(conn, document_id)
 
-    version = await admin_conn.fetchrow(
-        "SELECT storage_key FROM public.document_versions WHERE id = $1 AND document_id = $2",
-        version_id, document_id,
-    )
+    version = await VersionsService.get_version(admin_conn, version_id, document_id)
     if version is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Versão não encontrada.")
 
-    is_current = await admin_conn.fetchval(
-        "SELECT current_version_id = $2 FROM public.documents WHERE id = $1",
-        document_id, version_id,
-    )
-    if is_current:
+    if await VersionsService.is_current_version(admin_conn, document_id, version_id):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Não é possível excluir a versão atual.")
 
-    await admin_conn.execute("DELETE FROM public.document_versions WHERE id = $1", version_id)
+    await VersionsService.delete_version_row(admin_conn, version_id)
 
     # Só remove o objeto do storage se nenhuma outra versão ainda referencia a
     # mesma chave (acontece quando uma restauração cloneou o storage_key).
-    still_referenced = await admin_conn.fetchval(
-        "SELECT EXISTS (SELECT 1 FROM public.document_versions WHERE storage_key = $1)",
-        version["storage_key"],
-    )
-    if not still_referenced and storage_service.is_mock():
-        import os
-        from pathlib import Path
-        safe_key = version["storage_key"].replace("/", "__")
-        Path(storage_service.MOCK_DIR).joinpath(safe_key).unlink(missing_ok=True)
+    if not await VersionsService.storage_key_still_referenced(admin_conn, version["storage_key"]):
+        try:
+            storage_service.delete_object(version["storage_key"])
+        except Exception:
+            pass

@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from app.config import settings
 from app.dependencies import get_current_user, get_db
+from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 _bearer = HTTPBearer()
@@ -80,20 +81,7 @@ async def get_me(
     Retorna o usuário autenticado.
     Verifica que auth.uid() via set_config está funcionando corretamente.
     """
-    row = await conn.fetchrow(
-        """
-        SELECT
-          auth.uid()::text  AS uid_from_rls,
-          u.id::text        AS user_id,
-          u.username,
-          u.full_name,
-          u.role,
-          u.is_active,
-          auth.email()::text AS email
-        FROM public.users u
-        WHERE u.id = auth.uid()
-        """
-    )
+    row = await AuthService.get_current_user_row(conn)
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -125,7 +113,7 @@ async def change_password(
     if len(body.new_password) < 8:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A nova senha deve ter no mínimo 8 caracteres.")
 
-    email = await conn.fetchval("SELECT auth.email()")
+    email = await AuthService.get_current_email(conn)
     if not email:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Não foi possível identificar o e-mail da conta.")
 

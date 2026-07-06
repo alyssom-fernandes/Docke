@@ -61,9 +61,9 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
       {/* Logo — sempre centralizada na sidebar, recolhida ou expandida */}
       <div className="flex items-center justify-center flex-shrink-0 mb-4">
         {collapsed ? (
-          <div className="brand-mark w-7 h-7 flex-shrink-0" role="img" aria-label="Docke" />
+          <div className="brand-mark w-5 h-5 flex-shrink-0" role="img" aria-label="Docke" />
         ) : (
-          <div className="brand-wordmark w-[110px] h-8" role="img" aria-label="Docke" />
+          <div className="brand-wordmark w-[72px] h-5" role="img" aria-label="Docke" />
         )}
       </div>
 

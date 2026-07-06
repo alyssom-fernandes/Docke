@@ -197,3 +197,4 @@ async def delete_folder(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para deletar esta pasta.")
 
     await FoldersService.soft_delete_folder_cascade(admin_conn, folder["path"])
+    await FoldersService.log_delete_activity(conn, folder_id=folder_id, company_id=folder["company_id"], name=folder["name"])

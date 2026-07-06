@@ -118,8 +118,11 @@ class FoldersService:
 
     @staticmethod
     async def get_folder_for_move(conn: asyncpg.Connection, folder_id: UUID) -> asyncpg.Record | None:
+        """R8: SELECT ... FOR UPDATE trava a linha até o fim da transação da
+        request (get_db já abre uma transaction explícita por request), evitando
+        corrida entre dois moves concorrentes da mesma pasta."""
         return await conn.fetchrow(
-            "SELECT path::text, company_id FROM public.folders WHERE id = $1 AND deleted_at IS NULL",
+            "SELECT path::text, company_id FROM public.folders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
             folder_id,
         )
 
@@ -164,12 +167,28 @@ class FoldersService:
     async def get_folder_for_delete(conn: asyncpg.Connection, folder_id: UUID) -> asyncpg.Record | None:
         return await conn.fetchrow(
             """
-            SELECT f.path::text, f.company_id::text,
+            SELECT f.name, f.path::text, f.company_id::text,
                    public.user_has_access(auth.uid(), f.path, f.company_id) AS permission
             FROM public.folders f
             WHERE f.id = $1 AND f.deleted_at IS NULL
             """,
             folder_id,
+        )
+
+    @staticmethod
+    async def log_delete_activity(conn: asyncpg.Connection, *, folder_id: UUID, company_id: str, name: str) -> None:
+        """
+        activity_log_insert (RLS) permite qualquer authenticated inserir sua
+        própria linha — sem isso, exclusão de pasta nunca aparecia no log de
+        atividade nem no aviso de pré-purga da lixeira (que depende de saber
+        quem excluiu).
+        """
+        await conn.execute(
+            """
+            INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot)
+            VALUES (auth.uid(), $1::uuid, 'delete', 'folder', $2::uuid, $3)
+            """,
+            company_id, folder_id, name,
         )
 
     @staticmethod

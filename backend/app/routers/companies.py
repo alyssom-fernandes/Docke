@@ -10,6 +10,7 @@ import httpx
 from app.config import settings
 from app.dependencies import get_app_role, get_current_user, get_db, get_db_admin
 from app.services import storage_service
+from app.services.companies_service import CompaniesService
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -37,18 +38,7 @@ async def _can_manage_company(conn: asyncpg.Connection, user_id: str, company_id
     """
     if role == "supremo":
         return True
-    manages = await conn.fetchval(
-        """
-        SELECT EXISTS (
-          SELECT 1 FROM public.user_company_access
-          WHERE user_id = $1 AND company_id = $2
-            AND permission_level = 'admin' AND folder_path IS NULL
-        )
-        """,
-        user_id,
-        company_id,
-    )
-    return bool(manages)
+    return await CompaniesService.user_manages_company(conn, user_id, company_id)
 
 
 @router.get("")
@@ -59,21 +49,7 @@ async def list_companies(
     Lista as empresas às quais o usuário autenticado tem acesso.
     RLS filtra automaticamente — retorna apenas as empresas do usuário.
     """
-    rows = await conn.fetch(
-        """
-        SELECT
-          c.id::text,
-          c.name,
-          c.created_at,
-          uca.permission_level
-        FROM public.companies c
-        JOIN public.user_company_access uca
-          ON uca.company_id = c.id
-         AND uca.user_id    = auth.uid()
-         AND uca.folder_path IS NULL
-        ORDER BY c.name
-        """
-    )
+    rows = await CompaniesService.list_companies(conn)
     return [dict(r) for r in rows]
 
 
@@ -99,32 +75,11 @@ async def list_organizations(
     user_id = claims["sub"]
     role = await get_app_role(conn, claims)
 
-    if role == "supremo":
-        rows = await admin_conn.fetch(
-            """
-            SELECT
-              c.id::text, c.name, c.cnpj, c.logo_key, c.is_active, c.created_at,
-              (SELECT COUNT(*) FROM public.documents d WHERE d.company_id = c.id AND d.deleted_at IS NULL) AS document_count,
-              (SELECT COUNT(*) FROM public.user_company_access uca WHERE uca.company_id = c.id AND uca.folder_path IS NULL) AS user_count
-            FROM public.companies c
-            ORDER BY c.name
-            """
-        )
-    else:
-        rows = await admin_conn.fetch(
-            """
-            SELECT
-              c.id::text, c.name, c.cnpj, c.logo_key, c.is_active, c.created_at,
-              (SELECT COUNT(*) FROM public.documents d WHERE d.company_id = c.id AND d.deleted_at IS NULL) AS document_count,
-              (SELECT COUNT(*) FROM public.user_company_access uca WHERE uca.company_id = c.id AND uca.folder_path IS NULL) AS user_count
-            FROM public.companies c
-            JOIN public.user_company_access mine
-              ON mine.company_id = c.id AND mine.user_id = $1
-             AND mine.permission_level = 'admin' AND mine.folder_path IS NULL
-            ORDER BY c.name
-            """,
-            user_id,
-        )
+    rows = (
+        await CompaniesService.list_organizations_all(admin_conn)
+        if role == "supremo"
+        else await CompaniesService.list_organizations_managed_by(admin_conn, user_id)
+    )
     return [dict(r) for r in rows]
 
 
@@ -134,19 +89,9 @@ async def get_company(
     conn: asyncpg.Connection = Depends(get_db),
 ) -> dict[str, Any]:
     """Retorna os dados de uma empresa (apenas se o usuário tiver acesso)."""
-    row = await conn.fetchrow(
-        """
-        SELECT c.id::text, c.name, c.created_at
-        FROM public.companies c
-        WHERE c.id = $1
-        """,
-        company_id,
-    )
+    row = await CompaniesService.get_company(conn, company_id)
     if row is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Empresa não encontrada.",
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empresa não encontrada.")
     return dict(row)
 
 
@@ -165,22 +110,7 @@ async def create_company(
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido.")
 
-    async with admin_conn.transaction():
-        company = await admin_conn.fetchrow(
-            "INSERT INTO public.companies (name) VALUES ($1) RETURNING id::text, name, created_at",
-            body.name,
-        )
-        # Concede acesso admin ao criador automaticamente (nível máximo em user_company_access)
-        await admin_conn.execute(
-            """
-            INSERT INTO public.user_company_access
-              (user_id, company_id, folder_path, permission_level, granted_by)
-            VALUES ($1, $2::uuid, NULL, 'admin', $1)
-            """,
-            user_id,
-            company["id"],
-        )
-
+    company = await CompaniesService.create_company(admin_conn, name=body.name, user_id=user_id)
     return dict(company)
 
 
@@ -199,25 +129,7 @@ async def company_members(
     um mesmo usuário pode ter múltiplas linhas, cada uma escopada a uma pasta
     diferente, ou uma única linha com folder_id nulo = acesso à empresa toda).
     """
-    rows = await conn.fetch(
-        """
-        SELECT
-          uca.id::text AS access_id,
-          uca.user_id::text,
-          uca.permission_level AS role,
-          u.full_name,
-          u.username,
-          uca.created_at,
-          f.id::text AS folder_id,
-          f.name AS folder_name
-        FROM public.user_company_access uca
-        JOIN public.users u ON u.id = uca.user_id
-        LEFT JOIN public.folders f ON f.path = uca.folder_path AND f.company_id = uca.company_id
-        WHERE uca.company_id = $1
-        ORDER BY u.full_name, f.name NULLS FIRST
-        """,
-        company_id,
-    )
+    rows = await CompaniesService.list_members(conn, company_id)
     return [dict(r) for r in rows]
 
 
@@ -228,22 +140,7 @@ async def company_stats(
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Retorna contadores de documentos, pastas, favoritos e uploads recentes da empresa."""
-    row = await conn.fetchrow(
-        """
-        SELECT
-          (SELECT COUNT(*) FROM public.documents d
-           WHERE d.company_id = $1 AND d.deleted_at IS NULL) AS total_documents,
-          (SELECT COUNT(*) FROM public.folders f
-           WHERE f.company_id = $1 AND f.deleted_at IS NULL) AS total_folders,
-          (SELECT COUNT(*) FROM public.favorites fav
-           JOIN public.documents d ON d.id = fav.document_id
-           WHERE d.company_id = $1 AND fav.user_id = auth.uid()) AS total_favorites,
-          (SELECT COUNT(*) FROM public.documents d
-           WHERE d.company_id = $1 AND d.deleted_at IS NULL
-             AND d.created_at >= now() - interval '7 days') AS recent_uploads
-        """,
-        company_id,
-    )
+    row = await CompaniesService.get_stats(conn, company_id)
     return dict(row)
 
 
@@ -274,22 +171,11 @@ async def update_company(
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="CNPJ deve ter 14 dígitos.")
         body.cnpj = digits or None
 
-    row = await admin_conn.fetchrow(
-        """
-        UPDATE public.companies
-        SET name      = COALESCE($2, name),
-            cnpj      = CASE WHEN $3::boolean THEN $4 ELSE cnpj END,
-            is_active = COALESCE($5, is_active),
-            logo_key  = COALESCE($6, logo_key)
-        WHERE id = $1
-        RETURNING id::text, name, cnpj, logo_key, is_active, created_at
-        """,
-        company_id,
-        body.name,
-        "cnpj" in body.model_fields_set,
-        body.cnpj,
-        body.is_active,
-        body.logo_key,
+    row = await CompaniesService.update_company(
+        admin_conn,
+        company_id=company_id, name=body.name,
+        cnpj_provided="cnpj" in body.model_fields_set, cnpj=body.cnpj,
+        is_active=body.is_active, logo_key=body.logo_key,
     )
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empresa não encontrada.")
@@ -329,7 +215,7 @@ async def get_logo_url(
     conn: asyncpg.Connection = Depends(get_db),
 ) -> dict[str, Any]:
     """Resolve o logo_key salvo em uma URL de visualização pré-assinada (5min)."""
-    row = await conn.fetchrow("SELECT logo_key FROM public.companies WHERE id = $1", company_id)
+    row = await CompaniesService.get_logo_key(conn, company_id)
     if row is None or row["logo_key"] is None:
         return {"logo_url": None}
     ext = row["logo_key"].rsplit(".", 1)[-1].lower()
@@ -375,16 +261,12 @@ async def create_member(
     if len(body.password) < 8:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A senha deve ter no mínimo 8 caracteres.")
 
-    existing_username = await admin_conn.fetchval("SELECT id FROM public.users WHERE username = $1", body.username)
-    if existing_username:
+    if await CompaniesService.username_exists(admin_conn, body.username):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username já existe.")
 
     folder_path = None
     if body.folder_id is not None:
-        folder_path = await admin_conn.fetchval(
-            "SELECT path FROM public.folders WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL",
-            body.folder_id, company_id,
-        )
+        folder_path = await CompaniesService.get_folder_path(admin_conn, body.folder_id, company_id)
         if folder_path is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada nesta empresa.")
 
@@ -404,23 +286,11 @@ async def create_member(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
     new_user_id = resp.json().get("id")
 
-    await admin_conn.execute(
-        "INSERT INTO public.users (id, username, full_name, role) VALUES ($1::uuid, $2, $3, 'usuario')",
-        new_user_id,
-        body.username,
-        body.full_name,
-    )
-    row = await admin_conn.fetchrow(
-        """
-        INSERT INTO public.user_company_access (user_id, company_id, permission_level, folder_path, granted_by)
-        VALUES ($1::uuid, $2, $3, $4::ltree, $5::uuid)
-        RETURNING id::text, user_id::text, company_id::text, permission_level, created_at
-        """,
-        new_user_id,
-        company_id,
-        body.permission_level,
-        folder_path,
-        user_id,
+    await CompaniesService.insert_user(admin_conn, user_id=new_user_id, username=body.username, full_name=body.full_name)
+    row = await CompaniesService.insert_access_grant(
+        admin_conn,
+        user_id=new_user_id, company_id=company_id,
+        permission_level=body.permission_level, folder_path=folder_path, granted_by=user_id,
     )
     return dict(row) | {"username": body.username, "full_name": body.full_name}
 
@@ -451,29 +321,19 @@ async def add_access_grant(
     if body.permission_level not in ("visualizador", "operador", "admin"):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="permission_level inválido.")
 
-    member_exists = await admin_conn.fetchval(
-        "SELECT EXISTS (SELECT 1 FROM public.user_company_access WHERE user_id = $1 AND company_id = $2)",
-        member_id, company_id,
-    )
-    if not member_exists:
+    if not await CompaniesService.member_exists(admin_conn, member_id, company_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não é membro desta empresa.")
 
     folder_path = None
     if body.folder_id is not None:
-        folder_path = await admin_conn.fetchval(
-            "SELECT path FROM public.folders WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL",
-            body.folder_id, company_id,
-        )
+        folder_path = await CompaniesService.get_folder_path(admin_conn, body.folder_id, company_id)
         if folder_path is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada nesta empresa.")
 
-    row = await admin_conn.fetchrow(
-        """
-        INSERT INTO public.user_company_access (user_id, company_id, permission_level, folder_path, granted_by)
-        VALUES ($1::uuid, $2, $3, $4::ltree, $5::uuid)
-        RETURNING id::text, user_id::text, company_id::text, permission_level, created_at
-        """,
-        member_id, company_id, body.permission_level, folder_path, user_id,
+    row = await CompaniesService.insert_access_grant(
+        admin_conn,
+        user_id=member_id, company_id=company_id,
+        permission_level=body.permission_level, folder_path=folder_path, granted_by=user_id,
     )
     return dict(row)
 
@@ -492,17 +352,11 @@ async def remove_access_grant(
     if not await _can_manage_company(conn, user_id, company_id, role):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
 
-    grant = await admin_conn.fetchrow(
-        "SELECT user_id FROM public.user_company_access WHERE id = $1 AND company_id = $2",
-        access_id, company_id,
-    )
+    grant = await CompaniesService.get_access_grant(admin_conn, access_id, company_id)
     if grant is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Concessão não encontrada.")
 
-    remaining = await admin_conn.fetchval(
-        "SELECT count(*) FROM public.user_company_access WHERE user_id = $1 AND company_id = $2",
-        grant["user_id"], company_id,
-    )
+    remaining = await CompaniesService.count_grants_for_user(admin_conn, grant["user_id"], company_id)
     if remaining <= 1:
         if str(grant["user_id"]) == str(user_id):
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Você não pode remover seu último acesso a esta empresa.")
@@ -514,7 +368,7 @@ async def remove_access_grant(
             detail="Esta é a última concessão deste usuário. Para removê-lo por completo, use \"Remover membro\" em vez de remover a concessão.",
         )
 
-    await admin_conn.execute("DELETE FROM public.user_company_access WHERE id = $1", access_id)
+    await CompaniesService.delete_access_grant(admin_conn, access_id)
 
 
 @router.delete("/{company_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -533,11 +387,7 @@ async def remove_member(
     if str(member_id) == str(user_id):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Você não pode remover o próprio acesso.")
 
-    await admin_conn.execute(
-        "DELETE FROM public.user_company_access WHERE user_id = $1 AND company_id = $2",
-        member_id,
-        company_id,
-    )
+    await CompaniesService.delete_member(admin_conn, member_id, company_id)
 
 
 # ---------------------------------------------------------------------------
@@ -553,7 +403,7 @@ async def get_retention(
     company_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
 ) -> dict[str, Any]:
-    row = await conn.fetchrow("SELECT retention_days FROM public.companies WHERE id = $1", company_id)
+    row = await CompaniesService.get_retention(conn, company_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empresa não encontrada.")
     return dict(row)
@@ -583,32 +433,8 @@ async def update_retention(
     if body.retention_days <= 0:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="retention_days deve ser positivo.")
 
-    async with admin_conn.transaction():
-        await admin_conn.execute(
-            "UPDATE public.companies SET retention_days = $2 WHERE id = $1",
-            company_id, body.retention_days,
-        )
-
-        carencia_dias = min(body.retention_days, 7)
-
-        await admin_conn.execute(
-            """
-            UPDATE public.documents
-            SET trash_expires_at = deleted_at + ($2 * interval '1 day')
-            WHERE company_id = $1 AND deleted_at IS NOT NULL
-              AND deleted_at > now() - ($3 * interval '1 day')
-            """,
-            company_id, body.retention_days, carencia_dias,
-        )
-        await admin_conn.execute(
-            """
-            UPDATE public.folders
-            SET trash_expires_at = deleted_at + ($2 * interval '1 day')
-            WHERE company_id = $1 AND deleted_at IS NOT NULL
-              AND deleted_at > now() - ($3 * interval '1 day')
-            """,
-            company_id, body.retention_days, carencia_dias,
-        )
-
+    carencia_dias = min(body.retention_days, 7)
+    await CompaniesService.update_retention(
+        admin_conn, company_id=company_id, retention_days=body.retention_days, carencia_dias=carencia_dias,
+    )
     return {"retention_days": body.retention_days, "carencia_dias": carencia_dias}
-

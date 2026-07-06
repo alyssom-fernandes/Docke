@@ -229,5 +229,18 @@ def mock_read(key: str) -> bytes | None:
     return path.read_bytes()
 
 
+def delete_object(key: str) -> None:
+    """
+    Remove o objeto do storage (I11: exclusão permanente deve remover o
+    arquivo físico, nunca deixar órfão indefinidamente). Silenciosa se o
+    objeto já não existir — exclusão permanente é sempre idempotente.
+    """
+    if _r2_configured:
+        _s3.delete_object(Bucket=settings.R2_BUCKET_NAME, Key=key)
+        return
+    safe_key = key.replace("/", "__")
+    (MOCK_DIR / safe_key).unlink(missing_ok=True)
+
+
 def is_mock() -> bool:
     return not _r2_configured

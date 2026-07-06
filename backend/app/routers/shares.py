@@ -15,9 +15,10 @@ import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 
-from app.dependencies import get_app_role, get_current_user, get_db, get_db_admin
+from app.dependencies import get_current_user, get_db, get_db_admin
 from app.services import rate_limit, storage_service
 from app.services.notification_service import notify_share_accessed, notify_share_blocked
+from app.services.shares_service import SharesService
 
 router = APIRouter(tags=["shares"])
 public_router = APIRouter(prefix="/s", tags=["shares-public"])
@@ -76,20 +77,14 @@ async def create_share(
 
     pin_to_version_id = None
     if body.resource_type == "document":
-        doc = await conn.fetchrow(
-            "SELECT id, company_id, current_version_id FROM public.documents WHERE id = $1 AND deleted_at IS NULL",
-            body.resource_id,
-        )
+        doc = await SharesService.get_document_for_share(conn, body.resource_id)
         if doc is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
         company_id = doc["company_id"]
         if not body.always_latest:
             pin_to_version_id = doc["current_version_id"]
     else:
-        folder = await conn.fetchrow(
-            "SELECT id, company_id FROM public.folders WHERE id = $1 AND deleted_at IS NULL",
-            body.resource_id,
-        )
+        folder = await SharesService.get_folder_for_share(conn, body.resource_id)
         if folder is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada.")
         company_id = folder["company_id"]
@@ -108,14 +103,11 @@ async def create_share(
     token_hash = _hash_token(token)
     password_hash = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode() if body.password else None
 
-    row = await conn.fetchrow(
-        """
-        INSERT INTO public.shares
-          (resource_type, resource_id, company_id, token_hash, password_hash, expires_at, pin_to_version_id, created_by)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        RETURNING id::text, created_at
-        """,
-        body.resource_type, body.resource_id, company_id, token_hash, password_hash, expires_at, pin_to_version_id, user_id,
+    row = await SharesService.insert_share(
+        conn,
+        resource_type=body.resource_type, resource_id=body.resource_id, company_id=company_id,
+        token_hash=token_hash, password_hash=password_hash, expires_at=expires_at,
+        pin_to_version_id=pin_to_version_id, created_by=user_id,
     )
     return {
         "id": row["id"],
@@ -136,17 +128,7 @@ async def list_shares(
     resource_id: UUID | None = Query(None),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> list[dict[str, Any]]:
-    rows = await conn.fetch(
-        """
-        SELECT id::text, resource_type, resource_id::text, expires_at, revoked_at,
-               view_count, last_accessed_at, created_at, (password_hash IS NOT NULL) AS has_password
-        FROM public.shares
-        WHERE ($1::text IS NULL OR resource_type = $1)
-          AND ($2::uuid IS NULL OR resource_id = $2)
-        ORDER BY created_at DESC
-        """,
-        resource_type, resource_id,
-    )
+    rows = await SharesService.list_shares(conn, resource_type=resource_type, resource_id=resource_id)
     return [dict(r) for r in rows]
 
 
@@ -159,7 +141,7 @@ async def revoke_share(
     share_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
 ) -> None:
-    row = await conn.fetchrow("UPDATE public.shares SET revoked_at = now() WHERE id = $1 RETURNING id", share_id)
+    row = await SharesService.revoke_share(conn, share_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link não encontrado.")
 
@@ -174,22 +156,11 @@ async def expire_shares_for_resource(admin_conn: asyncpg.Connection, resource_ty
     automática da lixeira), os shares associados são marcados expired.
     Chamado por trash.py (exclusão manual) e pelo worker de retenção (purga automática).
     """
-    await admin_conn.execute(
-        "UPDATE public.shares SET expired_at = now() WHERE resource_type = $1 AND resource_id = $2 AND expired_at IS NULL",
-        resource_type, resource_id,
-    )
+    await SharesService.expire_shares_for_resource(admin_conn, resource_type, resource_id)
 
 
 async def _resolve_share(admin_conn: asyncpg.Connection, token: str) -> dict[str, Any]:
-    row = await admin_conn.fetchrow(
-        """
-        SELECT s.id, s.resource_type, s.resource_id, s.company_id, s.password_hash,
-               s.expires_at, s.revoked_at, s.expired_at, s.pin_to_version_id
-        FROM public.shares s
-        WHERE s.token_hash = $1
-        """,
-        _hash_token(token),
-    )
+    row = await SharesService.resolve_share_by_token_hash(admin_conn, _hash_token(token))
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link não encontrado.")
     if row["revoked_at"] is not None:
@@ -209,12 +180,12 @@ async def share_info(
     share = await _resolve_share(admin_conn, token)
 
     if share["resource_type"] == "document":
-        doc = await admin_conn.fetchrow("SELECT name, deleted_at FROM public.documents WHERE id = $1", share["resource_id"])
+        doc = await SharesService.get_document_name(admin_conn, share["resource_id"])
         if doc is None or doc["deleted_at"] is not None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Este documento não está mais disponível.")
         name = doc["name"]
     else:
-        folder = await admin_conn.fetchrow("SELECT name, deleted_at FROM public.folders WHERE id = $1", share["resource_id"])
+        folder = await SharesService.get_folder_name(admin_conn, share["resource_id"])
         if folder is None or folder["deleted_at"] is not None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Esta pasta não está mais disponível.")
         name = folder["name"]
@@ -249,15 +220,12 @@ async def _verify_password(
 
 
 async def _log_access(admin_conn: asyncpg.Connection, request: Request, share_id: str, success: bool) -> None:
-    await admin_conn.execute(
-        "INSERT INTO public.share_accesses (share_id, ip_hash, user_agent, success) VALUES ($1, $2, $3, $4)",
-        share_id, _client_ip_hash(request), request.headers.get("user-agent", "")[:500], success,
+    await SharesService.insert_access_log(
+        admin_conn, share_id=share_id, ip_hash=_client_ip_hash(request),
+        user_agent=request.headers.get("user-agent", "")[:500], success=success,
     )
     if success:
-        await admin_conn.execute(
-            "UPDATE public.shares SET view_count = view_count + 1, last_accessed_at = now() WHERE id = $1",
-            share_id,
-        )
+        await SharesService.register_successful_access(admin_conn, share_id)
         await notify_share_accessed(admin_conn, share_id)
 
 
@@ -275,16 +243,11 @@ async def share_content(
 
     if share["resource_type"] == "document":
         version_id = share["pin_to_version_id"]
-        doc = await admin_conn.fetchrow(
-            "SELECT id, name, current_version_id, deleted_at FROM public.documents WHERE id = $1",
-            share["resource_id"],
-        )
+        doc = await SharesService.get_document_for_content(admin_conn, share["resource_id"])
         if doc is None or doc["deleted_at"] is not None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Este documento não está mais disponível.")
         version_id = version_id or doc["current_version_id"]
-        version = await admin_conn.fetchrow(
-            "SELECT storage_key, mime_type FROM public.document_versions WHERE id = $1", version_id,
-        )
+        version = await SharesService.get_version_for_content(admin_conn, version_id)
         if version is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Versão do documento não encontrada.")
 
@@ -293,27 +256,17 @@ async def share_content(
         return {"type": "document", "name": doc["name"], "mime_type": version["mime_type"], "preview_url": download_url}
 
     # resource_type == "folder" — navegação somente leitura dentro da árvore compartilhada
-    root_folder = await admin_conn.fetchrow(
-        "SELECT id, name, path, deleted_at FROM public.folders WHERE id = $1", share["resource_id"],
-    )
+    root_folder = await SharesService.get_folder_for_content(admin_conn, share["resource_id"])
     if root_folder is None or root_folder["deleted_at"] is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Esta pasta não está mais disponível.")
 
     current_id = folder_id or root_folder["id"]
-    current = await admin_conn.fetchrow(
-        "SELECT id, name, path FROM public.folders WHERE id = $1 AND deleted_at IS NULL", current_id,
-    )
+    current = await SharesService.get_active_folder(admin_conn, current_id)
     if current is None or not str(current["path"]).startswith(str(root_folder["path"])):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Fora da pasta compartilhada.")
 
-    subfolders = await admin_conn.fetch(
-        "SELECT id::text, name FROM public.folders WHERE parent_id = $1 AND deleted_at IS NULL ORDER BY name",
-        current["id"],
-    )
-    documents = await admin_conn.fetch(
-        "SELECT id::text, name, size_bytes, mime_type FROM public.documents WHERE folder_id = $1 AND deleted_at IS NULL ORDER BY name",
-        current["id"],
-    )
+    subfolders = await SharesService.list_subfolders(admin_conn, current["id"])
+    documents = await SharesService.list_documents_in_folder(admin_conn, current["id"])
     await _log_access(admin_conn, request, share["id"], True)
     return {
         "type": "folder",
@@ -341,22 +294,14 @@ async def share_download(
         if str(document_id) != str(share["resource_id"]):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Documento fora do escopo deste link.")
     else:
-        root_folder = await admin_conn.fetchrow("SELECT path FROM public.folders WHERE id = $1", share["resource_id"])
-        doc = await admin_conn.fetchrow(
-            """
-            SELECT d.id FROM public.documents d
-            JOIN public.folders f ON f.id = d.folder_id
-            WHERE d.id = $1 AND d.deleted_at IS NULL AND f.path <@ $2::ltree
-            """,
-            document_id, root_folder["path"] if root_folder else None,
+        root_folder = await SharesService.get_folder_path(admin_conn, share["resource_id"])
+        doc = await SharesService.get_document_in_folder_scope(
+            admin_conn, document_id, root_folder["path"] if root_folder else None,
         )
         if doc is None:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Documento fora do escopo deste link.")
 
-    doc = await admin_conn.fetchrow(
-        "SELECT name, storage_path, mime_type FROM public.documents WHERE id = $1 AND deleted_at IS NULL",
-        document_id,
-    )
+    doc = await SharesService.get_document_for_download(admin_conn, document_id)
     if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
 

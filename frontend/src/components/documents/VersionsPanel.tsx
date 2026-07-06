@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { History, Upload, Download, RotateCcw, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import api from "@/lib/api";
 import { useToast } from "@/lib/toast";
+import { useTaskCenter } from "@/lib/TaskContext";
 import { relativeDate } from "@/lib/date";
 
 interface Version {
@@ -20,8 +21,9 @@ function fmtSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function VersionsPanel({ documentId, onChanged }: { documentId: string; onChanged: () => void }) {
+export default function VersionsPanel({ documentId, documentName, onChanged }: { documentId: string; documentName: string; onChanged: () => void }) {
   const { success, error: showError } = useToast();
+  const { addTask, updateTask } = useTaskCenter();
   const [open, setOpen] = useState(false);
   const [versions, setVersions] = useState<Version[]>([]);
   const [loading, setLoading] = useState(false);
@@ -41,6 +43,9 @@ export default function VersionsPanel({ documentId, onChanged }: { documentId: s
 
   async function uploadNewVersion(file: File) {
     setUploading(true);
+    // ADR-031 (Task Center × Versionamento): rótulo diferenciado de um upload
+    // normal, pra não parecer que um documento novo está sendo criado.
+    const taskId = addTask({ kind: "upload", label: `Nova versão de ${documentName}`, status: "running" });
     try {
       const { data } = await api.post(`/documents/${documentId}/versions/upload-url`, {
         size_bytes: file.size,
@@ -52,10 +57,12 @@ export default function VersionsPanel({ documentId, onChanged }: { documentId: s
       });
       if (!putResp.ok) throw new Error("Falha no upload para o storage.");
       await api.post(`/documents/${documentId}/versions/${data.version_id}/confirm`);
+      updateTask(taskId, { status: "done" });
       success(`Versão ${data.version_number} enviada.`);
       load();
       onChanged();
     } catch (e: any) {
+      updateTask(taskId, { status: "failed", error: e?.response?.data?.detail ?? e?.message ?? "Erro ao enviar nova versão." });
       showError(e?.response?.data?.detail ?? e?.message ?? "Erro ao enviar nova versão.");
     } finally {
       setUploading(false);

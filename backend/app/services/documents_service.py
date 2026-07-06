@@ -441,18 +441,23 @@ class DocumentsService:
 
     @staticmethod
     async def restore_single(admin_conn: asyncpg.Connection, document_id: UUID, target_folder_id: UUID) -> asyncpg.Record:
+        """I2: sincroniza company_id com o da pasta destino — o caller sempre
+        resolve target_folder_id dentro da mesma empresa do documento hoje,
+        mas o UPDATE não deve depender disso implicitamente."""
         return await admin_conn.fetchrow(
             """
-            UPDATE public.documents
+            UPDATE public.documents d
             SET deleted_at = NULL,
                 folder_id = $2,
+                company_id = f.company_id,
                 deleted_original_folder_id = NULL,
                 updated_at = now()
-            WHERE id = $1
+            FROM public.folders f
+            WHERE d.id = $1 AND f.id = $2
             RETURNING
-              id::text, name, folder_id::text, company_id::text,
-              mime_type, file_type, size_bytes, sector, competencia,
-              tipo_fiscal, ocr_status, created_at, updated_at
+              d.id::text, d.name, d.folder_id::text, d.company_id::text,
+              d.mime_type, d.file_type, d.size_bytes, d.sector, d.competencia,
+              d.tipo_fiscal, d.ocr_status, d.created_at, d.updated_at
             """,
             document_id, target_folder_id,
         )
@@ -462,18 +467,38 @@ class DocumentsService:
     @staticmethod
     async def get_document_for_ocr_retry(conn: asyncpg.Connection, document_id: UUID) -> asyncpg.Record | None:
         return await conn.fetchrow(
-            "SELECT id, ocr_status, name FROM public.documents WHERE id = $1 AND deleted_at IS NULL",
+            """
+            SELECT d.id, d.ocr_status, d.name,
+                   public.user_has_access(
+                     auth.uid(),
+                     (SELECT f.path FROM public.folders f WHERE f.id = d.folder_id),
+                     d.company_id
+                   ) AS permission
+            FROM public.documents d
+            WHERE d.id = $1 AND d.deleted_at IS NULL
+            """,
+            document_id,
+        )
+
+    @staticmethod
+    async def enqueue_ocr(admin_conn: asyncpg.Connection, document_id: UUID) -> None:
+        """
+        I3: único ponto do código que enfileira um novo ciclo de OCR — sempre os
+        dois writes juntos (novo ocr_jobs + documents.ocr_status='pending').
+        Chamado por retry manual, confirmação de upload de versão e restauração
+        de versão. Centralizar aqui evita que os dois writes divirjam com o
+        tempo se cada chamador reimplementasse o par de statements por conta própria.
+        """
+        await admin_conn.execute(
+            "INSERT INTO public.ocr_jobs (document_id, status) VALUES ($1, 'pending')",
+            document_id,
+        )
+        await admin_conn.execute(
+            "UPDATE public.documents SET ocr_status = 'pending', updated_at = now() WHERE id = $1",
             document_id,
         )
 
     @staticmethod
     async def retry_ocr_transaction(admin_conn: asyncpg.Connection, document_id: UUID) -> None:
         async with admin_conn.transaction():
-            await admin_conn.execute(
-                "INSERT INTO public.ocr_jobs (document_id, status) VALUES ($1, 'pending')",
-                document_id,
-            )
-            await admin_conn.execute(
-                "UPDATE public.documents SET ocr_status = 'pending', updated_at = now() WHERE id = $1",
-                document_id,
-            )
+            await DocumentsService.enqueue_ocr(admin_conn, document_id)

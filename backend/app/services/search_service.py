@@ -65,16 +65,23 @@ class SearchService:
               d.created_at,
               f.name AS folder_name,
               ts_rank_cd(to_tsvector('portuguese', public.immutable_unaccent(d.name || ' ' || coalesce(d.ocr_text, ''))), sq.tsq, 4) AS rank,
-              ts_headline(
-                'portuguese',
-                -- ADR-035 (Adendo 07): trunca o texto antes do ts_headline — gerar o
-                -- snippet a partir do documento inteiro degrada performance em OCRs
-                -- longos sem ganho de qualidade (o termo buscado quase sempre aparece
-                -- bem antes dos primeiros 8000 caracteres).
-                left(coalesce(d.ocr_text, d.name), 8000),
-                sq.tsq,
-                'StartSel=<mark>, StopSel=</mark>, MaxWords=40, MinWords=10, ShortWord=3, HighlightAll=false, MaxFragments=2'
-              ) AS snippet,
+              -- ADR-035: snippet só aparece quando o match vem do conteúdo OCR, não
+              -- do nome do arquivo (evita ruído sem propósito quando o nome já basta).
+              CASE
+                WHEN d.ocr_text IS NOT NULL
+                 AND to_tsvector('portuguese', public.immutable_unaccent(d.ocr_text)) @@ sq.tsq
+                THEN ts_headline(
+                  'portuguese',
+                  -- ADR-035 (Adendo 07): trunca o texto antes do ts_headline — gerar o
+                  -- snippet a partir do documento inteiro degrada performance em OCRs
+                  -- longos sem ganho de qualidade (o termo buscado quase sempre aparece
+                  -- bem antes dos primeiros 8000 caracteres).
+                  left(d.ocr_text, 8000),
+                  sq.tsq,
+                  'StartSel=<mark>, StopSel=</mark>, MaxWords=40, MinWords=10, ShortWord=3, HighlightAll=false, MaxFragments=2'
+                )
+                ELSE NULL
+              END AS snippet,
               count(*) OVER () AS total_count
             FROM public.documents d
             JOIN public.folders   f ON f.id = d.folder_id

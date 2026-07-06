@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import Button from "./Button";
@@ -9,6 +9,8 @@ interface ConfirmModalProps {
   confirmLabel?: string;
   danger?: boolean;
   loading?: boolean;
+  /** Nível "Alto" do design system: exige digitar CONFIRMAR para habilitar o botão danger. */
+  requireTypedConfirmation?: boolean;
   onConfirm: () => void;
   onClose: () => void;
 }
@@ -25,11 +27,13 @@ export default function ConfirmModal({
   confirmLabel = "Confirmar",
   danger = false,
   loading = false,
+  requireTypedConfirmation = false,
   onConfirm,
   onClose,
 }: ConfirmModalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const [typedValue, setTypedValue] = useState("");
 
   useFocusTrap(containerRef);
 
@@ -70,6 +74,17 @@ export default function ConfirmModal({
             <X className="w-4 h-4" />
           </button>
         </div>
+        {requireTypedConfirmation && (
+          <div className="px-6 pb-4">
+            <input
+              type="text"
+              value={typedValue}
+              onChange={(e) => setTypedValue(e.target.value)}
+              placeholder="Digite CONFIRMAR"
+              className="w-full h-9 px-3 text-sm bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[8px] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-2 focus:ring-teal-400"
+            />
+          </div>
+        )}
         <div className="flex items-center justify-end gap-2 px-6 pb-6">
           <Button ref={cancelRef} variant="secondary" size="sm" onClick={onClose}>
             Cancelar
@@ -78,6 +93,7 @@ export default function ConfirmModal({
             variant={danger ? "danger" : "primary"}
             size="sm"
             loading={loading}
+            disabled={requireTypedConfirmation && typedValue !== "CONFIRMAR"}
             onClick={onConfirm}
           >
             {confirmLabel}

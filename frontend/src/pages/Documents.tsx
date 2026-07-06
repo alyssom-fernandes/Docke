@@ -355,7 +355,7 @@ function DetailDrawer({ doc, onClose, onFavorite, onPreview, onDelete, onChanged
           </button>
         </div>
 
-        <VersionsPanel documentId={doc.id} onChanged={onChanged} />
+        <VersionsPanel documentId={doc.id} documentName={doc.name} onChanged={onChanged} />
       </div>
 
       {sharing && (

@@ -5,6 +5,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, Query
 
 from app.dependencies import get_db
+from app.services import notification_service
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -15,35 +16,18 @@ async def list_notifications(
     limit: int = Query(20, ge=1, le=100),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> dict[str, Any]:
-    rows = await conn.fetch(
-        """
-        SELECT id::text, type, resource_type, resource_id::text, message, read_at, created_at
-        FROM public.notifications
-        WHERE user_id = auth.uid()
-          AND ($1::boolean IS FALSE OR read_at IS NULL)
-        ORDER BY created_at DESC
-        LIMIT $2
-        """,
-        unread_only, limit,
-    )
-    unread_count = await conn.fetchval(
-        "SELECT count(*) FROM public.notifications WHERE user_id = auth.uid() AND read_at IS NULL"
-    )
+    rows = await notification_service.list_notifications(conn, unread_only=unread_only, limit=limit)
+    unread_count = await notification_service.count_unread(conn)
     return {"results": [dict(r) for r in rows], "unread_count": unread_count}
 
 
 @router.post("/{notification_id}/read")
 async def mark_read(notification_id: str, conn: asyncpg.Connection = Depends(get_db)) -> dict[str, str]:
-    await conn.execute(
-        "UPDATE public.notifications SET read_at = now() WHERE id = $1 AND user_id = auth.uid() AND read_at IS NULL",
-        notification_id,
-    )
+    await notification_service.mark_read(conn, notification_id)
     return {"status": "ok"}
 
 
 @router.post("/mark-all-read")
 async def mark_all_read(conn: asyncpg.Connection = Depends(get_db)) -> dict[str, str]:
-    await conn.execute(
-        "UPDATE public.notifications SET read_at = now() WHERE user_id = auth.uid() AND read_at IS NULL"
-    )
+    await notification_service.mark_all_read(conn)
     return {"status": "ok"}

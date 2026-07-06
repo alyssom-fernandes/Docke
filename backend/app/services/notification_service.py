@@ -116,6 +116,39 @@ async def notify_share_accessed(conn: asyncpg.Connection, share_id: UUID) -> Non
         )
 
 
+async def list_notifications(conn: asyncpg.Connection, *, unread_only: bool, limit: int) -> list[asyncpg.Record]:
+    return await conn.fetch(
+        """
+        SELECT id::text, type, resource_type, resource_id::text, message, read_at, created_at
+        FROM public.notifications
+        WHERE user_id = auth.uid()
+          AND ($1::boolean IS FALSE OR read_at IS NULL)
+        ORDER BY created_at DESC
+        LIMIT $2
+        """,
+        unread_only, limit,
+    )
+
+
+async def count_unread(conn: asyncpg.Connection) -> int:
+    return await conn.fetchval(
+        "SELECT count(*) FROM public.notifications WHERE user_id = auth.uid() AND read_at IS NULL"
+    )
+
+
+async def mark_read(conn: asyncpg.Connection, notification_id: str) -> None:
+    await conn.execute(
+        "UPDATE public.notifications SET read_at = now() WHERE id = $1 AND user_id = auth.uid() AND read_at IS NULL",
+        notification_id,
+    )
+
+
+async def mark_all_read(conn: asyncpg.Connection) -> None:
+    await conn.execute(
+        "UPDATE public.notifications SET read_at = now() WHERE user_id = auth.uid() AND read_at IS NULL"
+    )
+
+
 async def notify_share_blocked(conn: asyncpg.Connection, share_id: UUID) -> None:
     """ADR-031 (Notificações × Segurança de Compartilhamento): token bloqueado por tentativas de senha."""
     share = await conn.fetchrow(

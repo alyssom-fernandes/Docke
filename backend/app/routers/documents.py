@@ -683,6 +683,8 @@ async def retry_ocr(
     doc = await DocumentsService.get_document_for_ocr_retry(conn, document_id)
     if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+    if doc["permission"] not in ("admin", "operador"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para reprocessar o OCR deste documento.")
     if doc["ocr_status"] == "pending":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Já existe um job de OCR pendente para este documento.")
     if doc["ocr_status"] == "processing":

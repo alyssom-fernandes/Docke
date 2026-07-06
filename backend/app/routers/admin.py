@@ -5,7 +5,8 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
-from app.dependencies import get_app_role, get_current_user, get_db, get_db_admin
+from app.dependencies import get_app_role, get_current_user, get_db_admin
+from app.services.admin_service import AdminService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -34,72 +35,12 @@ async def list_users(
 ) -> list[dict[str, Any]]:
     """Lista usuários. Se company_id fornecido, filtra pelos membros daquela empresa."""
     await _require_manager(admin_conn, claims)
-
-    if company_id:
-        rows = await admin_conn.fetch(
-            """
-            SELECT
-              u.id::text,
-              u.username,
-              u.full_name,
-              uca.permission_level AS role,
-              uca.company_id::text,
-              u.created_at
-            FROM public.users u
-            JOIN public.user_company_access uca ON uca.user_id = u.id
-            WHERE uca.company_id = $1
-            ORDER BY u.full_name
-            """,
-            company_id,
-        )
-    else:
-        rows = await admin_conn.fetch(
-            """
-            SELECT id::text, username, full_name, role, created_at
-            FROM public.users
-            ORDER BY full_name
-            """
-        )
+    rows = (
+        await AdminService.list_users_by_company(admin_conn, company_id)
+        if company_id
+        else await AdminService.list_all_users(admin_conn)
+    )
     return [dict(r) for r in rows]
-
-
-# ---------------------------------------------------------------------------
-# POST /admin/users — cria novo usuário (sistema)
-# ---------------------------------------------------------------------------
-
-class UserCreate(BaseModel):
-    username: str
-    full_name: str
-    email: str
-    role: str = "viewer"
-
-
-@router.post("/users", status_code=status.HTTP_201_CREATED)
-async def create_user(
-    body: UserCreate,
-    admin_conn: asyncpg.Connection = Depends(get_db_admin),
-    claims: dict[str, Any] = Depends(get_current_user),
-) -> dict[str, Any]:
-    """Cria usuário diretamente na tabela users (sem Supabase Auth — apenas para testes/seed)."""
-    await _require_manager(admin_conn, claims)
-
-    existing = await admin_conn.fetchval(
-        "SELECT id FROM public.users WHERE username = $1", body.username
-    )
-    if existing:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username já existe.")
-
-    row = await admin_conn.fetchrow(
-        """
-        INSERT INTO public.users (username, full_name, role)
-        VALUES ($1, $2, $3)
-        RETURNING id::text, username, full_name, role, created_at
-        """,
-        body.username,
-        body.full_name,
-        body.role,
-    )
-    return dict(row)
 
 
 # ---------------------------------------------------------------------------
@@ -114,25 +55,7 @@ async def list_permissions(
 ) -> list[dict[str, Any]]:
     """Lista todas as entradas de user_company_access para a empresa."""
     await _require_manager(admin_conn, claims)
-
-    rows = await admin_conn.fetch(
-        """
-        SELECT
-          uca.id::text,
-          uca.user_id::text,
-          u.username,
-          u.full_name,
-          uca.company_id::text,
-          uca.permission_level,
-          uca.folder_path::text,
-          uca.created_at
-        FROM public.user_company_access uca
-        JOIN public.users u ON u.id = uca.user_id
-        WHERE uca.company_id = $1
-        ORDER BY u.full_name, uca.folder_path
-        """,
-        company_id,
-    )
+    rows = await AdminService.list_permissions(admin_conn, company_id)
     return [dict(r) for r in rows]
 
 
@@ -162,18 +85,10 @@ async def upsert_permission(
             detail="permission_level deve ser visualizador, operador ou admin.",
         )
 
-    row = await admin_conn.fetchrow(
-        """
-        INSERT INTO public.user_company_access (user_id, company_id, permission_level, folder_path)
-        VALUES ($1, $2, $3, $4::ltree)
-        ON CONFLICT (user_id, company_id, folder_path)
-        DO UPDATE SET permission_level = EXCLUDED.permission_level
-        RETURNING id::text, user_id::text, company_id::text, permission_level, folder_path::text, created_at
-        """,
-        body.user_id,
-        body.company_id,
-        body.permission_level,
-        body.folder_path,
+    row = await AdminService.upsert_permission(
+        admin_conn,
+        user_id=body.user_id, company_id=body.company_id,
+        permission_level=body.permission_level, folder_path=body.folder_path,
     )
     return dict(row)
 
@@ -190,34 +105,9 @@ async def storage_usage(
 ) -> list[dict[str, Any]]:
     """Retorna uso de armazenamento (soma de size_bytes) por empresa."""
     await _require_manager(admin_conn, claims)
-
-    if company_id:
-        rows = await admin_conn.fetch(
-            """
-            SELECT
-              c.id::text AS company_id,
-              c.name AS company_name,
-              COUNT(d.id) AS document_count,
-              COALESCE(SUM(d.size_bytes), 0) AS total_bytes
-            FROM public.companies c
-            LEFT JOIN public.documents d ON d.company_id = c.id AND d.deleted_at IS NULL
-            WHERE c.id = $1
-            GROUP BY c.id, c.name
-            """,
-            company_id,
-        )
-    else:
-        rows = await admin_conn.fetch(
-            """
-            SELECT
-              c.id::text AS company_id,
-              c.name AS company_name,
-              COUNT(d.id) AS document_count,
-              COALESCE(SUM(d.size_bytes), 0) AS total_bytes
-            FROM public.companies c
-            LEFT JOIN public.documents d ON d.company_id = c.id AND d.deleted_at IS NULL
-            GROUP BY c.id, c.name
-            ORDER BY total_bytes DESC
-            """
-        )
+    rows = (
+        await AdminService.storage_usage_by_company(admin_conn, company_id)
+        if company_id
+        else await AdminService.storage_usage_all(admin_conn)
+    )
     return [dict(r) for r in rows]
