@@ -44,14 +44,7 @@ function ProtectedRoutes() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-[var(--bg-page)]">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 bg-teal-600 rounded-[8px] flex items-center justify-center">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-              <circle cx="12" cy="5" r="2"/><line x1="12" y1="7" x2="12" y2="17"/><path d="M7 12a5 5 0 0 0 10 0"/><line x1="5" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="19" y2="12"/>
-            </svg>
-          </div>
-          <span className="text-xl font-semibold text-[var(--text-primary)]">Docke</span>
-        </div>
+        <div className="brand-wordmark w-[150px] h-[43px]" role="img" aria-label="Docke" />
         <div className="w-5 h-5 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
       </div>
     );

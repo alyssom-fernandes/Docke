@@ -18,14 +18,19 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import io
 import random
 import uuid
+import zipfile
 from datetime import datetime, timedelta, timezone
 
 import asyncpg
 import httpx
+from PIL import Image, ImageDraw
+from openpyxl import Workbook
 
 from app.config import settings
+from app.services import storage_service
 
 
 # ---------------------------------------------------------------------------
@@ -77,10 +82,14 @@ OCR_TEXTS = [
     "Sped Fiscal — Registro C100. Valor das operações: R$ 45.000,00.",
 ]
 
-DEMO_USER_USERNAME = "demo@docke.app"
+DEMO_USER_USERNAME = "demo"
 DEMO_USER_FULLNAME = "Usuário Demo"
-DEMO_USER_EMAIL = "demo@docke.app"
-DEMO_USER_PASSWORD = "DockeDemo2026!"
+# E-mail não é segredo (fixo, igual ao backend em app/config.py). A senha
+# NUNCA fica hardcoded aqui — sempre lida de DEMO_PASSWORD (Fly secret).
+# Incidente real: GitGuardian detectou a senha commitada quando ela estava
+# direto como string neste arquivo e em SessionExpiredOverlay.tsx.
+DEMO_USER_EMAIL = settings.DEMO_EMAIL
+DEMO_USER_PASSWORD = settings.DEMO_PASSWORD
 
 ACTIONS = ["upload", "view", "download", "view", "view", "download"]
 
@@ -89,10 +98,6 @@ ACTIONS = ["upload", "view", "download", "view", "view", "download"]
 # Helpers
 # ---------------------------------------------------------------------------
 
-def fake_hash(name: str, company_id: str) -> str:
-    return hashlib.sha256(f"{name}{company_id}{random.random()}".encode()).hexdigest()
-
-
 def rand_date(days_back: int = 7) -> datetime:
     delta = timedelta(seconds=random.randint(0, days_back * 86400))
     return datetime.now(timezone.utc) - delta
@@ -100,6 +105,123 @@ def rand_date(days_back: int = 7) -> datetime:
 
 def make_label() -> str:
     return "f" + str(int(datetime.now(timezone.utc).timestamp() * 1000)) + str(random.randint(1000, 9999))
+
+
+# ---------------------------------------------------------------------------
+# Geração de conteúdo real por tipo de arquivo (para os documentos poderem
+# ser de fato abertos/baixados/pré-visualizados no modo demo — sem isso, o
+# registro existe no banco mas o objeto nunca existiu no R2).
+# ---------------------------------------------------------------------------
+
+def _generate_minimal_pdf(text: str) -> bytes:
+    """PDF de uma página, texto simples, construído manualmente (sem libs de PDF)."""
+    safe_text = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+    wrapped = [safe_text[i:i + 80] for i in range(0, len(safe_text), 80)] or [""]
+    content_ops = " ".join(f"({line}) Tj 0 -14 Td" for line in wrapped)
+    stream = f"BT /F1 11 Tf 50 720 Td {content_ops} ET"
+    stream_bytes = stream.encode("latin-1", errors="replace")
+
+    objects = [
+        b"<</Type/Catalog/Pages 2 0 R>>",
+        b"<</Type/Pages/Kids[3 0 R]/Count 1>>",
+        b"<</Type/Page/Parent 2 0 R/Resources<</Font<</F1 4 0 R>>>>/MediaBox[0 0 612 792]/Contents 5 0 R>>",
+        b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>",
+        f"<</Length {len(stream_bytes)}>>stream\n".encode() + stream_bytes + b"\nendstream",
+    ]
+
+    out = io.BytesIO()
+    out.write(b"%PDF-1.4\n")
+    offsets = [0]
+    for i, obj in enumerate(objects, start=1):
+        offsets.append(out.tell())
+        out.write(f"{i} 0 obj".encode())
+        out.write(obj)
+        out.write(b"endobj\n")
+    xref_offset = out.tell()
+    out.write(f"xref\n0 {len(objects) + 1}\n".encode())
+    out.write(b"0000000000 65535 f \n")
+    for off in offsets[1:]:
+        out.write(f"{off:010d} 00000 n \n".encode())
+    out.write(f"trailer<</Size {len(objects) + 1}/Root 1 0 R>>\n".encode())
+    out.write(f"startxref\n{xref_offset}\n%%EOF".encode())
+    return out.getvalue()
+
+
+def _generate_minimal_xlsx(text: str) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Dados"
+    ws["A1"] = text
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def _generate_minimal_jpg(text: str) -> bytes:
+    img = Image.new("RGB", (900, 700), color=(248, 248, 246))
+    draw = ImageDraw.Draw(img)
+    draw.multiline_text((30, 30), text, fill=(30, 30, 30))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    return buf.getvalue()
+
+
+def _generate_minimal_docx(text: str) -> bytes:
+    escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    content_types = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/word/document.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+        '</Types>'
+    )
+    rels = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
+        'Target="word/document.xml"/>'
+        '</Relationships>'
+    )
+    document = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        f'<w:body><w:p><w:r><w:t>{escaped}</w:t></w:r></w:p></w:body>'
+        '</w:document>'
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", content_types)
+        zf.writestr("_rels/.rels", rels)
+        zf.writestr("word/document.xml", document)
+    return buf.getvalue()
+
+
+def _generate_minimal_xml(title: str, text: str) -> bytes:
+    escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        f"<documento>\n  <titulo>{title}</titulo>\n  <conteudo>{escaped}</conteudo>\n</documento>\n"
+    ).encode("utf-8")
+
+
+def generate_file_content(ext: str, title: str, text: str) -> bytes:
+    """Gera bytes de um arquivo real e abrível para o tipo dado (modo demo)."""
+    if ext == "txt":
+        return f"{title}\n\n{text}".encode("utf-8")
+    if ext == "xml":
+        return _generate_minimal_xml(title, text)
+    if ext == "pdf":
+        return _generate_minimal_pdf(f"{title}\n\n{text}")
+    if ext == "xlsx":
+        return _generate_minimal_xlsx(text)
+    if ext == "jpg":
+        return _generate_minimal_jpg(f"{title}\n\n{text}")
+    if ext == "docx":
+        return _generate_minimal_docx(f"{title}\n\n{text}")
+    return text.encode("utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -163,6 +285,11 @@ async def _ensure_demo_auth_account() -> str:
 
 
 async def run_seed() -> None:
+    if not DEMO_USER_PASSWORD:
+        raise RuntimeError(
+            "DEMO_PASSWORD não está configurada (Fly secret). "
+            "Rode: fly secrets set DEMO_PASSWORD='...' antes de rodar o seed."
+        )
     demo_user_id = await _ensure_demo_auth_account()
     print(f"✔ Conta demo no Supabase Auth pronta (id={demo_user_id[:8]}…).")
 
@@ -175,11 +302,23 @@ async def run_seed() -> None:
         # ------------------------------------------------------------------
         # 0. Limpar dados de demo anteriores (idempotente) — mantém o
         #    usuário demo (mesmo id do Auth), só limpa as empresas fictícias.
+        #    documents.company_id e activity_log.company_id são ON DELETE
+        #    RESTRICT (não CASCADE) — apagar companies direto falha com FK
+        #    violation assim que a 1ª rodada do seed já tiver criado dados
+        #    reais. Apagar essas duas tabelas primeiro (o resto — folders,
+        #    user_company_access, shares, notifications — já cascadeia de
+        #    companies) resolve. documents também cascadeia pra ocr_jobs/
+        #    favorites/document_versions.
         # ------------------------------------------------------------------
-        await conn.execute(
-            "DELETE FROM public.companies WHERE name = ANY($1::text[])",
+        old_company_ids = await conn.fetch(
+            "SELECT id FROM public.companies WHERE name = ANY($1::text[])",
             [c[0] for c in COMPANIES],
         )
+        old_ids = [r["id"] for r in old_company_ids]
+        if old_ids:
+            await conn.execute("DELETE FROM public.activity_log WHERE company_id = ANY($1::uuid[])", old_ids)
+            await conn.execute("DELETE FROM public.documents WHERE company_id = ANY($1::uuid[])", old_ids)
+            await conn.execute("DELETE FROM public.companies WHERE id = ANY($1::uuid[])", old_ids)
         print("✔ Dados anteriores removidos.")
 
         # ------------------------------------------------------------------
@@ -189,7 +328,7 @@ async def run_seed() -> None:
             """
             INSERT INTO public.users (id, username, full_name, role)
             VALUES ($1::uuid, $2, $3, 'admin')
-            ON CONFLICT (id) DO UPDATE SET full_name = EXCLUDED.full_name
+            ON CONFLICT (id) DO UPDATE SET username = EXCLUDED.username, full_name = EXCLUDED.full_name
             """,
             demo_user_id,
             DEMO_USER_USERNAME,
@@ -254,8 +393,6 @@ async def run_seed() -> None:
                 folder_id = folder_ids[folder_idx]
 
                 doc_id = str(uuid.uuid4())
-                size = random.randint(50_000, 5_000_000)
-                content_hash = fake_hash(doc_name, company_id)
                 ocr_text = random.choice(OCR_TEXTS)
 
                 # 2 docs com OCR failed, 3 na lixeira (para os últimos docs)
@@ -293,6 +430,14 @@ async def run_seed() -> None:
 
                 created_at = rand_date(30)
 
+                # Conteúdo real (não só o registro no banco) — sem isso o
+                # arquivo nunca existiu no R2 e não pode ser aberto/baixado.
+                storage_key = f"documents/{company_id}/{doc_id}.{ext}"
+                file_bytes = generate_file_content(ext, doc_name, ocr_text or "Documento de exemplo do modo demo.")
+                storage_service.put_object_bytes(storage_key, file_bytes, mime_type)
+                size = len(file_bytes)
+                content_hash = hashlib.sha256(file_bytes).hexdigest()
+
                 await conn.execute(
                     """
                     INSERT INTO public.documents
@@ -313,7 +458,7 @@ async def run_seed() -> None:
                     mime_type,
                     ext,
                     size,
-                    f"documents/{company_id}/{doc_id}.{ext}",
+                    storage_key,
                     content_hash,
                     ocr_status,
                     ocr_text,

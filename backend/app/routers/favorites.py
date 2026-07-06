@@ -114,7 +114,7 @@ async def create_favorite(
             body.folder_id,
         )
     except asyncpg.UniqueViolationError:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Item já está nos favoritos.")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Item já está ancorado.")
 
     item_id = str(body.document_id or body.folder_id)
     await admin_conn.execute(
@@ -161,7 +161,7 @@ async def delete_favorite(
         favorite_id,
     )
     if fav is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Favorito não encontrado.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item ancorado não encontrado.")
 
     await conn.execute("DELETE FROM public.favorites WHERE id = $1", favorite_id)
 

@@ -58,15 +58,12 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
         collapsed ? "w-[76px] px-[10px]" : "w-[220px] px-3.5"
       } h-full py-5 flex flex-col transition-[width,padding] duration-normal overflow-hidden flex-shrink-0 rounded-[22px]`}
     >
-      {/* Logo */}
-      <div className={`flex items-center gap-2 flex-shrink-0 mb-4 ${collapsed ? "justify-center" : ""}`}>
-        <div className="w-7 h-7 bg-teal-600 rounded-[6px] flex items-center justify-center flex-shrink-0">
-          <Anchor className="w-4 h-4 text-white" />
-        </div>
-        {!collapsed && (
-          <span className="text-sm font-semibold text-[var(--text-primary)] whitespace-nowrap flex-1">
-            Docke
-          </span>
+      {/* Logo — sempre centralizada na sidebar, recolhida ou expandida */}
+      <div className="flex items-center justify-center flex-shrink-0 mb-4">
+        {collapsed ? (
+          <div className="brand-mark w-7 h-7 flex-shrink-0" role="img" aria-label="Docke" />
+        ) : (
+          <div className="brand-wordmark w-[110px] h-8" role="img" aria-label="Docke" />
         )}
       </div>
 

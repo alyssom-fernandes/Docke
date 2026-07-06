@@ -474,4 +474,69 @@ Por causa do bug do `existing[0]` sem filtro (acima), a primeira tentativa de ro
 - Cache de lista de empresas não resetado ao trocar de conta na mesma sessão (ver "Modo Demo" acima) — gap de UX pré-existente, não corrigido nesta frente.
 
 ---
+
+## Milestone 8 — Refatoração para services (I8), conteúdo real do modo demo, terminologia "Ancorados", incidente GitGuardian, correções de UX pós-teste
+
+> Continuação direta da Milestone 7. O usuário testou o app publicado e reportou uma lista de problemas reais; esta frente resolve cada um deles, mais a pendência de refatoração deixada em aberto.
+
+### ✅ Refatoração para services (Invariante I8)
+
+- `activity_service.py`, `search_service.py`, `permission_service.py`: preenchidos (eram classes vazias com docstring enganosa dizendo que já estavam implementados). Toda a lógica SQL que vivia em `activity.py`/`search.py` foi movida para os services correspondentes; `permission_service.py` ganhou um espelho em Python de `user_has_access()` (uso opcional, não plugado em nenhum router — RLS continua sendo a fonte de verdade).
+- `documents_service.py` e `folders_service.py` (nunca existiam como arquivos): criados do zero, com todos os métodos estáticos que antes viviam inline em `documents.py` (~25 métodos) e `folders.py` (~13 métodos).
+- `documents.py` e `folders.py`: reescritos como routers finos, só chamando os services. Todos os endpoints preservados — conferido via schema OpenAPI (60 rotas no total, incluindo endpoints "mock" escondidos) antes/depois da refatoração.
+- Risco desta refatoração: baixo, por ser puramente mecânica (mover SQL de um arquivo para outro, sem mudar comportamento) e ter sido feita de forma incremental, testando cada domínio isoladamente antes de seguir pro próximo, conforme pedido explícito do usuário.
+
+### ✅ Modo demo: conteúdo real de arquivo (antes só existia o registro no banco)
+
+- **Bug real**: os documentos do seed do modo demo nunca tinham conteúdo de fato no R2 — só a linha em `documents`. Isso impedia abrir qualquer arquivo e também impedia testar a busca por OCR (não havia texto para indexar de verdade).
+- `storage_service.py` ganhou `put_object_bytes()` para upload direto ao R2 pelo servidor (sem passar pelo fluxo de URL pré-assinada, que é só para uploads de usuário).
+- `demo_data.py` ganhou geradores de conteúdo mínimo e válido por extensão: PDF (xref manual, byte a byte), XLSX (openpyxl), JPG (Pillow), DOCX (zipfile), XML e TXT. `size`/`content_hash` passam a ser calculados do conteúdo real gerado, em vez de valores aleatórios falsos.
+- Testado ao vivo em produção: PDF baixado via curl confirmado como `%PDF-1.4` válido; busca por OCR funcionando com highlight `<mark>` correto nos snippets.
+
+### ✅ Terminologia "Ancorados" (planejamento original nunca implementado)
+
+- O planejamento original definia "Ancorados" com ícone de âncora para a feature de favoritos, mas a implementação usava "Favoritos"/estrela em toda parte. Corrigido em ~10 arquivos: `Sidebar.tsx`, `BottomTabBar.tsx`, `Favorites.tsx`, `Dashboard.tsx`, `Documents.tsx`, `Activity.tsx`, `AnchorFavoriteButton.tsx` (frontend) e `favorites.py`, `documents.py` (mensagens de erro/notificação, backend).
+
+### ✅ Correções de sessão/UX reportadas após teste
+
+- **Sessão expirada no modo demo pedia senha que o usuário não tem**: como a conta demo é compartilhada/pública, não faz sentido travar em uma senha desconhecida. `SessionExpiredOverlay.tsx` agora detecta `user.email === DEMO_EMAIL` e renova a sessão automaticamente via `loginDemo()`, só caindo no formulário de senha se a renovação silenciosa falhar.
+- **Modal de onboarding "piscava" e sumia em <1s no login**: causado por uma condição de corrida — `CompanyContext` começa com a lista de empresas vazia antes do fetch resolver, e o gate de onboarding usava `companies.length === 0` como sinal de "precisa configurar", disparando para qualquer usuário por uma fração de segundo. Corrigido com um estado `loading` explícito no `CompanyContext`, que o `OnboardingGate` agora espera antes de decidir.
+- **Usuário demo aparecia como "@demo@docke.app" (dois @)**: `username` do usuário demo estava configurado como o e-mail completo, mas a UI sempre prefixa "@" assumindo um identificador curto. Corrigido para `username = "demo"`. Um segundo bug represava a correção: o `ON CONFLICT ... DO UPDATE` do seed só atualizava `full_name`, nunca `username`, então rodar o seed de novo não aplicava a correção até esse `SET` também ser corrigido.
+
+### ✅ Incidente de segurança: alerta do GitGuardian (senha do modo demo exposta)
+
+- Commit `452b4b7` tinha a senha do modo demo (`DockeDemo2026!`) hardcoded tanto em `SessionExpiredOverlay.tsx` (frontend, foi para o GitHub) quanto em `demo_data.py` (backend). GitGuardian sinalizou.
+- Risco real avaliado como baixo (conta demo só dá acesso a 3 empresas fictícias, nunca a dados reais), mas tratado como padrão de segurança genuíno a corrigir, não descartado.
+- Correção: `DEMO_PASSWORD` passa a vir de uma variável de ambiente (Fly secret), nunca mais hardcoded em nenhum lugar do código-fonte. Novo endpoint `POST /auth/demo-login` faz o login no backend usando o segredo guardado lá — o frontend nunca mais precisa (nem consegue) saber a senha real. `Login.tsx` e `SessionExpiredOverlay.tsx` passam a chamar esse endpoint em vez de montar a chamada de login com a senha embutida.
+- Recomendação dada ao usuário: rotacionar a senha (novo valor só via `fly secrets set`) em vez de reescrever o histórico do Git — risco baixo o suficiente para não justificar mexer no histórico. Decisão confirmada pelo usuário.
+
+### ✅ Bug real: resultados da busca não abriam o documento
+
+- **Reportado pelo usuário**: clicar em um resultado da busca não abria o arquivo nem navegava para a pasta certa — só levava de volta para a pasta raiz de Documentos.
+- **Causa raiz**: os itens `<li>` da lista de resultados em `Search.tsx` não tinham nenhum `onClick`, `<Link>` ou navegação — eram puramente decorativos. O usuário, ao ver que nada acontecia, provavelmente navegava manualmente e acabava na raiz.
+- Corrigido: `Search.tsx` agora navega para `/documents?folder_id=<id>&doc=<id>` ao clicar num resultado (o backend já retornava `folder_id`/`folder_name`, só o frontend não usava). `Documents.tsx` passou a tratar esse deep link: busca a lista achatada de pastas para reconstruir a trilha de breadcrumb até a pasta certa, navega até lá, e abre o painel de detalhes do documento automaticamente assim que a lista carrega — limpando os parâmetros da URL depois, para um F5 não repetir o pulo.
+- Testado ao vivo (local e confirmado no bundle de produção após deploy do frontend).
+
+### ✅ Bug real: estado "ancorado" do documento nunca vinha do servidor
+
+- O painel de detalhes (`DetailDrawer` em `Documents.tsx`) inicializava `favorited` sempre como `false`, só atualizando depois de clicar — então reabrir um documento já ancorado mostrava o botão como se não estivesse.
+- Corrigido: `documents_service.list_by_folder()` agora retorna um campo `favorited` (via `EXISTS` contra a tabela `favorites`, filtrado por `auth.uid()`), e o `DetailDrawer` inicializa e sincroniza seu estado local a partir de `doc.favorited`.
+
+### ✅ Login: redesenho visual (protótipo/imagem de referência ainda não batia)
+
+- O usuário apontou que a tela de login não batia com a imagem de referência do planejamento, mesmo após o ajuste anterior (Milestone 7) — aquele ajuste só tinha mexido em texto/botão, não no tratamento visual.
+- Corrigido: fundo com glow radial sutil (só em modo escuro), logo trocado de quadrado para círculo (mockup de referência), card convertido para o tratamento de vidro (`glass-panel`/`glass-blur-card`/`glass-shadow`) já usado no resto do app desde a Frente 2, mantendo o conteúdo real do Docke (sem cadastro/SSO/magic link, que não existem no produto — só a referência genérica os tinha). Testado visualmente em modo claro e escuro.
+
+### ⚠️ Achado crítico: grande parte do trabalho de backend nunca foi commitado nem deployado
+
+- Ao investigar por que `POST /auth/demo-login` retornava 404 em produção, foi descoberto que **praticamente todo o trabalho de backend desta e da Milestone 7** (a correção do GitGuardian, toda a refatoração para services, `documents_service.py`, `folders_service.py`, notificações, compartilhamento externo, rate limiting, worker de manutenção, uma migration inteira) nunca chegou a ser commitado — existia só no diretório de trabalho local.
+- Efeito prático: o reseed do modo demo rodado anteriormente (`fly ssh console -C "python -m app.seed.demo_data"`) executou o código **antigo** ainda em produção, então a rotação de `DEMO_PASSWORD` não teve efeito real até o backend ser de fato deployado.
+- Ação: usuário orientado a commitar/enviar tudo, e então rodar `fly deploy` + a migration pendente no Supabase antes de considerar qualquer item desta frente como "em produção" de verdade.
+
+### Itens desta frente não testados / pendências registradas
+
+- Verificação de que o `fly deploy` do backend (pendente no momento em que este documento foi escrito) realmente publica todo o código descrito acima — ficou combinado como o próximo passo, mas fora do escopo desta entrada de progresso.
+- Cadência de teste: o usuário pediu para não parar a cada correção pequena para testar/fazer deploy — itens pequenos ficam anotados para verificação em lote, no fechamento da frente, em vez de um a um.
+
+---
 *Fim do progresso. Atualizar após cada tarefa concluída.*

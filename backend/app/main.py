@@ -13,8 +13,11 @@ from app.routers import (
     documents,
     favorites,
     folders,
+    notifications,
     search,
+    shares,
     trash,
+    versions,
 )
 
 
@@ -25,6 +28,8 @@ async def lifespan(app: FastAPI):
     if settings.ENABLE_OCR_WORKER:
         from app.workers.ocr_worker import ocr_worker_loop
         asyncio.create_task(ocr_worker_loop())
+    from app.workers.maintenance_worker import maintenance_worker_loop
+    asyncio.create_task(maintenance_worker_loop())
     yield
     await close_db_pool()
 
@@ -54,6 +59,10 @@ app.include_router(favorites.router, prefix=PREFIX)
 app.include_router(activity.router, prefix=PREFIX)
 app.include_router(trash.router, prefix=PREFIX)
 app.include_router(admin.router, prefix=PREFIX)
+app.include_router(versions.router, prefix=PREFIX)
+app.include_router(shares.router, prefix=PREFIX)
+app.include_router(shares.public_router, prefix=PREFIX)
+app.include_router(notifications.router, prefix=PREFIX)
 
 
 @app.get("/health", tags=["health"])

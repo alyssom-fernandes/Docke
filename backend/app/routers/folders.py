@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from app.dependencies import get_current_user, get_db, get_db_admin
+from app.services.folders_service import FoldersService
 
 router = APIRouter(prefix="/folders", tags=["folders"])
 
@@ -40,32 +41,7 @@ async def list_folders(
     parent_id=null → pastas raiz; parent_id=<uuid> → filhos diretos.
     flat=true → árvore inteira achatada, ordenada por path.
     """
-    rows = await conn.fetch(
-        """
-        SELECT
-          f.id::text,
-          f.name,
-          f.path::text,
-          f.parent_id::text,
-          f.company_id::text,
-          f.created_by::text,
-          f.created_at,
-          public.user_has_access(auth.uid(), f.path, f.company_id) AS my_permission,
-          (SELECT count(*) FROM public.folders c WHERE c.parent_id = f.id AND c.deleted_at IS NULL) AS child_count,
-          (SELECT count(*) FROM public.documents d WHERE d.folder_id = f.id AND d.deleted_at IS NULL) AS document_count
-        FROM public.folders f
-        WHERE f.company_id = $1
-          AND f.deleted_at IS NULL
-          AND (
-            $3::boolean
-            OR ($2::uuid IS NULL AND f.parent_id IS NULL OR f.parent_id = $2)
-          )
-        ORDER BY f.path
-        """,
-        company_id,
-        parent_id,
-        flat,
-    )
+    rows = await FoldersService.list_folders(conn, company_id=company_id, parent_id=parent_id, flat=flat)
     return [dict(r) for r in rows]
 
 
@@ -85,34 +61,7 @@ async def frequent_folders(
     Baseado em activity_log: conta eventos de upload/view/download em cada pasta.
     """
     user_id = claims["sub"]
-    rows = await conn.fetch(
-        """
-        SELECT
-          f.id::text,
-          f.name,
-          f.path::text,
-          f.parent_id::text,
-          f.company_id::text,
-          COUNT(al.id) AS activity_count,
-          MAX(al.created_at) AS last_activity
-        FROM public.folders f
-        JOIN public.documents d ON d.folder_id = f.id AND d.deleted_at IS NULL
-        JOIN public.activity_log al
-          ON al.item_id = d.id
-          AND al.item_type = 'document'
-          AND al.user_id = $1::uuid
-          AND al.created_at >= now() - interval '30 days'
-          AND al.action IN ('upload', 'view', 'download')
-        WHERE f.company_id = $2
-          AND f.deleted_at IS NULL
-        GROUP BY f.id, f.name, f.path, f.parent_id, f.company_id
-        ORDER BY activity_count DESC, last_activity DESC
-        LIMIT $3
-        """,
-        user_id,
-        company_id,
-        limit,
-    )
+    rows = await FoldersService.frequent_folders(conn, user_id=user_id, company_id=company_id, limit=limit)
     return [dict(r) for r in rows]
 
 
@@ -135,50 +84,30 @@ async def create_folder(
 
     # Busca path do parent (se houver) e valida acesso
     if body.parent_id is not None:
-        parent = await conn.fetchrow(
-            "SELECT path::text, company_id FROM public.folders WHERE id = $1 AND deleted_at IS NULL",
-            body.parent_id,
-        )
+        parent = await FoldersService.get_parent_folder(conn, body.parent_id)
         if parent is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta pai não encontrada.")
         if str(parent["company_id"]) != str(body.company_id):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pasta pai pertence a outra empresa.")
         check_path = parent["path"]
-        # Gera label ltree único: sequência numérica curta (evita caracteres inválidos)
-        new_label = await conn.fetchval(
-            "SELECT 'f' || floor(extract(epoch FROM now()) * 1000)::text || lpad((random()*9999)::int::text, 4, '0')"
-        )
+        new_label = await FoldersService.generate_path_label(conn)
         new_path = f"{parent['path']}.{new_label}"
     else:
         check_path = None
         # Raiz da empresa — gera path único sem pontos
-        new_label = await conn.fetchval(
-            "SELECT 'f' || floor(extract(epoch FROM now()) * 1000)::text || lpad((random()*9999)::int::text, 4, '0')"
-        )
+        new_label = await FoldersService.generate_path_label(conn)
         new_path = new_label
 
     # Checagem explícita ANTES do INSERT: sem isso, quem não tem permissão de
     # escrita esbarra só na RLS, que rejeita a linha com uma exceção crua do
     # Postgres — isso não vira um 403 limpo, derruba a conexão (net::ERR_FAILED
     # no browser, sem resposta HTTP nenhuma chegando ao cliente).
-    permission = await conn.fetchval(
-        "SELECT public.user_has_access($1::uuid, $2::ltree, $3::uuid)",
-        user_id, check_path, body.company_id,
-    )
+    permission = await FoldersService.check_permission(conn, user_id, check_path, body.company_id)
     if permission != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para criar pasta aqui.")
 
-    row = await conn.fetchrow(
-        """
-        INSERT INTO public.folders (company_id, parent_id, path, name, created_by)
-        VALUES ($1, $2, $3::ltree, $4, $5)
-        RETURNING id::text, name, path::text, parent_id::text, company_id::text, created_at
-        """,
-        body.company_id,
-        body.parent_id,
-        new_path,
-        body.name,
-        user_id,
+    row = await FoldersService.insert_folder(
+        conn, company_id=body.company_id, parent_id=body.parent_id, path=new_path, name=body.name, created_by=user_id,
     )
     return dict(row)
 
@@ -194,16 +123,7 @@ async def rename_folder(
     conn: asyncpg.Connection = Depends(get_db),
 ) -> dict[str, Any]:
     """Renomeia a pasta (só o campo name — path ltree não muda no rename)."""
-    row = await conn.fetchrow(
-        """
-        UPDATE public.folders
-        SET name = $2
-        WHERE id = $1 AND deleted_at IS NULL
-        RETURNING id::text, name, path::text, parent_id::text, company_id::text, created_at
-        """,
-        folder_id,
-        body.name,
-    )
+    row = await FoldersService.rename_folder(conn, folder_id, body.name)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada.")
     return dict(row)
@@ -220,10 +140,7 @@ async def move_folder(
     - Atualiza path da pasta e de TODOS os descendentes numa transação.
     - Usa ltree subpath para reescrever prefixo sem recursão.
     """
-    folder = await conn.fetchrow(
-        "SELECT path::text, company_id FROM public.folders WHERE id = $1 AND deleted_at IS NULL",
-        folder_id,
-    )
+    folder = await FoldersService.get_folder_for_move(conn, folder_id)
     if folder is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada.")
 
@@ -232,11 +149,7 @@ async def move_folder(
 
     new_parent_path: str | None = None
     if body.parent_id is not None:
-        parent = await conn.fetchrow(
-            "SELECT path::text FROM public.folders WHERE id = $1 AND deleted_at IS NULL AND company_id = $2",
-            body.parent_id,
-            company_id,
-        )
+        parent = await FoldersService.get_target_parent(conn, body.parent_id, company_id)
         if parent is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta destino não encontrada.")
         if parent["path"] == old_path or parent["path"].startswith(old_path + "."):
@@ -248,31 +161,13 @@ async def move_folder(
 
     old_nlevel = old_path.count(".") + 1
 
-    # Atualiza pasta + todos os descendentes atomicamente.
-    # subpath(path, old_nlevel - 1) = sufixo a partir do label da própria pasta movida.
-    # CASE: raiz → só sufixo; senão → parent_path || sufixo.
-    await conn.execute(
-        """
-        UPDATE public.folders
-        SET path = CASE
-                WHEN $2::text IS NULL THEN subpath(path, $3)
-                ELSE ($2::ltree || subpath(path, $3))
-            END,
-            parent_id = CASE WHEN id = $1 THEN $4 ELSE parent_id END
-        WHERE (id = $1 OR path <@ $5::ltree)
-          AND deleted_at IS NULL
-        """,
-        folder_id,
-        new_parent_path,   # None para mover para raiz
-        old_nlevel - 1,    # pular os ancestrais, preservar label da pasta + filhos
-        body.parent_id,
-        old_path,
+    await FoldersService.move_folder_atomic(
+        conn,
+        folder_id=folder_id, new_parent_path=new_parent_path,
+        old_nlevel=old_nlevel, new_parent_id=body.parent_id, old_path=old_path,
     )
 
-    row = await conn.fetchrow(
-        "SELECT id::text, name, path::text, parent_id::text, company_id::text FROM public.folders WHERE id = $1",
-        folder_id,
-    )
+    row = await FoldersService.get_folder_after_move(conn, folder_id)
     return dict(row)
 
 
@@ -295,44 +190,10 @@ async def delete_folder(
     (o `deleted_at IS NULL` na policy folders_select é aplicado como WITH CHECK
     implícito na nova linha — comportamento documentado do RLS PG).
     """
-    # Valida que o usuário pode ver e tem permissão de editor+ na pasta
-    folder = await conn.fetchrow(
-        """
-        SELECT f.path::text, f.company_id::text,
-               public.user_has_access(auth.uid(), f.path, f.company_id) AS permission
-        FROM public.folders f
-        WHERE f.id = $1 AND f.deleted_at IS NULL
-        """,
-        folder_id,
-    )
+    folder = await FoldersService.get_folder_for_delete(conn, folder_id)
     if folder is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada.")
     if folder["permission"] != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para deletar esta pasta.")
 
-    # Soft delete via service role (bypassa RLS para evitar o bloqueio implícito)
-    # trash_expires_at (ADR-025/030): retention_days da empresa no momento da exclusão.
-    await admin_conn.execute(
-        """
-        UPDATE public.folders f
-        SET deleted_at = now(),
-            trash_expires_at = now() + (c.retention_days || ' days')::interval
-        FROM public.companies c
-        WHERE f.path <@ $1::ltree AND f.deleted_at IS NULL AND c.id = f.company_id
-        """,
-        folder["path"],
-    )
-    await admin_conn.execute(
-        """
-        UPDATE public.documents d
-        SET deleted_at = now(),
-            deleted_original_folder_id = d.folder_id,
-            trash_expires_at = now() + (c.retention_days || ' days')::interval
-        FROM public.folders f
-        JOIN public.companies c ON c.id = f.company_id
-        WHERE d.folder_id = f.id
-          AND f.path <@ $1::ltree
-          AND d.deleted_at IS NULL
-        """,
-        folder["path"],
-    )
+    await FoldersService.soft_delete_folder_cascade(admin_conn, folder["path"])

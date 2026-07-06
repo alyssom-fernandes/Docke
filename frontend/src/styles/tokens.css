@@ -64,6 +64,35 @@
 }
 
 /*
+ * ─── Logo oficial (marca + wordmark) ───
+ * Os PNGs entregues (docs/imageXXXXX.png) vieram em duas cores fixas (verde
+ * e teal escuro) que não batiam exatamente com nenhum dos dois tokens de
+ * marca (--teal-bright claro/escuro). Em vez de manter dois arquivos por
+ * tema, usamos só o alpha channel dos PNGs como máscara CSS e pintamos com
+ * background-color: var(--teal-bright) — a cor sempre bate exatamente com o
+ * tema atual, e só precisamos de um arquivo por formato (mark/wordmark).
+ */
+.brand-mark,
+.brand-wordmark {
+  background-color: var(--teal-bright);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  display: inline-block;
+}
+.brand-mark {
+  -webkit-mask-image: url("/brand/docke-mark.png");
+  mask-image: url("/brand/docke-mark.png");
+}
+.brand-wordmark {
+  -webkit-mask-image: url("/brand/docke-wordmark.png");
+  mask-image: url("/brand/docke-wordmark.png");
+}
+
+/*
  * ADR-019 — fallback explícito para backdrop-filter.
  * Fora da @supports, assume-se fundo sólido translúcido (opacidade calibrada
  * para blur fica ilegível sem blur — nunca usar o --glass-bg/--glass-panel-bg

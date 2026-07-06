@@ -58,6 +58,19 @@ async def login(body: LoginRequest) -> LoginResponse:
     )
 
 
+@router.post("/demo-login", response_model=LoginResponse)
+async def demo_login() -> LoginResponse:
+    """
+    Login do modo demo — a senha nunca aparece no frontend nem em nenhum
+    arquivo commitado, fica só em DEMO_PASSWORD (Fly secret). Usado pelo
+    botão "Acessar modo demo" no login e pela renovação automática de sessão
+    quando o token da conta demo expira.
+    """
+    if not settings.DEMO_PASSWORD:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Modo demo não está configurado.")
+    return await login(LoginRequest(email=settings.DEMO_EMAIL, password=settings.DEMO_PASSWORD))
+
+
 @router.get("/me")
 async def get_me(
     conn: asyncpg.Connection = Depends(get_db),

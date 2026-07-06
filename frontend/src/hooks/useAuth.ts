@@ -13,6 +13,7 @@ interface AuthState {
   user: AuthUser | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginDemo: () => Promise<void>;
   logout: () => void;
 }
 
@@ -50,9 +51,8 @@ export function useAuth(): AuthState {
       .finally(() => setIsLoading(false));
   }, []);
 
-  async function login(email: string, password: string) {
-    const res = await api.post("/auth/login", { email, password });
-    localStorage.setItem("docke_token", res.data.access_token);
+  async function applySession(accessToken: string) {
+    localStorage.setItem("docke_token", accessToken);
     const me = await api.get("/auth/me");
     const u: AuthUser = {
       id: me.data.user_id,
@@ -65,6 +65,18 @@ export function useAuth(): AuthState {
     localStorage.setItem("docke_user", JSON.stringify(u));
   }
 
+  async function login(email: string, password: string) {
+    const res = await api.post("/auth/login", { email, password });
+    await applySession(res.data.access_token);
+  }
+
+  // Modo demo: a senha nunca fica no frontend — o backend guarda como
+  // segredo (Fly secret) e faz o login por trás via /auth/demo-login.
+  async function loginDemo() {
+    const res = await api.post("/auth/demo-login");
+    await applySession(res.data.access_token);
+  }
+
   function logout() {
     localStorage.removeItem("docke_token");
     localStorage.removeItem("docke_user");
@@ -72,5 +84,5 @@ export function useAuth(): AuthState {
     window.location.href = "/login";
   }
 
-  return { user, isLoading, login, logout };
+  return { user, isLoading, login, loginDemo, logout };
 }

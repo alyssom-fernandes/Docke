@@ -29,6 +29,12 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: str = "http://localhost:5173"
 
+    # Modo demo: e-mail é fixo (não é segredo), senha SEMPRE vem de env var/Fly
+    # secret — nunca hardcoded em código-fonte (incidente real: GitGuardian
+    # detectou a senha commitada quando ela estava direto no .tsx/.py).
+    DEMO_EMAIL: str = "demo@docke.app"
+    DEMO_PASSWORD: str = ""
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]

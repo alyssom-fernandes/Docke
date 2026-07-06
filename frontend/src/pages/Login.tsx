@@ -1,7 +1,6 @@
 import { useState, useEffect, FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { Anchor } from "lucide-react";
 import { useAuthContext } from "@/lib/AuthContext";
 import { useToast } from "@/lib/toast";
 import Button from "@/components/ui/Button";
@@ -9,7 +8,7 @@ import Input from "@/components/ui/Input";
 
 export default function Login() {
   usePageTitle("Entrar");
-  const { login, user } = useAuthContext();
+  const { login, loginDemo, user } = useAuthContext();
   const { error: showError } = useToast();
   const navigate = useNavigate();
 
@@ -45,7 +44,7 @@ export default function Login() {
   async function handleDemoLogin() {
     setDemoLoading(true);
     try {
-      await login("demo@docke.app", "DockeDemo2026!");
+      await loginDemo();
       navigate("/dashboard", { replace: true });
     } catch (err: any) {
       const msg = err?.response?.data?.detail ?? "Não foi possível acessar o modo demo agora.";
@@ -56,25 +55,32 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--bg-page)] flex flex-col items-center justify-center px-4">
+    <div className="relative min-h-screen overflow-hidden bg-[var(--bg-page)] flex flex-col items-center justify-center px-4">
+      {/* Glow de fundo — só visível em modo escuro (ADR-021: padrão da primeira sessão) */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-0 dark:opacity-100 transition-opacity duration-slow"
+        style={{
+          background:
+            "radial-gradient(600px circle at 20% 15%, rgba(13,148,136,0.16), transparent 60%), radial-gradient(500px circle at 85% 80%, rgba(13,148,136,0.10), transparent 60%)",
+        }}
+      />
+
       <a href="#main-form" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 text-sm text-teal-600">
         Pular para formulário
       </a>
-      <div className="w-full max-w-[360px]">
+      <div className="relative w-full max-w-[360px]">
         {/* Logo */}
-        <div className="flex items-center justify-center gap-2 mb-8">
-          <div className="w-9 h-9 bg-teal-600 rounded-[8px] flex items-center justify-center">
-            <Anchor className="w-5 h-5 text-white" />
-          </div>
-          <span className="text-xl font-semibold text-[var(--text-primary)]">Docke</span>
+        <div className="flex flex-col items-center mb-8">
+          <div className="brand-wordmark w-[150px] h-[43px]" role="img" aria-label="Docke" />
         </div>
 
-        {/* Card */}
-        <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] p-8 shadow-sm">
+        {/* Conteúdo direto na tela, sem card — igual à referência */}
+        <div className="text-center">
           <h1 className="text-lg font-semibold text-[var(--text-primary)] mb-1">Bem-vindo de volta</h1>
           <p className="text-sm text-[var(--text-secondary)] mb-6">Gerenciamento eletrônico de documentos.</p>
 
-          <form id="main-form" onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+          <form id="main-form" onSubmit={handleSubmit} className="flex flex-col gap-4 text-left" noValidate>
             <Input
               label="E-mail"
               type="email"

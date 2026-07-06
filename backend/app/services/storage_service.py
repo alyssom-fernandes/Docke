@@ -45,6 +45,17 @@ def storage_key(company_id: str, document_id: str, ext: str) -> str:
     return f"documents/{company_id}/{document_id}.{ext}"
 
 
+def put_object_bytes(key: str, data: bytes, content_type: str) -> None:
+    """
+    Upload direto (sem presigned URL) — uso interno de scripts administrativos
+    (ex: seed do modo demo), nunca chamado a partir de rotas de usuário.
+    """
+    if _r2_configured:
+        _s3.put_object(Bucket=settings.R2_BUCKET_NAME, Key=key, Body=data, ContentType=content_type)
+        return
+    mock_save(key, data)
+
+
 def generate_upload_url(
     key: str,
     content_type: str,

@@ -50,6 +50,7 @@ interface Document {
   ocr_status: "pending" | "processing" | "done" | "failed" | "skipped";
   created_at: string;
   folder_id: string | null;
+  favorited?: boolean;
 }
 
 type Item = { kind: "folder"; data: Folder } | { kind: "document"; data: Document };
@@ -247,8 +248,10 @@ function CreateFolderModal({ parentId, companyId, onClose, onDone }: { parentId:
 
 function DetailDrawer({ doc, onClose, onFavorite, onPreview, onDelete, onChanged }: { doc: Document; onClose: () => void; onFavorite: () => void; onPreview: () => void; onDelete: () => void; onChanged: () => void }) {
   const { success, error: showError } = useToast();
-  const [favorited, setFavorited] = useState(false);
+  const [favorited, setFavorited] = useState(doc.favorited ?? false);
   const [sharing, setSharing] = useState(false);
+
+  useEffect(() => { setFavorited(doc.favorited ?? false); }, [doc.id, doc.favorited]);
 
   async function toggleFavorite() {
     try {
