@@ -97,16 +97,30 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
   useEffect(() => {
     if (type === "unsupported") { setLoading(false); return; }
 
-    api.get<{ download_url: string }>(`/documents/${doc.id}/download-url`)
-      .then(async ({ data }) => {
-        if (type === "text") {
+    if (type === "text") {
+      // Texto/XML/CSV: sempre via download-url (Content-Disposition não importa,
+      // o conteúdo é lido via fetch e renderizado num <pre>, não carregado pelo browser).
+      api.get<{ download_url: string }>(`/documents/${doc.id}/download-url`)
+        .then(async ({ data }) => {
           const resp = await fetch(data.download_url);
           if (!resp.ok) throw new Error("Erro ao carregar arquivo.");
           const txt = await resp.text();
           setTextContent(txt.slice(0, 50_000)); // cap at 50k chars
-        } else {
-          setUrl(data.download_url);
+        })
+        .catch((e) => setError(e?.message ?? "Erro ao carregar preview."))
+        .finally(() => setLoading(false));
+      return;
+    }
+
+    // PDF/imagem: preview-url, que usa Content-Disposition: inline — download-url
+    // forçaria o browser a baixar o arquivo em vez de exibi-lo no iframe/<img>.
+    api.get<{ inline: boolean; preview_url: string | null; message?: string }>(`/documents/${doc.id}/preview-url`)
+      .then(({ data }) => {
+        if (!data.inline || !data.preview_url) {
+          setError(data.message ?? "Arquivo grande demais para pré-visualização inline.");
+          return;
         }
+        setUrl(data.preview_url);
       })
       .catch((e) => setError(e?.message ?? "Erro ao carregar preview."))
       .finally(() => setLoading(false));
