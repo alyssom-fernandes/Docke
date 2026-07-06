@@ -625,5 +625,24 @@ Reportado junto com os bugs acima: clicar em "Visualizar" num PDF só disparava 
 - **Corrigido**: PDF/imagem agora buscam via `/preview-url` (tratando o caso `inline: false` com a mensagem de tamanho excedido já retornada pelo backend); texto/XML/CSV continuam via `/download-url`, já que o conteúdo é lido via `fetch` e jogado num `<pre>`, então o `Content-Disposition` não importa nesse caso.
 - **Verificação**: `tsc --noEmit` e `vite build` limpos. Teste ao vivo abrindo um PDF real via "Visualizar": confirmado (via `preview_network`) que a chamada agora vai para `/preview-url`, e a URL assinada do R2 tem `response-content-disposition=inline` — carregou no iframe do modal, sem disparar download.
 
+### CI (GitHub Actions) + testes E2E (Playwright) — reduzir dependência de teste manual
+
+Depois de uma sequência de bugs reais só descobertos porque o usuário testou manualmente (cache de empresa, dropdown atrás da tabela, preview de PDF, deep-link do Ctrl+K), o usuário pediu pra montar CI e testes E2E automatizados, cobrindo exatamente essas classes de bug.
+
+- **`.github/workflows/ci.yml`**: dois jobs a cada push/PR na `main`.
+  - `backend-tests`: sobe o stack local do Supabase via `supabase/setup-cli` + `supabase start` (aplica as migrations automaticamente), gera `backend/.env` com as chaves locais (capturadas via `supabase status -o env`), roda `pytest tests -v`.
+  - `frontend-build`: `npm ci` + `tsc --noEmit` + `npm run build`.
+- **`.github/workflows/e2e.yml`**: sobe o mesmo stack Supabase local, roda `python -m app.seed.demo_data` pra popular dados de demo determinísticos, sobe o backend real (`uvicorn`) em segundo plano, builda o frontend apontando pro backend local, e roda os testes Playwright contra o build de produção servido via `vite preview`.
+- **`frontend/e2e/`** — 4 testes, cada um é a regressão de um bug real desta sessão:
+  - `demo-login.spec.ts`: login via modo demo abre o dashboard com dados reais (documentos > 0).
+  - `identity-switch.spec.ts`: injeta uma empresa antiga em cache antes do login (mesmo cenário real reportado), confirma que o modo demo não fica preso na empresa errada nem mostra "Pasta vazia".
+  - `search-deep-link.spec.ts`: já em `/documents`, abre o Ctrl+K, busca e clica num resultado — confirma que navega pro documento certo (não fica na raiz).
+  - `pdf-preview.spec.ts`: abre "Visualizar" num PDF e confirma, via `page.request.get()` na URL do iframe, que o header é `Content-Disposition: inline` (não `attachment`).
+- **`frontend/playwright.config.ts`**: builda automaticamente o app com `vite preview` (via `webServer`) quando não estiver em CI; em CI, o workflow já builda e serve antes de rodar os testes.
+- **Achado durante a verificação**: o evento `download` do Playwright não é confiável para testar preview de PDF — o "headless shell" que o Playwright baixa por padrão não embute o visualizador de PDF do Chrome, então ele trata qualquer PDF em iframe como download mesmo com `Content-Disposition: inline` (confirmado rodando o teste manualmente contra o app real). Reescrito para checar o header HTTP diretamente em vez de depender do comportamento do browser.
+- **Verificação real**: os 4 testes rodaram de verdade contra o app já publicado em produção (não só localmente) — `demo-login`, `identity-switch` e `search-deep-link` passaram de primeira; `pdf-preview` só passou depois de trocar a asserção do evento `download` pela checagem direta do header, e de apontar pra uma pasta (RH) que ainda tinha PDF (a pasta Fiscal desta empresa de demo já tinha sido esvaziada por testes manuais anteriores nesta mesma sessão — não afeta o CI real, que sempre roda contra um seed fresco).
+- **`frontend/package.json`**: adicionado `@playwright/test` como devDependency e o script `test:e2e`.
+- Docker Desktop não estava rodando nesta máquina, então não foi possível validar o pipeline completo do `supabase start` localmente — a validação foi feita rodando os testes Playwright direto contra o app real em produção (mesma UI, dados reais), o que já confirma que os seletores e fluxos dos testes estão corretos; falta apenas a primeira execução real do workflow no GitHub Actions pra confirmar a parte de infraestrutura (Supabase local + seed + backend em CI).
+
 ---
 *Fim do progresso. Atualizar após cada tarefa concluída.*
