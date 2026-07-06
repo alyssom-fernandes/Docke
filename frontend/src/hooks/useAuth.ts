@@ -61,6 +61,13 @@ export function useAuth(): AuthState {
       full_name: me.data.full_name,
       role: me.data.role,
     };
+    // Empresa selecionada pertence à identidade anterior — trocar de conta
+    // (ex.: sair da conta real e entrar no modo demo) sem que o CompanyProvider
+    // desmonte/remonte deixaria a empresa antiga selecionada presa na tela,
+    // mesmo com o usuário/avatar já corretos. Limpa sempre que o id muda.
+    let previousUserId: string | null = null;
+    try { previousUserId = JSON.parse(localStorage.getItem("docke_user") ?? "null")?.id ?? null; } catch { /* ignore */ }
+    if (previousUserId !== u.id) localStorage.removeItem("docke_company");
     setUser(u);
     localStorage.setItem("docke_user", JSON.stringify(u));
   }

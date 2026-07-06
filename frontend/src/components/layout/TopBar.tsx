@@ -45,7 +45,7 @@ export default function TopBar({ onUploadClick }: TopBarProps) {
   }, []);
 
   return (
-    <header className="glass-panel glass-blur-panel glass-shadow glass-highlight-line relative h-[56px] flex-shrink-0 flex items-center gap-3 px-4 rounded-[22px]">
+    <header className="glass-panel glass-blur-panel glass-shadow glass-highlight-line relative z-20 h-[56px] flex-shrink-0 flex items-center gap-3 px-4 rounded-[22px]">
       {/* Company selector */}
       {companies.length > 0 && (
         <div className="relative" ref={companyRef}>
