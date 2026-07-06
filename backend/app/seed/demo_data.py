@@ -147,11 +147,12 @@ def _generate_minimal_pdf(text: str) -> bytes:
     return out.getvalue()
 
 
-def _generate_minimal_xlsx(text: str) -> bytes:
+def _generate_minimal_xlsx(title: str, text: str) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Dados"
-    ws["A1"] = text
+    ws["A1"] = title
+    ws["A2"] = text
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -216,7 +217,7 @@ def generate_file_content(ext: str, title: str, text: str) -> bytes:
     if ext == "pdf":
         return _generate_minimal_pdf(f"{title}\n\n{text}")
     if ext == "xlsx":
-        return _generate_minimal_xlsx(text)
+        return _generate_minimal_xlsx(title, text)
     if ext == "jpg":
         return _generate_minimal_jpg(f"{title}\n\n{text}")
     if ext == "docx":

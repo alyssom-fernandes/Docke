@@ -85,7 +85,7 @@ async def two_companies(admin: asyncpg.Connection):
         user_b, f"user_b_{user_b[:6]}",
     )
     await admin.execute(
-        "INSERT INTO public.user_company_access (user_id, company_id, permission_level) VALUES ($1, $2, 'manager'), ($3, $4, 'manager')",
+        "INSERT INTO public.user_company_access (user_id, company_id, permission_level) VALUES ($1, $2, 'admin'), ($3, $4, 'admin')",
         user_a, co_a,
         user_b, co_b,
     )
