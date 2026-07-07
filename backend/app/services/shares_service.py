@@ -41,17 +41,28 @@ class SharesService:
         )
 
     @staticmethod
-    async def list_shares(conn: asyncpg.Connection, *, resource_type: str | None, resource_id: UUID | None) -> list[asyncpg.Record]:
+    async def list_shares(
+        conn: asyncpg.Connection, *, resource_type: str | None, resource_id: UUID | None, company_id: UUID | None = None,
+    ) -> list[asyncpg.Record]:
+        # RLS (shares_select) já garante que só retorna links próprios ou de
+        # empresas onde o usuário é admin — o filtro de company_id aqui é só
+        # pra tela "Compartilhados" mostrar uma empresa por vez (mesmo padrão
+        # de todo o resto do app), não uma checagem de segurança adicional.
         return await conn.fetch(
             """
-            SELECT id::text, resource_type, resource_id::text, expires_at, revoked_at,
-                   view_count, last_accessed_at, created_at, (password_hash IS NOT NULL) AS has_password
-            FROM public.shares
-            WHERE ($1::text IS NULL OR resource_type = $1)
-              AND ($2::uuid IS NULL OR resource_id = $2)
-            ORDER BY created_at DESC
+            SELECT s.id::text, s.resource_type, s.resource_id::text, s.company_id::text,
+                   s.expires_at, s.revoked_at, s.view_count, s.last_accessed_at, s.created_at,
+                   (s.password_hash IS NOT NULL) AS has_password,
+                   CASE WHEN s.resource_type = 'document' THEN d.name ELSE f.name END AS resource_name
+            FROM public.shares s
+            LEFT JOIN public.documents d ON d.id = s.resource_id AND s.resource_type = 'document'
+            LEFT JOIN public.folders   f ON f.id = s.resource_id AND s.resource_type = 'folder'
+            WHERE ($1::text IS NULL OR s.resource_type = $1)
+              AND ($2::uuid IS NULL OR s.resource_id = $2)
+              AND ($3::uuid IS NULL OR s.company_id = $3)
+            ORDER BY s.created_at DESC
             """,
-            resource_type, resource_id,
+            resource_type, resource_id, company_id,
         )
 
     @staticmethod

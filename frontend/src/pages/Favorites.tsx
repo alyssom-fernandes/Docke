@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { FolderOpen, Anchor, Trash2 } from "lucide-react";
 import { getFileStyle } from "@/lib/fileType";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
@@ -11,7 +11,9 @@ import EmptyState from "@/components/shared/EmptyState";
 interface Favorite {
   id: string;
   item_type: "document" | "folder";
-  item_id: string;
+  document_id: string | null;
+  folder_id: string | null;
+  document_folder_id: string | null;
   item_name: string;
   created_at: string;
 }
@@ -19,6 +21,7 @@ interface Favorite {
 export default function Favorites() {
   usePageTitle("Ancorados");
   const { current } = useCompany();
+  const navigate = useNavigate();
   const { success, error: showError } = useToast();
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,6 +45,14 @@ export default function Favorites() {
       success(`"${fav.item_name}" removido dos ancorados.`);
     } catch {
       showError("Não foi possível remover a ancoragem.");
+    }
+  }
+
+  function openFavorite(fav: Favorite) {
+    if (fav.item_type === "folder") {
+      navigate(`/documents?folder_id=${fav.folder_id}`);
+    } else {
+      navigate(`/documents?folder_id=${fav.document_folder_id ?? ""}&doc=${fav.document_id}`);
     }
   }
 
@@ -75,7 +86,16 @@ export default function Favorites() {
             {favorites.map((fav) => (
               <li
                 key={fav.id}
-                className="flex items-center gap-3 px-5 py-3 hover:bg-[var(--bg-hover)] transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 group"
+                role="button"
+                tabIndex={0}
+                onClick={() => openFavorite(fav)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openFavorite(fav);
+                  }
+                }}
+                className="flex items-center gap-3 px-5 py-3 hover:bg-[var(--bg-hover)] transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 group cursor-pointer"
               >
                 {fav.item_type === "folder" ? (
                   <FolderOpen className="w-4 h-4 text-teal-500 flex-shrink-0" />
@@ -91,7 +111,7 @@ export default function Favorites() {
                   {fav.item_type === "folder" ? "Pasta" : "Documento"}
                 </span>
                 <button
-                  onClick={() => removeFavorite(fav)}
+                  onClick={(e) => { e.stopPropagation(); removeFavorite(fav); }}
                   className="opacity-0 group-hover:opacity-100 p-1.5 rounded-[6px] text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-fast"
                   title="Remover ancoragem"
                 >

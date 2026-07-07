@@ -174,9 +174,11 @@ async def confirm_upload(
     3. Atualiza documents com content_hash.
     4. Cria ocr_job em pending — mesma transação (R3).
     """
-    doc = await DocumentsService.get_document_for_confirm(admin_conn, document_id)
+    doc = await DocumentsService.get_document_for_confirm(admin_conn, document_id, claims["sub"])
     if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+    if doc["permission"] not in ("admin", "operador"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para confirmar este upload.")
     if doc["content_hash"] is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Upload já confirmado.")
 

@@ -24,7 +24,11 @@ class FavoritesService:
               CASE
                 WHEN fav.document_id IS NOT NULL THEN d.name
                 ELSE f.name
-              END AS item_name
+              END AS item_name,
+              -- pasta que contém o documento favoritado (NULL se o próprio
+              -- favorito já é uma pasta) — necessário pro frontend montar o
+              -- deep-link /documents?folder_id=...&doc=... ao clicar no item.
+              d.folder_id::text AS document_folder_id
             FROM public.favorites fav
             LEFT JOIN public.documents d ON d.id = fav.document_id AND d.deleted_at IS NULL
             LEFT JOIN public.folders   f ON f.id = fav.folder_id   AND f.deleted_at IS NULL

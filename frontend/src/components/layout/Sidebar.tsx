@@ -9,6 +9,7 @@ import {
   Settings,
   ChevronLeft,
   Anchor,
+  Link2,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -21,6 +22,7 @@ const NAV = [
   { to: "/documents", icon: FolderOpen, label: "Documentos" },
   { to: "/search", icon: Search, label: "Busca" },
   { to: "/favorites", icon: Anchor, label: "Ancorados" },
+  { to: "/shares", icon: Link2, label: "Compartilhados" },
   { to: "/activity", icon: Activity, label: "Atividade" },
   { to: "/trash", icon: Trash2, label: "Lixeira" },
 ];

@@ -75,10 +75,22 @@ class DocumentsService:
     # -- confirm (fase 2) -----------------------------------------------------
 
     @staticmethod
-    async def get_document_for_confirm(admin_conn: asyncpg.Connection, document_id: UUID) -> asyncpg.Record | None:
+    async def get_document_for_confirm(admin_conn: asyncpg.Connection, document_id: UUID, user_id: str) -> asyncpg.Record | None:
+        # admin_conn nunca tem request.jwt.claims setado (não passa por get_db),
+        # então auth.uid() seria sempre NULL aqui — por isso o user_id é passado
+        # explícito como argumento de user_has_access() em vez de usado implicitamente.
         return await admin_conn.fetchrow(
-            "SELECT id, storage_path, company_id, content_hash FROM public.documents WHERE id = $1",
-            document_id,
+            """
+            SELECT d.id, d.storage_path, d.company_id, d.content_hash,
+                   public.user_has_access(
+                     $2::uuid,
+                     (SELECT f.path FROM public.folders f WHERE f.id = d.folder_id),
+                     d.company_id
+                   ) AS permission
+            FROM public.documents d
+            WHERE d.id = $1
+            """,
+            document_id, user_id,
         )
 
     @staticmethod

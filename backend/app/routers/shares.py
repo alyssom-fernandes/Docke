@@ -126,9 +126,10 @@ async def create_share(
 async def list_shares(
     resource_type: str | None = Query(None),
     resource_id: UUID | None = Query(None),
+    company_id: UUID | None = Query(None),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> list[dict[str, Any]]:
-    rows = await SharesService.list_shares(conn, resource_type=resource_type, resource_id=resource_id)
+    rows = await SharesService.list_shares(conn, resource_type=resource_type, resource_id=resource_id, company_id=company_id)
     return [dict(r) for r in rows]
 
 
