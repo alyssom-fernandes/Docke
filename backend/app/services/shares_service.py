@@ -53,7 +53,10 @@ class SharesService:
             SELECT s.id::text, s.resource_type, s.resource_id::text, s.company_id::text,
                    s.expires_at, s.revoked_at, s.view_count, s.last_accessed_at, s.created_at,
                    (s.password_hash IS NOT NULL) AS has_password,
-                   CASE WHEN s.resource_type = 'document' THEN d.name ELSE f.name END AS resource_name
+                   CASE WHEN s.resource_type = 'document' THEN d.name ELSE f.name END AS resource_name,
+                   -- pasta que contém o documento compartilhado — necessário pro
+                   -- frontend montar o deep-link /documents?folder_id=...&doc=...
+                   d.folder_id::text AS document_folder_id
             FROM public.shares s
             LEFT JOIN public.documents d ON d.id = s.resource_id AND s.resource_type = 'document'
             LEFT JOIN public.folders   f ON f.id = s.resource_id AND s.resource_type = 'folder'

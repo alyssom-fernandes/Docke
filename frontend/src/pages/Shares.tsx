@@ -15,6 +15,7 @@ interface ShareLink {
   resource_type: "document" | "folder";
   resource_id: string;
   resource_name: string | null;
+  document_folder_id: string | null;
   expires_at: string | null;
   revoked_at: string | null;
   view_count: number;
@@ -61,7 +62,7 @@ export default function Shares() {
     if (share.resource_type === "folder") {
       navigate(`/documents?folder_id=${share.resource_id}`);
     } else {
-      navigate(`/documents?doc=${share.resource_id}`);
+      navigate(`/documents?folder_id=${share.document_folder_id ?? ""}&doc=${share.resource_id}`);
     }
   }
 

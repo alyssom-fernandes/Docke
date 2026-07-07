@@ -676,7 +676,15 @@ Pedido do usuário: implementar os achados da varredura de segurança e da revis
 - **Bug real encontrado e corrigido durante o teste ao vivo**: `relativeDate()` (`src/lib/date.ts`) só tratava datas passadas — pra uma data futura (expiração de link), o `diff` (agora − data) fica negativo, caindo incorretamente no primeiro `if` e mostrando "agora" em vez de "em 7 dias". Esse bug já existia silenciosamente em `ShareModal.tsx` (que também mostra a expiração), só ninguém tinha reparado porque é um detalhe pequeno num modal. Corrigido com um ramo novo para diffs negativos ("em X min/h/dias"), sem alterar o comportamento existente pra datas passadas (usado em todo o resto do app).
 - Verificado ao vivo, contra a produção real: criado um link de compartilhamento de verdade via API, confirmado que aparece na nova tela (com fallback correto pro nome enquanto o backend não é reimplantado — `resource_name` só existe a partir deste deploy), clicado em "Revogar", confirmado no modal, e o item sumiu da lista corretamente.
 
-**Pendente**: como o backend não foi reimplantado durante esta sessão (só validado via import local + testes isolados, já que o ambiente não tem Docker funcional pra rodar o Supabase local), a verificação completa de ponta a ponta (rate limit de login de verdade, nome do item em "Compartilhados", permissão de confirm) só acontece depois do próximo `fly deploy`.
+### Deploy e verificação ao vivo em produção (pós-`fly deploy`)
+
+O usuário rodou o commit/push e o `fly deploy` do backend. Testado ao vivo contra a produção real (não mock):
+
+- Login via modo demo funcionou normalmente pós-deploy — confirma que o rate limiting novo não quebrou o fluxo normal.
+- Criado um link de compartilhamento de verdade via API, confirmado que "Compartilhados" agora mostra o nome real do documento (`resource_name`) em vez do fallback "(item removido)".
+- **Bug real encontrado ao clicar no item pra abrir o documento compartilhado**: a navegação usava só `/documents?doc=...`, sem `folder_id` — exatamente o mesmo tipo de bug já corrigido em "Ancorados" nesta mesma sessão, só que eu mesmo reintroduzi a versão dele aqui ao escrever `Shares.tsx` do zero. A tela de Documentos exige `folder_id` pra processar o deep-link; sem ele, o efeito nem tenta abrir o documento. Causa raiz: `SharesService.list_shares` também não retornava o `folder_id` do documento compartilhado (mesma lacuna que a API de favoritos tinha). Corrigido: adicionada a coluna `document_folder_id` na query (mesmo padrão de `favorites_service.py`), e `Shares.tsx` agora monta a URL completa (`/documents?folder_id=...&doc=...`).
+- Verificado de novo ao vivo: `tsc`/import limpos, link revogado com sucesso via UI (fluxo completo de criar → listar → revogar testado de ponta a ponta contra produção).
+- **Ainda pendente**: essa correção do `folder_id` foi feita DEPOIS do deploy já ter acontecido — precisa de mais um commit/push + `fly deploy` pra ir ao ar. O clique em "Compartilhados" só vai navegar corretamente pro documento depois desse próximo deploy.
 
 ---
 *Fim do progresso. Atualizar após cada tarefa concluída.*
