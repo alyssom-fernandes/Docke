@@ -5,6 +5,7 @@ import api from "@/lib/api";
 import { useToast } from "@/lib/toast";
 import { relativeDate } from "@/lib/date";
 import Button from "@/components/ui/Button";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 
 interface ShareLink {
   id: string;
@@ -31,6 +32,7 @@ export default function ShareModal({
   const [alwaysLatest, setAlwaysLatest] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newLink, setNewLink] = useState<string | null>(null);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
 
   function load() {
     setLoading(true);
@@ -65,13 +67,16 @@ export default function ShareModal({
     }
   }
 
-  async function revoke(id: string) {
+  async function confirmRevoke() {
+    if (!revokingId) return;
     try {
-      await api.delete(`/shares/${id}`);
+      await api.delete(`/shares/${revokingId}`);
       success("Link revogado.");
       load();
     } catch {
       showError("Erro ao revogar o link.");
+    } finally {
+      setRevokingId(null);
     }
   }
 
@@ -156,7 +161,7 @@ export default function ShareModal({
                         {l.expires_at ? `Expira ${relativeDate(l.expires_at)}` : "Nunca expira"}
                       </p>
                     </div>
-                    <button onClick={() => revoke(l.id)} title="Revogar" className="p-1 rounded text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20">
+                    <button onClick={() => setRevokingId(l.id)} title="Revogar" className="p-1 rounded text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </li>
@@ -166,6 +171,17 @@ export default function ShareModal({
           </div>
         </div>
       </div>
+
+      {revokingId && (
+        <ConfirmModal
+          title="Revogar link de compartilhamento?"
+          description={`Quem tiver esse link de "${name}" perderá o acesso imediatamente. Essa ação não pode ser desfeita.`}
+          confirmLabel="Revogar"
+          danger
+          onConfirm={confirmRevoke}
+          onClose={() => setRevokingId(null)}
+        />
+      )}
     </div>
   );
 }

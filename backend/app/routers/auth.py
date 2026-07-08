@@ -51,7 +51,16 @@ async def login(body: LoginRequest, request: Request) -> LoginResponse:
     tentando várias contas a partir do mesmo IP. Mesmos limites usados em
     shares.py para senha de link compartilhado, por consistência.
     """
-    email_key = f"login-email:{body.email.lower().strip()}"
+    return await _do_login(body, request, email_key_override=None)
+
+
+async def _do_login(body: LoginRequest, request: Request, *, email_key_override: str | None) -> LoginResponse:
+    # DEMO_EMAIL é público (aparece no frontend) — se o bloqueio por e-mail
+    # usasse o e-mail literal também pro modo demo, um atacante anônimo
+    # conseguiria travar /auth/demo-login pra todo mundo por 15min só
+    # mandando 5 senhas erradas pra "demo@docke.app" via /auth/login. O modo
+    # demo usa uma chave própria, isolada do bucket do e-mail público.
+    email_key = f"login-email:{email_key_override or body.email.lower().strip()}"
     ip_key = f"login-ip:{_client_ip_hash(request)}"
 
     for key in (email_key, ip_key):
@@ -101,7 +110,11 @@ async def demo_login(request: Request) -> LoginResponse:
     """
     if not settings.DEMO_PASSWORD:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Modo demo não está configurado.")
-    return await login(LoginRequest(email=settings.DEMO_EMAIL, password=settings.DEMO_PASSWORD), request)
+    return await _do_login(
+        LoginRequest(email=settings.DEMO_EMAIL, password=settings.DEMO_PASSWORD),
+        request,
+        email_key_override="__demo__",
+    )
 
 
 @router.get("/me")

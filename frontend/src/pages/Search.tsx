@@ -29,6 +29,20 @@ interface SearchResponse {
 
 const fmtDate = relativeDate;
 
+// O snippet vem do ts_headline() do Postgres sobre o texto OCR do documento —
+// texto controlado por quem faz upload, não pelo backend. ts_headline só
+// insere os marcadores <mark>/</mark> literais; não escapa o resto do texto.
+// Escapamos tudo via textContent (nunca interpretado como HTML) e só depois
+// reconstituímos os marcadores de destaque já escapados de volta em <mark>
+// reais — assim nenhum HTML/script arbitrário do OCR pode ser injetado.
+function highlightSnippet(snippet: string): string {
+  const span = document.createElement("span");
+  span.textContent = snippet;
+  return span.innerHTML
+    .replace(/&lt;mark&gt;/g, '<mark class="bg-teal-100 text-teal-700 rounded px-0.5">')
+    .replace(/&lt;\/mark&gt;/g, "</mark>");
+}
+
 export default function Search() {
   usePageTitle("Busca");
   const { current } = useCompany();
@@ -130,7 +144,7 @@ export default function Search() {
                     {r.snippet && (
                       <p
                         className="text-xs text-[var(--text-secondary)] mt-1 line-clamp-2"
-                        dangerouslySetInnerHTML={{ __html: r.snippet.replace(/<mark>/g, '<mark class="bg-teal-100 text-teal-700 rounded px-0.5">') }}
+                        dangerouslySetInnerHTML={{ __html: highlightSnippet(r.snippet) }}
                       />
                     )}
                     <p className="text-xs text-[var(--text-tertiary)] mt-1">

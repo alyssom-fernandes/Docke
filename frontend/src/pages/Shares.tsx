@@ -88,6 +88,14 @@ export default function Shares() {
           title="Nenhum link ativo"
           description="Compartilhe um documento ou pasta usando o botão de compartilhar nos detalhes do item."
           icon={<Link2 className="w-6 h-6" />}
+          action={
+            <button
+              onClick={() => navigate("/documents")}
+              className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-[8px] hover:bg-teal-500 transition-colors duration-fast"
+            >
+              Ir para Documentos
+            </button>
+          }
         />
       ) : (
         <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] overflow-hidden">

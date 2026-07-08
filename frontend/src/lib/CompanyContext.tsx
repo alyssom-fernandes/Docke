@@ -32,11 +32,18 @@ export function CompanyProvider({ children, enabled }: { children: ReactNode; en
       // existe mais (empresa recriada num reseed, por exemplo), ela fica
       // presa num id morto pra sempre, já que antes só substituíamos
       // 'current' quando ele começava nulo. Revalidar aqui evita isso.
-      const stillValid = current && res.data.some((c: Company) => c.id === current.id);
-      if (!stillValid && res.data.length > 0) {
+      const fresh = current ? res.data.find((c: Company) => c.id === current.id) : undefined;
+      if (fresh) {
+        // Mesmo id ainda válido, mas sincroniza os outros campos (ex.:
+        // permission_level) — sem isso, um usuário promovido/rebaixado por
+        // outro admin continuava vendo o nível de acesso antigo em telas como
+        // Configurações até trocar de empresa manualmente.
+        setCurrent(fresh);
+        localStorage.setItem("docke_company", JSON.stringify(fresh));
+      } else if (res.data.length > 0) {
         setCurrent(res.data[0]);
         localStorage.setItem("docke_company", JSON.stringify(res.data[0]));
-      } else if (!stillValid) {
+      } else {
         setCurrent(null);
         localStorage.removeItem("docke_company");
       }

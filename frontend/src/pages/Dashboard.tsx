@@ -1,5 +1,5 @@
 import { useEffect, useState, type ElementType } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { relativeDate } from "@/lib/date";
 import { getFileStyle } from "@/lib/fileType";
@@ -108,6 +108,7 @@ function StatCard({ label, value, icon: Icon, color }: { label: string; value: n
 export default function Dashboard() {
   usePageTitle("Dashboard");
   const { current } = useCompany();
+  const navigate = useNavigate();
   const [stats, setStats] = useState<Stats | null>(null);
   const [recent, setRecent] = useState<RecentDoc[]>([]);
   const [favorites, setFavorites] = useState<Favorite[]>([]);
@@ -184,7 +185,19 @@ export default function Dashboard() {
           ) : (
             <ul>
               {recent.map((doc) => (
-                <li key={doc.id} className="flex items-center gap-3 px-5 py-3 hover:bg-[var(--bg-hover)] transition-colors duration-fast border-b border-[var(--border-default)] last:border-0">
+                <li
+                  key={doc.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate(`/documents?folder_id=${doc.folder_id ?? ""}&doc=${doc.id}`)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      navigate(`/documents?folder_id=${doc.folder_id ?? ""}&doc=${doc.id}`);
+                    }
+                  }}
+                  className="flex items-center gap-3 px-5 py-3 hover:bg-[var(--bg-hover)] transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 cursor-pointer"
+                >
                   {(() => { const s = getFileStyle(doc.name); const Icon = s.icon; return (
                     <div className={`w-6 h-6 rounded-[4px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
                       <Icon className={`w-3.5 h-3.5 ${s.iconColor}`} />
