@@ -62,9 +62,16 @@ class ActivityService:
               al.created_at,
               u.full_name AS user_name,
               u.username  AS user_username,
+              -- pasta ATUAL do documento (não a de quando o evento aconteceu) —
+              -- permite ao frontend montar o deep-link /documents?folder_id=...&doc=...;
+              -- vem NULL se o documento já foi excluído permanentemente desde então,
+              -- e nesse caso o item simplesmente não é clicável no frontend.
+              cur_d.folder_id::text AS current_folder_id,
               count(*) OVER () AS total_count
             FROM public.activity_log al
             LEFT JOIN public.users u ON u.id = al.user_id
+            LEFT JOIN public.documents cur_d
+              ON al.item_type = 'document' AND cur_d.id = al.item_id AND cur_d.deleted_at IS NULL
             WHERE al.company_id = $1
               AND ($2::uuid IS NULL OR al.user_id    = $2)
               AND ($3::text IS NULL OR al.action     = $3)

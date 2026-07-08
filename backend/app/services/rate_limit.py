@@ -3,11 +3,31 @@ ADR-027 — Rate limiting em memória (dicionário com TTL).
 Sem Redis: o volume de uso do Docke não justifica uma camada externa
 (decisão explícita do adendo). Válido apenas para um único processo/máquina.
 """
+import hashlib
 import time
 from collections import defaultdict
 
+from fastapi import Request
+
 _buckets: dict[str, list[float]] = defaultdict(list)
 _lockouts: dict[str, float] = {}
+
+
+def client_ip_hash(request: Request) -> str:
+    """
+    IP real do cliente para fins de rate-limit por IP.
+
+    A Fly.io termina a conexão TCP na borda e encaminha pra máquina através
+    da própria malha de rede — `request.client.host` normalmente reflete o
+    IP interno da borda da Fly, não o do cliente real. Isso tornaria o
+    bloqueio por IP um "balde" efetivamente compartilhado por todo mundo
+    (um atacante travaria o login de todos, não só o dele). A Fly injeta o
+    header `Fly-Client-IP` com o IP real do cliente antes de encaminhar a
+    requisição — não é definido pelo cliente, então não pode ser forjado.
+    Cai pra request.client.host só em dev local (sem o proxy da Fly).
+    """
+    ip = request.headers.get("fly-client-ip") or (request.client.host if request.client else "unknown")
+    return hashlib.sha256(ip.encode()).hexdigest()
 
 
 def _prune(bucket: list[float], window_seconds: int) -> None:

@@ -1,4 +1,3 @@
-import hashlib
 from typing import Any
 
 import asyncpg
@@ -21,11 +20,6 @@ _bearer = HTTPBearer()
 _LOGIN_ATTEMPTS = 5
 _LOGIN_WINDOW_SECS = 60
 _LOGIN_LOCKOUT_SECS = 15 * 60
-
-
-def _client_ip_hash(request: Request) -> str:
-    ip = request.client.host if request.client else "unknown"
-    return hashlib.sha256(ip.encode()).hexdigest()
 
 
 class LoginRequest(BaseModel):
@@ -61,7 +55,7 @@ async def _do_login(body: LoginRequest, request: Request, *, email_key_override:
     # mandando 5 senhas erradas pra "demo@docke.app" via /auth/login. O modo
     # demo usa uma chave própria, isolada do bucket do e-mail público.
     email_key = f"login-email:{email_key_override or body.email.lower().strip()}"
-    ip_key = f"login-ip:{_client_ip_hash(request)}"
+    ip_key = f"login-ip:{rate_limit.client_ip_hash(request)}"
 
     for key in (email_key, ip_key):
         locked = rate_limit.is_locked_out(key)

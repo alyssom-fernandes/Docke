@@ -49,9 +49,20 @@ interface ActivityEvent {
   id: string;
   action: string;
   item_type: string;
+  item_id: string;
   item_name_snapshot: string;
+  current_folder_id: string | null;
   user_name: string;
   created_at: string;
+}
+
+/** Mesma lógica de Activity.tsx — null quando o item não existe mais. */
+function activityTarget(ev: ActivityEvent): string | null {
+  if (ev.item_type === "folder") return `/documents?folder_id=${ev.item_id}`;
+  if (ev.item_type === "document" && ev.current_folder_id) {
+    return `/documents?folder_id=${ev.current_folder_id}&doc=${ev.item_id}`;
+  }
+  return null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -267,22 +278,44 @@ export default function Dashboard() {
           </div>
         ) : (
           <ul>
-            {activity.map((ev) => (
-              <li key={ev.id} className="flex items-center gap-3 px-5 py-3 hover:bg-[var(--bg-hover)] transition-colors duration-fast border-b border-[var(--border-default)] last:border-0">
-                <Avatar name={ev.user_name} size="sm" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-[var(--text-primary)] truncate">
-                    <span className="font-medium">{ev.user_name}</span>{" "}
-                    {actionLabel(ev.action)}{" "}
-                    <span className="text-[var(--text-secondary)]">{ev.item_name_snapshot}</span>
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5 text-[var(--text-tertiary)] flex-shrink-0">
-                  {actionIcon(ev.action)}
-                  <span className="text-xs">{fmtDate(ev.created_at)}</span>
-                </div>
-              </li>
-            ))}
+            {activity.map((ev) => {
+              const target = activityTarget(ev);
+              return (
+                <li
+                  key={ev.id}
+                  role={target ? "button" : undefined}
+                  tabIndex={target ? 0 : undefined}
+                  onClick={target ? () => navigate(target) : undefined}
+                  onKeyDown={
+                    target
+                      ? (e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            navigate(target);
+                          }
+                        }
+                      : undefined
+                  }
+                  title={target ? undefined : "Item não está mais disponível"}
+                  className={`flex items-center gap-3 px-5 py-3 transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 ${
+                    target ? "hover:bg-[var(--bg-hover)] cursor-pointer" : ""
+                  }`}
+                >
+                  <Avatar name={ev.user_name} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-[var(--text-primary)] truncate">
+                      <span className="font-medium">{ev.user_name}</span>{" "}
+                      {actionLabel(ev.action)}{" "}
+                      <span className="text-[var(--text-secondary)]">{ev.item_name_snapshot}</span>
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[var(--text-tertiary)] flex-shrink-0">
+                    {actionIcon(ev.action)}
+                    <span className="text-xs">{fmtDate(ev.created_at)}</span>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

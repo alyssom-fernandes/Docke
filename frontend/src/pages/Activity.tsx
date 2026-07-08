@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Clock, Download, ChevronDown } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
@@ -10,9 +11,22 @@ interface ActivityEvent {
   id: string;
   action: string;
   item_type: string;
+  item_id: string;
   item_name_snapshot: string;
+  current_folder_id: string | null;
   user_name: string;
   created_at: string;
+}
+
+/** Retorna o destino do deep-link, ou null se o item não existe mais (ex.:
+ * documento excluído permanentemente depois do evento) — nesse caso a linha
+ * não é clicável em vez de navegar pra um lugar que não vai achar nada. */
+function activityTarget(ev: ActivityEvent): string | null {
+  if (ev.item_type === "folder") return `/documents?folder_id=${ev.item_id}`;
+  if (ev.item_type === "document" && ev.current_folder_id) {
+    return `/documents?folder_id=${ev.current_folder_id}&doc=${ev.item_id}`;
+  }
+  return null;
 }
 
 interface ActivityResponse {
@@ -46,6 +60,7 @@ function fmtDateTime(iso: string) {
 export default function Activity() {
   usePageTitle("Atividade");
   const { current } = useCompany();
+  const navigate = useNavigate();
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -142,24 +157,43 @@ export default function Activity() {
         <>
           <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] overflow-hidden">
             <ul>
-              {events.map((ev) => (
-                <li
-                  key={ev.id}
-                  className="flex items-center gap-3 px-5 py-3 hover:bg-[var(--bg-hover)] transition-colors duration-fast border-b border-[var(--border-default)] last:border-0"
-                >
-                  <Avatar name={ev.user_name} size="sm" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-[var(--text-primary)] truncate">
-                      <span className="font-medium">{ev.user_name}</span>{" "}
-                      {ACTION_LABELS[ev.action] ?? ev.action}{" "}
-                      <span className="text-[var(--text-secondary)]">{ev.item_name_snapshot}</span>
-                    </p>
-                  </div>
-                  <span className="text-xs text-[var(--text-tertiary)] flex-shrink-0">
-                    {fmtDateTime(ev.created_at)}
-                  </span>
-                </li>
-              ))}
+              {events.map((ev) => {
+                const target = activityTarget(ev);
+                return (
+                  <li
+                    key={ev.id}
+                    role={target ? "button" : undefined}
+                    tabIndex={target ? 0 : undefined}
+                    onClick={target ? () => navigate(target) : undefined}
+                    onKeyDown={
+                      target
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              navigate(target);
+                            }
+                          }
+                        : undefined
+                    }
+                    title={target ? undefined : "Item não está mais disponível"}
+                    className={`flex items-center gap-3 px-5 py-3 transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 ${
+                      target ? "hover:bg-[var(--bg-hover)] cursor-pointer" : ""
+                    }`}
+                  >
+                    <Avatar name={ev.user_name} size="sm" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-[var(--text-primary)] truncate">
+                        <span className="font-medium">{ev.user_name}</span>{" "}
+                        {ACTION_LABELS[ev.action] ?? ev.action}{" "}
+                        <span className="text-[var(--text-secondary)]">{ev.item_name_snapshot}</span>
+                      </p>
+                    </div>
+                    <span className="text-xs text-[var(--text-tertiary)] flex-shrink-0">
+                      {fmtDateTime(ev.created_at)}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           </div>
 

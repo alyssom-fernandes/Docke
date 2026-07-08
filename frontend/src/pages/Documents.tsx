@@ -51,6 +51,7 @@ interface Document {
   created_at: string;
   folder_id: string | null;
   favorited?: boolean;
+  active_share_count?: number;
 }
 
 type Item = { kind: "folder"; data: Folder } | { kind: "document"; data: Document };
@@ -250,8 +251,10 @@ function DetailDrawer({ doc, onClose, onFavorite, onPreview, onDelete, onChanged
   const { success, error: showError } = useToast();
   const [favorited, setFavorited] = useState(doc.favorited ?? false);
   const [sharing, setSharing] = useState(false);
+  const [shareCount, setShareCount] = useState(doc.active_share_count ?? 0);
 
   useEffect(() => { setFavorited(doc.favorited ?? false); }, [doc.id, doc.favorited]);
+  useEffect(() => { setShareCount(doc.active_share_count ?? 0); }, [doc.id, doc.active_share_count]);
 
   async function toggleFavorite() {
     try {
@@ -341,10 +344,14 @@ function DetailDrawer({ doc, onClose, onFavorite, onPreview, onDelete, onChanged
           </button>
           <button
             onClick={() => setSharing(true)}
-            className="w-full h-9 flex items-center justify-center gap-2 text-sm border border-[var(--border-default)] rounded-[8px] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+            className={`w-full h-9 flex items-center justify-center gap-2 text-sm border rounded-[8px] transition-colors duration-fast ${
+              shareCount > 0
+                ? "border-teal-200 dark:border-teal-900/40 text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-900/20"
+                : "border-[var(--border-default)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+            }`}
           >
             <Share2 className="w-4 h-4" />
-            Compartilhar
+            {shareCount > 0 ? `Compartilhado (${shareCount})` : "Compartilhar"}
           </button>
           <button
             onClick={onDelete}
@@ -359,7 +366,13 @@ function DetailDrawer({ doc, onClose, onFavorite, onPreview, onDelete, onChanged
       </div>
 
       {sharing && (
-        <ShareModal resourceType="document" resourceId={doc.id} name={doc.name} onClose={() => setSharing(false)} />
+        <ShareModal
+          resourceType="document"
+          resourceId={doc.id}
+          name={doc.name}
+          onClose={() => setSharing(false)}
+          onChanged={setShareCount}
+        />
       )}
     </aside>
   );

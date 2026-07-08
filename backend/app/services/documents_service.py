@@ -332,7 +332,13 @@ class DocumentsService:
               EXISTS (
                 SELECT 1 FROM public.favorites f
                 WHERE f.document_id = d.id AND f.user_id = auth.uid()
-              ) AS favorited
+              ) AS favorited,
+              (
+                SELECT count(*) FROM public.shares s
+                WHERE s.resource_type = 'document' AND s.resource_id = d.id
+                  AND s.revoked_at IS NULL
+                  AND (s.expires_at IS NULL OR s.expires_at > now())
+              ) AS active_share_count
             FROM public.documents d
             WHERE d.folder_id = $1
               AND d.company_id = $2

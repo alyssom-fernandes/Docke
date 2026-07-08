@@ -18,8 +18,8 @@ interface ShareLink {
 }
 
 export default function ShareModal({
-  resourceType, resourceId, name, onClose,
-}: { resourceType: "document" | "folder"; resourceId: string; name: string; onClose: () => void }) {
+  resourceType, resourceId, name, onClose, onChanged,
+}: { resourceType: "document" | "folder"; resourceId: string; name: string; onClose: () => void; onChanged?: (activeCount: number) => void }) {
   const { success, error: showError } = useToast();
   const containerRef = useRef<HTMLDivElement>(null);
   useFocusTrap(containerRef);
@@ -37,7 +37,11 @@ export default function ShareModal({
   function load() {
     setLoading(true);
     api.get<ShareLink[]>("/shares", { params: { resource_type: resourceType, resource_id: resourceId } })
-      .then((r) => setLinks(Array.isArray(r.data) ? r.data.filter((l) => !l.revoked_at) : []))
+      .then((r) => {
+        const active = Array.isArray(r.data) ? r.data.filter((l) => !l.revoked_at) : [];
+        setLinks(active);
+        onChanged?.(active.length);
+      })
       .catch(() => setLinks([]))
       .finally(() => setLoading(false));
   }

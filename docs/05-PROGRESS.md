@@ -709,11 +709,25 @@ Depois, 3 agentes especializados rodaram em paralelo. Verifiquei manualmente os 
 - Dark mode, ícones e cores do `Shares.tsx` — conferidos um a um, todos usam as variáveis CSS corretas ou têm variante `dark:`.
 
 **Achados registrados, não corrigidos agora (decisões de produto ou escopo maior, não bugs simples):**
-- `/activity` (log de atividade) não retorna `folder_id`, então nenhuma entrada do feed de atividade é clicável em lugar nenhum do app (Dashboard e Activity.tsx). Diferente dos outros casos corrigidos nesta sessão, aqui não é só "faltou o onClick" — o backend precisaria resolver `folder_id` a partir de `item_id`/`item_type`, o que é ambíguo pra itens já excluídos permanentemente ou movidos depois do evento logado. Fica como iniciativa futura, não bug simples.
-- Nenhum indicador visual em `Documents.tsx` mostra que um documento/pasta tem um link de compartilhamento ativo — "Compartilhados" é hoje o único lugar onde essa informação aparece. Melhoria razoável (o botão "Compartilhar" poderia ficar preenchido em teal quando há link ativo, mesmo padrão já usado no botão "Ancorar"), mas precisa de um campo novo na API que hoje não existe.
-- "Compartilhados" (e "Lixeira") são inacessíveis no celular — `BottomTabBar.tsx` tem só 6 slots fixos e nenhum dos dois está lá. Consistente com a lixeira já ter essa limitação, mas o agente de design levantou a pergunta válida: um admin que precisa revogar um link vazado urgentemente, no celular, hoje não tem como. Decisão de produto, não implementado.
-- Confirmação pendente do usuário: o `JWT_SECRET` tem um valor padrão fixo no código (`config.py`), que só é seguro se a variável de ambiente estiver de fato configurada na Fly — ainda não confirmado.
-- Comportamento do proxy da Fly.io quanto ao IP de origem (`request.client.host`) não pôde ser verificado só lendo código — se a Fly encaminha conexões de um IP interno fixo, o bloqueio por IP do login vira um balde compartilhado entre todos os usuários (um atacante poderia travar o login de todo mundo, não só o dele). Precisa de confirmação de como a Fly está configurada pra este app.
+Todos os 5 itens acima foram decididos pelo usuário e implementados na rodada seguinte (ver abaixo).
+
+### Quarta rodada — decisões do usuário implementadas (atividade clicável, indicador de compartilhamento, navegação mobile redesenhada)
+
+**1. `JWT_SECRET` — confirmado seguro.** Usuário rodou `fly secrets list -a docke-api`: `JWT_SECRET` aparece como secret próprio (digest distinto dos outros), status `Deployed` — não está usando o valor padrão do código. Sem ação necessária.
+
+**2. IP de origem no rate-limit — corrigido.** Centralizada a função de hash de IP num só lugar (`rate_limit.client_ip_hash()`, antes duplicada em `auth.py` e `shares.py`), agora lendo o header `Fly-Client-IP` (injetado pela própria borda da Fly, não fornecido nem falsificável pelo cliente) antes de cair em `request.client.host`. Sem isso, o bloqueio por IP corria o risco de virar um balde único compartilhado por todos os usuários caso a Fly encaminhe conexões através de um IP interno fixo. Testado isoladamente: dois clientes reais diferentes (simulando a mesma borda da Fly) agora geram chaves de rate-limit distintas.
+
+**3. Atividade recente agora é clicável** (Dashboard e Activity.tsx). Adicionada a coluna `current_folder_id` em `/activity` via LEFT JOIN com `documents` (pasta **atual** do item, não a de quando o evento aconteceu). Itens cujo documento já foi excluído permanentemente (`current_folder_id` vem `NULL`) simplesmente não ficam clicáveis (sem cursor, com `title="Item não está mais disponível"`) em vez de navegar pra um lugar que não existe mais.
+
+**4. Indicador visual de compartilhamento ativo.** `list_by_folder` (query que alimenta a tabela E o painel de detalhes) agora retorna `active_share_count` (subquery contando links não revogados e não expirados). O botão "Compartilhar" no painel de detalhes fica com o mesmo tratamento visual (borda/texto teal) que o botão "Ancorar" já usa quando `active_share_count > 0`, e mostra a contagem (“Compartilhado (2)”). O `ShareModal` agora aceita um callback `onChanged` que repassa a contagem real toda vez que a lista de links dele é recarregada (ao abrir, criar ou revogar um link) — o painel de detalhes usa isso pra manter a contagem sincronizada sem precisar recarregar a pasta inteira.
+
+**5. Navegação mobile redesenhada.**
+- `BottomTabBar.tsx`: restilizado com o mesmo tratamento "vidro" flutuante da Sidebar (`glass-panel glass-blur-panel glass-shadow glass-highlight-line`, `rounded-[22px]`, margem das bordas da tela em vez de grudado no fundo) — antes usava um estilo plano (`bg-[var(--bg-card)] border-t`) destoante do resto do app.
+- Reduzido de 6 para 5 itens (Início, Documentos, Busca, **Compartilhados** — rotulado "Links" por espaço —, Atividade), o máximo recomendado pelas diretrizes de navegação mobile do iOS/Android antes de precisar de um item de overflow ("Mais").
+- "Ancorados" e "Configurações" saíram da barra inferior e viraram ícones na TopBar (`lg:hidden`, mesmo tratamento visual dos ícones já existentes — tema, notificações). Motivo pra Configurações especificamente: o menu do avatar só mostra "Perfil", sem indicar que leva a Ajustes — o usuário confirmou esse ponto.
+- Verificado nos três breakpoints via `preview_resize`: mobile (375px) mostra a barra flutuante de 5 itens + os 2 ícones novos na TopBar; desktop (1280px) mostra a Sidebar completa (7 itens + Configurações) e os ícones novos da TopBar corretamente escondidos — nenhuma regressão.
+
+**Verificação**: `tsc --noEmit`, `vite build`, import do backend e `pytest --collect-only` limpos a cada passo. Testado ao vivo contra produção real (após deploy): XSS neutralizado com payload real, `/auth/demo-login` respondendo 200 normalmente, navegação de todos os ícones/abas novos confirmada via snapshot de acessibilidade. As mudanças de backend desta rodada (`current_folder_id` em `/activity`, `active_share_count` em `/documents`) só voltaram a funcionar em produção depois do deploy seguinte.
 
 ---
 *Fim do progresso. Atualizar após cada tarefa concluída.*

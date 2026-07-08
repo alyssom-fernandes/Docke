@@ -41,11 +41,6 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def _client_ip_hash(request: Request) -> str:
-    ip = request.client.host if request.client else "unknown"
-    return hashlib.sha256(ip.encode()).hexdigest()
-
-
 # ---------------------------------------------------------------------------
 # POST /shares — cria link de compartilhamento
 # ---------------------------------------------------------------------------
@@ -222,7 +217,7 @@ async def _verify_password(
 
 async def _log_access(admin_conn: asyncpg.Connection, request: Request, share_id: str, success: bool) -> None:
     await SharesService.insert_access_log(
-        admin_conn, share_id=share_id, ip_hash=_client_ip_hash(request),
+        admin_conn, share_id=share_id, ip_hash=rate_limit.client_ip_hash(request),
         user_agent=request.headers.get("user-agent", "")[:500], success=success,
     )
     if success:

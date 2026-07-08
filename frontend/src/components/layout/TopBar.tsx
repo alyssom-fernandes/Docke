@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Search, Upload, ChevronDown, LogOut, User, Sun, Moon } from "lucide-react";
+import { Search, Upload, ChevronDown, LogOut, User, Sun, Moon, Anchor, Settings } from "lucide-react";
 import { toggleTheme, getTheme } from "@/lib/theme";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuthContext } from "@/lib/AuthContext";
@@ -105,6 +105,35 @@ export default function TopBar({ onUploadClick }: TopBarProps) {
           Upload
         </Button>
       )}
+
+      {/* Ancorados e Configurações — só quando a Sidebar (lg+) não está visível.
+          Ancorados e Compartilhados saíram da barra inferior pra caber em 5 itens;
+          Configurações nunca esteve alcançável fora da barra inferior ou do menu
+          do avatar (que só mostra "Perfil", não fica óbvio que leva a Ajustes). */}
+      <button
+        onClick={() => navigate("/favorites")}
+        className={`lg:hidden w-8 h-8 flex items-center justify-center rounded-[8px] transition-colors duration-fast ${
+          location.pathname.startsWith("/favorites")
+            ? "text-teal-600 bg-teal-600/10"
+            : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+        }`}
+        aria-label="Ancorados"
+        title="Ancorados"
+      >
+        <Anchor className="w-4 h-4" />
+      </button>
+      <button
+        onClick={() => navigate("/settings/profile")}
+        className={`lg:hidden w-8 h-8 flex items-center justify-center rounded-[8px] transition-colors duration-fast ${
+          location.pathname.startsWith("/settings")
+            ? "text-teal-600 bg-teal-600/10"
+            : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+        }`}
+        aria-label="Configurações"
+        title="Configurações"
+      >
+        <Settings className="w-4 h-4" />
+      </button>
 
       {/* Theme toggle */}
       <button
