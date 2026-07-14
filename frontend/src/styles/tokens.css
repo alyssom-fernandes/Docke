@@ -356,8 +356,12 @@ html, body {
      animação no MESMO elemento — sem forçar a camada de composição antes do
      primeiro frame, o Chromium/WebKit às vezes renderiza o blur "desalinhado"
      do card durante/depois da animação (sombra e vidro parecem descolados do
-     fundo). will-change nos dois eixos evita esse glitch. */
-  will-change: transform, opacity;
+     fundo). will-change list PRECISA incluir backdrop-filter aqui, não só nas
+     classes .glass-blur-*: mesma especificidade (uma classe cada) + esta regra
+     vem depois no arquivo = ela vence e SOBRESCREVE (will-change não soma
+     entre seletores), então declarar só backdrop-filter lá não tinha efeito
+     nenhum quando .modal-card também está presente no elemento. */
+  will-change: transform, opacity, backdrop-filter;
 }
 
 /* ─── Anchor Drop animation ─── */
