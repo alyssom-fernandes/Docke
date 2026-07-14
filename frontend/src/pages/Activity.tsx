@@ -123,7 +123,7 @@ export default function Activity() {
             <ChevronDown className="w-3.5 h-3.5" />
           </button>
           {exportOpen && (
-            <div className="absolute top-full right-0 mt-1 w-40 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-popover)] shadow-dropdown py-1 z-50">
+            <div className="absolute top-full right-0 mt-1 w-40 glass-panel glass-blur-strong rounded-[var(--radius-popover)] shadow-dropdown py-1 z-50">
               <button
                 onClick={() => exportActivity("csv")}
                 className="w-full text-left px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"

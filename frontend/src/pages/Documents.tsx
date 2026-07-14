@@ -1374,7 +1374,7 @@ export default function Documents() {
                     …
                   </button>
                   {crumbMenuOpen && (
-                    <div className="absolute top-full left-0 mt-1 w-56 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-popover)] shadow-dropdown py-1 z-50">
+                    <div className="absolute top-full left-0 mt-1 w-56 glass-panel glass-blur-strong rounded-[var(--radius-popover)] shadow-dropdown py-1 z-50">
                       {breadcrumbs.slice(1, -1).map((crumb, i) => (
                         <button
                           key={crumb.id}
@@ -1441,7 +1441,7 @@ export default function Documents() {
                 <MoreHorizontal className="w-4 h-4" />
               </button>
               {toolbarMenuOpen && (
-                <div className="absolute top-full right-0 mt-1 w-52 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-popover)] shadow-dropdown py-1 z-50">
+                <div className="absolute top-full right-0 mt-1 w-52 glass-panel glass-blur-strong rounded-[var(--radius-popover)] shadow-dropdown py-1 z-50">
                   <button
                     onClick={() => { setToolbarMenuOpen(false); setSelectionMode((v) => !v); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"

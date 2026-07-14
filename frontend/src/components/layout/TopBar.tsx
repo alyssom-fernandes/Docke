@@ -70,7 +70,7 @@ export default function TopBar({ onUploadClick }: TopBarProps) {
                 <button
                   key={c.id}
                   onClick={() => { setCurrent(c); setCompanyOpen(false); }}
-                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-mac-body text-left transition-colors duration-fast hover:bg-[var(--bg-hover)] rounded-[4px] mx-1 w-[calc(100%-8px)] ${
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-mac-body text-left transition-colors duration-fast hover:bg-[var(--bg-hover)] ${
                     current?.id === c.id ? "text-teal-500 font-medium" : "text-[var(--text-primary)]"
                   }`}
                 >
