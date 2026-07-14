@@ -27,20 +27,20 @@ export default function Profile() {
 
   return (
     <div className="max-w-[560px] mx-auto space-y-6">
-      <h1 className="text-xl font-semibold text-[var(--text-primary)]">Perfil</h1>
+      <h1 className="text-mac-title2 font-semibold text-[var(--text-primary)]">Perfil</h1>
 
-      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] p-6 space-y-6">
+      <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6 space-y-6">
         {/* Avatar section */}
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-full bg-teal-600 flex items-center justify-center text-white text-lg font-semibold flex-shrink-0">
+          <div className="w-14 h-14 rounded-full bg-teal-600 flex items-center justify-center text-white text-mac-title3 font-semibold flex-shrink-0">
             {(user?.full_name ?? user?.username ?? "?")
               .split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase()}
           </div>
           <div>
-            <p className="text-base font-semibold text-[var(--text-primary)]">{user?.full_name}</p>
-            <p className="text-sm text-[var(--text-secondary)]">@{user?.username}</p>
+            <p className="text-mac-callout font-semibold text-[var(--text-primary)]">{user?.full_name}</p>
+            <p className="text-mac-body text-[var(--text-secondary)]">@{user?.username}</p>
             {user?.role && (
-              <span className="inline-block mt-1 text-xs px-2 py-0.5 rounded-full bg-teal-600/10 text-teal-600 font-medium capitalize">
+              <span className="inline-block mt-1 text-mac-caption px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-500 font-medium capitalize">
                 {user.role}
               </span>
             )}

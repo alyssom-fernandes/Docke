@@ -15,6 +15,7 @@ import SettingsLayout from "@/pages/Settings/SettingsLayout";
 import Profile from "@/pages/Settings/Profile";
 import Organization from "@/pages/Settings/Organization";
 import Users from "@/pages/Settings/Users";
+import Metadata from "@/pages/Settings/Metadata";
 import Security from "@/pages/Settings/Security";
 import Preferences from "@/pages/Settings/Preferences";
 import Retention from "@/pages/Settings/Retention";
@@ -46,7 +47,7 @@ function ProtectedRoutes() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-[var(--bg-page)]">
         <div className="brand-wordmark w-[150px] h-[43px]" role="img" aria-label="Docke" />
-        <div className="w-5 h-5 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
+        <div className="w-5 h-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -71,6 +72,7 @@ function ProtectedRoutes() {
               <Route path="profile" element={<Profile />} />
               <Route path="organization" element={<Organization />} />
               <Route path="users" element={<Users />} />
+              <Route path="metadata" element={<Metadata />} />
               <Route path="security" element={<Security />} />
               <Route path="preferences" element={<Preferences />} />
               <Route path="retention" element={<Retention />} />

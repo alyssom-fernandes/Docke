@@ -5,6 +5,11 @@ module.exports = {
     "./index.html",
     "./src/**/*.{ts,tsx}",
   ],
+  safelist: [
+    "text-mac-caption2", "text-mac-caption", "text-mac-footnote", "text-mac-body",
+    "text-mac-callout", "text-mac-title3", "text-mac-title2", "text-mac-title1", "text-mac-large",
+    "text-sm", "text-xs", "text-lg", "text-xl", "text-2xl",
+  ],
   theme: {
     extend: {
       colors: {
@@ -36,24 +41,37 @@ module.exports = {
         },
       },
       fontFamily: {
-        sans: ["Inter", "-apple-system", "BlinkMacSystemFont", "sans-serif"],
+        sans: ["-apple-system", "BlinkMacSystemFont", "Inter", "Segoe UI", "sans-serif"],
         mono: ["JetBrains Mono", "Consolas", "monospace"],
+      },
+      fontSize: {
+        "mac-caption2": ["10px", "12px"],
+        "mac-caption": ["11px", "14px"],
+        "mac-footnote": ["12px", "15px"],
+        "mac-body": ["13px", "16px"],
+        "mac-callout": ["14px", "18px"],
+        "mac-title3": ["15px", "19px"],
+        "mac-title2": ["17px", "22px"],
+        "mac-title1": ["22px", "28px"],
+        "mac-large": ["26px", "32px"],
       },
       borderRadius: {
         badge: "4px",
+        mac: "6px",
         sm: "8px",
         card: "12px",
+        dialog: "14px",
         stat: "16px",
       },
       transitionDuration: {
-        fast: "120ms",
-        normal: "180ms",
-        slow: "240ms",
+        fast: "100ms",
+        normal: "150ms",
+        slow: "200ms",
       },
       boxShadow: {
         card: "0 4px 12px rgba(0,0,0,0.06)",
-        dropdown: "0 4px 16px rgba(0,0,0,0.10)",
-        modal: "0 8px 24px rgba(0,0,0,0.12)",
+        dropdown: "var(--shadow-dropdown)",
+        modal: "var(--shadow-dialog)",
         drag: "0 12px 36px rgba(0,0,0,0.16)",
       },
     },

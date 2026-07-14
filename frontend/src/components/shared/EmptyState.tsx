@@ -23,9 +23,9 @@ export default function EmptyState({ title, description, icon, action }: EmptySt
           <Anchor className="w-3 h-3 text-teal-400 opacity-70" />
         </div>
       </div>
-      <p className="text-base font-medium text-[var(--text-primary)] mb-1">{title}</p>
+      <p className="text-mac-callout font-medium text-[var(--text-primary)] mb-1">{title}</p>
       {description && (
-        <p className="text-sm text-[var(--text-secondary)] max-w-xs">{description}</p>
+        <p className="text-mac-body text-[var(--text-secondary)] max-w-xs">{description}</p>
       )}
       {action && <div className="mt-4">{action}</div>}
     </div>

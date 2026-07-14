@@ -2,75 +2,240 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   macOS 27 Golden Gate — Design System Tokens
+   Ref: design/MACOS27-REFERENCE.md, docs/MacOS 27/
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Sobrescreve o preflight do Tailwind diretamente — o pipeline dev do Vite
+   estava servindo uma versão desatualizada de fontFamily.sans (Inter na
+   frente) mesmo após config corrigida e cache limpo. CSS puro elimina a
+   dependência desse pipeline pra essa propriedade específica. */
+html, body {
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+}
+
 /* ─── Light mode (padrão) ─── */
 :root {
-  --bg-page: #F8F9FA;
+  --bg-page: #E9E9E3;
   --bg-card: #FFFFFF;
   --bg-elevated: #FFFFFF;
-  --bg-hover: #F1F3F5;
-  --border-default: #E9ECEF;
-  --text-primary: #212529;
-  --text-secondary: #5A6268; /* ADR-018: era #6C757D, abaixo de WCAG AA */
-  --text-tertiary: #6C757D;
-  --text-placeholder: #ADB5BD;
+  --bg-hover: rgba(0,0,0,0.04);
+  --border-default: rgba(0,0,0,0.08);
+  --text-primary: rgba(0,0,0,0.84);
+  --text-secondary: rgba(0,0,0,0.56);
+  --text-tertiary: rgba(0,0,0,0.48);
+  --text-placeholder: rgba(0,0,0,0.22);
   --afn-brand: #6b1f2a;
+  --afn-brand-stroke: rgba(107,31,42,0.4);
+  --afn-muted: rgba(0,0,0,0.40);
 
-  /* ─── Liquid Glass (Adendo 02/03) — modo claro ─── */
-  --glass-bg: rgba(255,255,255,0.68);
-  --glass-bg-strong: rgba(255,255,255,0.72);
-  --glass-border: rgba(20,20,18,0.08);
-  --glass-panel-bg: linear-gradient(180deg, rgba(255,255,255,0.85), rgba(255,255,255,0.45));
-  --glass-shadow: 0 1px 0 rgba(255,255,255,0.8) inset, 0 10px 26px rgba(20,20,18,0.08);
-  --glass-shadow-hover: 0 1px 0 rgba(255,255,255,0.9) inset, 0 16px 34px rgba(20,20,18,0.12);
-  --glass-highlight: linear-gradient(90deg, transparent, rgba(255,255,255,0.95), transparent);
-  --glass-fallback-bg: rgba(255,255,255,0.92); /* ADR-019: sem suporte a backdrop-filter */
+  /* Wallpaper: cinza-bege quente com presença suficiente pra os cards brancos
+     terem contra o que "flutuar" — Apple tem um degrau tonal claro entre a
+     tela (cinza médio) e os cards (branco). Nem #ECECEC frio/chapado, nem
+     #F5F5F0 lavado demais. */
+  --wallpaper: radial-gradient(ellipse at 80% 90%, rgba(0,0,0,0.04) 0%, transparent 55%),
+               #E9E9E3;
+
+  /* Liquid Glass — macOS 27 style. Cards de conteúdo quase sólidos (0.94) pra
+     serem branco crocante e não deixarem vazar o gradiente do fundo. */
+  --glass-bg: rgba(255,255,255,0.60);
+  --glass-bg-strong: rgba(255,255,255,0.80);
+  --glass-border: rgba(0,0,0,0.08);
+  --glass-panel-bg: rgba(255,255,255,0.94);
+  --glass-shadow: inset 0 0.5px 0 rgba(255,255,255,0.80),
+                  inset 0 -0.5px 0 rgba(0,0,0,0.05),
+                  0 0.5px 1px rgba(0,0,0,0.04),
+                  0 10px 40px rgba(0,0,0,0.18),
+                  0 24px 64px rgba(0,0,0,0.12);
+  --glass-shadow-hover: inset 0 0.5px 0 rgba(255,255,255,0.90),
+                        inset 0 -0.5px 0 rgba(0,0,0,0.06),
+                        0 0.5px 1px rgba(0,0,0,0.05),
+                        0 14px 48px rgba(0,0,0,0.22),
+                        0 28px 72px rgba(0,0,0,0.15);
+  --glass-highlight: linear-gradient(90deg, transparent, rgba(255,255,255,0.90), transparent);
+  --glass-fallback-bg: rgba(255,255,255,0.92);
   --glass-fallback-border: rgba(0,0,0,0.06);
-  --teal-bright: #0E9B86; /* mais escuro que no escuro, mantém contraste sobre branco */
-  --badge-teal-text: #086B61; /* ADR-018: badge de status no claro */
+  --teal-bright: #0E9B86;
+  --badge-teal-text: #086B61;
+
+  /* Sombras de sobreposição — diálogos flutuam ACIMA de tudo, então precisam
+     da sombra mais forte do sistema (mais forte que os painéis de fundo). */
+  --shadow-dialog: 0 24px 64px rgba(0,0,0,0.28), 0 8px 24px rgba(0,0,0,0.16);
+  --shadow-dropdown: 0 12px 32px rgba(0,0,0,0.18), 0 4px 12px rgba(0,0,0,0.10);
+
+  /* Corner radii */
+  --radius-panel: 12px;
+  --radius-dialog: 14px;
+  --radius-popover: 10px;
+  --radius-control: 6px;
+  --radius-pill: 9999px;
 }
 
 /* ─── Dark mode ─── */
 .dark {
-  --bg-page: #111111;
-  --bg-card: #1A1A1A;
-  --bg-elevated: #222222;
-  --bg-hover: #2A2A2A;
-  --border-default: #2A2A2A;
-  --text-primary: #F0F0F0;
-  --text-secondary: #A8A8A8; /* ADR-018: era #999999, abaixo de WCAG AA */
-  --text-tertiary: #707070;
-  --text-placeholder: #505050;
+  --bg-page: #1E1E1E;
+  --bg-card: #282828;
+  --bg-elevated: #323232;
+  --bg-hover: rgba(255,255,255,0.06);
+  --border-default: rgba(255,255,255,0.10);
+  --text-primary: rgba(255,255,255,0.84);
+  --text-secondary: rgba(255,255,255,0.55);
+  --text-tertiary: rgba(255,255,255,0.48);
+  --text-placeholder: rgba(255,255,255,0.18);
   --afn-brand: #c44a5a;
+  --afn-brand-stroke: rgba(196,74,90,0.4);
+  --afn-muted: rgba(255,255,255,0.28);
 
-  /* ─── Liquid Glass (Adendo 02/03) — modo escuro ─── */
-  --glass-bg: rgba(255,255,255,0.055);
-  --glass-bg-strong: rgba(22,23,26,0.65);
-  --glass-border: rgba(255,255,255,0.09);
-  --glass-panel-bg: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.025));
-  --glass-shadow: 0 1px 0 rgba(255,255,255,0.08) inset, 0 12px 30px rgba(0,0,0,0.35);
-  --glass-shadow-hover: 0 1px 0 rgba(255,255,255,0.10) inset, 0 18px 40px rgba(0,0,0,0.45);
-  --glass-highlight: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
-  --glass-fallback-bg: rgba(20,20,24,0.94); /* ADR-019: sem suporte a backdrop-filter */
-  --glass-fallback-border: rgba(255,255,255,0.08);
+  /* Dark: cinza-carvão com highlights sutis de LUZ (não de cor).
+     Apple no dark mode usa apenas variação de brilho, sem tinta saturada —
+     é o wallpaper padrão do sistema (preto/carvão) que fica atrás do vidro. */
+  --wallpaper: radial-gradient(ellipse at 20% 10%, rgba(255,255,255,0.06) 0%, transparent 50%),
+               radial-gradient(ellipse at 80% 90%, rgba(255,255,255,0.04) 0%, transparent 55%),
+               #1E1E1E;
+
+  --glass-bg: rgba(255,255,255,0.05);
+  --glass-bg-strong: rgba(38,38,40,0.72);
+  --glass-border: rgba(255,255,255,0.14);
+  --glass-panel-bg: rgba(38,38,40,0.60);
+  --glass-shadow: inset 0 0.5px 0 rgba(255,255,255,0.12),
+                  inset 0 -0.5px 0 rgba(0,0,0,0.30),
+                  0 0.5px 1px rgba(0,0,0,0.10),
+                  0 16px 40px rgba(0,0,0,0.40),
+                  0 32px 72px rgba(0,0,0,0.24);
+  --glass-shadow-hover: inset 0 0.5px 0 rgba(255,255,255,0.16),
+                        inset 0 -0.5px 0 rgba(0,0,0,0.35),
+                        0 0.5px 1px rgba(0,0,0,0.12),
+                        0 18px 46px rgba(0,0,0,0.46),
+                        0 36px 80px rgba(0,0,0,0.28);
+  --glass-highlight: linear-gradient(90deg, transparent, rgba(255,255,255,0.20), transparent);
+  --glass-fallback-bg: rgba(28,28,30,0.94);
+  --glass-fallback-border: rgba(255,255,255,0.06);
   --teal-bright: #29C9A8;
-  --badge-teal-text: var(--teal-bright); /* contraste já suficiente no escuro (ADR-018) */
+  --badge-teal-text: var(--teal-bright);
+
+  --shadow-dialog: 0 24px 64px rgba(0,0,0,0.70), 0 8px 24px rgba(0,0,0,0.45);
+  --shadow-dropdown: 0 12px 32px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.35);
 }
 
-/* ─── Raios de vidro (Adendo 02) ─── */
-:root {
-  --radius-glass-panel: 22px;   /* sidebar, tabela, cards, topbar */
-  --radius-glass-popover: 14px; /* dropdowns, task panel */
-  --radius-glass-pill: 50px;    /* barra de ações em lote */
+/* ─── Sombras de sobreposição — CSS puro sobrescreve os utilities do Tailwind
+   (o cache de config do dev server nesta máquina ignora mudanças no boxShadow
+   token; definir aqui garante que diálogos e dropdowns tenham a sombra forte
+   theme-aware). ─── */
+.shadow-modal {
+  box-shadow: var(--shadow-dialog);
+}
+.shadow-dropdown {
+  box-shadow: var(--shadow-dropdown);
+}
+
+/* ─── Ícones — traço fino uniforme estilo SF Symbols ─── */
+.lucide {
+  stroke-width: 1.5;
+}
+
+/* ─── Escala tipográfica macOS 27 (SF Pro) ───
+   Definido como CSS puro em vez de tokens do Tailwind porque o parser de
+   fontSize da config estava silenciosamente ignorando essas chaves — todo
+   texto estava caindo em 16px (default do browser) apesar das classes.
+   Escala baseada em macOS HIG: Caption2 10, Caption 11, Footnote 12, Body 13,
+   Callout 14, Title3 15, Title2 17, Title1 22, Large 26. */
+.text-mac-caption2 { font-size: 10px; line-height: 12px; }
+.text-mac-caption  { font-size: 11px; line-height: 14px; }
+.text-mac-footnote { font-size: 12px; line-height: 15px; }
+.text-mac-body     { font-size: 13px; line-height: 16px; }
+.text-mac-callout  { font-size: 14px; line-height: 18px; }
+.text-mac-title3   { font-size: 15px; line-height: 19px; font-weight: 600; }
+.text-mac-title2   { font-size: 17px; line-height: 22px; font-weight: 700; }
+.text-mac-title1   { font-size: 22px; line-height: 28px; font-weight: 700; }
+.text-mac-large    { font-size: 26px; line-height: 32px; font-weight: 700; }
+
+/* ─── Glass panel base ─── */
+.glass-panel {
+  background: var(--glass-fallback-bg);
+  border: 1px solid var(--glass-fallback-border);
+}
+@supports (backdrop-filter: blur(12px)) or (-webkit-backdrop-filter: blur(12px)) {
+  .glass-panel {
+    background: var(--glass-panel-bg);
+    border: 1px solid var(--glass-border);
+  }
+}
+
+/* ─── Blur intensities ─── */
+.glass-blur-panel {
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  will-change: backdrop-filter;
+}
+.glass-blur-table {
+  backdrop-filter: blur(12px) saturate(160%);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+}
+.glass-blur-card {
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+.glass-blur-strong {
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+}
+.glass-blur-pill {
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+}
+
+.glass-scroll-active.glass-blur-table {
+  backdrop-filter: blur(0px);
+  -webkit-backdrop-filter: blur(0px);
+}
+
+.glass-shadow { box-shadow: var(--glass-shadow); }
+
+/* ─── Glass hover — subtle, no translation (macOS style) ─── */
+.glass-interactive {
+  box-shadow: var(--glass-shadow);
+  transition: box-shadow 150ms ease-out;
+}
+.glass-interactive:hover {
+  box-shadow: var(--glass-shadow-hover);
+}
+
+/* ─── Specular highlight line ─── */
+.glass-highlight-line::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: var(--glass-highlight);
+  border-radius: inherit;
+  pointer-events: none;
+}
+.glass-highlight-line-wide::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: var(--glass-highlight);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* ─── Glass icon badge ─── */
+.glass-icon-badge {
+  background: rgba(29,184,153,0.16);
+  color: var(--teal-bright);
+  border-radius: 10px;
+}
+
+/* ─── Status badge ─── */
+.status-badge {
+  background: rgba(29,184,153,0.20);
+  color: var(--badge-teal-text);
 }
 
 /*
- * ─── Logo oficial (marca + wordmark) ───
- * Os PNGs entregues (docs/imageXXXXX.png) vieram em duas cores fixas (verde
- * e teal escuro) que não batiam exatamente com nenhum dos dois tokens de
- * marca (--teal-bright claro/escuro). Em vez de manter dois arquivos por
- * tema, usamos só o alpha channel dos PNGs como máscara CSS e pintamos com
- * background-color: var(--teal-bright) — a cor sempre bate exatamente com o
- * tema atual, e só precisamos de um arquivo por formato (mark/wordmark).
+ * ─── Logo (marca + wordmark) ───
  */
 .brand-mark,
 .brand-wordmark {
@@ -92,89 +257,14 @@
   mask-image: url("/brand/docke-wordmark.png");
 }
 
-/*
- * ADR-019 — fallback explícito para backdrop-filter.
- * Fora da @supports, assume-se fundo sólido translúcido (opacidade calibrada
- * para blur fica ilegível sem blur — nunca usar o --glass-bg/--glass-panel-bg
- * "real" como fallback). Aplicar .glass-panel em qualquer elemento que hoje
- * usaria --glass-panel-bg diretamente.
- */
-.glass-panel {
-  background: var(--glass-fallback-bg);
-  border: 1px solid var(--glass-fallback-border);
-}
-@supports (backdrop-filter: blur(12px)) or (-webkit-backdrop-filter: blur(12px)) {
-  .glass-panel {
-    background: var(--glass-panel-bg);
-    border: 1px solid var(--glass-border);
-  }
-}
-
-/* Intensidades de blur (ADR-017/020) — aplicar junto com .glass-panel */
-/* ADR-017.4: will-change só em sidebar/topbar (fixos) — nunca dentro de containers com scroll */
-.glass-blur-panel { backdrop-filter: blur(14px) saturate(150%); -webkit-backdrop-filter: blur(14px) saturate(150%); will-change: backdrop-filter; } /* sidebar, topbar */
-.glass-blur-table { backdrop-filter: blur(10px) saturate(140%); -webkit-backdrop-filter: blur(10px) saturate(140%); } /* moldura da tabela — blur raso, ADR-017.1 */
-.glass-blur-card { backdrop-filter: blur(20px) saturate(150%); -webkit-backdrop-filter: blur(20px) saturate(150%); } /* stat cards */
-.glass-blur-strong { backdrop-filter: blur(24px) saturate(150%); -webkit-backdrop-filter: blur(24px) saturate(150%); } /* popovers (task panel, dropdown) */
-.glass-blur-pill { backdrop-filter: blur(28px) saturate(150%); -webkit-backdrop-filter: blur(28px) saturate(150%); } /* batch bar */
-
-/* ADR-017.2: durante scroll ativo, remove o blur da moldura da tabela */
-.glass-scroll-active.glass-blur-table {
-  backdrop-filter: blur(0px);
-  -webkit-backdrop-filter: blur(0px);
-}
-
-.glass-shadow { box-shadow: var(--glass-shadow); }
-
-/* Elementos interativos de vidro (Adendo 02, item 7): eleva 2px + troca sombra no hover */
-.glass-interactive {
-  box-shadow: var(--glass-shadow);
-  transition: transform 160ms ease, box-shadow 160ms ease;
-}
-.glass-interactive:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--glass-shadow-hover);
-}
-
-/* Linha de brilho no topo de qualquer painel de vidro — usar com position:relative no pai */
-.glass-highlight-line::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 14px; right: 14px;
-  height: 1px;
-  background: var(--glass-highlight);
-  pointer-events: none;
-}
-.glass-highlight-line-wide::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 18px; right: 18px;
-  height: 1px;
-  background: var(--glass-highlight);
-  pointer-events: none;
-}
-
-/* Ícone circular em contexto de vidro (stat cards, task rows) */
-.glass-icon-badge {
-  background: rgba(29,184,153,0.16);
-  color: var(--teal-bright);
-  border-radius: 10px;
-}
-
-/* ADR-018: badge de status (ex: "OCR concluído") */
-.status-badge {
-  background: rgba(29,184,153,0.20);
-  color: var(--badge-teal-text);
-}
-
-/* ─── Transição de tema ─── */
+/* ─── Theme transition ─── */
 * {
   transition-property: background-color, color, border-color, box-shadow;
-  transition-duration: 180ms;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
 }
 
-/* ─── prefers-reduced-motion (Invariante I14) ─── */
+/* ─── prefers-reduced-motion ─── */
 @media (prefers-reduced-motion: reduce) {
   * {
     animation: none !important;
@@ -182,57 +272,83 @@
   }
 }
 
-/* ─── Focus visible: ring teal ─── */
+/* ─── Focus visible: ring accent ─── */
 :focus-visible {
-  outline: 2px solid #3FBFA8;
+  outline: 3px solid #3FBFA8;
   outline-offset: 2px;
+}
+
+/* ─── Overlay scrollbars (macOS style) ─── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,0,0,0.18) transparent;
+}
+.dark * {
+  scrollbar-color: rgba(255,255,255,0.15) transparent;
+}
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.18);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.15);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0,0,0,0.30);
+  background-clip: content-box;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.25);
+  background-clip: content-box;
 }
 
 /* ─── Page enter animation ─── */
 @keyframes page-enter {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-
 .page-enter {
-  /* Sem fill-mode "both": um transform computado persistente aqui (mesmo
-     translateY(0), sem efeito visual) criaria um containing block para
-     todo position:fixed descendente (ex: modais), quebrando a cobertura
-     de tela cheia. A animação roda uma vez e libera o transform ao final. */
-  animation: page-enter 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  animation: page-enter 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-/* ─── Toast slide-in animation ─── */
+/* ─── Toast slide-in ─── */
 @keyframes toast-in {
   from { opacity: 0; transform: translateX(12px); }
   to   { opacity: 1; transform: translateX(0); }
 }
-
 .toast-in {
-  animation: toast-in 180ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation: toast-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
-/* ─── Modal card animation ─── */
+/* ─── Modal card animation (spring-like) ─── */
 @keyframes modal-in {
-  from { opacity: 0; transform: scale(0.95); }
+  from { opacity: 0; transform: scale(0.96); }
   to   { opacity: 1; transform: scale(1.0); }
 }
-
 .modal-card {
-  animation: modal-in 240ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation: modal-in 250ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
-/* ─── Anchor Drop animation (M4.9) ─── */
+/* ─── Anchor Drop animation ─── */
 @keyframes anchor-drop {
   0%   { transform: translateY(0); }
   30%  { transform: translateY(-2px); }
   100% { transform: translateY(0) scale(1.05); }
 }
-
 .anchor-drop {
   animation: anchor-drop 280ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
-
 @media (prefers-reduced-motion: reduce) {
   .anchor-drop {
     animation: none !important;

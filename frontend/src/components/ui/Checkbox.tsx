@@ -6,7 +6,7 @@ export default function Checkbox({ className = "", ...props }: CheckboxProps) {
   return (
     <input
       type="checkbox"
-      className={`w-4 h-4 rounded accent-teal-600 cursor-pointer ${className}`}
+      className={`w-4 h-4 rounded accent-teal-500 cursor-pointer ${className}`}
       {...props}
     />
   );

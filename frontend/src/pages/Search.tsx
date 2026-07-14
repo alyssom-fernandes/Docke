@@ -81,23 +81,23 @@ export default function Search() {
   }
 
   return (
-    <div className="max-w-[800px] mx-auto space-y-6">
-      <h1 className="text-xl font-semibold text-[var(--text-primary)]">Busca avançada</h1>
+    <div className="space-y-6">
+      <h1 className="text-mac-title2 font-semibold text-[var(--text-primary)]">Busca avançada</h1>
 
-      <form onSubmit={handleSubmit} className="flex gap-2">
+      <form onSubmit={handleSubmit} className="flex gap-2 max-w-[800px]">
         <div className="flex-1 relative">
-          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-placeholder)] pointer-events-none" />
+          <SearchIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-placeholder)] pointer-events-none" />
           <input
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Digite para buscar documentos por conteúdo ou nome…"
-            className="w-full h-10 pl-9 pr-4 text-sm bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[8px] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-2 focus:ring-teal-400"
+            className="w-full h-10 pl-10 pr-4 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-full text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
           />
         </div>
         <button
           type="submit"
-          className="h-10 px-4 bg-teal-600 text-white text-sm font-medium rounded-[8px] hover:bg-teal-500 transition-colors duration-fast"
+          className="h-10 px-5 bg-teal-600 text-white text-mac-body font-medium rounded-full hover:bg-teal-500 transition-colors duration-fast"
         >
           Buscar
         </button>
@@ -106,7 +106,7 @@ export default function Search() {
       {loading ? (
         <div className="space-y-3">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-20 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[8px] animate-pulse" />
+            <div key={i} className="h-20 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] animate-pulse" />
           ))}
         </div>
       ) : searched && results.length === 0 ? (
@@ -117,7 +117,7 @@ export default function Search() {
         />
       ) : results.length > 0 ? (
         <>
-          <p className="text-sm text-[var(--text-secondary)]">{total} resultado{total !== 1 ? "s" : ""} para "{params.get("q")}"</p>
+          <p className="text-mac-body text-[var(--text-secondary)]">{total} resultado{total !== 1 ? "s" : ""} para "{params.get("q")}"</p>
           <ul className="space-y-3">
             {results.map((r) => (
               <li
@@ -131,7 +131,7 @@ export default function Search() {
                     navigate(`/documents?folder_id=${r.folder_id ?? ""}&doc=${r.id}`);
                   }
                 }}
-                className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[8px] px-5 py-4 hover:border-teal-400 transition-colors duration-fast cursor-pointer"
+                className="glass-panel glass-blur-card glass-highlight-line rounded-[16px] px-5 py-4 hover:border-teal-400 transition-colors duration-fast cursor-pointer"
               >
                 <div className="flex items-start gap-3">
                   {(() => { const s = getFileStyle(r.name); const Icon = s.icon; return (
@@ -140,14 +140,14 @@ export default function Search() {
                     </div>
                   ); })()}
                   <div className="flex-1 min-w-0">
-                    <TruncatedFileName name={r.name} className="text-sm font-medium text-[var(--text-primary)]" />
+                    <TruncatedFileName name={r.name} className="text-mac-body font-medium text-[var(--text-primary)]" />
                     {r.snippet && (
                       <p
-                        className="text-xs text-[var(--text-secondary)] mt-1 line-clamp-2"
+                        className="text-mac-caption text-[var(--text-secondary)] mt-1 line-clamp-2"
                         dangerouslySetInnerHTML={{ __html: highlightSnippet(r.snippet) }}
                       />
                     )}
-                    <p className="text-xs text-[var(--text-tertiary)] mt-1">
+                    <p className="text-mac-caption text-[var(--text-tertiary)] mt-1">
                       {r.folder_name && <>{r.folder_name} · </>}
                       {fmtDate(r.created_at)}
                     </p>

@@ -1,7 +1,8 @@
-import { ReactNode, useState, useRef, useEffect } from "react";
+import { ReactNode, useRef, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
+import Dock from "./Dock";
+import Footer from "./Footer";
 import CommandPalette from "@/components/shared/CommandPalette";
 import ErrorBoundary from "@/components/shared/ErrorBoundary";
 import BottomTabBar from "./BottomTabBar";
@@ -10,10 +11,7 @@ interface AppShellProps {
   children: ReactNode;
 }
 
-const SIDEBAR_COLLAPSED_KEY = "docke-sidebar-collapsed";
-
 export default function AppShell({ children }: AppShellProps) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
   const navigate = useNavigate();
   const location = useLocation();
   const mainRef = useRef<HTMLElement>(null);
@@ -23,34 +21,31 @@ export default function AppShell({ children }: AppShellProps) {
   }, [location.pathname]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[var(--bg-page)] p-3 md:p-5 gap-4">
-      {/* Sidebar: só desktop (lg+) — navegação mobile é a BottomTabBar, sem drawer duplicado */}
-      <div className="hidden lg:block">
-        <Sidebar
-          collapsed={sidebarCollapsed}
-          onToggle={() => {
-            setSidebarCollapsed((v) => {
-              const next = !v;
-              localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
-              return next;
-            });
-          }}
-        />
-      </div>
+    <div className="h-screen overflow-hidden relative" style={{ background: 'var(--wallpaper)' }}>
+      {/* TopBar flutua fixa sobre o conteúdo — mesmo comportamento do Dock,
+          não mais um bloco em fluxo normal acima do <main> */}
+      <TopBar onUploadClick={() => navigate("/documents")} />
 
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden gap-4">
-        <TopBar onUploadClick={() => navigate("/documents")} />
-        <main ref={mainRef} className="flex-1 overflow-y-auto p-6 pb-20 md:pb-6">
-          <ErrorBoundary key={location.pathname}>
-            <div className="page-enter">
-              {children}
-            </div>
-          </ErrorBoundary>
-        </main>
-      </div>
+      {/* pt: espaço pra TopBar fixa (56px + respiro). pb: espaço pro Dock/barra inferior flutuantes */}
+      <main
+        ref={mainRef}
+        className="h-full overflow-y-auto px-3 md:px-5 pt-[84px] md:pt-[92px] pb-28 md:pb-8 lg:pb-28"
+      >
+        <ErrorBoundary key={location.pathname}>
+          {/* Só padding vertical aqui — o horizontal já vem do px-3/md:px-5 do
+              <main>, que é exatamente o mesmo inset da TopBar/Dock. Isso é o
+              que faz o conteúdo (tabelas, cards) alinhar com a borda da
+              TopBar em vez de ficar mais estreito que ela. */}
+          <div className="page-enter py-6">
+            {children}
+          </div>
+        </ErrorBoundary>
+        <Footer />
+      </main>
 
-      {/* Bottom tab bar (mobile only) */}
+      {/* Navegação inferior: barra mobile (<md) ou dock flutuante desktop (lg+) */}
       <BottomTabBar />
+      <Dock />
 
       <CommandPalette />
     </div>

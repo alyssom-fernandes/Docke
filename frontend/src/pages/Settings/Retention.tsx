@@ -40,16 +40,16 @@ export default function Retention() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-base font-semibold text-[var(--text-primary)]">Retenção</h2>
+      <h2 className="text-mac-callout font-semibold text-[var(--text-primary)]">Retenção</h2>
 
-      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] p-6 space-y-5">
+      <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6 space-y-5">
         <div className="flex items-center gap-2">
-          <Archive className="w-4 h-4 text-teal-600" />
-          <h3 className="text-sm font-medium text-[var(--text-primary)]">Dias na lixeira antes da exclusão permanente</h3>
+          <Archive className="w-4 h-4 text-teal-500" />
+          <h3 className="text-mac-body font-medium text-[var(--text-primary)]">Dias na lixeira antes da exclusão permanente</h3>
         </div>
 
         {loading ? (
-          <div className="h-9 bg-[var(--bg-hover)] rounded-[8px] animate-pulse max-w-[200px]" />
+          <div className="h-9 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse max-w-[200px]" />
         ) : (
           <div className="flex items-center gap-2 max-w-[200px]">
             <input
@@ -57,15 +57,15 @@ export default function Retention() {
               min={1}
               value={days}
               onChange={(e) => setDays(Math.max(1, Number(e.target.value)))}
-              className="w-24 h-9 px-3 text-sm bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[8px] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-teal-400"
+              className="w-24 h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
             />
-            <span className="text-sm text-[var(--text-secondary)]">dias</span>
+            <span className="text-mac-body text-[var(--text-secondary)]">dias</span>
           </div>
         )}
 
-        <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-[8px]">
+        <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-[var(--radius-control)]">
           <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-amber-800 dark:text-amber-300">
+          <p className="text-mac-caption text-amber-800 dark:text-amber-300">
             Itens excluídos há mais de {carencia} dia{carencia !== 1 ? "s" : ""} manterão a retenção anterior.
             Itens mais recentes seguirão a nova regra imediatamente.
           </p>

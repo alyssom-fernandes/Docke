@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Lock, Download, FolderOpen, AlertCircle, Anchor, ChevronRight } from "lucide-react";
+import { Lock, Download, FolderOpen, AlertCircle, ChevronRight } from "lucide-react";
 import { getFileStyle } from "@/lib/fileType";
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? "http://localhost:8000") + "/api/v1";
@@ -90,26 +90,23 @@ export default function PublicShare() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--bg-page)] flex flex-col items-center px-4 py-10">
+    <div className="min-h-screen flex flex-col items-center px-4 py-10" style={{ background: "var(--wallpaper)" }}>
       <div className="w-full max-w-[560px]">
-        <div className="flex items-center justify-center gap-2 mb-8">
-          <div className="w-8 h-8 bg-teal-600 rounded-[8px] flex items-center justify-center">
-            <Anchor className="w-4 h-4 text-white" />
-          </div>
-          <span className="text-lg font-semibold text-[var(--text-primary)]">Docke</span>
+        <div className="flex items-center justify-center mb-8">
+          <div className="brand-wordmark w-[130px] h-[37px]" role="img" aria-label="Docke" />
         </div>
 
-        <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] p-6 shadow-sm">
+        <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-dialog)] p-6 shadow-modal">
           {loading && !content && !error && (
             <div className="flex justify-center py-10">
-              <div className="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
+              <div className="w-6 h-6 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
             </div>
           )}
 
           {error && (
             <div className="flex flex-col items-center text-center gap-3 py-8">
               <AlertCircle className="w-10 h-10 text-[var(--text-placeholder)]" />
-              <p className="text-sm text-[var(--text-secondary)]">{error}</p>
+              <p className="text-mac-body text-[var(--text-secondary)]">{error}</p>
             </div>
           )}
 
@@ -121,16 +118,16 @@ export default function PublicShare() {
               <div className="w-12 h-12 bg-amber-50 dark:bg-amber-900/20 rounded-[12px] flex items-center justify-center">
                 <Lock className="w-6 h-6 text-amber-600 dark:text-amber-400" />
               </div>
-              <p className="text-sm text-[var(--text-primary)] font-medium">"{info.name}" está protegido por senha</p>
+              <p className="text-mac-body text-[var(--text-primary)] font-medium">"{info.name}" está protegido por senha</p>
               <input
                 type="password"
                 autoFocus
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Senha"
-                className="w-full h-10 px-3 text-sm bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[8px] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-2 focus:ring-teal-400"
+                className="w-full h-10 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
               />
-              <button type="submit" className="w-full h-10 bg-teal-600 text-white text-sm font-medium rounded-[8px] hover:bg-teal-500 transition-colors duration-fast">
+              <button type="submit" className="w-full h-10 bg-teal-600 text-white text-mac-body font-medium rounded-[var(--radius-control)] hover:bg-teal-500 transition-colors duration-fast">
                 Acessar
               </button>
             </form>
@@ -139,20 +136,18 @@ export default function PublicShare() {
           {!error && content?.type === "document" && (
             <div className="text-center py-4">
               {(() => { const s = getFileStyle(content.name); const Icon = s.icon; return (
-                <div className={`w-14 h-14 mx-auto rounded-[12px] flex items-center justify-center mb-4 ${s.bgColor}`}>
-                  <Icon className={`w-7 h-7 ${s.iconColor}`} />
-                </div>
+                <Icon className={`w-12 h-12 mx-auto mb-4 ${s.iconColor}`} strokeWidth={1.5} />
               ); })()}
-              <p className="text-sm font-medium text-[var(--text-primary)] break-words mb-4">{content.name}</p>
+              <p className="text-mac-body font-medium text-[var(--text-primary)] break-words mb-4">{content.name}</p>
               {content.mime_type.startsWith("image/") ? (
-                <img src={content.preview_url} alt={content.name} className="max-w-full max-h-[400px] mx-auto rounded-[8px] mb-4" />
+                <img src={content.preview_url} alt={content.name} className="max-w-full max-h-[400px] mx-auto rounded-[var(--radius-control)] mb-4" />
               ) : content.mime_type === "application/pdf" ? (
-                <iframe src={content.preview_url} className="w-full h-[400px] border border-[var(--border-default)] rounded-[8px] mb-4" title={content.name} />
+                <iframe src={content.preview_url} className="w-full h-[400px] border border-[var(--border-default)] rounded-[var(--radius-control)] mb-4" title={content.name} />
               ) : null}
               <a
                 href={content.preview_url}
                 download={content.name}
-                className="inline-flex items-center gap-1.5 h-9 px-4 bg-teal-600 text-white text-sm rounded-[8px] hover:bg-teal-500 transition-colors duration-fast"
+                className="inline-flex items-center gap-1.5 h-9 px-4 bg-teal-600 text-white text-mac-body rounded-[var(--radius-control)] hover:bg-teal-500 transition-colors duration-fast"
               >
                 <Download className="w-4 h-4" />
                 Baixar
@@ -163,26 +158,26 @@ export default function PublicShare() {
           {!error && content?.type === "folder" && (
             <div>
               {path.length > 0 && (
-                <nav className="flex items-center gap-1 mb-4 text-xs text-[var(--text-secondary)]">
-                  <button onClick={() => navigateTo(null, 0)} className="hover:text-teal-600">raiz</button>
+                <nav className="flex items-center gap-1 mb-4 text-mac-caption text-[var(--text-secondary)]">
+                  <button onClick={() => navigateTo(null, 0)} className="hover:text-teal-500">raiz</button>
                   {path.map((p, i) => (
                     <span key={p.id} className="flex items-center gap-1">
                       <ChevronRight className="w-3 h-3" />
-                      <button onClick={() => navigateTo(p.id, i + 1)} className="hover:text-teal-600">{p.name}</button>
+                      <button onClick={() => navigateTo(p.id, i + 1)} className="hover:text-teal-500">{p.name}</button>
                     </span>
                   ))}
                 </nav>
               )}
-              <p className="text-sm font-medium text-[var(--text-primary)] mb-3 flex items-center gap-2">
+              <p className="text-mac-body font-medium text-[var(--text-primary)] mb-3 flex items-center gap-2">
                 <FolderOpen className="w-4 h-4 text-teal-500" />
                 {content.name}
               </p>
-              <ul className="divide-y divide-[var(--border-default)] border border-[var(--border-default)] rounded-[8px] overflow-hidden">
+              <ul className="divide-y divide-[var(--border-default)] border border-[var(--border-default)] rounded-[var(--radius-control)] overflow-hidden">
                 {content.folders.map((f) => (
                   <li key={f.id}>
                     <button
                       onClick={() => navigateTo(f.id)}
-                      className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+                      className="w-full flex items-center gap-2 px-3 py-2.5 text-mac-body text-left hover:bg-[var(--bg-hover)] transition-colors duration-fast"
                     >
                       <FolderOpen className="w-4 h-4 text-teal-500 flex-shrink-0" />
                       {f.name}
@@ -192,27 +187,27 @@ export default function PublicShare() {
                 {content.documents.map((d) => {
                   const s = getFileStyle(d.name); const Icon = s.icon;
                   return (
-                    <li key={d.id} className="flex items-center gap-2 px-3 py-2.5 text-sm">
+                    <li key={d.id} className="flex items-center gap-2 px-3 py-2.5 text-mac-body">
                       <div className={`w-6 h-6 rounded-[4px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
                         <Icon className={`w-3.5 h-3.5 ${s.iconColor}`} />
                       </div>
                       <span className="flex-1 truncate text-[var(--text-primary)]">{d.name}</span>
-                      <span className="text-xs text-[var(--text-tertiary)]">{fmtSize(d.size_bytes)}</span>
-                      <button onClick={() => downloadDoc(d.id)} className="p-1 text-[var(--text-tertiary)] hover:text-teal-600">
+                      <span className="text-mac-caption text-[var(--text-tertiary)]">{fmtSize(d.size_bytes)}</span>
+                      <button onClick={() => downloadDoc(d.id)} className="p-1 text-[var(--text-tertiary)] hover:text-teal-500">
                         <Download className="w-3.5 h-3.5" />
                       </button>
                     </li>
                   );
                 })}
                 {content.folders.length === 0 && content.documents.length === 0 && (
-                  <li className="px-3 py-6 text-center text-xs text-[var(--text-tertiary)]">Pasta vazia.</li>
+                  <li className="px-3 py-6 text-center text-mac-caption text-[var(--text-tertiary)]">Pasta vazia.</li>
                 )}
               </ul>
             </div>
           )}
         </div>
 
-        <p className="text-center text-xs text-[var(--text-tertiary)] mt-6">
+        <p className="text-center text-mac-caption text-[var(--text-tertiary)] mt-6">
           Compartilhado com segurança via <span className="font-medium">Docke</span>
         </p>
       </div>

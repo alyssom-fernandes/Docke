@@ -6,6 +6,7 @@ import { useToast } from "@/lib/toast";
 import { relativeDate } from "@/lib/date";
 import Button from "@/components/ui/Button";
 import ConfirmModal from "@/components/ui/ConfirmModal";
+import Switch from "@/components/ui/Switch";
 
 interface ShareLink {
   id: string;
@@ -86,9 +87,9 @@ export default function ShareModal({
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={containerRef} className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] shadow-modal modal-card w-full max-w-[480px] max-h-[85vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
-          <h2 className="text-sm font-semibold text-[var(--text-primary)] truncate">Compartilhar "{name}"</h2>
+      <div ref={containerRef} className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[480px] max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-default)]">
+          <h2 className="text-mac-body font-semibold text-[var(--text-primary)] truncate">Compartilhar "{name}"</h2>
           <button onClick={onClose} className="p-1 rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] flex-shrink-0">
             <X className="w-4 h-4" />
           </button>
@@ -96,10 +97,10 @@ export default function ShareModal({
 
         <div className="p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-medium text-[var(--text-secondary)] flex items-center gap-1.5">
+            <label className="text-mac-caption font-medium text-[var(--text-secondary)] flex items-center gap-1.5">
               <Lock className="w-3.5 h-3.5" /> Proteger com senha
             </label>
-            <input type="checkbox" checked={usePassword} onChange={(e) => setUsePassword(e.target.checked)} className="accent-teal-600 w-4 h-4" />
+            <Switch checked={usePassword} onChange={setUsePassword} label="Proteger com senha" />
           </div>
           {usePassword && (
             <input
@@ -107,16 +108,16 @@ export default function ShareModal({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Senha do link"
-              className="w-full h-9 px-3 text-sm bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[8px] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-2 focus:ring-teal-400"
+              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
             />
           )}
 
           <div>
-            <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Expiração</label>
+            <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Expiração</label>
             <select
               value={expiresIn}
               onChange={(e) => setExpiresIn(e.target.value)}
-              className="w-full h-9 px-3 text-sm bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[8px] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-teal-400"
+              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
             >
               <option value="24h">24 horas</option>
               <option value="7d">7 dias</option>
@@ -127,35 +128,35 @@ export default function ShareModal({
 
           {resourceType === "document" && (
             <div className="flex items-center justify-between">
-              <label className="text-xs text-[var(--text-secondary)]">Vincular à versão mais recente (em vez de fixar a atual)</label>
-              <input type="checkbox" checked={alwaysLatest} onChange={(e) => setAlwaysLatest(e.target.checked)} className="accent-teal-600 w-4 h-4" />
+              <label className="text-mac-caption text-[var(--text-secondary)]">Vincular à versão mais recente (em vez de fixar a atual)</label>
+              <Switch checked={alwaysLatest} onChange={setAlwaysLatest} label="Vincular à versão mais recente" />
             </div>
           )}
 
-          <Button size="sm" className="w-full" loading={creating} onClick={createLink} disabled={usePassword && !password.trim()}>
+          <Button size="sm" className="w-full !rounded-full" loading={creating} onClick={createLink} disabled={usePassword && !password.trim()}>
             <Link2 className="w-3.5 h-3.5" />
             Gerar link
           </Button>
 
           {newLink && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-900/40 rounded-[8px]">
-              <span className="flex-1 text-xs text-teal-700 dark:text-teal-400 truncate font-mono">{newLink}</span>
-              <button onClick={() => navigator.clipboard.writeText(newLink)} className="p-1 text-teal-600 hover:bg-teal-100 dark:hover:bg-teal-900/40 rounded">
+            <div className="flex items-center gap-2 px-3 py-2 bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-900/40 rounded-[var(--radius-control)]">
+              <span className="flex-1 text-mac-caption text-teal-700 dark:text-teal-400 truncate font-mono">{newLink}</span>
+              <button onClick={() => navigator.clipboard.writeText(newLink)} className="p-1 rounded-full text-teal-500 hover:bg-teal-100 dark:hover:bg-teal-900/40">
                 <Copy className="w-3.5 h-3.5" />
               </button>
             </div>
           )}
 
           <div className="pt-3 border-t border-[var(--border-default)]">
-            <p className="text-xs font-medium text-[var(--text-secondary)] mb-2">Links ativos</p>
+            <p className="text-mac-caption font-medium text-[var(--text-secondary)] mb-2">Links ativos</p>
             {loading ? (
-              <div className="h-10 bg-[var(--bg-hover)] rounded-[8px] animate-pulse" />
+              <div className="h-10 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />
             ) : links.length === 0 ? (
-              <p className="text-xs text-[var(--text-tertiary)]">Nenhum link ativo.</p>
+              <p className="text-mac-caption text-[var(--text-tertiary)]">Nenhum link ativo.</p>
             ) : (
               <ul className="space-y-1.5">
                 {links.map((l) => (
-                  <li key={l.id} className="flex items-center gap-2 px-2.5 py-2 bg-[var(--bg-page)] rounded-[8px] text-xs">
+                  <li key={l.id} className="flex items-center gap-2 px-2.5 py-2 bg-[var(--bg-page)] rounded-[var(--radius-control)] text-mac-caption">
                     <div className="flex-1 min-w-0">
                       <p className="text-[var(--text-primary)]">
                         {l.has_password && <Lock className="w-3 h-3 inline mr-1" />}
@@ -165,7 +166,7 @@ export default function ShareModal({
                         {l.expires_at ? `Expira ${relativeDate(l.expires_at)}` : "Nunca expira"}
                       </p>
                     </div>
-                    <button onClick={() => setRevokingId(l.id)} title="Revogar" className="p-1 rounded text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20">
+                    <button onClick={() => setRevokingId(l.id)} title="Revogar" className="p-1 rounded-full text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </li>

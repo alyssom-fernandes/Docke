@@ -101,9 +101,9 @@ export default function CommandPalette() {
             onChange={(e) => handleChange(e.target.value)}
             onKeyDown={handleKey}
             placeholder="Buscar documentos, pastas ou ações…"
-            className="flex-1 text-sm bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none"
+            className="flex-1 text-mac-body bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none"
           />
-          <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-xs bg-[var(--bg-hover)] text-[var(--text-tertiary)] rounded border border-[var(--border-default)]">
+          <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-mac-caption bg-[var(--bg-hover)] text-[var(--text-tertiary)] rounded border border-[var(--border-default)]">
             ESC
           </kbd>
         </div>
@@ -121,15 +121,15 @@ export default function CommandPalette() {
           {!loading && query.trim() && results.length === 0 && (
             <div className="flex flex-col items-center justify-center py-10 text-center">
               <Anchor className="w-7 h-7 text-[var(--text-placeholder)] mb-2" />
-              <p className="text-sm text-[var(--text-secondary)]">Nenhum resultado para "{query}"</p>
+              <p className="text-mac-body text-[var(--text-secondary)]">Nenhum resultado para "{query}"</p>
             </div>
           )}
 
           {!loading && !query.trim() && (
             <div className="flex flex-col items-center justify-center py-10 text-center">
               <Search className="w-7 h-7 text-[var(--text-placeholder)] mb-2" />
-              <p className="text-sm text-[var(--text-secondary)]">Digite para buscar</p>
-              <p className="text-xs text-[var(--text-tertiary)] mt-1">Documentos, pastas e ações do sistema</p>
+              <p className="text-mac-body text-[var(--text-secondary)]">Digite para buscar</p>
+              <p className="text-mac-caption text-[var(--text-tertiary)] mt-1">Documentos, pastas e ações do sistema</p>
             </div>
           )}
 
@@ -140,7 +140,7 @@ export default function CommandPalette() {
                   <button
                     className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors duration-fast ${
                       i === activeIdx
-                        ? "bg-teal-600/10 text-teal-600"
+                        ? "bg-teal-500/10 text-teal-500"
                         : "text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
                     }`}
                     onClick={() => select(r)}
@@ -155,8 +155,8 @@ export default function CommandPalette() {
                         </div>
                       ); })()
                     )}
-                    <span className="flex-1 text-sm truncate">{r.name}</span>
-                    <span className="text-xs text-[var(--text-tertiary)] flex-shrink-0">
+                    <span className="flex-1 text-mac-body truncate">{r.name}</span>
+                    <span className="text-mac-caption text-[var(--text-tertiary)] flex-shrink-0">
                       {r.type === "folder" ? "Pasta" : "Documento"}
                     </span>
                   </button>
@@ -170,11 +170,11 @@ export default function CommandPalette() {
             <div className="border-t border-[var(--border-default)] px-4 py-2">
               <button
                 onClick={() => { close(); navigate(`/search?q=${encodeURIComponent(query.trim())}`); }}
-                className="w-full flex items-center gap-2 text-xs text-[var(--text-secondary)] hover:text-teal-600 transition-colors duration-fast py-1"
+                className="w-full flex items-center gap-2 text-mac-caption text-[var(--text-secondary)] hover:text-teal-500 transition-colors duration-fast py-1"
               >
                 <Search className="w-3.5 h-3.5" />
                 Busca avançada por "{query}"
-                <kbd className="ml-auto px-1 py-0.5 text-xs bg-[var(--bg-hover)] rounded border border-[var(--border-default)]">↵</kbd>
+                <kbd className="ml-auto px-1 py-0.5 text-mac-caption bg-[var(--bg-hover)] rounded border border-[var(--border-default)]">↵</kbd>
               </button>
             </div>
           )}

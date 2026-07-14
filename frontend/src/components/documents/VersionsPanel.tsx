@@ -113,7 +113,7 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
     <div className="border-t border-[var(--border-default)] pt-3">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between text-sm text-[var(--text-primary)] hover:text-teal-600 transition-colors duration-fast"
+        className="w-full flex items-center justify-between text-mac-body text-[var(--text-primary)] hover:text-teal-500 transition-colors duration-fast"
       >
         <span className="flex items-center gap-2">
           <History className="w-4 h-4" />
@@ -133,28 +133,28 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="w-full h-8 flex items-center justify-center gap-1.5 text-xs border border-[var(--border-default)] rounded-[8px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast disabled:opacity-50"
+            className="w-full h-8 flex items-center justify-center gap-1.5 text-mac-caption border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast disabled:opacity-50"
           >
             <Upload className="w-3.5 h-3.5" />
             {uploading ? "Enviando…" : "Enviar nova versão"}
           </button>
 
           {loading ? (
-            <div className="h-16 bg-[var(--bg-hover)] rounded-[8px] animate-pulse" />
+            <div className="h-16 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />
           ) : versions.length === 0 ? (
-            <p className="text-xs text-[var(--text-tertiary)] text-center py-2">Nenhum histórico ainda.</p>
+            <p className="text-mac-caption text-[var(--text-tertiary)] text-center py-2">Nenhum histórico ainda.</p>
           ) : (
             <ul className="space-y-1.5">
               {versions.map((v) => (
                 <li
                   key={v.id}
-                  className={`flex items-center gap-2 px-2.5 py-2 rounded-[8px] text-xs ${
+                  className={`flex items-center gap-2 px-2.5 py-2 rounded-[var(--radius-control)] text-mac-caption ${
                     v.is_current ? "bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-900/40" : "bg-[var(--bg-page)]"
                   }`}
                 >
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-[var(--text-primary)]">
-                      v{v.version_number} {v.is_current && <span className="text-teal-600">· atual</span>}
+                      v{v.version_number} {v.is_current && <span className="text-teal-500">· atual</span>}
                     </p>
                     <p className="text-[var(--text-tertiary)] truncate">
                       {fmtSize(v.size_bytes)} · {relativeDate(v.created_at)} {v.uploaded_by_name ? `· ${v.uploaded_by_name}` : ""}
@@ -169,7 +169,7 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
                         onClick={() => restoreVersion(v)}
                         disabled={busyId === v.id}
                         title="Restaurar esta versão"
-                        className="p-1 rounded text-[var(--text-tertiary)] hover:text-teal-600 hover:bg-[var(--bg-hover)] disabled:opacity-50"
+                        className="p-1 rounded text-[var(--text-tertiary)] hover:text-teal-500 hover:bg-[var(--bg-hover)] disabled:opacity-50"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                       </button>

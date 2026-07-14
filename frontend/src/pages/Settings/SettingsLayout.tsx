@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from "react-router-dom";
-import { User, Building2, Users as UsersIcon, Lock, Sliders, Archive } from "lucide-react";
+import { User, Building2, Users as UsersIcon, Lock, Sliders, Archive, Tags } from "lucide-react";
 import { useAuthContext } from "@/lib/AuthContext";
 import { useCompany } from "@/lib/CompanyContext";
 
@@ -7,6 +7,7 @@ const TABS = [
   { to: "/settings/profile", icon: User, label: "Perfil", adminOnly: false, supremoOnly: false },
   { to: "/settings/organization", icon: Building2, label: "Organização", adminOnly: true, supremoOnly: false },
   { to: "/settings/users", icon: UsersIcon, label: "Usuários & Papéis", adminOnly: true, supremoOnly: false },
+  { to: "/settings/metadata", icon: Tags, label: "Metadados", adminOnly: true, supremoOnly: false },
   { to: "/settings/security", icon: Lock, label: "Segurança", adminOnly: false, supremoOnly: false },
   { to: "/settings/preferences", icon: Sliders, label: "Preferências", adminOnly: false, supremoOnly: false },
   { to: "/settings/retention", icon: Archive, label: "Retenção", adminOnly: false, supremoOnly: true },
@@ -26,18 +27,18 @@ export default function SettingsLayout() {
   });
 
   return (
-    <div className="max-w-[900px] mx-auto">
-      <h1 className="text-xl font-semibold text-[var(--text-primary)] mb-6">Configurações</h1>
-      <div className="flex flex-col md:flex-row gap-6">
+    <div>
+      <h1 className="text-mac-title2 font-semibold text-[var(--text-primary)] mb-6">Configurações</h1>
+      <div className="flex flex-col md:flex-row gap-6 max-w-[1100px]">
         <nav className="flex md:flex-col gap-1 md:w-[200px] flex-shrink-0 overflow-x-auto">
           {visibleTabs.map((tab) => (
             <NavLink
               key={tab.to}
               to={tab.to}
               className={({ isActive }) =>
-                `flex items-center gap-2.5 h-9 px-3 rounded-[8px] text-sm whitespace-nowrap transition-colors duration-fast ${
+                `flex items-center gap-2.5 h-9 px-3 rounded-full text-mac-body whitespace-nowrap transition-colors duration-fast ${
                   isActive
-                    ? "bg-teal-600/10 text-teal-600 font-medium"
+                    ? "bg-teal-500/10 text-teal-500 font-medium"
                     : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                 }`
               }

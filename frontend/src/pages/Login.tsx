@@ -66,7 +66,7 @@ export default function Login() {
         }}
       />
 
-      <a href="#main-form" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 text-sm text-teal-600">
+      <a href="#main-form" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 text-mac-body text-teal-500">
         Pular para formulário
       </a>
       <div className="relative w-full max-w-[360px]">
@@ -77,8 +77,8 @@ export default function Login() {
 
         {/* Conteúdo direto na tela, sem card — igual à referência */}
         <div className="text-center">
-          <h1 className="text-lg font-semibold text-[var(--text-primary)] mb-1">Bem-vindo de volta</h1>
-          <p className="text-sm text-[var(--text-secondary)] mb-6">Gerenciamento eletrônico de documentos.</p>
+          <h1 className="text-mac-title3 font-semibold text-[var(--text-primary)] mb-1">Bem-vindo de volta</h1>
+          <p className="text-mac-body text-[var(--text-secondary)] mb-6">Gerenciamento eletrônico de documentos.</p>
 
           <form id="main-form" onSubmit={handleSubmit} className="flex flex-col gap-4 text-left" noValidate>
             <Input
@@ -107,7 +107,7 @@ export default function Login() {
             </Button>
           </form>
 
-          <div className="flex items-center gap-3 my-5 text-xs text-[var(--text-tertiary)]">
+          <div className="flex items-center gap-3 my-5 text-mac-caption text-[var(--text-tertiary)]">
             <div className="flex-1 h-px bg-[var(--border-default)]" />
             ou
             <div className="flex-1 h-px bg-[var(--border-default)]" />
@@ -117,7 +117,7 @@ export default function Login() {
             type="button"
             onClick={handleDemoLogin}
             disabled={demoLoading || loading}
-            className="w-full h-9 rounded-[8px] border border-[var(--border-default)] bg-[var(--bg-page)] text-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast disabled:opacity-60"
+            className="w-full h-9 rounded-[var(--radius-control)] border border-[var(--border-default)] bg-[var(--bg-page)] text-mac-body text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast disabled:opacity-60"
           >
             {demoLoading ? "Entrando…" : "Acessar modo demo"}
           </button>
@@ -125,7 +125,7 @@ export default function Login() {
 
         {/* Footer */}
         <div className="mt-8 text-center">
-          <p className="text-xs text-[var(--text-tertiary)]">
+          <p className="text-mac-caption text-[var(--text-tertiary)]">
             Desenvolvido por{" "}
             <span
               className="font-bold"

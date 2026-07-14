@@ -26,6 +26,10 @@ interface FolderTreeProps {
   allowCreate?: boolean;
   /** Called after a folder is moved (drag-and-drop) */
   onMove?: (folderId: string, newParentId: string | null) => void;
+  /** Called quando documento(s) arrastados de fora (ex: tabela principal) são
+   *  soltos sobre um nó — recebe o folder de destino, os ids dos documentos e
+   *  o nome do folder (útil pra mensagens de feedback sem precisar de lookup). */
+  onDropDocuments?: (folderId: string, documentIds: string[], folderName: string) => void;
 }
 
 // ─── Tree builder ─────────────────────────────────────────────────────────────
@@ -56,12 +60,18 @@ interface NodeProps {
   onDragOver: (id: string) => void;
   onDragLeave: () => void;
   onDrop: (targetId: string) => void;
+  onDropDocuments?: (folderId: string, documentIds: string[], folderName: string) => void;
   focusedId: string | null;
   setFocusedId: (id: string) => void;
   expandedIds: Set<string>;
   toggleExpanded: (id: string) => void;
   allNodes: Map<string, FolderNode>;
 }
+
+// MIME type custom usado pra marcar um drag de documento(s) vindo da tabela
+// principal — distingue de um drag de pasta-pra-pasta interno do próprio
+// FolderTree, que não seta esse tipo.
+const DOCUMENT_DRAG_MIME = "application/x-docke-document-ids";
 
 function TreeNode({
   node,
@@ -73,6 +83,7 @@ function TreeNode({
   onDragOver,
   onDragLeave,
   onDrop,
+  onDropDocuments,
   focusedId,
   setFocusedId,
   expandedIds,
@@ -85,10 +96,22 @@ function TreeNode({
   const isDragOver = dragOverId === node.id;
   const hasChildren = (node.children?.length ?? 0) > 0;
   const btnRef = useRef<HTMLButtonElement>(null);
+  // Spring-loaded folders: segurar um item arrastado sobre uma pasta fechada
+  // por um tempo a expande automaticamente (padrão Finder/Explorer).
+  const springTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function clearSpringTimer() {
+    if (springTimerRef.current) {
+      clearTimeout(springTimerRef.current);
+      springTimerRef.current = null;
+    }
+  }
 
   useEffect(() => {
     if (isFocused) btnRef.current?.focus();
   }, [isFocused]);
+
+  useEffect(() => () => clearSpringTimer(), []);
 
   function handleKeyDown(e: React.KeyboardEvent) {
     switch (e.key) {
@@ -122,13 +145,32 @@ function TreeNode({
         onClick={() => { onSelect(node); if (hasChildren) toggleExpanded(node.id); }}
         draggable
         onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; onDragStart(node.id); }}
-        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; onDragOver(node.id); }}
-        onDragLeave={onDragLeave}
-        onDrop={(e) => { e.preventDefault(); onDrop(node.id); }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          onDragOver(node.id);
+          if (hasChildren && !isExpanded && !springTimerRef.current) {
+            springTimerRef.current = setTimeout(() => {
+              toggleExpanded(node.id);
+              springTimerRef.current = null;
+            }, 1200);
+          }
+        }}
+        onDragLeave={() => { onDragLeave(); clearSpringTimer(); }}
+        onDrop={(e) => {
+          e.preventDefault();
+          clearSpringTimer();
+          const docIds = e.dataTransfer.getData(DOCUMENT_DRAG_MIME);
+          if (docIds && onDropDocuments) {
+            onDropDocuments(node.id, docIds.split(","), node.name);
+          } else {
+            onDrop(node.id);
+          }
+        }}
         style={{ paddingLeft: `${12 + depth * 16}px` }}
-        className={`w-full flex items-center gap-1.5 h-8 pr-2 text-sm rounded-[6px] transition-colors duration-fast text-left ${
+        className={`w-full flex items-center gap-1.5 h-8 pr-2 text-mac-body rounded-[6px] transition-colors duration-fast text-left ${
           isActive
-            ? "bg-teal-600/10 text-teal-600 font-medium"
+            ? "bg-teal-500/10 text-teal-500 font-medium"
             : isDragOver
             ? "bg-teal-50 dark:bg-teal-900/20 border border-teal-400"
             : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
@@ -144,7 +186,7 @@ function TreeNode({
           ) : null}
         </span>
         <FolderIcon
-          className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-teal-600" : "text-teal-500"}`}
+          className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-teal-500" : "text-teal-500"}`}
         />
         <span className="truncate flex-1">{node.name}</span>
       </button>
@@ -163,6 +205,7 @@ function TreeNode({
               onDragOver={onDragOver}
               onDragLeave={onDragLeave}
               onDrop={onDrop}
+              onDropDocuments={onDropDocuments}
               focusedId={focusedId}
               setFocusedId={setFocusedId}
               expandedIds={expandedIds}
@@ -184,6 +227,7 @@ export default function FolderTree({
   onSelect,
   allowCreate = false,
   onMove,
+  onDropDocuments,
 }: FolderTreeProps) {
   const { success, error: showError } = useToast();
   const [roots, setRoots] = useState<FolderNode[]>([]);
@@ -200,8 +244,10 @@ export default function FolderTree({
   const load = useCallback(async () => {
     if (!companyId) return;
     try {
+      // flat=true: sem isso, o backend devolve só as pastas raiz
+      // (parent_id=null é o default), e a árvore fica truncada no 1º nível.
       const { data } = await api.get<FolderNode[]>("/folders", {
-        params: { company_id: companyId },
+        params: { company_id: companyId, flat: true },
       });
       const flat = Array.isArray(data) ? data : [];
       const map = new Map<string, FolderNode>();
@@ -245,7 +291,9 @@ export default function FolderTree({
     }
 
     try {
-      await api.patch(`/folders/${dragSrcId}`, { parent_id: targetId });
+      // Rota real é /folders/:id/move (PATCH /folders/:id sozinho não existe
+      // — só /rename e /move — usar o endpoint errado dá 405).
+      await api.patch(`/folders/${dragSrcId}/move`, { parent_id: targetId });
       success("Pasta movida.");
       onMove?.(dragSrcId, targetId);
       load();
@@ -292,7 +340,7 @@ export default function FolderTree({
           e.preventDefault();
           // Drop on root area → move to root
           if (dragSrcId) {
-            api.patch(`/folders/${dragSrcId}`, { parent_id: null })
+            api.patch(`/folders/${dragSrcId}/move`, { parent_id: null })
               .then(() => { success("Pasta movida para raiz."); onMove?.(dragSrcId!, null); load(); })
               .catch(() => showError("Não foi possível mover."))
               .finally(() => { setDragSrcId(null); setDragOverId(null); });
@@ -311,6 +359,7 @@ export default function FolderTree({
             onDragOver={(id) => setDragOverId(id)}
             onDragLeave={() => setDragOverId(null)}
             onDrop={handleDrop}
+            onDropDocuments={onDropDocuments}
             focusedId={focusedId}
             setFocusedId={setFocusedId}
             expandedIds={expandedIds}
@@ -334,12 +383,12 @@ export default function FolderTree({
               }}
               onBlur={createRootFolder}
               placeholder="Nome da pasta"
-              className="w-full h-7 px-2 text-xs bg-[var(--bg-page)] border border-teal-400 rounded-[6px] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none"
+              className="w-full h-7 px-2 text-mac-caption bg-[var(--bg-page)] border border-teal-400 rounded-[6px] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none"
             />
           ) : (
             <button
               onClick={() => setCreatingRoot(true)}
-              className="flex items-center gap-1.5 h-7 px-2 text-xs text-[var(--text-tertiary)] hover:text-teal-600 hover:bg-[var(--bg-hover)] rounded-[6px] transition-colors duration-fast w-full"
+              className="flex items-center gap-1.5 h-7 px-2 text-mac-caption text-[var(--text-tertiary)] hover:text-teal-500 hover:bg-[var(--bg-hover)] rounded-[6px] transition-colors duration-fast w-full"
             >
               <FolderPlus className="w-3.5 h-3.5" />
               Nova pasta

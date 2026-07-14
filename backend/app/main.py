@@ -10,6 +10,7 @@ from app.routers import (
     admin,
     auth,
     companies,
+    custom_fields,
     documents,
     favorites,
     folders,
@@ -63,6 +64,7 @@ app.include_router(versions.router, prefix=PREFIX)
 app.include_router(shares.router, prefix=PREFIX)
 app.include_router(shares.public_router, prefix=PREFIX)
 app.include_router(notifications.router, prefix=PREFIX)
+app.include_router(custom_fields.router, prefix=PREFIX)
 
 
 @app.get("/health", tags=["health"])

@@ -73,15 +73,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           return (
             <div
               key={t.id}
-              className={`toast-in flex items-start gap-3 bg-[var(--bg-card)] border border-[var(--border-default)] border-l-4 ${colors[t.type]} rounded-[8px] shadow-lg p-3`}
+              className={`toast-in flex items-start gap-3 bg-[var(--bg-card)] border border-[var(--border-default)] border-l-4 ${colors[t.type]} rounded-[var(--radius-control)] shadow-lg p-3`}
             >
               <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${iconColors[t.type]}`} />
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-[var(--text-primary)]">{t.message}</p>
+                <p className="text-mac-body text-[var(--text-primary)]">{t.message}</p>
                 {t.action && (
                   <button
                     onClick={() => { t.action!.onClick(); remove(t.id); }}
-                    className="text-xs text-teal-600 font-medium mt-1 hover:underline"
+                    className="text-mac-caption text-teal-500 font-medium mt-1 hover:underline"
                   >
                     {t.action.label}
                   </button>

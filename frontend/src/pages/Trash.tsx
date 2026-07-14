@@ -109,18 +109,18 @@ export default function Trash() {
   }
 
   return (
-    <div className="max-w-[800px] mx-auto space-y-6 pb-16">
+    <div className="space-y-6 pb-16">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-[var(--text-primary)]">Lixeira</h1>
+        <h1 className="text-mac-title2 font-semibold text-[var(--text-primary)]">Lixeira</h1>
         {items.length > 0 && (
-          <p className="text-sm text-[var(--text-secondary)]">{items.length} ite{items.length !== 1 ? "ns" : "m"}</p>
+          <p className="text-mac-body text-[var(--text-secondary)]">{items.length} ite{items.length !== 1 ? "ns" : "m"}</p>
         )}
       </div>
 
       {loading ? (
         <div className="space-y-2">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-12 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[8px] animate-pulse" />
+            <div key={i} className="h-12 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] animate-pulse" />
           ))}
         </div>
       ) : items.length === 0 ? (
@@ -130,7 +130,7 @@ export default function Trash() {
           icon={<Trash2 className="w-6 h-6" />}
         />
       ) : (
-        <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] overflow-hidden">
+        <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
           <ul>
             {items.map((item) => (
               <li
@@ -141,7 +141,7 @@ export default function Trash() {
                   type="checkbox"
                   checked={selected.has(item.id)}
                   onChange={() => toggleSelect(item.id)}
-                  className="w-4 h-4 rounded accent-teal-600 flex-shrink-0"
+                  className="w-4 h-4 rounded accent-teal-500 flex-shrink-0"
                   aria-label={`Selecionar ${item.name}`}
                 />
                 {item.item_type === "folder" ? (
@@ -153,13 +153,13 @@ export default function Trash() {
                     </div>
                   ); })()
                 )}
-                <span className="flex-1 text-sm text-[var(--text-primary)] truncate">{item.name}</span>
-                <span className="text-xs text-[var(--text-tertiary)] mr-2">
+                <span className="flex-1 text-mac-body text-[var(--text-primary)] truncate">{item.name}</span>
+                <span className="text-mac-caption text-[var(--text-tertiary)] mr-2">
                   Excluído em {fmtDate(item.deleted_at)}
                 </span>
                 <button
                   onClick={() => restore(item)}
-                  className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-2.5 py-1 rounded-[6px] text-xs text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-all duration-fast"
+                  className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-2.5 py-1 rounded-full text-mac-caption text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-all duration-fast"
                   title="Restaurar"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
@@ -167,7 +167,7 @@ export default function Trash() {
                 </button>
                 <button
                   onClick={() => setConfirmSingle(item)}
-                  className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-2.5 py-1 rounded-[6px] text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-fast"
+                  className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-2.5 py-1 rounded-full text-mac-caption text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-fast"
                   title="Excluir permanentemente"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -181,11 +181,11 @@ export default function Trash() {
 
       {/* Barra de ações em lote */}
       {selected.size > 0 && (
-        <div className="glass-panel glass-blur-pill fixed bottom-[76px] md:bottom-7 left-1/2 -translate-x-1/2 flex items-center gap-3 rounded-[50px] pl-[18px] pr-1.5 py-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.55)] z-40">
-          <span className="text-sm text-[var(--text-primary)]">{selected.size} selecionado{selected.size !== 1 ? "s" : ""}</span>
+        <div className="glass-panel glass-blur-pill fixed bottom-[76px] md:bottom-7 lg:bottom-[100px] left-1/2 -translate-x-1/2 flex items-center gap-3 rounded-[50px] pl-[18px] pr-1.5 py-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.55)] z-40">
+          <span className="text-mac-body text-[var(--text-primary)]">{selected.size} selecionado{selected.size !== 1 ? "s" : ""}</span>
           <button
             onClick={() => setConfirmBulk(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-sm text-white bg-red-600 hover:bg-red-500 transition-colors duration-fast"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-mac-body text-white bg-red-600 hover:bg-red-500 transition-colors duration-fast"
           >
             <Trash2 className="w-3.5 h-3.5" />
             Excluir permanentemente

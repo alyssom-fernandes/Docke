@@ -57,13 +57,13 @@ export default function Favorites() {
   }
 
   return (
-    <div className="max-w-[800px] mx-auto space-y-6">
-      <h1 className="text-xl font-semibold text-[var(--text-primary)]">Ancorados</h1>
+    <div className="space-y-6">
+      <h1 className="text-mac-title2 font-semibold text-[var(--text-primary)]">Ancorados</h1>
 
       {loading ? (
         <div className="space-y-2">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-12 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[8px] animate-pulse" />
+            <div key={i} className="h-12 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] animate-pulse" />
           ))}
         </div>
       ) : favorites.length === 0 ? (
@@ -74,14 +74,14 @@ export default function Favorites() {
           action={
             <Link
               to="/documents"
-              className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-[8px] hover:bg-teal-500 transition-colors duration-fast"
+              className="px-4 py-2 text-mac-body font-medium text-white bg-teal-600 rounded-full hover:bg-teal-500 transition-colors duration-fast"
             >
               Explorar documentos
             </Link>
           }
         />
       ) : (
-        <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] overflow-hidden">
+        <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
           <ul>
             {favorites.map((fav) => (
               <li
@@ -106,13 +106,13 @@ export default function Favorites() {
                     </div>
                   ); })()
                 )}
-                <span className="flex-1 text-sm text-[var(--text-primary)] truncate">{fav.item_name}</span>
-                <span className="text-xs text-[var(--text-tertiary)] mr-2">
+                <span className="flex-1 text-mac-body text-[var(--text-primary)] truncate">{fav.item_name}</span>
+                <span className="text-mac-caption text-[var(--text-tertiary)] mr-2">
                   {fav.item_type === "folder" ? "Pasta" : "Documento"}
                 </span>
                 <button
                   onClick={(e) => { e.stopPropagation(); removeFavorite(fav); }}
-                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-[6px] text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-fast"
+                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-fast"
                   title="Remover ancoragem"
                 >
                   <Trash2 className="w-3.5 h-3.5" />

@@ -14,25 +14,27 @@ export interface FileStyle {
   bgColor: string;
 }
 
+// bgColor vazio de propósito — macOS não usa "tile" colorido atrás de ícone de
+// arquivo, a cor mora só no traço do ícone (mesmo padrão do Finder).
 const EXT_MAP: Record<string, FileStyle> = {
-  pdf:  { icon: FileType, iconColor: "text-red-600 dark:text-red-400",     bgColor: "bg-red-50 dark:bg-red-900/30" },
-  xlsx: { icon: Sheet,    iconColor: "text-emerald-600 dark:text-emerald-400", bgColor: "bg-emerald-50 dark:bg-emerald-900/30" },
-  xls:  { icon: Sheet,    iconColor: "text-emerald-600 dark:text-emerald-400", bgColor: "bg-emerald-50 dark:bg-emerald-900/30" },
-  csv:  { icon: Sheet,    iconColor: "text-emerald-600 dark:text-emerald-400", bgColor: "bg-emerald-50 dark:bg-emerald-900/30" },
-  docx: { icon: FileText, iconColor: "text-blue-600 dark:text-blue-400",    bgColor: "bg-blue-50 dark:bg-blue-900/30" },
-  doc:  { icon: FileText, iconColor: "text-blue-600 dark:text-blue-400",    bgColor: "bg-blue-50 dark:bg-blue-900/30" },
-  xml:  { icon: FileCode, iconColor: "text-violet-600 dark:text-violet-400", bgColor: "bg-violet-50 dark:bg-violet-900/30" },
-  jpg:  { icon: Image,    iconColor: "text-amber-600 dark:text-amber-400",  bgColor: "bg-amber-50 dark:bg-amber-900/30" },
-  jpeg: { icon: Image,    iconColor: "text-amber-600 dark:text-amber-400",  bgColor: "bg-amber-50 dark:bg-amber-900/30" },
-  png:  { icon: Image,    iconColor: "text-amber-600 dark:text-amber-400",  bgColor: "bg-amber-50 dark:bg-amber-900/30" },
-  gif:  { icon: Image,    iconColor: "text-amber-600 dark:text-amber-400",  bgColor: "bg-amber-50 dark:bg-amber-900/30" },
-  txt:  { icon: FileText, iconColor: "text-gray-600 dark:text-gray-400",   bgColor: "bg-gray-50 dark:bg-gray-800/30" },
+  pdf:  { icon: FileType, iconColor: "text-red-600 dark:text-red-400",     bgColor: "" },
+  xlsx: { icon: Sheet,    iconColor: "text-emerald-600 dark:text-emerald-400", bgColor: "" },
+  xls:  { icon: Sheet,    iconColor: "text-emerald-600 dark:text-emerald-400", bgColor: "" },
+  csv:  { icon: Sheet,    iconColor: "text-emerald-600 dark:text-emerald-400", bgColor: "" },
+  docx: { icon: FileText, iconColor: "text-blue-600 dark:text-blue-400",    bgColor: "" },
+  doc:  { icon: FileText, iconColor: "text-blue-600 dark:text-blue-400",    bgColor: "" },
+  xml:  { icon: FileCode, iconColor: "text-violet-600 dark:text-violet-400", bgColor: "" },
+  jpg:  { icon: Image,    iconColor: "text-amber-600 dark:text-amber-400",  bgColor: "" },
+  jpeg: { icon: Image,    iconColor: "text-amber-600 dark:text-amber-400",  bgColor: "" },
+  png:  { icon: Image,    iconColor: "text-amber-600 dark:text-amber-400",  bgColor: "" },
+  gif:  { icon: Image,    iconColor: "text-amber-600 dark:text-amber-400",  bgColor: "" },
+  txt:  { icon: FileText, iconColor: "text-gray-600 dark:text-gray-400",   bgColor: "" },
 };
 
 const DEFAULT: FileStyle = {
   icon: File,
   iconColor: "text-gray-500 dark:text-gray-400",
-  bgColor: "bg-gray-50 dark:bg-gray-800/30",
+  bgColor: "",
 };
 
 export function getFileStyle(filename: string): FileStyle {

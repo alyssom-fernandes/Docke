@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, X } from "lucide-react";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import Button from "./Button";
 
@@ -56,42 +55,30 @@ export default function ConfirmModal({
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div ref={containerRef} className="modal-card bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] shadow-modal w-full max-w-[400px]">
-        <div className="flex items-start gap-3 p-6">
-          <div className={`w-9 h-9 rounded-[8px] flex items-center justify-center flex-shrink-0 ${
-            danger ? "bg-red-50 dark:bg-red-900/20" : "bg-amber-50 dark:bg-amber-900/20"
-          }`}>
-            <AlertTriangle className={`w-5 h-5 ${danger ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h2>
-            <p className="text-sm text-[var(--text-secondary)] mt-1">{description}</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast flex-shrink-0"
-          >
-            <X className="w-4 h-4" />
-          </button>
+      <div ref={containerRef} className="modal-card bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-dialog)] shadow-modal w-full max-w-[360px]">
+        <div className="p-5 pb-3">
+          <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">{title}</h2>
+          <p className="text-mac-body text-[var(--text-secondary)] mt-1.5">{description}</p>
         </div>
         {requireTypedConfirmation && (
-          <div className="px-6 pb-4">
+          <div className="px-5 pb-3">
             <input
               type="text"
               value={typedValue}
               onChange={(e) => setTypedValue(e.target.value)}
               placeholder="Digite CONFIRMAR"
-              className="w-full h-9 px-3 text-sm bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[8px] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-2 focus:ring-teal-400"
+              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
             />
           </div>
         )}
-        <div className="flex items-center justify-end gap-2 px-6 pb-6">
-          <Button ref={cancelRef} variant="secondary" size="sm" onClick={onClose}>
+        <div className="flex items-center justify-end gap-2 px-5 pb-5">
+          <Button ref={cancelRef} variant="secondary" size="sm" className="!rounded-full" onClick={onClose}>
             Cancelar
           </Button>
           <Button
             variant={danger ? "danger" : "primary"}
             size="sm"
+            className="!rounded-full"
             loading={loading}
             disabled={requireTypedConfirmation && typedValue !== "CONFIRMAR"}
             onClick={onConfirm}

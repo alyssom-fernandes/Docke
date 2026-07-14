@@ -26,7 +26,7 @@ export default function AnchorFavoriteButton({ isFavorited, onClick, title, clas
       title={title ?? (isFavorited ? "Remover ancoragem" : "Ancorar como favorito")}
       className={`p-1.5 rounded-[6px] transition-colors duration-fast ${
         isFavorited
-          ? "text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-900/20"
+          ? "text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20"
           : "text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
       } ${className}`}
     >

@@ -60,36 +60,36 @@ function OrgModal({ org, onClose, onDone }: { org: Org | null; onClose: () => vo
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={containerRef} className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] shadow-modal modal-card w-full max-w-[560px]">
+      <div ref={containerRef} className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[560px]">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
-          <h2 className="text-sm font-semibold text-[var(--text-primary)]">{org ? "Editar empresa" : "Nova empresa"}</h2>
+          <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">{org ? "Editar empresa" : "Nova empresa"}</h2>
           <button onClick={onClose} className="p-1 rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
             <X className="w-4 h-4" />
           </button>
         </div>
         <div className="p-5 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Nome</label>
+            <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Nome</label>
             <input
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Ex: Minha Empresa Ltda."
-              className="w-full h-9 px-3 text-sm bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[8px] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-2 focus:ring-teal-400"
+              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">CNPJ</label>
+            <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">CNPJ</label>
             <input
               value={cnpj}
               onChange={(e) => setCnpj(formatCnpj(e.target.value))}
               placeholder="00.000.000/0000-00"
               maxLength={18}
-              className="w-full h-9 px-3 text-sm bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[8px] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-2 focus:ring-teal-400"
+              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
             />
           </div>
           {org && (
-            <p className="text-xs text-[var(--text-tertiary)] flex items-center gap-1.5">
+            <p className="text-mac-caption text-[var(--text-tertiary)] flex items-center gap-1.5">
               <ImageIcon className="w-3.5 h-3.5" />
               Upload de logo em breve — envie por aqui assim que disponível.
             </p>
@@ -147,7 +147,7 @@ export default function Organization() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-[var(--text-primary)]">Organização</h2>
+        <h2 className="text-mac-callout font-semibold text-[var(--text-primary)]">Organização</h2>
         {isSupremo && (
           <Button size="sm" onClick={() => setEditing("new")}>
             <Plus className="w-3.5 h-3.5" />
@@ -158,33 +158,33 @@ export default function Organization() {
 
       {loading ? (
         <div className="space-y-2">
-          {[0, 1].map((i) => <div key={i} className="h-14 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[8px] animate-pulse" />)}
+          {[0, 1].map((i) => <div key={i} className="h-14 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] animate-pulse" />)}
         </div>
       ) : orgs.length === 0 ? (
         <EmptyState title="Nenhuma empresa cadastrada" icon={<Building2 className="w-6 h-6" />} />
       ) : (
-        <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] overflow-hidden">
+        <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
           <ul>
             {orgs.map((org) => (
               <li key={org.id} className="flex items-center gap-3 px-5 py-4 border-b border-[var(--border-default)] last:border-0">
-                <div className="w-9 h-9 rounded-[8px] bg-teal-600/10 flex items-center justify-center flex-shrink-0">
-                  <Building2 className="w-4 h-4 text-teal-600" />
+                <div className="w-9 h-9 rounded-[var(--radius-control)] bg-teal-500/10 flex items-center justify-center flex-shrink-0">
+                  <Building2 className="w-4 h-4 text-teal-500" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-[var(--text-primary)] truncate flex items-center gap-2">
+                  <p className="text-mac-body font-medium text-[var(--text-primary)] truncate flex items-center gap-2">
                     {org.name}
                     {current?.id === org.id && <Badge variant="teal">Atual</Badge>}
                   </p>
-                  <p className="text-xs text-[var(--text-secondary)]">
+                  <p className="text-mac-caption text-[var(--text-secondary)]">
                     {org.cnpj ? formatCnpj(org.cnpj) : "CNPJ não informado"} · {org.document_count} documentos · {org.user_count} usuários
                   </p>
                 </div>
                 {!org.is_active && <Badge variant="default">Inativa</Badge>}
-                <button onClick={() => setEditing(org)} className="text-xs text-teal-600 hover:underline">Editar</button>
+                <button onClick={() => setEditing(org)} className="text-mac-caption text-teal-500 hover:underline">Editar</button>
                 {isSupremo && (
                   <button
                     onClick={() => setDeactivating(org)}
-                    className="text-xs text-red-600 hover:underline"
+                    className="text-mac-caption text-red-600 hover:underline"
                   >
                     {org.is_active ? "Desativar" : "Reativar"}
                   </button>

@@ -60,11 +60,44 @@ function fmtXmlDate(value?: string | null) {
   return Number.isNaN(d.getTime()) ? value : d.toLocaleDateString("pt-BR");
 }
 
+// Marca d'água dinâmica (usuário + data/hora) sobre o preview — desestimula
+// vazamento por print/foto de tela, padrão Box/Dropbox/Egnyte (ADENDO-09 §12.4.2).
+// É um dissuasor client-side, não DRM real: não impede download nem captura,
+// só identifica quem estava vendo o documento se a captura vazar.
+function getWatermarkLabel(): string {
+  const when = new Date().toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  try {
+    const stored = localStorage.getItem("docke_user");
+    const u = stored ? JSON.parse(stored) : null;
+    const who = u?.email || u?.full_name || u?.username;
+    return who ? `${who} · ${when}` : when;
+  } catch {
+    return when;
+  }
+}
+
+function PreviewWatermark({ label }: { label: string }) {
+  return (
+    <div className="absolute inset-0 z-10 overflow-hidden pointer-events-none select-none" aria-hidden="true">
+      <div
+        className="absolute flex flex-wrap content-start gap-x-14 gap-y-14 origin-center"
+        style={{ inset: "-30%", transform: "rotate(-30deg)" }}
+      >
+        {Array.from({ length: 48 }).map((_, i) => (
+          <span key={i} className="text-mac-caption font-medium whitespace-nowrap text-[var(--text-primary)] opacity-[0.06]">
+            {label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function XmlField({ label, value, mono, span }: { label: string; value: string; mono?: boolean; span?: boolean }) {
   return (
     <div className={span ? "col-span-2" : undefined}>
-      <dt className="text-xs text-[var(--text-secondary)]">{label}</dt>
-      <dd className={`text-sm text-[var(--text-primary)] mt-0.5 break-words ${mono ? "font-mono text-xs" : ""}`}>
+      <dt className="text-mac-caption text-[var(--text-secondary)]">{label}</dt>
+      <dd className={`text-mac-body text-[var(--text-primary)] mt-0.5 break-words ${mono ? "font-mono text-mac-caption" : ""}`}>
         {value}
       </dd>
     </div>
@@ -81,10 +114,11 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
   const [error, setError] = useState<string | null>(null);
   const [xmlFields, setXmlFields] = useState<XmlFields | null>(null);
   const [showRawXml, setShowRawXml] = useState(false);
+  const [watermarkLabel] = useState(getWatermarkLabel);
 
   const type = resolveType(doc.name, doc.mime_type);
   const isXml = doc.name.toLowerCase().endsWith(".xml") || doc.mime_type === "application/xml";
-  const { icon: Icon, iconColor, bgColor } = getFileStyle(doc.name);
+  const { icon: Icon, iconColor } = getFileStyle(doc.name);
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -152,23 +186,21 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
     >
       <div
         ref={containerRef}
-        className="modal-card bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] shadow-modal flex flex-col w-full max-w-4xl"
+        className="modal-card bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-dialog)] shadow-modal flex flex-col w-full max-w-4xl"
         style={{ height: "min(90vh, 760px)" }}
       >
         {/* Header */}
         <div className="flex items-center gap-3 px-5 py-3 border-b border-[var(--border-default)] flex-shrink-0">
-          <div className={`w-8 h-8 rounded-[6px] flex items-center justify-center flex-shrink-0 ${bgColor}`}>
-            <Icon className={`w-4 h-4 ${iconColor}`} />
-          </div>
+          <Icon className={`w-5 h-5 flex-shrink-0 ${iconColor}`} strokeWidth={1.5} />
           <span
-            className="flex-1 text-sm font-medium text-[var(--text-primary)] truncate"
+            className="flex-1 text-mac-body font-medium text-[var(--text-primary)] truncate"
             title={doc.name}
           >
             {doc.name}
           </span>
           <button
             onClick={download}
-            className="flex items-center gap-1.5 h-8 px-3 text-xs border border-[var(--border-default)] rounded-[8px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+            className="flex items-center gap-1.5 h-8 px-3 text-mac-caption border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
             aria-label="Baixar arquivo"
           >
             <Download className="w-3.5 h-3.5" />
@@ -194,27 +226,27 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
           {!loading && error && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-8">
               <AlertCircle className="w-10 h-10 text-[var(--text-placeholder)]" />
-              <p className="text-sm text-[var(--text-secondary)]">{error}</p>
+              <p className="text-mac-body text-[var(--text-secondary)]">{error}</p>
             </div>
           )}
 
           {!loading && !error && type === "unsupported" && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-8">
-              <div className={`w-14 h-14 rounded-[12px] flex items-center justify-center ${bgColor}`}>
-                <Icon className={`w-7 h-7 ${iconColor}`} />
-              </div>
-              <p className="text-sm text-[var(--text-secondary)]">
+              <Icon className={`w-12 h-12 ${iconColor}`} strokeWidth={1.5} />
+              <p className="text-mac-body text-[var(--text-secondary)]">
                 Nenhuma visualização disponível para este tipo de arquivo.
               </p>
               <button
                 onClick={download}
-                className="flex items-center gap-1.5 h-9 px-4 text-sm bg-teal-600 text-white rounded-[8px] hover:bg-teal-500 transition-colors duration-fast"
+                className="flex items-center gap-1.5 h-9 px-4 text-mac-body bg-teal-600 text-white rounded-[var(--radius-control)] hover:bg-teal-500 transition-colors duration-fast"
               >
                 <Download className="w-4 h-4" />
                 Fazer download para abrir
               </button>
             </div>
           )}
+
+          {!loading && !error && type !== "unsupported" && <PreviewWatermark label={watermarkLabel} />}
 
           {!loading && !error && type === "pdf" && url && (
             <iframe
@@ -237,10 +269,10 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
           {!loading && !error && type === "text" && textContent !== null && isXml && xmlFields?.recognized && !showRawXml && (
             <div className="w-full h-full overflow-auto p-5">
               <div className="flex items-center justify-between mb-4">
-                <p className="text-sm font-medium text-[var(--text-primary)]">Nota fiscal eletrônica</p>
+                <p className="text-mac-body font-medium text-[var(--text-primary)]">Nota fiscal eletrônica</p>
                 <button
                   onClick={() => setShowRawXml(true)}
-                  className="text-xs text-teal-600 hover:underline"
+                  className="text-mac-caption text-teal-500 hover:underline"
                 >
                   Ver XML bruto
                 </button>
@@ -266,13 +298,13 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
                 <div className="sticky top-0 bg-[var(--bg-card)] border-b border-[var(--border-default)] px-5 py-2 flex justify-end">
                   <button
                     onClick={() => setShowRawXml(false)}
-                    className="text-xs text-teal-600 hover:underline"
+                    className="text-mac-caption text-teal-500 hover:underline"
                   >
                     Ver campos extraídos
                   </button>
                 </div>
               )}
-              <pre className="p-5 text-xs font-mono text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap break-words">
+              <pre className="p-5 text-mac-caption font-mono text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap break-words">
                 {textContent}
               </pre>
             </div>

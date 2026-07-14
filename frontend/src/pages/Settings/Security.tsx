@@ -42,12 +42,12 @@ export default function Security() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-base font-semibold text-[var(--text-primary)]">Segurança</h2>
+      <h2 className="text-mac-callout font-semibold text-[var(--text-primary)]">Segurança</h2>
 
-      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] p-6">
+      <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6">
         <div className="flex items-center gap-2 mb-5">
-          <Lock className="w-4 h-4 text-teal-600" />
-          <h3 className="text-sm font-medium text-[var(--text-primary)]">Trocar senha</h3>
+          <Lock className="w-4 h-4 text-teal-500" />
+          <h3 className="text-mac-body font-medium text-[var(--text-primary)]">Trocar senha</h3>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4 max-w-[400px]">
           <Input

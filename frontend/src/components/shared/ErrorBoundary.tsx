@@ -24,14 +24,14 @@ export default class ErrorBoundary extends Component<Props, State> {
             <AlertTriangle className="w-6 h-6 text-red-500" />
           </div>
           <div>
-            <p className="text-base font-medium text-[var(--text-primary)]">Algo deu errado</p>
-            <p className="text-sm text-[var(--text-secondary)] mt-1 max-w-sm">
+            <p className="text-mac-callout font-medium text-[var(--text-primary)]">Algo deu errado</p>
+            <p className="text-mac-body text-[var(--text-secondary)] mt-1 max-w-sm">
               Ocorreu um erro inesperado nesta página.
             </p>
           </div>
           <button
             onClick={() => this.setState({ error: null })}
-            className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-[8px] hover:bg-teal-500 transition-colors duration-fast"
+            className="px-4 py-2 text-mac-body font-medium text-white bg-teal-600 rounded-[var(--radius-control)] hover:bg-teal-500 transition-colors duration-fast"
           >
             Tentar novamente
           </button>

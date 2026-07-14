@@ -8,7 +8,7 @@ import {
   FolderOpen,
   Anchor,
   Clock,
-  ArrowRight,
+  ChevronRight,
   Upload,
   Eye,
   Move,
@@ -102,13 +102,11 @@ function actionIcon(action: string) {
 
 function StatCard({ label, value, icon: Icon, color }: { label: string; value: number; icon: ElementType; color: string }) {
   return (
-    <div className="glass-panel glass-blur-card glass-highlight-line glass-interactive relative rounded-[22px] p-5 flex items-center gap-4">
-      <div className={`w-10 h-10 rounded-[10px] flex items-center justify-center flex-shrink-0 ${color}`}>
-        <Icon className="w-5 h-5" />
-      </div>
+    <div className="glass-panel glass-blur-card glass-highlight-line glass-interactive relative rounded-[var(--radius-panel)] p-5 flex items-center gap-3.5">
+      <Icon className={`w-5 h-5 flex-shrink-0 ${color}`} strokeWidth={1.5} />
       <div>
-        <p className="text-2xl font-semibold text-[var(--text-primary)]">{value.toLocaleString("pt-BR")}</p>
-        <p className="text-xs text-[var(--text-secondary)]">{label}</p>
+        <p className="text-mac-title1 font-semibold text-[var(--text-primary)]">{value.toLocaleString("pt-BR")}</p>
+        <p className="text-mac-caption text-[var(--text-secondary)] mt-0.5">{label}</p>
       </div>
     </div>
   );
@@ -153,36 +151,30 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="max-w-[1200px] mx-auto space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-semibold text-[var(--text-primary)]">Painel</h1>
-        <p className="text-sm text-[var(--text-secondary)]">{current.name}</p>
-      </div>
-
+    <div className="space-y-6">
       {/* Stats */}
       {loading ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[22px] p-5 h-[84px] animate-pulse" />
+            <div key={i} className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-panel)] p-5 h-[84px] animate-pulse" />
           ))}
         </div>
       ) : stats && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard label="Documentos" value={stats.total_documents} icon={FileText} color="bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400" />
-          <StatCard label="Pastas" value={stats.total_folders} icon={FolderOpen} color="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400" />
-          <StatCard label="Ancorados" value={stats.total_favorites} icon={Anchor} color="bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400" />
-          <StatCard label="Uploads recentes" value={stats.recent_uploads} icon={Clock} color="bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
+          <StatCard label="Documentos" value={stats.total_documents} icon={FileText} color="text-teal-500 dark:text-teal-400" />
+          <StatCard label="Pastas" value={stats.total_folders} icon={FolderOpen} color="text-teal-500 dark:text-teal-400" />
+          <StatCard label="Ancorados" value={stats.total_favorites} icon={Anchor} color="text-teal-500 dark:text-teal-400" />
+          <StatCard label="Uploads recentes" value={stats.recent_uploads} icon={Clock} color="text-teal-500 dark:text-teal-400" />
         </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Documentos recentes */}
-        <div className="lg:col-span-2 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-default)]">
-            <h2 className="text-sm font-medium text-[var(--text-primary)]">Documentos recentes</h2>
-            <Link to="/documents" className="flex items-center gap-1 text-xs text-teal-600 hover:underline">
-              Ver todos <ArrowRight className="w-3 h-3" />
+        <div className="lg:col-span-2 glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-2 border-b border-[var(--border-default)]">
+            <h2 className="text-mac-caption font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Documentos recentes</h2>
+            <Link to="/documents" className="flex items-center gap-1 text-mac-caption text-[var(--text-secondary)] hover:text-teal-500">
+              Ver todos <ChevronRight className="w-3 h-3" />
             </Link>
           </div>
           {loading ? (
@@ -207,15 +199,15 @@ export default function Dashboard() {
                       navigate(`/documents?folder_id=${doc.folder_id ?? ""}&doc=${doc.id}`);
                     }
                   }}
-                  className="flex items-center gap-3 px-5 py-3 hover:bg-[var(--bg-hover)] transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 cursor-pointer"
+                  className="flex items-center gap-3 px-5 py-2 hover:bg-[var(--bg-hover)] transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 cursor-pointer"
                 >
                   {(() => { const s = getFileStyle(doc.name); const Icon = s.icon; return (
                     <div className={`w-6 h-6 rounded-[4px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
                       <Icon className={`w-3.5 h-3.5 ${s.iconColor}`} />
                     </div>
                   ); })()}
-                  <span className="flex-1 text-sm text-[var(--text-primary)] truncate">{doc.name}</span>
-                  <span className="text-xs text-[var(--text-tertiary)] flex-shrink-0">{fmtDate(doc.created_at)}</span>
+                  <span className="flex-1 text-mac-body text-[var(--text-primary)] truncate">{doc.name}</span>
+                  <span className="text-mac-caption text-[var(--text-tertiary)] flex-shrink-0">{fmtDate(doc.created_at)}</span>
                 </li>
               ))}
             </ul>
@@ -223,11 +215,11 @@ export default function Dashboard() {
         </div>
 
         {/* Favorites */}
-        <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-default)]">
-            <h2 className="text-sm font-medium text-[var(--text-primary)]">Ancorados</h2>
-            <Link to="/favorites" className="flex items-center gap-1 text-xs text-teal-600 hover:underline">
-              Ver todos <ArrowRight className="w-3 h-3" />
+        <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-2 border-b border-[var(--border-default)]">
+            <h2 className="text-mac-caption font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Ancorados</h2>
+            <Link to="/favorites" className="flex items-center gap-1 text-mac-caption text-[var(--text-secondary)] hover:text-teal-500">
+              Ver todos <ChevronRight className="w-3 h-3" />
             </Link>
           </div>
           {loading ? (
@@ -241,7 +233,7 @@ export default function Dashboard() {
           ) : (
             <ul>
               {favorites.map((fav) => (
-                <li key={fav.id} className="flex items-center gap-2 px-5 py-3 hover:bg-[var(--bg-hover)] transition-colors duration-fast border-b border-[var(--border-default)] last:border-0">
+                <li key={fav.id} className="flex items-center gap-2 px-5 py-2 hover:bg-[var(--bg-hover)] transition-colors duration-fast border-b border-[var(--border-default)] last:border-0">
                   {fav.item_type === "folder" ? (
                     <FolderOpen className="w-4 h-4 text-teal-500 flex-shrink-0" />
                   ) : (
@@ -251,7 +243,7 @@ export default function Dashboard() {
                       </div>
                     ); })()
                   )}
-                  <span className="flex-1 text-sm text-[var(--text-primary)] truncate">{fav.item_name}</span>
+                  <span className="flex-1 text-mac-body text-[var(--text-primary)] truncate">{fav.item_name}</span>
                   <Badge variant="default">{fav.item_type === "folder" ? "Pasta" : "Doc"}</Badge>
                 </li>
               ))}
@@ -261,11 +253,11 @@ export default function Dashboard() {
       </div>
 
       {/* Activity feed */}
-      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-default)]">
-          <h2 className="text-sm font-medium text-[var(--text-primary)]">Atividade recente</h2>
-          <Link to="/activity" className="flex items-center gap-1 text-xs text-teal-600 hover:underline">
-            Ver tudo <ArrowRight className="w-3 h-3" />
+      <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-2 border-b border-[var(--border-default)]">
+          <h2 className="text-mac-caption font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Atividade recente</h2>
+          <Link to="/activity" className="flex items-center gap-1 text-mac-caption text-[var(--text-secondary)] hover:text-teal-500">
+            Ver tudo <ChevronRight className="w-3 h-3" />
           </Link>
         </div>
         {loading ? (
@@ -297,13 +289,13 @@ export default function Dashboard() {
                       : undefined
                   }
                   title={target ? undefined : "Item não está mais disponível"}
-                  className={`flex items-center gap-3 px-5 py-3 transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 ${
+                  className={`flex items-center gap-3 px-5 py-2 transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 ${
                     target ? "hover:bg-[var(--bg-hover)] cursor-pointer" : ""
                   }`}
                 >
                   <Avatar name={ev.user_name} size="sm" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-[var(--text-primary)] truncate">
+                    <p className="text-mac-body text-[var(--text-primary)] truncate">
                       <span className="font-medium">{ev.user_name}</span>{" "}
                       {actionLabel(ev.action)}{" "}
                       <span className="text-[var(--text-secondary)]">{ev.item_name_snapshot}</span>
@@ -311,7 +303,7 @@ export default function Dashboard() {
                   </div>
                   <div className="flex items-center gap-1.5 text-[var(--text-tertiary)] flex-shrink-0">
                     {actionIcon(ev.action)}
-                    <span className="text-xs">{fmtDate(ev.created_at)}</span>
+                    <span className="text-mac-caption">{fmtDate(ev.created_at)}</span>
                   </div>
                 </li>
               );

@@ -110,29 +110,29 @@ export default function Activity() {
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
-    <div className="max-w-[900px] mx-auto space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-[var(--text-primary)]">Atividade</h1>
+        <h1 className="text-mac-title2 font-semibold text-[var(--text-primary)]">Atividade</h1>
         <div className="relative" ref={exportRef}>
           <button
             onClick={() => setExportOpen((v) => !v)}
-            className="flex items-center gap-1.5 h-8 px-3 text-sm text-[var(--text-secondary)] border border-[var(--border-default)] rounded-[8px] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+            className="flex items-center gap-1.5 h-8 px-3.5 text-mac-body text-[var(--text-secondary)] border border-[var(--border-default)] rounded-full hover:bg-[var(--bg-hover)] transition-colors duration-fast"
           >
             <Download className="w-3.5 h-3.5" />
             Exportar
             <ChevronDown className="w-3.5 h-3.5" />
           </button>
           {exportOpen && (
-            <div className="absolute top-full right-0 mt-1 w-40 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[8px] shadow-dropdown py-1 z-50">
+            <div className="absolute top-full right-0 mt-1 w-40 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-popover)] shadow-dropdown py-1 z-50">
               <button
                 onClick={() => exportActivity("csv")}
-                className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+                className="w-full text-left px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
               >
                 CSV
               </button>
               <button
                 onClick={() => exportActivity("xlsx")}
-                className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+                className="w-full text-left px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
               >
                 Excel (.xlsx)
               </button>
@@ -144,7 +144,7 @@ export default function Activity() {
       {loading ? (
         <div className="space-y-2">
           {[0, 1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-14 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[8px] animate-pulse" />
+            <div key={i} className="h-14 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] animate-pulse" />
           ))}
         </div>
       ) : events.length === 0 ? (
@@ -155,7 +155,7 @@ export default function Activity() {
         />
       ) : (
         <>
-          <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] overflow-hidden">
+          <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
             <ul>
               {events.map((ev) => {
                 const target = activityTarget(ev);
@@ -182,13 +182,13 @@ export default function Activity() {
                   >
                     <Avatar name={ev.user_name} size="sm" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-[var(--text-primary)] truncate">
+                      <p className="text-mac-body text-[var(--text-primary)] truncate">
                         <span className="font-medium">{ev.user_name}</span>{" "}
                         {ACTION_LABELS[ev.action] ?? ev.action}{" "}
                         <span className="text-[var(--text-secondary)]">{ev.item_name_snapshot}</span>
                       </p>
                     </div>
-                    <span className="text-xs text-[var(--text-tertiary)] flex-shrink-0">
+                    <span className="text-mac-caption text-[var(--text-tertiary)] flex-shrink-0">
                       {fmtDateTime(ev.created_at)}
                     </span>
                   </li>
@@ -202,17 +202,17 @@ export default function Activity() {
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1}
-                className="h-8 px-3 text-sm border border-[var(--border-default)] rounded-[8px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40 disabled:pointer-events-none transition-colors duration-fast"
+                className="h-8 px-3.5 text-mac-body border border-[var(--border-default)] rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40 disabled:pointer-events-none transition-colors duration-fast"
               >
                 Anterior
               </button>
-              <span className="text-sm text-[var(--text-secondary)]">
+              <span className="text-mac-body text-[var(--text-secondary)]">
                 {page} / {totalPages}
               </span>
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
-                className="h-8 px-3 text-sm border border-[var(--border-default)] rounded-[8px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40 disabled:pointer-events-none transition-colors duration-fast"
+                className="h-8 px-3.5 text-mac-body border border-[var(--border-default)] rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40 disabled:pointer-events-none transition-colors duration-fast"
               >
                 Próxima
               </button>
