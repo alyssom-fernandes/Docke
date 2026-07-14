@@ -38,6 +38,7 @@ import { useToast } from "@/lib/toast";
 import { useNavigation } from "@/lib/NavigationContext";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
+import Checkbox from "@/components/ui/Checkbox";
 import EmptyState from "@/components/shared/EmptyState";
 import TruncatedFileName from "@/components/ui/TruncatedFileName";
 import ConfirmModal from "@/components/ui/ConfirmModal";
@@ -194,7 +195,7 @@ function SortableHeader({ label, sortKey, sort, onSort, className = "", onResize
 }) {
   const active = sort.key === sortKey;
   return (
-    <th className={`relative px-3 py-2 text-mac-caption font-semibold uppercase tracking-wide text-[var(--text-tertiary)] text-left ${className}`}>
+    <th className={`relative px-3 py-2 text-mac-body font-normal text-[var(--text-secondary)] text-left ${className}`}>
       <button
         onClick={() => onSort(sortKey)}
         className={`flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors duration-fast ${active ? "text-[var(--text-primary)]" : ""}`}
@@ -386,7 +387,7 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
           )}
         </div>
         {!folderId && (
-          <div className="mx-5 mb-1 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-[var(--radius-control)] text-mac-caption text-yellow-800">
+          <div className="mx-5 mb-1 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-[var(--radius-control)] text-mac-caption text-amber-800 dark:text-amber-300">
             Abra uma pasta primeiro para habilitar o upload.
           </div>
         )}
@@ -447,7 +448,7 @@ function CreateFolderModal({ parentId, companyId, onClose, onDone }: { parentId:
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") create(); if (e.key === "Escape") onClose(); }}
             placeholder="Nome da pasta"
-            className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+            className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
           />
         </div>
         <div className="flex justify-end gap-2 px-5 py-4 border-t border-[var(--border-default)]">
@@ -506,7 +507,7 @@ function MetadataSection({ doc, companyId }: { doc: Document; companyId: string 
 
   return (
     <div className="pt-2 border-t border-[var(--border-default)] space-y-3">
-      <p className="text-mac-caption font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Metadados</p>
+      <p className="text-mac-body font-semibold text-[var(--text-secondary)]">Metadados</p>
       {fields.map((f) => (
         <div key={f.custom_field_id}>
           <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1">
@@ -516,7 +517,7 @@ function MetadataSection({ doc, companyId }: { doc: Document; companyId: string 
             <select
               value={values[f.custom_field_id] ?? ""}
               onChange={(e) => setValues((v) => ({ ...v, [f.custom_field_id]: e.target.value }))}
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
             >
               <option value="">—</option>
               {((f.format_config?.options as string[]) ?? []).map((o) => (
@@ -535,7 +536,7 @@ function MetadataSection({ doc, companyId }: { doc: Document; companyId: string 
                 f.type === "competencia" ? "mm/aaaa" :
                 f.type === "numero" ? "0" : ""
               }
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
             />
           )}
         </div>
@@ -1289,7 +1290,7 @@ export default function Documents() {
       {/* Sidebar de pastas — desktop only (lg+), mesma "receita" de vidro do painel principal */}
       <aside className="hidden lg:flex flex-col w-[220px] flex-shrink-0 glass-panel glass-highlight-line rounded-[var(--radius-panel)] glass-shadow overflow-hidden">
         <div className="px-3 py-3 border-b border-[var(--border-default)] flex-shrink-0">
-          <h2 className="text-mac-caption font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Pastas</h2>
+          <h2 className="text-mac-body font-semibold text-[var(--text-secondary)]">Pastas</h2>
         </div>
         <div className="flex-1 overflow-y-auto p-1.5">
           <button
@@ -1560,7 +1561,7 @@ export default function Documents() {
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); setConfirmDeleteFolder(f); }}
-                          className="p-1 rounded-full text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors duration-fast"
+                          className="p-1 rounded-full text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
                           title="Excluir pasta"
                         >
                           <Trash2 className="w-3 h-3" />
@@ -1619,12 +1620,11 @@ export default function Documents() {
                     onDragEnd={() => { setDragDocIds(null); setDragOverFolderId(null); }}
                   >
                     {selectionMode && (
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={isSelected}
                         onChange={() => toggleSelect(d.id)}
                         onClick={(e) => e.stopPropagation()}
-                        className="absolute top-1 left-1 accent-teal-500 w-4 h-4 z-10"
+                        className="absolute top-1 left-1 z-10"
                       />
                     )}
                     <button
@@ -1661,11 +1661,9 @@ export default function Documents() {
                 <tr>
                   {selectionMode && (
                     <th className="w-10 px-4 py-2 text-left">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={selected.size === documents.length && documents.length > 0}
                         onChange={selectAll}
-                        className="accent-teal-500 w-4 h-4"
                       />
                     </th>
                   )}
@@ -1679,7 +1677,7 @@ export default function Documents() {
                     onResizeStart={(e) => startColResize("size", e)}
                     onResizeReset={() => resetColWidth("size")}
                   />
-                  <th className="relative px-3 py-2 text-mac-caption font-semibold uppercase tracking-wide text-[var(--text-tertiary)] text-left">
+                  <th className="relative px-3 py-2 text-mac-body font-normal text-[var(--text-secondary)] text-left">
                     OCR
                     <div
                       onMouseDown={(e) => startColResize("ocr", e)}
@@ -1693,7 +1691,7 @@ export default function Documents() {
                     onResizeReset={() => resetColWidth("created")}
                   />
                   {resolvedFields.map((f) => (
-                    <th key={f.custom_field_id} className="px-3 py-2 text-mac-caption font-semibold uppercase tracking-wide text-[var(--text-tertiary)] text-left truncate">
+                    <th key={f.custom_field_id} className="px-3 py-2 text-mac-body font-normal text-[var(--text-secondary)] text-left truncate">
                       {f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}
                     </th>
                   ))}
@@ -1784,7 +1782,7 @@ export default function Documents() {
                           </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); setConfirmDeleteFolder(f); }}
-                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-fast"
+                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-all duration-fast"
                             title="Excluir pasta"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1830,12 +1828,7 @@ export default function Documents() {
                     >
                       {selectionMode && (
                         <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleSelect(d.id)}
-                            className="accent-teal-500 w-4 h-4"
-                          />
+                          <Checkbox checked={isSelected} onChange={() => toggleSelect(d.id)} />
                         </td>
                       )}
                       <td className="px-3 py-2.5">

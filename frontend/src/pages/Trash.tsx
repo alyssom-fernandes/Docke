@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import { FolderOpen, Trash2, RotateCcw, X } from "lucide-react";
 import { getFileStyle } from "@/lib/fileType";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { fullDate } from "@/lib/date";
+import { relativeDate, fullDate } from "@/lib/date";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
 import EmptyState from "@/components/shared/EmptyState";
 import ConfirmModal from "@/components/ui/ConfirmModal";
+import Checkbox from "@/components/ui/Checkbox";
 
 interface TrashItem {
   id: string;
@@ -22,7 +23,7 @@ interface TrashResponse {
   total: number;
 }
 
-const fmtDate = fullDate;
+const fmtDate = relativeDate;
 
 export default function Trash() {
   usePageTitle("Lixeira");
@@ -137,11 +138,9 @@ export default function Trash() {
                 key={item.id}
                 className="flex items-center gap-3 px-5 py-3 hover:bg-[var(--bg-hover)] transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 group"
               >
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={selected.has(item.id)}
                   onChange={() => toggleSelect(item.id)}
-                  className="w-4 h-4 rounded accent-teal-500 flex-shrink-0"
                   aria-label={`Selecionar ${item.name}`}
                 />
                 {item.item_type === "folder" ? (
@@ -154,8 +153,8 @@ export default function Trash() {
                   ); })()
                 )}
                 <span className="flex-1 text-mac-body text-[var(--text-primary)] truncate">{item.name}</span>
-                <span className="text-mac-caption text-[var(--text-tertiary)] mr-2">
-                  Excluído em {fmtDate(item.deleted_at)}
+                <span className="text-mac-caption text-[var(--text-tertiary)] mr-2" title={fullDate(item.deleted_at)}>
+                  Excluído {fmtDate(item.deleted_at)}
                 </span>
                 <button
                   onClick={() => restore(item)}
@@ -167,7 +166,7 @@ export default function Trash() {
                 </button>
                 <button
                   onClick={() => setConfirmSingle(item)}
-                  className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-2.5 py-1 rounded-full text-mac-caption text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-fast"
+                  className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-2.5 py-1 rounded-full text-mac-caption text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-all duration-fast"
                   title="Excluir permanentemente"
                 >
                   <X className="w-3.5 h-3.5" />

@@ -89,9 +89,6 @@ export default function TopBar({ onUploadClick }: TopBarProps) {
       >
         <Search className="w-4 h-4 flex-shrink-0" />
         <span className="flex-1 text-left">Buscar documentos…</span>
-        <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-mac-caption2 bg-[var(--bg-hover)] text-[var(--text-tertiary)] rounded-[4px]">
-          Ctrl K
-        </kbd>
       </button>
 
       {/* Busca — ícone isolado abaixo de md, abre o mesmo Command Palette */}

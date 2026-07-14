@@ -27,7 +27,7 @@ export default function Profile() {
 
   return (
     <div className="max-w-[560px] mx-auto space-y-6">
-      <h1 className="text-mac-title2 font-semibold text-[var(--text-primary)]">Perfil</h1>
+      <h2 className="text-mac-callout font-semibold text-[var(--text-primary)]">Perfil</h2>
 
       <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6 space-y-6">
         {/* Avatar section */}

@@ -75,7 +75,7 @@ function OrgModal({ org, onClose, onDone }: { org: Org | null; onClose: () => vo
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Ex: Minha Empresa Ltda."
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
             />
           </div>
           <div>
@@ -85,7 +85,7 @@ function OrgModal({ org, onClose, onDone }: { org: Org | null; onClose: () => vo
               onChange={(e) => setCnpj(formatCnpj(e.target.value))}
               placeholder="00.000.000/0000-00"
               maxLength={18}
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
             />
           </div>
           {org && (

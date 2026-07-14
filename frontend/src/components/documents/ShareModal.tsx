@@ -108,7 +108,7 @@ export default function ShareModal({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Senha do link"
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
             />
           )}
 
@@ -117,7 +117,7 @@ export default function ShareModal({
             <select
               value={expiresIn}
               onChange={(e) => setExpiresIn(e.target.value)}
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
             >
               <option value="24h">24 horas</option>
               <option value="7d">7 dias</option>
@@ -133,7 +133,7 @@ export default function ShareModal({
             </div>
           )}
 
-          <Button size="sm" className="w-full !rounded-full" loading={creating} onClick={createLink} disabled={usePassword && !password.trim()}>
+          <Button size="sm" className="w-full" loading={creating} onClick={createLink} disabled={usePassword && !password.trim()}>
             <Link2 className="w-3.5 h-3.5" />
             Gerar link
           </Button>
@@ -166,7 +166,7 @@ export default function ShareModal({
                         {l.expires_at ? `Expira ${relativeDate(l.expires_at)}` : "Nunca expira"}
                       </p>
                     </div>
-                    <button onClick={() => setRevokingId(l.id)} title="Revogar" className="p-1 rounded-full text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20">
+                    <button onClick={() => setRevokingId(l.id)} title="Revogar" className="p-1 rounded-full text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </li>

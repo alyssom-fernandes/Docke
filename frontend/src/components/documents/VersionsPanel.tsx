@@ -177,7 +177,7 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
                         onClick={() => deleteVersion(v)}
                         disabled={busyId === v.id}
                         title="Excluir esta versão"
-                        className="p-1 rounded text-[var(--text-tertiary)] hover:text-red-500 hover:bg-[var(--bg-hover)] disabled:opacity-50"
+                        className="p-1 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-50"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

@@ -11,6 +11,7 @@ import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/shared/EmptyState";
 import ConfirmModal from "@/components/ui/ConfirmModal";
+import Dropdown from "@/components/ui/Dropdown";
 
 interface Grant {
   access_id: string;
@@ -48,18 +49,15 @@ function folderDepth(path: string) {
 
 function FolderSelect({ folders, value, onChange }: { folders: FolderOption[]; value: string; onChange: (v: string) => void }) {
   return (
-    <select
+    <Dropdown
       value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
-    >
-      <option value="">Empresa toda</option>
-      {folders.map((f) => (
-        <option key={f.id} value={f.id}>
-          {"— ".repeat(Math.max(0, folderDepth(f.path) - 1))}{f.name}
-        </option>
-      ))}
-    </select>
+      placeholder="Empresa toda"
+      onChange={onChange}
+      options={[
+        { value: "", label: "Empresa toda" },
+        ...folders.map((f) => ({ value: f.id, label: f.name, depth: Math.max(0, folderDepth(f.path) - 1) })),
+      ]}
+    />
   );
 }
 
@@ -114,7 +112,7 @@ function CreateMemberModal({ companyId, folders, onClose, onDone }: { companyId:
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="Maria Silva"
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
             />
           </div>
           <div>
@@ -123,7 +121,7 @@ function CreateMemberModal({ companyId, folders, onClose, onDone }: { companyId:
               value={username}
               onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/\s+/g, "."))}
               placeholder="maria.silva"
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
             />
           </div>
           <div>
@@ -133,7 +131,7 @@ function CreateMemberModal({ companyId, folders, onClose, onDone }: { companyId:
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="maria@empresa.com"
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
             />
           </div>
           <div>
@@ -142,7 +140,7 @@ function CreateMemberModal({ companyId, folders, onClose, onDone }: { companyId:
               <input
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="flex-1 h-9 px-3 text-mac-body font-mono bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+                className="flex-1 h-9 px-3 text-mac-body font-mono bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
               />
               <button
                 type="button"
@@ -157,15 +155,16 @@ function CreateMemberModal({ companyId, folders, onClose, onDone }: { companyId:
           </div>
           <div>
             <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Papel</label>
-            <select
+            <Dropdown
               value={role}
-              onChange={(e) => setRole(e.target.value)}
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
-            >
-              <option value="visualizador">Visualizador</option>
-              <option value="operador">Operador</option>
-              <option value="admin">Admin</option>
-            </select>
+              placeholder="Selecione…"
+              onChange={setRole}
+              options={[
+                { value: "visualizador", label: "Visualizador" },
+                { value: "operador", label: "Operador" },
+                { value: "admin", label: "Admin" },
+              ]}
+            />
           </div>
           {role !== "admin" && (
             <div>
@@ -225,15 +224,16 @@ function AddGrantModal({ companyId, memberId, memberName, folders, onClose, onDo
         <div className="p-5 space-y-4">
           <div>
             <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Papel</label>
-            <select
+            <Dropdown
               value={role}
-              onChange={(e) => setRole(e.target.value)}
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
-            >
-              <option value="visualizador">Visualizador</option>
-              <option value="operador">Operador</option>
-              <option value="admin">Admin</option>
-            </select>
+              placeholder="Selecione…"
+              onChange={setRole}
+              options={[
+                { value: "visualizador", label: "Visualizador" },
+                { value: "operador", label: "Operador" },
+                { value: "admin", label: "Admin" },
+              ]}
+            />
           </div>
           <div>
             <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Escopo (pasta)</label>
@@ -342,7 +342,7 @@ export default function Users() {
                           {canManage && (
                             <button
                               onClick={() => setRemovingGrant(g)}
-                              className="text-[var(--text-tertiary)] hover:text-red-500 transition-colors duration-fast"
+                              className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors duration-fast"
                               title="Remover esta concessão"
                             >
                               <X className="w-3 h-3" />

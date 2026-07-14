@@ -149,7 +149,7 @@ export default function Onboarding({ onComplete }: Props) {
               onChange={(e) => setCompanyName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleNext(); }}
               placeholder="Ex: Minha Empresa Ltda."
-              className="w-full h-10 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              className="w-full h-10 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
             />
           )}
 
@@ -183,7 +183,7 @@ export default function Onboarding({ onComplete }: Props) {
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
                 placeholder="email@colega.com (opcional)"
-                className="w-full h-10 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+                className="w-full h-10 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
               />
               <p className="text-mac-caption text-[var(--text-tertiary)]">
                 Você pode convidar mais pessoas depois em Configurações → Usuários.

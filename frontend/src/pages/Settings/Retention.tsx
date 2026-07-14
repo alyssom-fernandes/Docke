@@ -57,7 +57,7 @@ export default function Retention() {
               min={1}
               value={days}
               onChange={(e) => setDays(Math.max(1, Number(e.target.value)))}
-              className="w-24 h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              className="w-24 h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
             />
             <span className="text-mac-body text-[var(--text-secondary)]">dias</span>
           </div>

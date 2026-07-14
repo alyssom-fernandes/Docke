@@ -172,7 +172,7 @@ export default function Dashboard() {
         {/* Documentos recentes */}
         <div className="lg:col-span-2 glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
           <div className="flex items-center justify-between px-5 py-2 border-b border-[var(--border-default)]">
-            <h2 className="text-mac-caption font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Documentos recentes</h2>
+            <h2 className="text-mac-body font-semibold text-[var(--text-secondary)]">Documentos recentes</h2>
             <Link to="/documents" className="flex items-center gap-1 text-mac-caption text-[var(--text-secondary)] hover:text-teal-500">
               Ver todos <ChevronRight className="w-3 h-3" />
             </Link>
@@ -217,7 +217,7 @@ export default function Dashboard() {
         {/* Favorites */}
         <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
           <div className="flex items-center justify-between px-5 py-2 border-b border-[var(--border-default)]">
-            <h2 className="text-mac-caption font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Ancorados</h2>
+            <h2 className="text-mac-body font-semibold text-[var(--text-secondary)]">Ancorados</h2>
             <Link to="/favorites" className="flex items-center gap-1 text-mac-caption text-[var(--text-secondary)] hover:text-teal-500">
               Ver todos <ChevronRight className="w-3 h-3" />
             </Link>
@@ -255,7 +255,7 @@ export default function Dashboard() {
       {/* Activity feed */}
       <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
         <div className="flex items-center justify-between px-5 py-2 border-b border-[var(--border-default)]">
-          <h2 className="text-mac-caption font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Atividade recente</h2>
+          <h2 className="text-mac-body font-semibold text-[var(--text-secondary)]">Atividade recente</h2>
           <Link to="/activity" className="flex items-center gap-1 text-mac-caption text-[var(--text-secondary)] hover:text-teal-500">
             Ver tudo <ChevronRight className="w-3 h-3" />
           </Link>

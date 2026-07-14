@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Tags, Plus, X, Archive, FolderTree, Copy, GripVertical, Trash2, ChevronDown, Check } from "lucide-react";
+import { Tags, Plus, X, Archive, FolderTree, Copy, GripVertical, Trash2 } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import api from "@/lib/api";
@@ -10,6 +10,7 @@ import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/shared/EmptyState";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import Switch from "@/components/ui/Switch";
+import Dropdown from "@/components/ui/Dropdown";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -66,88 +67,6 @@ function folderDepth(path: string) {
   return path.split(".").length;
 }
 
-// ─── Dropdown genérico (substitui <select> nativo por popover de vidro) ──────
-
-interface DropdownOption {
-  value: string;
-  label: string;
-  depth?: number;
-}
-
-function Dropdown({
-  value, placeholder, options, onChange, disabled, className,
-}: {
-  value: string;
-  placeholder: string;
-  options: DropdownOption[];
-  onChange: (value: string) => void;
-  disabled?: boolean;
-  className?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const selected = options.find((o) => o.value === value);
-
-  useEffect(() => {
-    if (!open) return;
-    function onClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
-    }
-    function onEscape(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", onClickOutside);
-    document.addEventListener("keydown", onEscape);
-    return () => {
-      document.removeEventListener("mousedown", onClickOutside);
-      document.removeEventListener("keydown", onEscape);
-    };
-  }, [open]);
-
-  return (
-    <div ref={containerRef} className={`relative ${className ?? ""}`}>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen((v) => !v)}
-        className="w-full h-9 px-3 flex items-center justify-between gap-2 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] disabled:opacity-50 focus:outline-none focus:ring-[3px] focus:ring-teal-500/70 hover:bg-[var(--bg-hover)] transition-colors duration-fast"
-      >
-        <span className={`truncate ${selected ? "" : "text-[var(--text-placeholder)]"}`}>
-          {selected ? selected.label : placeholder}
-        </span>
-        <ChevronDown className={`w-4 h-4 flex-shrink-0 text-[var(--text-tertiary)] transition-transform duration-fast ${open ? "rotate-180" : ""}`} />
-      </button>
-      {open && (
-        <div
-          role="listbox"
-          className="absolute top-full left-0 mt-1 w-full min-w-[220px] max-h-[280px] overflow-y-auto glass-panel glass-blur-strong rounded-[var(--radius-popover)] shadow-dropdown py-1 z-50"
-        >
-          {options.length === 0 ? (
-            <p className="px-3 py-2 text-mac-caption text-[var(--text-tertiary)]">Nenhuma opção disponível.</p>
-          ) : (
-            options.map((o) => (
-              <button
-                key={o.value}
-                type="button"
-                role="option"
-                aria-selected={o.value === value}
-                onClick={() => { onChange(o.value); setOpen(false); }}
-                style={{ paddingLeft: `${12 + (o.depth ?? 0) * 16}px` }}
-                className={`w-full flex items-center justify-between gap-2 pr-3 py-1.5 text-mac-body text-left transition-colors duration-fast ${
-                  o.value === value ? "text-teal-500 font-medium" : "text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
-                }`}
-              >
-                <span className="truncate">{o.label}</span>
-                {o.value === value && <Check className="w-4 h-4 flex-shrink-0" />}
-              </button>
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Modal: novo campo ────────────────────────────────────────────────────────
 
 function NewFieldModal({ companyId, onClose, onCreated }: { companyId: string; onClose: () => void; onCreated: () => void }) {
@@ -195,26 +114,24 @@ function NewFieldModal({ companyId, onClose, onCreated }: { companyId: string; o
             <input
               type="text" autoFocus value={label} onChange={(e) => setLabel(e.target.value)}
               placeholder="Ex.: Instituição financeira"
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
             />
           </div>
           <div>
             <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Tipo de resposta</label>
-            <select
-              value={type} onChange={(e) => setType(e.target.value as FieldType)}
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
-            >
-              {(Object.keys(TYPE_LABEL) as FieldType[]).map((t) => (
-                <option key={t} value={t}>{TYPE_LABEL[t]}</option>
-              ))}
-            </select>
+            <Dropdown
+              value={type}
+              placeholder="Selecione…"
+              onChange={(v) => setType(v as FieldType)}
+              options={(Object.keys(TYPE_LABEL) as FieldType[]).map((t) => ({ value: t, label: TYPE_LABEL[t] }))}
+            />
           </div>
           {type === "numero" && (
             <div>
               <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Casas decimais</label>
               <input
                 type="number" min={0} max={6} value={decimals} onChange={(e) => setDecimals(Number(e.target.value))}
-                className="w-24 h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+                className="w-24 h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
               />
             </div>
           )}
@@ -224,7 +141,7 @@ function NewFieldModal({ companyId, onClose, onCreated }: { companyId: string; o
               <input
                 type="text" value={optionsText} onChange={(e) => setOptionsText(e.target.value)}
                 placeholder="Ex.: Banco do Brasil, Itaú, Bradesco"
-                className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+                className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
               />
             </div>
           )}
@@ -281,13 +198,12 @@ function CopyFieldsModal({ companies, targetCompanyId, onClose, onCopied }: {
           </p>
           <div>
             <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Empresa de origem</label>
-            <select
-              value={sourceId} onChange={(e) => setSourceId(e.target.value)}
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
-            >
-              <option value="">Selecione…</option>
-              {options.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <Dropdown
+              value={sourceId}
+              placeholder="Selecione…"
+              onChange={setSourceId}
+              options={options.map((c) => ({ value: c.id, label: c.name }))}
+            />
           </div>
         </div>
         <div className="flex justify-end gap-2 px-5 py-4 border-t border-[var(--border-default)]">
@@ -366,7 +282,7 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
               <button
                 onClick={() => setArchiving(f)}
                 title="Arquivar campo"
-                className="p-1.5 rounded-[6px] text-[var(--text-tertiary)] hover:text-red-500 hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+                className="p-1.5 rounded-[6px] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
               >
                 <Archive className="w-4 h-4" />
               </button>
@@ -537,7 +453,7 @@ function TreeTab({ companyId }: { companyId: string }) {
                         <button
                           onClick={() => setRemoving(ownRule)}
                           title="Remover desta pasta"
-                          className="p-1.5 rounded-[6px] text-[var(--text-tertiary)] hover:text-red-500 hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+                          className="p-1.5 rounded-[6px] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -545,7 +461,7 @@ function TreeTab({ companyId }: { companyId: string }) {
                     ) : (
                       <button
                         onClick={() => excludeInherited(f.custom_field_id)}
-                        className="text-mac-caption text-[var(--text-tertiary)] hover:text-red-500 transition-colors duration-fast"
+                        className="text-mac-caption text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors duration-fast"
                       >
                         Não herdar aqui
                       </button>

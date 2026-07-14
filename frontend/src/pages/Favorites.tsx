@@ -112,7 +112,7 @@ export default function Favorites() {
                 </span>
                 <button
                   onClick={(e) => { e.stopPropagation(); removeFavorite(fav); }}
-                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-fast"
+                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-all duration-fast"
                   title="Remover ancoragem"
                 >
                   <Trash2 className="w-3.5 h-3.5" />

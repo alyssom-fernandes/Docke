@@ -138,7 +138,7 @@ export default function Shares() {
                 <ExternalLink className="w-3.5 h-3.5 text-[var(--text-tertiary)] flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-fast" />
                 <button
                   onClick={() => setRevoking(s)}
-                  className="p-1.5 rounded-full text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-fast flex-shrink-0"
+                  className="p-1.5 rounded-full text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-all duration-fast flex-shrink-0"
                   title="Revogar link"
                 >
                   <Trash2 className="w-3.5 h-3.5" />

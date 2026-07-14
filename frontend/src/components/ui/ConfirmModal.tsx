@@ -67,18 +67,17 @@ export default function ConfirmModal({
               value={typedValue}
               onChange={(e) => setTypedValue(e.target.value)}
               placeholder="Digite CONFIRMAR"
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
             />
           </div>
         )}
         <div className="flex items-center justify-end gap-2 px-5 pb-5">
-          <Button ref={cancelRef} variant="secondary" size="sm" className="!rounded-full" onClick={onClose}>
+          <Button ref={cancelRef} variant="secondary" size="sm" onClick={onClose}>
             Cancelar
           </Button>
           <Button
             variant={danger ? "danger" : "primary"}
             size="sm"
-            className="!rounded-full"
             loading={loading}
             disabled={requireTypedConfirmation && typedValue !== "CONFIRMAR"}
             onClick={onConfirm}

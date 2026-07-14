@@ -2,9 +2,11 @@ import { type ElementType } from "react";
 import { NavLink } from "react-router-dom";
 import { LayoutDashboard, FolderOpen, Search, Anchor, Link2, Activity, Trash2, Settings } from "lucide-react";
 
-// Navegação primária do desktop (lg+), estilo dock: ícone + rótulo, flutuante,
-// substitui a antiga Sidebar vertical — libera a largura que ela ocupava pro
-// conteúdo (tabelas, cards) e usa o mesmo modelo mental da barra mobile.
+// Navegação primária do desktop (lg+), estilo Dock do macOS: só ícone,
+// flutuante — o Dock real nunca mostra rótulo de texto fixo sob o ícone,
+// só tooltip no hover (título nativo do <NavLink>). Substitui a antiga
+// Sidebar vertical — libera a largura que ela ocupava pro conteúdo
+// (tabelas, cards) e usa o mesmo modelo mental da barra mobile.
 // Desktop tem espaço de sobra (diferente do mobile), então todos os itens
 // aparecem direto — sem menu "Mais" escondendo nada.
 const ITEMS: Array<{ to: string; icon: ElementType; label: string }> = [
@@ -23,8 +25,9 @@ function DockItem({ to, icon: Icon, label }: { to: string; icon: ElementType; la
     <NavLink
       to={to}
       aria-label={label}
+      title={label}
       className={({ isActive }) =>
-        `flex-shrink-0 flex flex-col items-center justify-center gap-0.5 px-2.5 py-1.5 rounded-[8px] text-mac-caption transition-colors duration-fast ${
+        `flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-[10px] transition-colors duration-fast ${
           isActive
             ? "text-teal-500 bg-teal-500/10"
             : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
@@ -32,7 +35,6 @@ function DockItem({ to, icon: Icon, label }: { to: string; icon: ElementType; la
       }
     >
       <Icon className="w-5 h-5" strokeWidth={1.5} />
-      <span className="whitespace-nowrap leading-none">{label}</span>
     </NavLink>
   );
 }

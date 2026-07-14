@@ -9,7 +9,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const base =
-  "inline-flex items-center justify-center font-medium rounded-[6px] transition-all duration-fast select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400 disabled:opacity-50 disabled:pointer-events-none active:scale-[0.97]";
+  "inline-flex items-center justify-center font-medium rounded-full transition-all duration-fast select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400 disabled:opacity-50 disabled:pointer-events-none active:scale-[0.97]";
 
 const variants: Record<string, string> = {
   primary: "bg-teal-600 text-white hover:bg-teal-500",

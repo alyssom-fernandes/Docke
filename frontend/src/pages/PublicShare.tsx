@@ -125,7 +125,7 @@ export default function PublicShare() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Senha"
-                className="w-full h-10 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+                className="w-full h-10 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
               />
               <button type="submit" className="w-full h-10 bg-teal-600 text-white text-mac-body font-medium rounded-[var(--radius-control)] hover:bg-teal-500 transition-colors duration-fast">
                 Acessar

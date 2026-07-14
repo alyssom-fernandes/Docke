@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Clock, Download, ChevronDown } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import { relativeDate, fullDate } from "@/lib/date";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import Avatar from "@/components/ui/Avatar";
@@ -47,15 +48,6 @@ const ACTION_LABELS: Record<string, string> = {
   unfavorite: "desancorou",
   undo: "desfez",
 };
-
-function fmtDateTime(iso: string) {
-  return new Date(iso).toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 export default function Activity() {
   usePageTitle("Atividade");
@@ -188,8 +180,8 @@ export default function Activity() {
                         <span className="text-[var(--text-secondary)]">{ev.item_name_snapshot}</span>
                       </p>
                     </div>
-                    <span className="text-mac-caption text-[var(--text-tertiary)] flex-shrink-0">
-                      {fmtDateTime(ev.created_at)}
+                    <span className="text-mac-caption text-[var(--text-tertiary)] flex-shrink-0" title={fullDate(ev.created_at)}>
+                      {relativeDate(ev.created_at)}
                     </span>
                   </li>
                 );
