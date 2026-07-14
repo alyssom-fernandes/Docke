@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Building2, Plus, X, Image as ImageIcon } from "lucide-react";
+import { Building2, Plus, Image as ImageIcon } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import api from "@/lib/api";
@@ -59,13 +59,10 @@ function OrgModal({ org, onClose, onDone }: { org: Org | null; onClose: () => vo
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={containerRef} className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[560px]">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
+    <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={containerRef} className="glass-panel glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[560px]">
+        <div className="px-5 py-4 border-b border-[var(--border-default)]">
           <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">{org ? "Editar empresa" : "Nova empresa"}</h2>
-          <button onClick={onClose} className="p-1 rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
-            <X className="w-4 h-4" />
-          </button>
         </div>
         <div className="p-5 space-y-4">
           <div>
@@ -180,11 +177,11 @@ export default function Organization() {
                   </p>
                 </div>
                 {!org.is_active && <Badge variant="default">Inativa</Badge>}
-                <button onClick={() => setEditing(org)} className="text-mac-caption text-teal-500 hover:underline">Editar</button>
+                <button onClick={() => setEditing(org)} className="px-2.5 py-1 rounded-full text-mac-caption text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors duration-fast">Editar</button>
                 {isSupremo && (
                   <button
                     onClick={() => setDeactivating(org)}
-                    className="text-mac-caption text-red-600 hover:underline"
+                    className="px-2.5 py-1 rounded-full text-mac-caption text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors duration-fast"
                   >
                     {org.is_active ? "Desativar" : "Reativar"}
                   </button>

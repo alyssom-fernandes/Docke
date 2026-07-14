@@ -98,8 +98,8 @@ export default function Onboarding({ onComplete }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[480px]">
+    <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4">
+      <div className="glass-panel glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[480px]">
         {/* Progress dots */}
         <div className="flex items-center justify-center gap-2 pt-6">
           {steps.map((_, i) => (

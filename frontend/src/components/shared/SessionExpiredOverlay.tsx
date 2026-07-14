@@ -60,7 +60,7 @@ export default function SessionExpiredOverlay() {
 
   return (
     <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="modal-card bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-dialog)] shadow-modal w-full max-w-[360px]">
+      <div className="modal-card glass-panel glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal w-full max-w-[360px]">
         {/* Header */}
         <div className="flex flex-col items-center text-center px-8 pt-8 pb-6">
           <div className="w-12 h-12 bg-amber-50 dark:bg-amber-900/20 rounded-[12px] flex items-center justify-center mb-4">

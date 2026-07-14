@@ -87,10 +87,10 @@ export default function CommandPalette() {
 
   return (
     <div
-      className="fixed inset-0 bg-black/40 flex items-start justify-center pt-[15vh] z-50 px-4"
+      className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-start justify-center pt-[15vh] z-50 px-4"
       onClick={(e) => { if (e.target === e.currentTarget) close(); }}
     >
-      <div ref={containerRef} className="modal-card bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[12px] shadow-modal w-full max-w-[560px] overflow-hidden">
+      <div ref={containerRef} className="modal-card glass-panel glass-blur-strong rounded-[20px] shadow-modal w-full max-w-[560px] overflow-hidden">
         {/* Search input */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border-default)]">
           <Search className="w-4 h-4 text-[var(--text-placeholder)] flex-shrink-0" />
@@ -103,9 +103,6 @@ export default function CommandPalette() {
             placeholder="Buscar documentos, pastas ou ações…"
             className="flex-1 text-mac-body bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none"
           />
-          <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-mac-caption bg-[var(--bg-hover)] text-[var(--text-tertiary)] rounded border border-[var(--border-default)]">
-            ESC
-          </kbd>
         </div>
 
         {/* Results */}
@@ -140,23 +137,23 @@ export default function CommandPalette() {
                   <button
                     className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors duration-fast ${
                       i === activeIdx
-                        ? "bg-teal-500/10 text-teal-500"
+                        ? "bg-teal-500 text-white"
                         : "text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
                     }`}
                     onClick={() => select(r)}
                     onMouseEnter={() => setActiveIdx(i)}
                   >
                     {r.type === "folder" ? (
-                      <FolderOpen className="w-4 h-4 flex-shrink-0 text-teal-500" />
+                      <FolderOpen className={`w-4 h-4 flex-shrink-0 ${i === activeIdx ? "text-white" : "text-teal-500"}`} />
                     ) : (
                       (() => { const s = getFileStyle(r.name); const Icon = s.icon; return (
-                        <div className={`w-5 h-5 rounded-[3px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
-                          <Icon className={`w-3 h-3 ${s.iconColor}`} />
+                        <div className={`w-5 h-5 rounded-[3px] flex items-center justify-center flex-shrink-0 ${i === activeIdx ? "" : s.bgColor}`}>
+                          <Icon className={`w-3 h-3 ${i === activeIdx ? "text-white" : s.iconColor}`} />
                         </div>
                       ); })()
                     )}
                     <span className="flex-1 text-mac-body truncate">{r.name}</span>
-                    <span className="text-mac-caption text-[var(--text-tertiary)] flex-shrink-0">
+                    <span className={`text-mac-caption flex-shrink-0 ${i === activeIdx ? "text-white/80" : "text-[var(--text-tertiary)]"}`}>
                       {r.type === "folder" ? "Pasta" : "Documento"}
                     </span>
                   </button>

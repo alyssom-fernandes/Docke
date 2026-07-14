@@ -181,12 +181,12 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
         ref={containerRef}
-        className="modal-card bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-dialog)] shadow-modal flex flex-col w-full max-w-4xl"
+        className="modal-card glass-panel glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal flex flex-col w-full max-w-4xl"
         style={{ height: "min(90vh, 760px)" }}
       >
         {/* Header */}
@@ -272,7 +272,7 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
                 <p className="text-mac-body font-medium text-[var(--text-primary)]">Nota fiscal eletrônica</p>
                 <button
                   onClick={() => setShowRawXml(true)}
-                  className="text-mac-caption text-teal-500 hover:underline"
+                  className="px-2.5 py-1 rounded-full text-mac-caption text-teal-500 hover:bg-[var(--bg-hover)] transition-colors duration-fast"
                 >
                   Ver XML bruto
                 </button>
@@ -298,7 +298,7 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
                 <div className="sticky top-0 bg-[var(--bg-card)] border-b border-[var(--border-default)] px-5 py-2 flex justify-end">
                   <button
                     onClick={() => setShowRawXml(false)}
-                    className="text-mac-caption text-teal-500 hover:underline"
+                    className="px-2.5 py-1 rounded-full text-mac-caption text-teal-500 hover:bg-[var(--bg-hover)] transition-colors duration-fast"
                   >
                     Ver campos extraídos
                   </button>

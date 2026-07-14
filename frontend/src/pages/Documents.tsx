@@ -342,13 +342,10 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={uploadContainerRef} className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[480px]">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
+    <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={uploadContainerRef} className="glass-panel glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[480px]">
+        <div className="px-5 py-4 border-b border-[var(--border-default)]">
           <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Upload de documentos</h2>
-          <button onClick={onClose} className="p-1 rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
-            <X className="w-4 h-4" />
-          </button>
         </div>
         <div className="p-5 space-y-4">
           <label
@@ -432,8 +429,8 @@ function CreateFolderModal({ parentId, companyId, onClose, onDone }: { parentId:
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={folderContainerRef} className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[360px]">
+    <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={folderContainerRef} className="glass-panel glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[360px]">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
           <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Nova pasta</h2>
           <button onClick={onClose} className="p-1 rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
@@ -587,8 +584,8 @@ function DetailDrawer({ doc, companyId, onClose, onFavorite, onPreview, onDelete
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={containerRef} className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[420px] max-h-[85vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={containerRef} className="glass-panel glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[420px] max-h-[85vh] overflow-y-auto">
       <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
         <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Detalhes</h2>
         <button onClick={onClose} className="p-1 rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
@@ -1598,8 +1595,8 @@ export default function Documents() {
                   <div
                     key={`doc-${d.id}`}
                     ref={(el) => { if (el) rowRefs.current.set(d.id, el); else rowRefs.current.delete(d.id); }}
-                    className={`group relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-[var(--radius-control)] cursor-pointer transition-colors duration-fast hover:bg-[var(--bg-hover)] ${
-                      isSelected ? "bg-teal-50 dark:bg-teal-900/20" : ""
+                    className={`group relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-[var(--radius-control)] cursor-pointer transition-colors duration-fast ${
+                      isSelected ? "bg-teal-500" : "hover:bg-[var(--bg-hover)]"
                     } ${isDragging ? "opacity-40" : ""}`}
                     onClick={() => { setFocusedId(d.id); setDetailDoc(d); }}
                     draggable
@@ -1636,7 +1633,7 @@ export default function Documents() {
                     <div className={`w-10 h-10 rounded-[6px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
                       <Icon className={`w-5 h-5 ${s.iconColor}`} />
                     </div>
-                    <span className="text-mac-caption text-[var(--text-primary)] text-center leading-tight w-full line-clamp-2">{d.name}</span>
+                    <span className={`text-mac-caption text-center leading-tight w-full line-clamp-2 ${isSelected ? "text-white" : "text-[var(--text-primary)]"}`}>{d.name}</span>
                   </div>
                 );
               })}
@@ -1800,8 +1797,8 @@ export default function Documents() {
                     <tr
                       key={`doc-${d.id}`}
                       ref={(el) => { if (el) rowRefs.current.set(d.id, el); else rowRefs.current.delete(d.id); }}
-                      className={`border-b border-[var(--border-default)] hover:bg-[var(--bg-hover)] transition-colors duration-fast group cursor-pointer ${
-                        isSelected ? "bg-teal-50 dark:bg-teal-900/20" : ""
+                      className={`border-b border-[var(--border-default)] transition-colors duration-fast group cursor-pointer ${
+                        isSelected ? "bg-teal-500" : "hover:bg-[var(--bg-hover)]"
                       } ${isDragging ? "opacity-40" : ""}`}
                       onClick={() => { setFocusedId(d.id); setDetailDoc(d); }}
                       draggable={!isRenaming}
@@ -1850,28 +1847,32 @@ export default function Documents() {
                                   if (e.key === "Escape") setRenaming(null);
                                 }}
                                 onBlur={confirmRename}
-                                className="h-7 px-2 text-mac-body bg-[var(--bg-page)] border border-teal-500 rounded-[6px] text-[var(--text-primary)] focus:outline-none flex-1 min-w-0"
+                                className="h-7 px-2 text-mac-body bg-[var(--bg-card)] border border-teal-500 rounded-[6px] text-[var(--text-primary)] focus:outline-none flex-1 min-w-0"
                               />
                               <span className="text-mac-body text-[var(--text-tertiary)] flex-shrink-0">{splitExt(d.name)[1]}</span>
                             </div>
                           ) : (
-                            <TruncatedFileName name={d.name} className="text-mac-body text-[var(--text-primary)]" />
+                            <TruncatedFileName
+                              name={d.name}
+                              className={`text-mac-body ${isSelected ? "text-white" : "text-[var(--text-primary)]"}`}
+                              inverted={isSelected}
+                            />
                           )}
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 text-mac-caption text-[var(--text-tertiary)]">{fmtSize(d.size_bytes)}</td>
+                      <td className={`px-3 py-2.5 text-mac-caption ${isSelected ? "text-white/80" : "text-[var(--text-tertiary)]"}`}>{fmtSize(d.size_bytes)}</td>
                       <td className="px-3 py-2.5"><OcrIcon status={d.ocr_status} /></td>
-                      <td className="px-3 py-2.5 text-mac-caption text-[var(--text-tertiary)]">{fmtDate(d.created_at)}</td>
+                      <td className={`px-3 py-2.5 text-mac-caption ${isSelected ? "text-white/80" : "text-[var(--text-tertiary)]"}`}>{fmtDate(d.created_at)}</td>
                       {resolvedFields.map((rf) => {
                         const value = fieldValues[d.id]?.[rf.custom_field_id];
                         return (
                           <td key={rf.custom_field_id} className="px-3 py-2.5 text-mac-caption truncate">
                             {value ? (
-                              <span className="text-[var(--text-secondary)]">{value}</span>
+                              <span className={isSelected ? "text-white/90" : "text-[var(--text-secondary)]"}>{value}</span>
                             ) : rf.required ? (
-                              <span className="text-amber-600 dark:text-amber-400" title="Campo obrigatório sem preenchimento">Pendente</span>
+                              <span className={isSelected ? "text-white" : "text-amber-600 dark:text-amber-400"} title="Campo obrigatório sem preenchimento">Pendente</span>
                             ) : (
-                              <span className="text-[var(--text-placeholder)]">—</span>
+                              <span className={isSelected ? "text-white/60" : "text-[var(--text-placeholder)]"}>—</span>
                             )}
                           </td>
                         );
@@ -1879,7 +1880,9 @@ export default function Documents() {
                       <td className="px-2 py-2.5">
                         <button
                           onClick={(e) => { e.stopPropagation(); setDetailDoc(d); }}
-                          className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] transition-all duration-fast"
+                          className={`opacity-0 group-hover:opacity-100 p-1.5 rounded-full transition-all duration-fast ${
+                            isSelected ? "text-white hover:bg-white/20" : "text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)]"
+                          }`}
                         >
                           <MoreHorizontal className="w-3.5 h-3.5" />
                         </button>

@@ -52,12 +52,12 @@ export default function ConfirmModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div ref={containerRef} className="modal-card bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-dialog)] shadow-modal w-full max-w-[360px]">
+      <div ref={containerRef} className="modal-card glass-panel glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal w-full max-w-[360px]">
         <div className="p-5 pb-3">
-          <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">{title}</h2>
+          <h2 className="text-mac-title3 text-[var(--text-primary)]">{title}</h2>
           <p className="text-mac-body text-[var(--text-secondary)] mt-1.5">{description}</p>
         </div>
         {requireTypedConfirmation && (

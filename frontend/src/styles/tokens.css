@@ -75,6 +75,12 @@ html, body {
   --radius-popover: 10px;
   --radius-control: 6px;
   --radius-pill: 9999px;
+
+  /* Overlay scrim — usado por TODO modal/drawer/palette atrás do card, pra não
+     ter opacidades diferentes (40/50/60) espalhadas pelo código torcendo o
+     escurecimento do fundo de tela pra tela. Mesmo valor em light/dark —
+     dim de fundo é tipicamente theme-invariant no macOS. */
+  --overlay-scrim: rgba(0,0,0,0.45);
 }
 
 /* ─── Dark mode ─── */
