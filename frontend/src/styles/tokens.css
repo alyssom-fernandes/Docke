@@ -186,14 +186,17 @@ html, body {
 .glass-blur-card {
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
+  will-change: backdrop-filter;
 }
 .glass-blur-strong {
   backdrop-filter: blur(28px) saturate(180%);
   -webkit-backdrop-filter: blur(28px) saturate(180%);
+  will-change: backdrop-filter;
 }
 .glass-blur-pill {
   backdrop-filter: blur(32px) saturate(180%);
   -webkit-backdrop-filter: blur(32px) saturate(180%);
+  will-change: backdrop-filter;
 }
 
 .glass-scroll-active.glass-blur-table {
@@ -349,6 +352,12 @@ html, body {
 }
 .modal-card {
   animation: modal-in 250ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* Cards de vidro (glass-blur-*) combinam backdrop-filter com o scale() dessa
+     animação no MESMO elemento — sem forçar a camada de composição antes do
+     primeiro frame, o Chromium/WebKit às vezes renderiza o blur "desalinhado"
+     do card durante/depois da animação (sombra e vidro parecem descolados do
+     fundo). will-change nos dois eixos evita esse glitch. */
+  will-change: transform, opacity;
 }
 
 /* ─── Anchor Drop animation ─── */
