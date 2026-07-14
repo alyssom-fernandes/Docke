@@ -28,11 +28,11 @@ const icons: Record<ToastType, typeof CheckCircle2> = {
   info: Info,
 };
 
-const colors: Record<ToastType, string> = {
-  success: "border-l-emerald-500",
-  error: "border-l-red-500",
-  warning: "border-l-amber-500",
-  info: "border-l-teal-500",
+const iconBg: Record<ToastType, string> = {
+  success: "bg-emerald-500/10",
+  error: "bg-red-500/10",
+  warning: "bg-amber-500/10",
+  info: "bg-teal-500/10",
 };
 
 const iconColors: Record<ToastType, string> = {
@@ -73,9 +73,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           return (
             <div
               key={t.id}
-              className={`toast-in flex items-start gap-3 bg-[var(--bg-card)] border border-[var(--border-default)] border-l-4 ${colors[t.type]} rounded-[var(--radius-control)] shadow-lg p-3`}
+              className="toast-in glass-panel glass-blur-strong flex items-start gap-3 rounded-[var(--radius-dialog)] shadow-dropdown p-3"
             >
-              <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${iconColors[t.type]}`} />
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${iconBg[t.type]}`}>
+                <Icon className={`w-4 h-4 ${iconColors[t.type]}`} />
+              </div>
               <div className="flex-1 min-w-0">
                 <p className="text-mac-body text-[var(--text-primary)]">{t.message}</p>
                 {t.action && (

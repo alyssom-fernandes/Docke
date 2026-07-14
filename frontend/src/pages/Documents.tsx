@@ -66,6 +66,29 @@ interface Document {
   active_share_count?: number;
 }
 
+// Metadados personalizados (ADENDO-08) — campo resolvido pra pasta atual
+// (já com herança/override aplicados pelo backend) e valor preenchido por documento.
+export type CustomFieldType = "texto" | "cpf" | "cnpj" | "data" | "competencia" | "numero" | "selecao";
+
+export interface ResolvedField {
+  custom_field_id: string;
+  required: boolean;
+  display_order: number;
+  column_width: number | null;
+  label: string;
+  field_key: string;
+  type: CustomFieldType;
+  format_config: Record<string, unknown>;
+}
+
+interface DocFieldValueRow {
+  document_id: string;
+  custom_field_id: string;
+  value_text: string;
+  value_date: string | null;
+  value_number: number | null;
+}
+
 type Item = { kind: "folder"; data: Folder } | { kind: "document"; data: Document };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -440,7 +463,89 @@ function CreateFolderModal({ parentId, companyId, onClose, onDone }: { parentId:
 
 // ─── Detail Drawer ────────────────────────────────────────────────────────────
 
-function DetailDrawer({ doc, onClose, onFavorite, onPreview, onDelete, onChanged }: { doc: Document; onClose: () => void; onFavorite: () => void; onPreview: () => void; onDelete: () => void; onChanged: () => void }) {
+// Metadados personalizados (ADENDO-08 M-G): campos resolvidos pra pasta do
+// documento, com formulário dinâmico por tipo. Some da tela se a pasta não
+// tem nenhum campo aplicado — não polui Detalhes pra quem não usa a feature.
+function MetadataSection({ doc, companyId }: { doc: Document; companyId: string }) {
+  const { success, error: showError } = useToast();
+  const [fields, setFields] = useState<ResolvedField[]>([]);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!doc.folder_id) { setFields([]); setLoading(false); return; }
+    setLoading(true);
+    Promise.all([
+      api.get<ResolvedField[]>("/folder-fields/resolved", { params: { company_id: companyId, folder_id: doc.folder_id } }),
+      api.get<DocFieldValueRow[]>(`/documents/${doc.id}/field-values`),
+    ]).then(([fRes, vRes]) => {
+      setFields(Array.isArray(fRes.data) ? [...fRes.data].sort((a, b) => a.display_order - b.display_order) : []);
+      const vmap: Record<string, string> = {};
+      for (const row of Array.isArray(vRes.data) ? vRes.data : []) vmap[row.custom_field_id] = row.value_text;
+      setValues(vmap);
+    }).catch(() => { setFields([]); setValues({}); }).finally(() => setLoading(false));
+  }, [doc.id, doc.folder_id, companyId]);
+
+  if (loading || fields.length === 0) return null;
+
+  async function save() {
+    setSaving(true);
+    try {
+      const body = fields
+        .filter((f) => (values[f.custom_field_id] ?? "").trim())
+        .map((f) => ({ custom_field_id: f.custom_field_id, value: values[f.custom_field_id].trim() }));
+      await api.put(`/documents/${doc.id}/field-values`, body, { params: { company_id: companyId } });
+      success("Metadados salvos.");
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Erro ao salvar metadados.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="pt-2 border-t border-[var(--border-default)] space-y-3">
+      <p className="text-mac-caption font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Metadados</p>
+      {fields.map((f) => (
+        <div key={f.custom_field_id}>
+          <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1">
+            {f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}
+          </label>
+          {f.type === "selecao" ? (
+            <select
+              value={values[f.custom_field_id] ?? ""}
+              onChange={(e) => setValues((v) => ({ ...v, [f.custom_field_id]: e.target.value }))}
+              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+            >
+              <option value="">—</option>
+              {((f.format_config?.options as string[]) ?? []).map((o) => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={values[f.custom_field_id] ?? ""}
+              onChange={(e) => setValues((v) => ({ ...v, [f.custom_field_id]: e.target.value }))}
+              placeholder={
+                f.type === "cpf" ? "000.000.000-00" :
+                f.type === "cnpj" ? "00.000.000/0000-00" :
+                f.type === "data" ? "dd/mm/aaaa" :
+                f.type === "competencia" ? "mm/aaaa" :
+                f.type === "numero" ? "0" : ""
+              }
+              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-page)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+            />
+          )}
+        </div>
+      ))}
+      <Button size="sm" loading={saving} onClick={save} className="w-full">Salvar metadados</Button>
+    </div>
+  );
+}
+
+function DetailDrawer({ doc, companyId, onClose, onFavorite, onPreview, onDelete, onChanged }: { doc: Document; companyId: string; onClose: () => void; onFavorite: () => void; onPreview: () => void; onDelete: () => void; onChanged: () => void }) {
   const { success, error: showError } = useToast();
   const containerRef = useRef<HTMLDivElement>(null);
   useFocusTrap(containerRef);
@@ -557,6 +662,8 @@ function DetailDrawer({ doc, onClose, onFavorite, onPreview, onDelete, onChanged
             Excluir
           </button>
         </div>
+
+        <MetadataSection doc={doc} companyId={companyId} />
 
         <VersionsPanel documentId={doc.id} documentName={doc.name} onChanged={onChanged} />
       </div>
@@ -921,6 +1028,33 @@ export default function Documents() {
   }, [current?.id, currentFolderId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Metadados personalizados (ADENDO-08 M-H): colunas extras na tabela, resolvidas
+  // pra pasta atual (herança já aplicada pelo backend). Raiz não tem pasta real —
+  // sem folder_id não há onde os campos "penderem", então não busca lá.
+  const [resolvedFields, setResolvedFields] = useState<ResolvedField[]>([]);
+  useEffect(() => {
+    if (!current || !currentFolderId) { setResolvedFields([]); return; }
+    api.get<ResolvedField[]>("/folder-fields/resolved", { params: { company_id: current.id, folder_id: currentFolderId } })
+      .then((r) => setResolvedFields(Array.isArray(r.data) ? [...r.data].sort((a, b) => a.display_order - b.display_order) : []))
+      .catch(() => setResolvedFields([]));
+  }, [current?.id, currentFolderId]);
+
+  // documentId -> custom_field_id -> value_text
+  const [fieldValues, setFieldValues] = useState<Record<string, Record<string, string>>>({});
+  useEffect(() => {
+    if (!resolvedFields.length || !documents.length) { setFieldValues({}); return; }
+    const ids = documents.map((d) => d.id).join(",");
+    api.get<DocFieldValueRow[]>("/documents/field-values", { params: { document_ids: ids } })
+      .then((r) => {
+        const map: Record<string, Record<string, string>> = {};
+        for (const row of Array.isArray(r.data) ? r.data : []) {
+          (map[row.document_id] ??= {})[row.custom_field_id] = row.value_text;
+        }
+        setFieldValues(map);
+      })
+      .catch(() => setFieldValues({}));
+  }, [resolvedFields.length, documents]);
 
   // Deep link vindo da busca: /documents?folder_id=<id>&doc=<id>
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1518,6 +1652,9 @@ export default function Documents() {
                 <col style={{ width: colWidths.size }} />
                 <col style={{ width: colWidths.ocr }} />
                 <col style={{ width: colWidths.created }} />
+                {resolvedFields.map((f) => (
+                  <col key={f.custom_field_id} style={{ width: f.column_width ?? 130 }} />
+                ))}
                 <col style={{ width: 40 }} />
               </colgroup>
               <thead className="sticky top-0 bg-[var(--glass-panel-bg)] backdrop-blur-xl border-b border-[var(--border-default)]">
@@ -1555,6 +1692,11 @@ export default function Documents() {
                     onResizeStart={(e) => startColResize("created", e)}
                     onResizeReset={() => resetColWidth("created")}
                   />
+                  {resolvedFields.map((f) => (
+                    <th key={f.custom_field_id} className="px-3 py-2 text-mac-caption font-semibold uppercase tracking-wide text-[var(--text-tertiary)] text-left truncate">
+                      {f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}
+                    </th>
+                  ))}
                   <th className="w-10" />
                 </tr>
               </thead>
@@ -1629,6 +1771,9 @@ export default function Documents() {
                         <td className="px-3 py-2.5 text-mac-caption text-[var(--text-tertiary)]">—</td>
                         <td className="px-3 py-2.5" />
                         <td className="px-3 py-2.5 text-mac-caption text-[var(--text-tertiary)]">—</td>
+                        {resolvedFields.map((rf) => (
+                          <td key={rf.custom_field_id} className="px-3 py-2.5 text-mac-caption text-[var(--text-tertiary)]">—</td>
+                        ))}
                         <td className="px-2 py-2.5 flex items-center gap-1">
                           <button
                             onClick={(e) => { e.stopPropagation(); setSharingFolder(f); }}
@@ -1724,6 +1869,20 @@ export default function Documents() {
                       <td className="px-3 py-2.5 text-mac-caption text-[var(--text-tertiary)]">{fmtSize(d.size_bytes)}</td>
                       <td className="px-3 py-2.5"><OcrIcon status={d.ocr_status} /></td>
                       <td className="px-3 py-2.5 text-mac-caption text-[var(--text-tertiary)]">{fmtDate(d.created_at)}</td>
+                      {resolvedFields.map((rf) => {
+                        const value = fieldValues[d.id]?.[rf.custom_field_id];
+                        return (
+                          <td key={rf.custom_field_id} className="px-3 py-2.5 text-mac-caption truncate">
+                            {value ? (
+                              <span className="text-[var(--text-secondary)]">{value}</span>
+                            ) : rf.required ? (
+                              <span className="text-amber-600 dark:text-amber-400" title="Campo obrigatório sem preenchimento">Pendente</span>
+                            ) : (
+                              <span className="text-[var(--text-placeholder)]">—</span>
+                            )}
+                          </td>
+                        );
+                      })}
                       <td className="px-2 py-2.5">
                         <button
                           onClick={(e) => { e.stopPropagation(); setDetailDoc(d); }}
@@ -1754,9 +1913,10 @@ export default function Documents() {
       </div>
 
       {/* Detail Drawer */}
-      {detailDoc && (
+      {detailDoc && current && (
         <DetailDrawer
           doc={detailDoc}
+          companyId={current.id}
           onClose={() => setDetailDoc(null)}
           onPreview={() => setPreviewDoc(detailDoc)}
           onFavorite={() => {}}

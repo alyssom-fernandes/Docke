@@ -55,14 +55,14 @@ export default function Login() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[var(--bg-page)] flex flex-col items-center justify-center px-4">
-      {/* Glow de fundo — só visível em modo escuro (ADR-021: padrão da primeira sessão) */}
+    <div className="relative min-h-screen overflow-hidden flex flex-col items-center justify-center px-4" style={{ background: "var(--wallpaper)" }}>
+      {/* Glow de acento — reforça a identidade da marca sobre o wallpaper compartilhado com o resto do app (G01) */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-0 dark:opacity-100 transition-opacity duration-slow"
+        className="pointer-events-none absolute inset-0 opacity-60 dark:opacity-100 transition-opacity duration-slow"
         style={{
           background:
-            "radial-gradient(600px circle at 20% 15%, rgba(13,148,136,0.16), transparent 60%), radial-gradient(500px circle at 85% 80%, rgba(13,148,136,0.10), transparent 60%)",
+            "radial-gradient(600px circle at 20% 15%, rgba(13,148,136,0.14), transparent 60%), radial-gradient(500px circle at 85% 80%, rgba(13,148,136,0.10), transparent 60%)",
         }}
       />
 

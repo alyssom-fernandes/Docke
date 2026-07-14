@@ -34,17 +34,30 @@ async def init_db_pool() -> None:
         max_size=10,
         command_timeout=30,
     )
-    # Busca chaves públicas do Supabase Auth para verificar tokens ES256
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{settings.SUPABASE_URL}/auth/v1/.well-known/jwks.json",
-                timeout=5.0,
-            )
-            if resp.status_code == 200:
-                _jwks = resp.json()
-    except Exception:
-        _jwks = None  # Supabase não disponível — fallback para HS256
+    # Busca chaves públicas do Supabase Auth para verificar tokens ES256.
+    # Algumas tentativas com espera curta: se o backend sobe antes do serviço
+    # de Auth estar pronto (comum em `docker compose`/`supabase start` local,
+    # onde os containers não têm ordem de prontidão garantida), uma falha na
+    # primeira tentativa deixava _jwks preso em None pro resto da vida do
+    # processo — todo token real (ES256) passava a ser rejeitado com "alg not
+    # allowed" até o próximo restart, um bug intermitente difícil de notar.
+    import asyncio
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{settings.SUPABASE_URL}/auth/v1/.well-known/jwks.json",
+                    timeout=5.0,
+                )
+                if resp.status_code == 200:
+                    _jwks = resp.json()
+                    break
+        except Exception:
+            pass
+        if attempt < 2:
+            await asyncio.sleep(1.5)
+    # Se todas as tentativas falharem, _jwks permanece None e o fallback HS256
+    # assume — correto pra ambientes que genuinamente não usam Supabase Auth.
     _admin_pool = _pool  # mesma pool — worker usa service_role sem SET LOCAL role
 
 

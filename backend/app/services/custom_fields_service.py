@@ -7,6 +7,7 @@ NUNCA decide permissão sozinho — a checagem de "é admin/supremo" é feita no
 router (mesmo padrão de _can_manage_company em companies.py); a leitura
 respeita RLS via a conexão authenticated normal.
 """
+import json
 from typing import Any
 from uuid import UUID
 
@@ -50,7 +51,7 @@ class CustomFieldsService:
             VALUES ($1, $2, $3, $4, $5::jsonb, $6)
             RETURNING id::text, company_id::text, label, field_key, type, format_config, created_at
             """,
-            company_id, label, field_key, type, format_config, created_by,
+            company_id, label, field_key, type, json.dumps(format_config), created_by,
         )
 
     @staticmethod
@@ -65,7 +66,7 @@ class CustomFieldsService:
             WHERE id = $1
             RETURNING id::text, company_id::text, label, field_key, type, format_config, created_at
             """,
-            field_id, label, format_config,
+            field_id, label, json.dumps(format_config) if format_config is not None else None,
         )
 
     @staticmethod
@@ -171,6 +172,21 @@ class CustomFieldsService:
             WHERE dfv.document_id = $1
             """,
             document_id,
+        )
+
+    @staticmethod
+    async def get_values_for_documents(conn: asyncpg.Connection, document_ids: list[UUID]) -> list[asyncpg.Record]:
+        """Busca em lote — evita N+1 quando a tabela de Documentos precisa mostrar
+        colunas de metadado para vários documentos de uma vez (M-H)."""
+        if not document_ids:
+            return []
+        return await conn.fetch(
+            """
+            SELECT dfv.document_id::text, dfv.custom_field_id::text, dfv.value_text, dfv.value_date, dfv.value_number
+            FROM public.document_field_value dfv
+            WHERE dfv.document_id = ANY($1::uuid[])
+            """,
+            document_ids,
         )
 
     @staticmethod

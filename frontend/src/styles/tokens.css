@@ -43,16 +43,21 @@ html, body {
   --glass-bg-strong: rgba(255,255,255,0.80);
   --glass-border: rgba(0,0,0,0.08);
   --glass-panel-bg: rgba(255,255,255,0.94);
+  /* Deslocamento vertical baixo + desfoque maior = sombra ambiente que se espalha
+     quase igual em todas as direções (painel "flutuando", não "apoiado embaixo").
+     Um offset alto (ex: 24px) faz sentido pra painéis no meio da tela, mas some
+     quase toda quando o elemento está perto da borda (TopBar/Dock) — a parte
+     mais forte da sombra cai fora da viewport e fica cortada. */
   --glass-shadow: inset 0 0.5px 0 rgba(255,255,255,0.80),
                   inset 0 -0.5px 0 rgba(0,0,0,0.05),
                   0 0.5px 1px rgba(0,0,0,0.04),
-                  0 10px 40px rgba(0,0,0,0.18),
-                  0 24px 64px rgba(0,0,0,0.12);
+                  0 4px 30px rgba(0,0,0,0.16),
+                  0 8px 48px rgba(0,0,0,0.10);
   --glass-shadow-hover: inset 0 0.5px 0 rgba(255,255,255,0.90),
                         inset 0 -0.5px 0 rgba(0,0,0,0.06),
                         0 0.5px 1px rgba(0,0,0,0.05),
-                        0 14px 48px rgba(0,0,0,0.22),
-                        0 28px 72px rgba(0,0,0,0.15);
+                        0 6px 36px rgba(0,0,0,0.20),
+                        0 10px 56px rgba(0,0,0,0.13);
   --glass-highlight: linear-gradient(90deg, transparent, rgba(255,255,255,0.90), transparent);
   --glass-fallback-bg: rgba(255,255,255,0.92);
   --glass-fallback-border: rgba(0,0,0,0.06);
@@ -101,13 +106,13 @@ html, body {
   --glass-shadow: inset 0 0.5px 0 rgba(255,255,255,0.12),
                   inset 0 -0.5px 0 rgba(0,0,0,0.30),
                   0 0.5px 1px rgba(0,0,0,0.10),
-                  0 16px 40px rgba(0,0,0,0.40),
-                  0 32px 72px rgba(0,0,0,0.24);
+                  0 6px 32px rgba(0,0,0,0.36),
+                  0 10px 56px rgba(0,0,0,0.22);
   --glass-shadow-hover: inset 0 0.5px 0 rgba(255,255,255,0.16),
                         inset 0 -0.5px 0 rgba(0,0,0,0.35),
                         0 0.5px 1px rgba(0,0,0,0.12),
-                        0 18px 46px rgba(0,0,0,0.46),
-                        0 36px 80px rgba(0,0,0,0.28);
+                        0 8px 40px rgba(0,0,0,0.42),
+                        0 12px 64px rgba(0,0,0,0.26);
   --glass-highlight: linear-gradient(90deg, transparent, rgba(255,255,255,0.20), transparent);
   --glass-fallback-bg: rgba(28,28,30,0.94);
   --glass-fallback-border: rgba(255,255,255,0.06);

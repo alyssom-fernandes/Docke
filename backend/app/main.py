@@ -54,6 +54,10 @@ PREFIX = "/api/v1"
 app.include_router(auth.router, prefix=PREFIX)
 app.include_router(companies.router, prefix=PREFIX)
 app.include_router(folders.router, prefix=PREFIX)
+# custom_fields precisa vir ANTES de documents: documents.router tem uma rota
+# catch-all GET /{document_id} que, se registrada primeiro, intercepta
+# /documents/field-values (bulk) tratando "field-values" como um document_id.
+app.include_router(custom_fields.router, prefix=PREFIX)
 app.include_router(documents.router, prefix=PREFIX)
 app.include_router(search.router, prefix=PREFIX)
 app.include_router(favorites.router, prefix=PREFIX)
@@ -64,7 +68,6 @@ app.include_router(versions.router, prefix=PREFIX)
 app.include_router(shares.router, prefix=PREFIX)
 app.include_router(shares.public_router, prefix=PREFIX)
 app.include_router(notifications.router, prefix=PREFIX)
-app.include_router(custom_fields.router, prefix=PREFIX)
 
 
 @app.get("/health", tags=["health"])

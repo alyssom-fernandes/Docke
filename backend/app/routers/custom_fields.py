@@ -277,6 +277,21 @@ async def delete_folder_field_rule(
 # Valores por documento — GET, PUT (upsert em lote)
 # ---------------------------------------------------------------------------
 
+@router.get("/documents/field-values")
+async def get_bulk_document_field_values(
+    document_ids: str = Query(..., description="IDs separados por vírgula"),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """Busca em lote — usado pela tabela de Documentos pra montar as colunas de
+    metadado sem uma requisição por linha (M-H)."""
+    try:
+        ids = [UUID(x) for x in document_ids.split(",") if x.strip()]
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="document_ids inválido.")
+    rows = await CustomFieldsService.get_values_for_documents(conn, ids)
+    return [dict(r) for r in rows]
+
+
 @router.get("/documents/{document_id}/field-values")
 async def get_document_field_values(
     document_id: UUID,
