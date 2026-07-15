@@ -1437,29 +1437,33 @@ export default function Documents() {
 
           {/* Actions */}
           <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              onClick={() => setSelectionMode((v) => !v)}
-              title={selectionMode ? "Sair do modo de seleção" : "Selecionar vários"}
-              className={`hidden sm:flex h-8 w-8 items-center justify-center rounded-full transition-colors duration-fast ${
-                selectionMode ? "text-teal-500 bg-teal-500/10" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-              }`}
-            >
-              <ListChecks className="w-4 h-4" />
-            </button>
-            <button
-              onClick={toggleDensity}
-              title={density === "comfortable" ? "Densidade compacta" : "Densidade confortável"}
-              className="hidden sm:flex h-8 w-8 items-center justify-center rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
-            >
-              {density === "comfortable" ? <Rows3 className="w-4 h-4" /> : <Rows4 className="w-4 h-4" />}
-            </button>
-            <button
-              onClick={() => setView(viewMode === "list" ? "grid" : "list")}
-              title={viewMode === "list" ? "Ver em grade" : "Ver em lista"}
-              className="hidden sm:flex h-8 w-8 items-center justify-center rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
-            >
-              {viewMode === "list" ? <LayoutGrid className="w-4 h-4" /> : <List className="w-4 h-4" />}
-            </button>
+            {/* Controle segmentado — mesmo padrão do agrupador de visualização no
+                Finder (um único "pill" com divisórias), em vez de 3 ícones soltos. */}
+            <div className="hidden sm:flex items-center gap-0.5 p-0.5 rounded-full bg-black/[0.03] dark:bg-white/[0.04]">
+              <button
+                onClick={() => setSelectionMode((v) => !v)}
+                title={selectionMode ? "Sair do modo de seleção" : "Selecionar vários"}
+                className={`h-7 w-7 flex items-center justify-center rounded-full transition-colors duration-fast ${
+                  selectionMode ? "bg-[var(--bg-card)] text-teal-500 shadow-sm" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                }`}
+              >
+                <ListChecks className="w-4 h-4" />
+              </button>
+              <button
+                onClick={toggleDensity}
+                title={density === "comfortable" ? "Densidade compacta" : "Densidade confortável"}
+                className="h-7 w-7 flex items-center justify-center rounded-full text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors duration-fast"
+              >
+                {density === "comfortable" ? <Rows3 className="w-4 h-4" /> : <Rows4 className="w-4 h-4" />}
+              </button>
+              <button
+                onClick={() => setView(viewMode === "list" ? "grid" : "list")}
+                title={viewMode === "list" ? "Ver em grade" : "Ver em lista"}
+                className="h-7 w-7 flex items-center justify-center rounded-full text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors duration-fast"
+              >
+                {viewMode === "list" ? <LayoutGrid className="w-4 h-4" /> : <List className="w-4 h-4" />}
+              </button>
+            </div>
             <Button variant="secondary" size="sm" className="hidden sm:flex" onClick={() => setShowNewFolder(true)}>
               <FolderPlus className="w-3.5 h-3.5" />
               Nova pasta
