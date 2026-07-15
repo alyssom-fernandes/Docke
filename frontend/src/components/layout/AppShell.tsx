@@ -29,14 +29,17 @@ export default function AppShell({ children }: AppShellProps) {
       {/* pt: espaço pra TopBar fixa (56px + respiro). pb: espaço pro Dock/barra inferior flutuantes */}
       <main
         ref={mainRef}
-        className="h-full overflow-y-auto px-3 md:px-5 pt-[84px] md:pt-[92px] pb-28 md:pb-8 lg:pb-28"
+        className="h-full overflow-y-auto px-3 md:px-5 pt-[84px] md:pt-[92px] pb-28 md:pb-8 lg:pb-28 flex flex-col"
       >
         <ErrorBoundary key={location.pathname}>
           {/* Só padding vertical aqui — o horizontal já vem do px-3/md:px-5 do
               <main>, que é exatamente o mesmo inset da TopBar/Dock. Isso é o
               que faz o conteúdo (tabelas, cards) alinhar com a borda da
-              TopBar em vez de ficar mais estreito que ela. */}
-          <div className="page-enter py-6">
+              TopBar em vez de ficar mais estreito que ela.
+              flex-1: quando o conteúdo é curto (Busca vazia, Segurança,
+              Preferências), empurra o Footer pro fim da viewport em vez de
+              deixá-lo grudado logo depois do conteúdo, no meio da tela. */}
+          <div className="page-enter py-6 flex-1">
             {children}
           </div>
         </ErrorBoundary>

@@ -81,10 +81,10 @@ export default function Search() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-[800px] mx-auto">
       <h1 className="text-mac-title2 font-semibold text-[var(--text-primary)]">Busca avançada</h1>
 
-      <form onSubmit={handleSubmit} className="flex gap-2 max-w-[800px]">
+      <form onSubmit={handleSubmit} className="flex gap-2">
         <div className="flex-1 relative">
           <SearchIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-placeholder)] pointer-events-none" />
           <input

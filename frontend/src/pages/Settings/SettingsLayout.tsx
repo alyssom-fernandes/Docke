@@ -29,7 +29,7 @@ export default function SettingsLayout() {
   return (
     <div>
       <h1 className="text-mac-title2 font-semibold text-[var(--text-primary)] mb-6">Configurações</h1>
-      <div className="flex flex-col md:flex-row gap-6 max-w-[1100px]">
+      <div className="flex flex-col md:flex-row gap-6 max-w-[1100px] mx-auto">
         <nav className="flex md:flex-col gap-1 md:w-[200px] flex-shrink-0 overflow-x-auto">
           {visibleTabs.map((tab) => (
             <NavLink
