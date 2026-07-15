@@ -31,6 +31,8 @@ import {
   ListChecks,
   LayoutGrid,
   List,
+  Pencil,
+  Info,
 } from "lucide-react";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
@@ -724,6 +726,34 @@ export default function Documents() {
   const [confirmDeleteFolder, setConfirmDeleteFolder] = useState<Folder | null>(null);
   const [deletingFolder, setDeletingFolder] = useState(false);
   const [sharingFolder, setSharingFolder] = useState<Folder | null>(null);
+  // Menu de contexto (clique direito) — padrão Finder/Explorer: menu customizado
+  // como interação primária, o botão "..." continua existindo como alternativa
+  // pra quem não sabe do clique direito (§13.4 do ADENDO-09).
+  const [contextMenu, setContextMenu] = useState<
+    { x: number; y: number; kind: "document"; data: Document } | { x: number; y: number; kind: "folder"; data: Folder } | null
+  >(null);
+  function openContextMenu(e: React.MouseEvent, kind: "document" | "folder", data: Document | Folder) {
+    e.preventDefault();
+    e.stopPropagation();
+    setFocusedId(data.id);
+    const menuWidth = 200;
+    const menuHeight = kind === "document" ? 190 : 150;
+    const x = Math.min(e.clientX, window.innerWidth - menuWidth - 8);
+    const y = Math.min(e.clientY, window.innerHeight - menuHeight - 8);
+    setContextMenu({ x, y, kind, data } as typeof contextMenu);
+  }
+  useEffect(() => {
+    if (!contextMenu) return;
+    function close() { setContextMenu(null); }
+    document.addEventListener("mousedown", close);
+    document.addEventListener("scroll", close, true);
+    window.addEventListener("blur", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("scroll", close, true);
+      window.removeEventListener("blur", close);
+    };
+  }, [contextMenu]);
   // ADR-026: densidade de tabela — compacto reduz padding vertical das linhas
   const [density, setDensity] = useState<"comfortable" | "compact">(
     () => (localStorage.getItem("docke_table_density") as "comfortable" | "compact") || "comfortable"
@@ -1529,6 +1559,7 @@ export default function Documents() {
                       }`}
                       onClick={() => setFocusedId(f.id)}
                       onDoubleClick={() => openFolder(f)}
+                      onContextMenu={(e) => openContextMenu(e, "folder", f)}
                       onDragOver={(e) => {
                         if (!dragDocIds) return;
                         e.preventDefault();
@@ -1596,6 +1627,7 @@ export default function Documents() {
                 const d = item.data;
                 const isSelected = selected.has(d.id);
                 const isDragging = dragDocIds?.includes(d.id) ?? false;
+                const isRenamingDoc = renaming?.kind === "document" && renaming.id === d.id;
                 const s = getFileStyle(d.name);
                 const Icon = s.icon;
                 return (
@@ -1605,8 +1637,10 @@ export default function Documents() {
                     className={`group relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-[var(--radius-control)] cursor-pointer transition-colors duration-fast ${
                       isSelected ? "bg-teal-500" : "hover:bg-[var(--bg-hover)]"
                     } ${isDragging ? "opacity-40" : ""}`}
-                    onClick={() => { setFocusedId(d.id); setDetailDoc(d); }}
-                    draggable
+                    onClick={() => setFocusedId(d.id)}
+                    onDoubleClick={() => setDetailDoc(d)}
+                    onContextMenu={(e) => openContextMenu(e, "document", d)}
+                    draggable={!isRenamingDoc}
                     onDragStart={(e) => {
                       const ids = selected.has(d.id) && selected.size > 1 ? [...selected] : [d.id];
                       setDragDocIds(ids);
@@ -1640,7 +1674,25 @@ export default function Documents() {
                     <div className={`w-10 h-10 rounded-[6px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
                       <Icon className={`w-5 h-5 ${s.iconColor}`} />
                     </div>
-                    <span className={`text-mac-caption text-center leading-tight w-full line-clamp-2 ${isSelected ? "text-white" : "text-[var(--text-primary)]"}`}>{d.name}</span>
+                    {isRenamingDoc ? (
+                      <div className="flex items-center gap-0.5 w-full justify-center" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          ref={renameInputRef}
+                          type="text"
+                          value={renaming.value}
+                          onChange={(e) => setRenaming({ ...renaming, value: e.target.value })}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") confirmRename();
+                            if (e.key === "Escape") setRenaming(null);
+                          }}
+                          onBlur={confirmRename}
+                          className="w-full min-w-0 h-6 px-1 text-mac-caption text-center bg-[var(--bg-page)] border border-teal-500 rounded-[4px] text-[var(--text-primary)] focus:outline-none"
+                        />
+                        <span className="text-mac-caption text-[var(--text-tertiary)] flex-shrink-0">{splitExt(d.name)[1]}</span>
+                      </div>
+                    ) : (
+                      <span className={`text-mac-caption text-center leading-tight w-full line-clamp-2 ${isSelected ? "text-white" : "text-[var(--text-primary)]"}`}>{d.name}</span>
+                    )}
                   </div>
                 );
               })}
@@ -1717,6 +1769,7 @@ export default function Documents() {
                         }`}
                         onClick={() => setFocusedId(f.id)}
                         onDoubleClick={() => openFolder(f)}
+                        onContextMenu={(e) => openContextMenu(e, "folder", f)}
                         onDragOver={(e) => {
                           if (!dragDocIds) return;
                           e.preventDefault();
@@ -1809,7 +1862,9 @@ export default function Documents() {
                       className={`border-b border-[var(--border-default)] transition-colors duration-fast group cursor-pointer ${
                         isSelected ? "bg-teal-500" : "hover:bg-[var(--bg-hover)]"
                       } ${isDragging ? "opacity-40" : ""}`}
-                      onClick={() => { setFocusedId(d.id); setDetailDoc(d); }}
+                      onClick={() => setFocusedId(d.id)}
+                      onDoubleClick={() => setDetailDoc(d)}
+                      onContextMenu={(e) => openContextMenu(e, "document", d)}
                       draggable={!isRenaming}
                       onDragStart={(e) => {
                         const ids = selected.has(d.id) && selected.size > 1 ? [...selected] : [d.id];
@@ -1966,6 +2021,76 @@ export default function Documents() {
           doc={previewDoc}
           onClose={() => setPreviewDoc(null)}
         />
+      )}
+
+      {/* Menu de contexto (clique direito) — interação primária, o botão "..."
+          continua existindo como alternativa (§13.4 do ADENDO-09). */}
+      {contextMenu && (
+        <Portal>
+          <div
+            className="glass-panel glass-blur-strong fixed rounded-[var(--radius-popover)] shadow-dropdown py-1 z-50 w-[200px]"
+            style={{ top: contextMenu.y, left: contextMenu.x }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {contextMenu.kind === "document" ? (
+              <>
+                <button
+                  onClick={() => { setPreviewDoc(contextMenu.data); setContextMenu(null); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast text-left"
+                >
+                  <Eye className="w-4 h-4 text-[var(--text-tertiary)]" /> Abrir
+                </button>
+                <button
+                  onClick={() => { setDetailDoc(contextMenu.data); setContextMenu(null); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast text-left"
+                >
+                  <Info className="w-4 h-4 text-[var(--text-tertiary)]" /> Ver detalhes
+                </button>
+                <button
+                  onClick={() => { startRename("document", contextMenu.data.id, contextMenu.data.name); setContextMenu(null); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast text-left"
+                >
+                  <Pencil className="w-4 h-4 text-[var(--text-tertiary)]" /> Renomear
+                </button>
+                <div className="my-1 border-t border-[var(--border-default)]" />
+                <button
+                  onClick={() => { deleteDocuments([contextMenu.data.id]); setContextMenu(null); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors duration-fast text-left"
+                >
+                  <Trash2 className="w-4 h-4" /> Excluir
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => { openFolder(contextMenu.data); setContextMenu(null); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast text-left"
+                >
+                  <FolderOpen className="w-4 h-4 text-[var(--text-tertiary)]" /> Abrir
+                </button>
+                <button
+                  onClick={() => { startRename("folder", contextMenu.data.id, contextMenu.data.name); setContextMenu(null); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast text-left"
+                >
+                  <Pencil className="w-4 h-4 text-[var(--text-tertiary)]" /> Renomear
+                </button>
+                <button
+                  onClick={() => { setSharingFolder(contextMenu.data); setContextMenu(null); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast text-left"
+                >
+                  <Share2 className="w-4 h-4 text-[var(--text-tertiary)]" /> Compartilhar
+                </button>
+                <div className="my-1 border-t border-[var(--border-default)]" />
+                <button
+                  onClick={() => { setConfirmDeleteFolder(contextMenu.data); setContextMenu(null); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors duration-fast text-left"
+                >
+                  <Trash2 className="w-4 h-4" /> Excluir
+                </button>
+              </>
+            )}
+          </div>
+        </Portal>
       )}
 
       {/* Barra de ações em lote — flutuante, o caso mais puro de "vidro sobre conteúdo" */}
