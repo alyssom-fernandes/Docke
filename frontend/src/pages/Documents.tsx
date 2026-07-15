@@ -1555,7 +1555,7 @@ export default function Documents() {
                         setDragOverFolderId(null);
                       }}
                     >
-                      <div className="absolute top-1 right-1 hidden group-hover:flex items-center gap-0.5 z-10">
+                      <div className="absolute top-1 right-1 flex sm:hidden sm:group-hover:flex items-center gap-0.5 z-10">
                         <button
                           onClick={(e) => { e.stopPropagation(); setSharingFolder(f); }}
                           className="p-1 rounded-full text-[var(--text-tertiary)] hover:text-teal-500 hover:bg-[var(--bg-hover)] transition-colors duration-fast"
@@ -1633,7 +1633,7 @@ export default function Documents() {
                     )}
                     <button
                       onClick={(e) => { e.stopPropagation(); setDetailDoc(d); }}
-                      className="absolute top-1 right-1 hidden group-hover:flex p-1 rounded-full text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast z-10"
+                      className="absolute top-1 right-1 flex sm:hidden sm:group-hover:flex p-1 rounded-full text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast z-10"
                     >
                       <MoreHorizontal className="w-3 h-3" />
                     </button>
@@ -1649,15 +1649,15 @@ export default function Documents() {
             // overflow-x-auto: com colunas redimensionáveis (table-fixed) a soma das
             // larguras pode passar do viewport no mobile — rola em vez de cortar/quebrar.
             <div className="overflow-x-auto">
-            <table className={`w-full table-fixed ${density === "compact" ? "[&_td]:!py-1" : ""}`}>
+            <table className={`w-full table-auto sm:table-fixed ${density === "compact" ? "[&_td]:!py-1" : ""}`}>
               <colgroup>
                 {selectionMode && <col style={{ width: 40 }} />}
                 <col style={{ width: colWidths.name }} />
-                <col style={{ width: colWidths.size }} />
-                <col style={{ width: colWidths.ocr }} />
-                <col style={{ width: colWidths.created }} />
+                <col className="hidden sm:table-column" style={{ width: colWidths.size }} />
+                <col className="hidden sm:table-column" style={{ width: colWidths.ocr }} />
+                <col className="hidden sm:table-column" style={{ width: colWidths.created }} />
                 {resolvedFields.map((f) => (
-                  <col key={f.custom_field_id} style={{ width: f.column_width ?? 130 }} />
+                  <col key={f.custom_field_id} className="hidden sm:table-column" style={{ width: f.column_width ?? 130 }} />
                 ))}
                 <col style={{ width: 40 }} />
               </colgroup>
@@ -1678,10 +1678,11 @@ export default function Documents() {
                   />
                   <SortableHeader
                     label="Tamanho" sortKey="size" sort={sort} onSort={toggleSort}
+                    className="hidden sm:table-cell"
                     onResizeStart={(e) => startColResize("size", e)}
                     onResizeReset={() => resetColWidth("size")}
                   />
-                  <th className="relative px-3 py-2 text-mac-body font-normal text-[var(--text-secondary)] text-left">
+                  <th className="relative px-3 py-2 text-mac-body font-normal text-[var(--text-secondary)] text-left hidden sm:table-cell">
                     OCR
                     <div
                       onMouseDown={(e) => startColResize("ocr", e)}
@@ -1691,11 +1692,12 @@ export default function Documents() {
                   </th>
                   <SortableHeader
                     label="Criado em" sortKey="created_at" sort={sort} onSort={toggleSort}
+                    className="hidden sm:table-cell"
                     onResizeStart={(e) => startColResize("created", e)}
                     onResizeReset={() => resetColWidth("created")}
                   />
                   {resolvedFields.map((f) => (
-                    <th key={f.custom_field_id} className="px-3 py-2 text-mac-body font-normal text-[var(--text-secondary)] text-left truncate">
+                    <th key={f.custom_field_id} className="px-3 py-2 text-mac-body font-normal text-[var(--text-secondary)] text-left truncate hidden sm:table-cell">
                       {f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}
                     </th>
                   ))}
@@ -1770,23 +1772,23 @@ export default function Documents() {
                             </button>
                           )}
                         </td>
-                        <td className="px-3 py-2.5 text-mac-caption text-[var(--text-tertiary)]">—</td>
-                        <td className="px-3 py-2.5" />
-                        <td className="px-3 py-2.5 text-mac-caption text-[var(--text-tertiary)]">—</td>
+                        <td className="px-3 py-2.5 text-mac-caption text-[var(--text-tertiary)] hidden sm:table-cell">—</td>
+                        <td className="px-3 py-2.5 hidden sm:table-cell" />
+                        <td className="px-3 py-2.5 text-mac-caption text-[var(--text-tertiary)] hidden sm:table-cell">—</td>
                         {resolvedFields.map((rf) => (
-                          <td key={rf.custom_field_id} className="px-3 py-2.5 text-mac-caption text-[var(--text-tertiary)]">—</td>
+                          <td key={rf.custom_field_id} className="px-3 py-2.5 text-mac-caption text-[var(--text-tertiary)] hidden sm:table-cell">—</td>
                         ))}
                         <td className="px-2 py-2.5 flex items-center gap-1">
                           <button
                             onClick={(e) => { e.stopPropagation(); setSharingFolder(f); }}
-                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full text-[var(--text-tertiary)] hover:text-teal-500 hover:bg-[var(--bg-hover)] transition-all duration-fast"
+                            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-full text-[var(--text-tertiary)] hover:text-teal-500 hover:bg-[var(--bg-hover)] transition-all duration-fast"
                             title="Compartilhar pasta"
                           >
                             <Share2 className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); setConfirmDeleteFolder(f); }}
-                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-all duration-fast"
+                            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-full text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-all duration-fast"
                             title="Excluir pasta"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1867,13 +1869,13 @@ export default function Documents() {
                           )}
                         </div>
                       </td>
-                      <td className={`px-3 py-2.5 text-mac-caption ${isSelected ? "text-white/80" : "text-[var(--text-tertiary)]"}`}>{fmtSize(d.size_bytes)}</td>
-                      <td className="px-3 py-2.5"><OcrIcon status={d.ocr_status} /></td>
-                      <td className={`px-3 py-2.5 text-mac-caption ${isSelected ? "text-white/80" : "text-[var(--text-tertiary)]"}`}>{fmtDate(d.created_at)}</td>
+                      <td className={`px-3 py-2.5 text-mac-caption hidden sm:table-cell ${isSelected ? "text-white/80" : "text-[var(--text-tertiary)]"}`}>{fmtSize(d.size_bytes)}</td>
+                      <td className="px-3 py-2.5 hidden sm:table-cell"><OcrIcon status={d.ocr_status} /></td>
+                      <td className={`px-3 py-2.5 text-mac-caption hidden sm:table-cell ${isSelected ? "text-white/80" : "text-[var(--text-tertiary)]"}`}>{fmtDate(d.created_at)}</td>
                       {resolvedFields.map((rf) => {
                         const value = fieldValues[d.id]?.[rf.custom_field_id];
                         return (
-                          <td key={rf.custom_field_id} className="px-3 py-2.5 text-mac-caption truncate">
+                          <td key={rf.custom_field_id} className="px-3 py-2.5 text-mac-caption truncate hidden sm:table-cell">
                             {value ? (
                               <span className={isSelected ? "text-white/90" : "text-[var(--text-secondary)]"}>{value}</span>
                             ) : rf.required ? (
@@ -1887,7 +1889,7 @@ export default function Documents() {
                       <td className="px-2 py-2.5">
                         <button
                           onClick={(e) => { e.stopPropagation(); setDetailDoc(d); }}
-                          className={`opacity-0 group-hover:opacity-100 p-1.5 rounded-full transition-all duration-fast ${
+                          className={`opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-full transition-all duration-fast ${
                             isSelected ? "text-white hover:bg-white/20" : "text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)]"
                           }`}
                         >
@@ -1973,7 +1975,7 @@ export default function Documents() {
         }`}
         style={{ transform: selected.size > 0 ? "translateX(-50%)" : "translateX(-50%) translateY(12px)" }}
       >
-        <span className="text-mac-body text-[var(--text-primary)] mr-1.5 pl-2.5">
+        <span className="text-mac-body text-[var(--text-primary)] mr-1.5 pl-2.5 whitespace-nowrap">
           <b className="text-[var(--teal-bright)] font-semibold">{selected.size}</b> selecionado{selected.size !== 1 ? "s" : ""}
         </span>
         <button

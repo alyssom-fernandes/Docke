@@ -171,8 +171,8 @@ export default function Organization() {
                   <Building2 className="w-4 h-4 text-teal-500" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-mac-body font-medium text-[var(--text-primary)] truncate flex items-center gap-2">
-                    {org.name}
+                  <p className="text-mac-body font-medium text-[var(--text-primary)] flex items-center gap-2 min-w-0">
+                    <span className="truncate">{org.name}</span>
                     {current?.id === org.id && <Badge variant="teal">Atual</Badge>}
                   </p>
                   <p className="text-mac-caption text-[var(--text-secondary)]">
