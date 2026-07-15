@@ -152,25 +152,25 @@ export default function Trash() {
                     </div>
                   ); })()
                 )}
-                <span className="flex-1 text-mac-body text-[var(--text-primary)] truncate">{item.name}</span>
-                <span className="text-mac-caption text-[var(--text-tertiary)] mr-2" title={fullDate(item.deleted_at)}>
+                <span className="flex-1 min-w-0 text-mac-body text-[var(--text-primary)] truncate">{item.name}</span>
+                <span className="hidden md:inline text-mac-caption text-[var(--text-tertiary)] mr-2" title={fullDate(item.deleted_at)}>
                   Excluído {fmtDate(item.deleted_at)}
                 </span>
                 <button
                   onClick={() => restore(item)}
-                  className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-2.5 py-1 rounded-full text-mac-caption text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-all duration-fast"
+                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-full text-mac-caption text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-all duration-fast flex-shrink-0"
                   title="Restaurar"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  Restaurar
+                  <span className="hidden sm:inline">Restaurar</span>
                 </button>
                 <button
                   onClick={() => setConfirmSingle(item)}
-                  className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-2.5 py-1 rounded-full text-mac-caption text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-all duration-fast"
+                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-full text-mac-caption text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-all duration-fast flex-shrink-0"
                   title="Excluir permanentemente"
                 >
                   <X className="w-3.5 h-3.5" />
-                  Excluir
+                  <span className="hidden sm:inline">Excluir</span>
                 </button>
               </li>
             ))}

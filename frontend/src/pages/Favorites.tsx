@@ -106,13 +106,13 @@ export default function Favorites() {
                     </div>
                   ); })()
                 )}
-                <span className="flex-1 text-mac-body text-[var(--text-primary)] truncate">{fav.item_name}</span>
-                <span className="text-mac-caption text-[var(--text-tertiary)] mr-2">
+                <span className="flex-1 min-w-0 text-mac-body text-[var(--text-primary)] truncate">{fav.item_name}</span>
+                <span className="hidden md:inline text-mac-caption text-[var(--text-tertiary)] mr-2">
                   {fav.item_type === "folder" ? "Pasta" : "Documento"}
                 </span>
                 <button
                   onClick={(e) => { e.stopPropagation(); removeFavorite(fav); }}
-                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-all duration-fast"
+                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-full text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-all duration-fast flex-shrink-0"
                   title="Remover ancoragem"
                 >
                   <Trash2 className="w-3.5 h-3.5" />

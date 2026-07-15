@@ -55,7 +55,7 @@ function TaskRow({ task, onRemove }: { task: Task; onRemove: () => void }) {
         <Icon className="w-3.5 h-3.5 text-[var(--text-tertiary)]" />
         <button
           onClick={onRemove}
-          className="opacity-0 group-hover:opacity-100 p-1 rounded-full text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-all duration-fast"
+          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 rounded-full text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-all duration-fast"
         >
           <X className="w-3 h-3" />
         </button>
@@ -142,7 +142,7 @@ export default function TaskCenter() {
       </button>
 
       {open && (
-        <div className="glass-panel glass-blur-strong w-[340px] absolute top-full right-0 mt-1 rounded-[var(--radius-popover)] shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-50 overflow-hidden max-h-[70vh] flex flex-col">
+        <div className="glass-panel glass-blur-strong fixed left-4 right-4 top-[84px] sm:absolute sm:left-auto sm:right-0 sm:top-full sm:w-[340px] sm:mt-1 rounded-[var(--radius-popover)] shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-50 overflow-hidden max-h-[70vh] flex flex-col">
           {/* Seção "Em andamento" — some inteira quando não há nada rodando */}
           {tasks.length > 0 && (
             <>
