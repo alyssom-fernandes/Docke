@@ -914,7 +914,14 @@ export default function Documents() {
       const target = e.target as HTMLElement;
       const typing = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
       const modalOpen = !!(detailDoc || previewDoc || showUpload || showNewFolder || confirmDeleteFolder || sharingFolder);
-      if (typing || modalOpen || !focusedId) return;
+      if (typing || modalOpen) return;
+
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        setSelected(new Set(documents.map((d) => d.id)));
+        return;
+      }
+      if (!focusedId) return;
 
       if (e.code === "Space") {
         const doc = documents.find((d) => d.id === focusedId);
@@ -1319,6 +1326,32 @@ export default function Documents() {
     ...sortedDocuments.map((d): Item => ({ kind: "document", data: d })),
   ];
 
+  // Clique em documento — Shift estende o intervalo a partir do último item
+  // focado, Ctrl/Cmd alterna a seleção individual, clique simples troca a
+  // seleção pra só esse item (padrão Finder/Explorer, "inviolável" — consenso
+  // de 5 fontes independentes no ADENDO-09 §13.2).
+  function selectDocClick(e: React.MouseEvent, id: string) {
+    const ids = sortedDocuments.map((d) => d.id);
+    if (e.shiftKey && focusedId && ids.includes(focusedId)) {
+      const i1 = ids.indexOf(focusedId);
+      const i2 = ids.indexOf(id);
+      const [from, to] = i1 < i2 ? [i1, i2] : [i2, i1];
+      setSelected(new Set(ids.slice(from, to + 1)));
+      return;
+    }
+    if (e.metaKey || e.ctrlKey) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.has(id) ? next.delete(id) : next.add(id);
+        return next;
+      });
+      setFocusedId(id);
+      return;
+    }
+    setSelected(new Set([id]));
+    setFocusedId(id);
+  }
+
   return (
     <div className="flex h-full -my-6 gap-4 p-2">
       {/* Sidebar de pastas — desktop only (lg+), mesma "receita" de vidro do painel principal */}
@@ -1641,7 +1674,7 @@ export default function Documents() {
                     className={`group relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-[var(--radius-control)] cursor-pointer transition-colors duration-fast ${
                       isSelected ? "bg-teal-500" : "hover:bg-[var(--bg-hover)]"
                     } ${isDragging ? "opacity-40" : ""}`}
-                    onClick={() => setFocusedId(d.id)}
+                    onClick={(e) => selectDocClick(e, d.id)}
                     onDoubleClick={() => setDetailDoc(d)}
                     onContextMenu={(e) => openContextMenu(e, "document", d)}
                     draggable={!isRenamingDoc}
@@ -1866,7 +1899,7 @@ export default function Documents() {
                       className={`border-b border-[var(--border-default)] transition-colors duration-fast group cursor-pointer ${
                         isSelected ? "bg-teal-500" : "hover:bg-[var(--bg-hover)]"
                       } ${isDragging ? "opacity-40" : ""}`}
-                      onClick={() => setFocusedId(d.id)}
+                      onClick={(e) => selectDocClick(e, d.id)}
                       onDoubleClick={() => setDetailDoc(d)}
                       onContextMenu={(e) => openContextMenu(e, "document", d)}
                       draggable={!isRenaming}
