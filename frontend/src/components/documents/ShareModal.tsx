@@ -7,6 +7,7 @@ import { relativeDate } from "@/lib/date";
 import Button from "@/components/ui/Button";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import Switch from "@/components/ui/Switch";
+import Portal from "@/components/ui/Portal";
 
 interface ShareLink {
   id: string;
@@ -86,6 +87,7 @@ export default function ShareModal({
   }
 
   return (
+    <Portal>
     <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[480px] max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-default)]">
@@ -188,5 +190,6 @@ export default function ShareModal({
         />
       )}
     </div>
+    </Portal>
   );
 }

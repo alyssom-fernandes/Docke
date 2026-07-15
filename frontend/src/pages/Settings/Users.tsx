@@ -12,6 +12,7 @@ import Button from "@/components/ui/Button";
 import EmptyState from "@/components/shared/EmptyState";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import Dropdown from "@/components/ui/Dropdown";
+import Portal from "@/components/ui/Portal";
 
 interface Grant {
   access_id: string;
@@ -96,6 +97,7 @@ function CreateMemberModal({ companyId, folders, onClose, onDone }: { companyId:
   }
 
   return (
+    <Portal>
     <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[440px]">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
@@ -182,6 +184,7 @@ function CreateMemberModal({ companyId, folders, onClose, onDone }: { companyId:
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 
@@ -213,6 +216,7 @@ function AddGrantModal({ companyId, memberId, memberName, folders, onClose, onDo
   }
 
   return (
+    <Portal>
     <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[400px]">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
@@ -246,6 +250,7 @@ function AddGrantModal({ companyId, memberId, memberName, folders, onClose, onDo
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 

@@ -3,6 +3,7 @@ import { Lock } from "lucide-react";
 import { onSessionExpired } from "@/lib/sessionEvents";
 import { useAuthContext } from "@/lib/AuthContext";
 import Button from "@/components/ui/Button";
+import Portal from "@/components/ui/Portal";
 
 // Conta do modo demo — sem senha conhecida pelo usuário, então o token
 // expirado é renovado automaticamente em vez de pedir senha (ver ADR do
@@ -59,6 +60,7 @@ export default function SessionExpiredOverlay() {
   }
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="modal-card glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal w-full max-w-[360px]">
         {/* Header */}
@@ -98,5 +100,6 @@ export default function SessionExpiredOverlay() {
         </form>
       </div>
     </div>
+    </Portal>
   );
 }

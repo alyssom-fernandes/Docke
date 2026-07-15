@@ -4,6 +4,7 @@ import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
 import Button from "@/components/ui/Button";
+import Portal from "@/components/ui/Portal";
 
 const ONBOARDING_KEY = "docke_onboarding_complete";
 
@@ -98,6 +99,7 @@ export default function Onboarding({ onComplete }: Props) {
   }
 
   return (
+    <Portal>
     <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4">
       <div className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[480px]">
         {/* Progress dots */}
@@ -215,5 +217,6 @@ export default function Onboarding({ onComplete }: Props) {
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

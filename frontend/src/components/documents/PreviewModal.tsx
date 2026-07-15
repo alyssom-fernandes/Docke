@@ -3,6 +3,7 @@ import { X, Download, AlertCircle, Loader2 } from "lucide-react";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { getFileStyle } from "@/lib/fileType";
 import api from "@/lib/api";
+import Portal from "@/components/ui/Portal";
 
 interface Doc {
   id: string;
@@ -180,6 +181,7 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
   }
 
   return (
+    <Portal>
     <div
       className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
@@ -312,5 +314,6 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

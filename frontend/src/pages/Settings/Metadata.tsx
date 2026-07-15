@@ -11,6 +11,7 @@ import EmptyState from "@/components/shared/EmptyState";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import Switch from "@/components/ui/Switch";
 import Dropdown from "@/components/ui/Dropdown";
+import Portal from "@/components/ui/Portal";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -100,6 +101,7 @@ function NewFieldModal({ companyId, onClose, onCreated }: { companyId: string; o
   }
 
   return (
+    <Portal>
     <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[420px]">
         <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-default)]">
@@ -152,6 +154,7 @@ function NewFieldModal({ companyId, onClose, onCreated }: { companyId: string; o
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 
@@ -183,6 +186,7 @@ function CopyFieldsModal({ companies, targetCompanyId, onClose, onCopied }: {
   }
 
   return (
+    <Portal>
     <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[400px]">
         <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-default)]">
@@ -212,6 +216,7 @@ function CopyFieldsModal({ companies, targetCompanyId, onClose, onCopied }: {
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 

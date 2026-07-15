@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import Button from "./Button";
+import Portal from "./Portal";
 
 interface ConfirmModalProps {
   title: string;
@@ -51,41 +52,43 @@ export default function ConfirmModal({
   }, [onClose]);
 
   return (
-    <div
-      className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div ref={containerRef} className="modal-card glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal w-full max-w-[360px]">
-        <div className="p-5 pb-3">
-          <h2 className="text-mac-title3 text-[var(--text-primary)]">{title}</h2>
-          <p className="text-mac-body text-[var(--text-secondary)] mt-1.5">{description}</p>
-        </div>
-        {requireTypedConfirmation && (
-          <div className="px-5 pb-3">
-            <input
-              type="text"
-              value={typedValue}
-              onChange={(e) => setTypedValue(e.target.value)}
-              placeholder="Digite CONFIRMAR"
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
-            />
+    <Portal>
+      <div
+        className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4"
+        onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      >
+        <div ref={containerRef} className="modal-card glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal w-full max-w-[360px]">
+          <div className="p-5 pb-3">
+            <h2 className="text-mac-title3 text-[var(--text-primary)]">{title}</h2>
+            <p className="text-mac-body text-[var(--text-secondary)] mt-1.5">{description}</p>
           </div>
-        )}
-        <div className="flex items-center justify-end gap-2 px-5 pb-5">
-          <Button ref={cancelRef} variant="secondary" size="sm" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button
-            variant={danger ? "danger" : "primary"}
-            size="sm"
-            loading={loading}
-            disabled={requireTypedConfirmation && typedValue !== "CONFIRMAR"}
-            onClick={onConfirm}
-          >
-            {confirmLabel}
-          </Button>
+          {requireTypedConfirmation && (
+            <div className="px-5 pb-3">
+              <input
+                type="text"
+                value={typedValue}
+                onChange={(e) => setTypedValue(e.target.value)}
+                placeholder="Digite CONFIRMAR"
+                className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              />
+            </div>
+          )}
+          <div className="flex items-center justify-end gap-2 px-5 pb-5">
+            <Button ref={cancelRef} variant="secondary" size="sm" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button
+              variant={danger ? "danger" : "primary"}
+              size="sm"
+              loading={loading}
+              disabled={requireTypedConfirmation && typedValue !== "CONFIRMAR"}
+              onClick={onConfirm}
+            >
+              {confirmLabel}
+            </Button>
+          </div>
         </div>
       </div>
-    </div>
+    </Portal>
   );
 }

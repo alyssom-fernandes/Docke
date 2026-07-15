@@ -6,6 +6,7 @@ import { useFocusTrap } from "@/hooks/useFocusTrap";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useCommandPalette } from "@/hooks/useCommandPalette";
+import Portal from "@/components/ui/Portal";
 
 interface QuickResult {
   id: string;
@@ -86,6 +87,7 @@ export default function CommandPalette() {
   if (!isOpen) return null;
 
   return (
+    <Portal>
     <div
       className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-start justify-center pt-[15vh] z-50 px-4"
       onClick={(e) => { if (e.target === e.currentTarget) close(); }}
@@ -178,5 +180,6 @@ export default function CommandPalette() {
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

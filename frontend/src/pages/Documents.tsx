@@ -46,6 +46,7 @@ import PreviewModal from "@/components/documents/PreviewModal";
 import VersionsPanel from "@/components/documents/VersionsPanel";
 import ShareModal from "@/components/documents/ShareModal";
 import FolderTree from "@/components/documents/FolderTree";
+import Portal from "@/components/ui/Portal";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -342,6 +343,7 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
   }
 
   return (
+    <Portal>
     <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={uploadContainerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[480px]">
         <div className="px-5 py-4 border-b border-[var(--border-default)]">
@@ -401,6 +403,7 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 
@@ -429,6 +432,7 @@ function CreateFolderModal({ parentId, companyId, onClose, onDone }: { parentId:
   }
 
   return (
+    <Portal>
     <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={folderContainerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[360px]">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
@@ -456,6 +460,7 @@ function CreateFolderModal({ parentId, companyId, onClose, onDone }: { parentId:
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 
@@ -584,6 +589,7 @@ function DetailDrawer({ doc, companyId, onClose, onFavorite, onPreview, onDelete
   }
 
   return (
+    <Portal>
     <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[420px] max-h-[85vh] overflow-y-auto">
       <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
@@ -677,6 +683,7 @@ function DetailDrawer({ doc, companyId, onClose, onFavorite, onPreview, onDelete
         />
       )}
     </div>
+    </Portal>
   );
 }
 

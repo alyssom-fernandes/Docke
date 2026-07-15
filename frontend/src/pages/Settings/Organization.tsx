@@ -10,6 +10,7 @@ import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/shared/EmptyState";
 import ConfirmModal from "@/components/ui/ConfirmModal";
+import Portal from "@/components/ui/Portal";
 
 interface Org {
   id: string;
@@ -59,6 +60,7 @@ function OrgModal({ org, onClose, onDone }: { org: Org | null; onClose: () => vo
   }
 
   return (
+    <Portal>
     <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[560px]">
         <div className="px-5 py-4 border-b border-[var(--border-default)]">
@@ -100,6 +102,7 @@ function OrgModal({ org, onClose, onDone }: { org: Org | null; onClose: () => vo
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 
