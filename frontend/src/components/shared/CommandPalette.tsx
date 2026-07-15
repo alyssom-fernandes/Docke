@@ -90,7 +90,7 @@ export default function CommandPalette() {
       className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-start justify-center pt-[15vh] z-50 px-4"
       onClick={(e) => { if (e.target === e.currentTarget) close(); }}
     >
-      <div ref={containerRef} className="modal-card glass-panel glass-blur-strong rounded-[20px] shadow-modal w-full max-w-[560px] overflow-hidden">
+      <div ref={containerRef} className="modal-card glass-dialog glass-blur-strong rounded-[20px] shadow-modal w-full max-w-[560px] overflow-hidden">
         {/* Search input */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border-default)]">
           <Search className="w-4 h-4 text-[var(--text-placeholder)] flex-shrink-0" />

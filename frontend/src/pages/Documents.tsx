@@ -343,7 +343,7 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
 
   return (
     <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={uploadContainerRef} className="glass-panel glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[480px]">
+      <div ref={uploadContainerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[480px]">
         <div className="px-5 py-4 border-b border-[var(--border-default)]">
           <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Upload de documentos</h2>
         </div>
@@ -430,7 +430,7 @@ function CreateFolderModal({ parentId, companyId, onClose, onDone }: { parentId:
 
   return (
     <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={folderContainerRef} className="glass-panel glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[360px]">
+      <div ref={folderContainerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[360px]">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
           <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Nova pasta</h2>
           <button onClick={onClose} className="p-1 rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
@@ -585,7 +585,7 @@ function DetailDrawer({ doc, companyId, onClose, onFavorite, onPreview, onDelete
 
   return (
     <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={containerRef} className="glass-panel glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[420px] max-h-[85vh] overflow-y-auto">
+      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[420px] max-h-[85vh] overflow-y-auto">
       <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
         <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Detalhes</h2>
         <button onClick={onClose} className="p-1 rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">

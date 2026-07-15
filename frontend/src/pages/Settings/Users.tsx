@@ -97,7 +97,7 @@ function CreateMemberModal({ companyId, folders, onClose, onDone }: { companyId:
 
   return (
     <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={containerRef} className="glass-panel glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[440px]">
+      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[440px]">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
           <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Novo usuário</h2>
           <button onClick={onClose} className="p-1 rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
@@ -214,7 +214,7 @@ function AddGrantModal({ companyId, memberId, memberName, folders, onClose, onDo
 
   return (
     <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={containerRef} className="glass-panel glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[400px]">
+      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[400px]">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
           <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Nova concessão — {memberName}</h2>
           <button onClick={onClose} className="p-1 rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">

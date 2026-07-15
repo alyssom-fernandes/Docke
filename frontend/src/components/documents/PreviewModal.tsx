@@ -186,7 +186,7 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
     >
       <div
         ref={containerRef}
-        className="modal-card glass-panel glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal flex flex-col w-full max-w-4xl"
+        className="modal-card glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal flex flex-col w-full max-w-4xl"
         style={{ height: "min(90vh, 760px)" }}
       >
         {/* Header */}

@@ -173,6 +173,25 @@ html, body {
   }
 }
 
+/* ─── Glass dialog — vidro pra elementos que abrem POR CIMA de outros vidros
+   (TopBar + Dock + card da página já têm backdrop-filter próprio; um modal
+   soma uma 4ª camada de blur na mesma view). Chromium tem um limite conhecido
+   de quantos backdrop-filter sobrepostos ele realmente compõe — passado esse
+   limite, ele silenciosamente PARA de borrar uma das camadas (sem erro, sem
+   fallback), deixando o conteúdo de trás vazar nítido através da cor
+   translúcida — a sombra/o card "descolam" da tela. @supports não detecta
+   isso (ele só verifica se a propriedade é reconhecida, não se o navegador
+   vai де fato compor o efeito nessa pilha específica). Por isso .glass-dialog
+   USA SEMPRE o tom mais opaco (--glass-fallback-bg, ~0.92-0.94), sem o
+   @supports condicional do .glass-panel — o resultado fica ligeiramente
+   menos "vidro" quando o blur funciona, mas nunca ilegível/quebrado quando
+   ele falha. Use em modais/diálogos (não em painéis persistentes como
+   TopBar/Dock, que normalmente não têm outro vidro por cima). */
+.glass-dialog {
+  background: var(--glass-fallback-bg);
+  border: 1px solid var(--glass-fallback-border);
+}
+
 /* ─── Blur intensities ─── */
 .glass-blur-panel {
   backdrop-filter: blur(20px) saturate(180%);
