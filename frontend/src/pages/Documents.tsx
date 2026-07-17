@@ -638,7 +638,7 @@ function DetailDrawer({ doc, companyId, onClose, onFavorite, onPreview, onDelete
         <div className="flex items-start gap-3">
           {(() => { const s = getFileStyle(doc.name); const Icon = s.icon; return (
             <div className={`w-10 h-10 rounded-[var(--radius-control)] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
-              <Icon className={`w-5 h-5 ${s.iconColor}`} />
+              <Icon className={`w-5 h-5 ${s.iconColor} ${s.fillColor}`} />
             </div>
           ); })()}
           <div className="flex-1 min-w-0">
@@ -1340,8 +1340,11 @@ export default function Documents() {
   }, [currentFolderId, breadcrumbs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function openFolder(folder: Folder) {
+    if (folder.id === currentFolderId) return;
     setCurrentFolderId(folder.id);
-    setBreadcrumbs((prev) => [...prev, { id: folder.id, name: folder.name }]);
+    setBreadcrumbs((prev) =>
+      prev[prev.length - 1]?.id === folder.id ? prev : [...prev, { id: folder.id, name: folder.name }]
+    );
     setDetailDoc(null);
     setFocusedId(null);
   }
@@ -1545,6 +1548,11 @@ export default function Documents() {
       setFocusedId(id);
       return;
     }
+    if (selected.size === 1 && selected.has(id)) {
+      setSelected(new Set());
+      setFocusedId(null);
+      return;
+    }
     setSelected(new Set([id]));
     setFocusedId(id);
   }
@@ -1627,7 +1635,7 @@ export default function Documents() {
                     {fav.item_type === "folder" ? (
                       <Folder className="w-4 h-4 text-teal-500 flex-shrink-0" />
                     ) : (
-                      (() => { const s = getFileStyle(fav.item_name); const Icon = s.icon; return <Icon className={`w-4 h-4 flex-shrink-0 ${s.iconColor}`} />; })()
+                      (() => { const s = getFileStyle(fav.item_name); const Icon = s.icon; return <Icon className={`w-4 h-4 flex-shrink-0 ${s.iconColor} ${s.fillColor}`} />; })()
                     )}
                     <span className="truncate">{fav.item_name}</span>
                   </button>
@@ -1715,24 +1723,15 @@ export default function Documents() {
             </Tooltip>
           </div>
 
-          {/* Breadcrumbs — versão completa (sm+) */}
-          <nav className="hidden sm:flex items-center gap-1 flex-1 min-w-0 overflow-x-auto">
-            {breadcrumbs.map((crumb, idx) => (
-              <span key={idx} className="flex items-center gap-1 flex-shrink-0">
-                {idx > 0 && <ChevronRight className="w-3.5 h-3.5 text-[var(--text-tertiary)]" />}
-                <button
-                  onClick={() => navigateBreadcrumb(idx)}
-                  className={`text-mac-body hover:text-teal-500 transition-colors duration-fast ${
-                    idx === breadcrumbs.length - 1
-                      ? "text-[var(--text-primary)] font-medium"
-                      : "text-[var(--text-secondary)]"
-                  }`}
-                >
-                  {idx === 0 ? <Home className="w-4 h-4" /> : crumb.name}
-                </button>
-              </span>
-            ))}
-          </nav>
+          {/* Título da janela (sm+) — o Finder real só mostra o nome da pasta
+              atual na toolbar (nunca uma trilha clicável: "Use a path control
+              in the window body, not the window frame", HIG). A trilha
+              navegável completa mora na barra de caminho no rodapé, abaixo. */}
+          <div className="hidden sm:flex items-center flex-1 min-w-0">
+            <span className="text-mac-body font-semibold text-[var(--text-primary)] truncate">
+              {breadcrumbs[breadcrumbs.length - 1].name}
+            </span>
+          </div>
 
           {/* Breadcrumbs — versão truncada (mobile): Início, "…" (seletor com as pastas ocultas, em ordem) e a pasta atual */}
           <nav className="flex sm:hidden items-center gap-1 flex-1 min-w-0">
@@ -1967,7 +1966,7 @@ export default function Documents() {
                           <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
-                      <Folder className="w-10 h-10 text-teal-500 flex-shrink-0" />
+                      <Folder className="w-10 h-10 text-teal-500 fill-teal-500/20 flex-shrink-0" />
                       {renaming?.kind === "folder" && renaming.id === f.id ? (
                         <input
                           ref={renameInputRef}
@@ -2040,7 +2039,7 @@ export default function Documents() {
                       <MoreHorizontal className="w-3 h-3" />
                     </button>
                     <div className={`w-10 h-10 rounded-[6px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
-                      <Icon className={`w-5 h-5 ${s.iconColor}`} />
+                      <Icon className={`w-5 h-5 ${s.iconColor} ${s.fillColor}`} />
                     </div>
                     {isRenamingDoc ? (
                       <div className="flex items-center gap-0.5 w-full justify-center" onClick={(e) => e.stopPropagation()}>
@@ -2069,7 +2068,7 @@ export default function Documents() {
             // overflow-x-auto: com colunas redimensionáveis (table-fixed) a soma das
             // larguras pode passar do viewport no mobile — rola em vez de cortar/quebrar.
             <div className="overflow-x-auto">
-            <table className={`w-full table-auto sm:table-fixed ${density === "compact" ? "[&_td]:!py-1" : ""}`}>
+            <table className={`w-full table-auto sm:table-fixed select-none ${density === "compact" ? "[&_td]:!py-1" : "[&_td]:!py-1.5"}`}>
               <colgroup>
                 {selectionMode && <col style={{ width: 40 }} />}
                 <col style={{ width: colWidths.name }} />
@@ -2152,7 +2151,7 @@ export default function Documents() {
                     return (
                       <Fragment key={`folder-${f.id}`}>
                       <tr
-                        className={`border-b border-[var(--border-default)] hover:bg-[var(--bg-hover)] transition-colors duration-fast group ${
+                        className={`border-b border-[var(--border-default)] even:bg-black/[0.04] dark:even:bg-white/[0.035] hover:bg-[var(--bg-hover)] transition-colors duration-fast group ${
                           isDropTarget ? "bg-teal-500/10 outline outline-2 outline-teal-400 -outline-offset-2" : ""
                         }`}
                         onClick={() => setFocusedId(f.id)}
@@ -2218,7 +2217,7 @@ export default function Documents() {
                                 onClick={() => openFolder(f)}
                                 className="flex items-center gap-2 text-mac-body text-[var(--text-primary)] hover:text-teal-500 transition-colors duration-fast min-w-0"
                               >
-                                <Folder className="w-4 h-4 text-teal-500 flex-shrink-0" />
+                                <Folder className="w-4 h-4 text-teal-500 fill-teal-500/20 flex-shrink-0" />
                                 <span className="truncate">{f.name}</span>
                               </button>
                             </div>
@@ -2261,13 +2260,13 @@ export default function Documents() {
                       {expanded && expanded !== "loading" && expanded.folders.map((nf) => (
                         <tr
                           key={`nested-folder-${nf.id}`}
-                          className="border-b border-[var(--border-default)] hover:bg-[var(--bg-hover)] transition-colors duration-fast cursor-pointer"
+                          className="border-b border-[var(--border-default)] even:bg-black/[0.04] dark:even:bg-white/[0.035] hover:bg-[var(--bg-hover)] transition-colors duration-fast cursor-pointer"
                           onClick={() => openFolder(nf)}
                         >
                           {selectionMode && <td className="px-4 py-2" />}
                           <td className="px-3 py-2 pl-10">
                             <div className="flex items-center gap-2 text-mac-body text-[var(--text-secondary)]">
-                              <Folder className="w-3.5 h-3.5 text-teal-500/70 flex-shrink-0" />
+                              <Folder className="w-3.5 h-3.5 text-teal-500/70 fill-teal-500/15 flex-shrink-0" />
                               <span className="truncate">{nf.name}</span>
                             </div>
                           </td>
@@ -2285,13 +2284,13 @@ export default function Documents() {
                         return (
                           <tr
                             key={`nested-doc-${nd.id}`}
-                            className="border-b border-[var(--border-default)] hover:bg-[var(--bg-hover)] transition-colors duration-fast cursor-pointer"
+                            className="border-b border-[var(--border-default)] even:bg-black/[0.04] dark:even:bg-white/[0.035] hover:bg-[var(--bg-hover)] transition-colors duration-fast cursor-pointer"
                             onClick={() => setDetailDoc(nd)}
                           >
                             {selectionMode && <td className="px-4 py-2" />}
                             <td className="px-3 py-2 pl-10">
                               <div className="flex items-center gap-2 text-mac-body text-[var(--text-secondary)] min-w-0">
-                                <NIcon className={`w-3.5 h-3.5 flex-shrink-0 ${ns.iconColor} opacity-70`} />
+                                <NIcon className={`w-3.5 h-3.5 flex-shrink-0 ${ns.iconColor} ${ns.fillColor} opacity-70`} />
                                 <span className="truncate">{nd.name}</span>
                               </div>
                             </td>
@@ -2317,7 +2316,7 @@ export default function Documents() {
                       key={`doc-${d.id}`}
                       ref={(el) => { if (el) rowRefs.current.set(d.id, el); else rowRefs.current.delete(d.id); }}
                       className={`border-b border-[var(--border-default)] transition-colors duration-fast group cursor-pointer ${
-                        isSelected ? "bg-teal-500" : "hover:bg-[var(--bg-hover)]"
+                        isSelected ? "bg-teal-500" : "even:bg-black/[0.04] dark:even:bg-white/[0.035] hover:bg-[var(--bg-hover)]"
                       } ${isDragging ? "opacity-40" : ""}`}
                       onClick={(e) => selectDocClick(e, d.id)}
                       onDoubleClick={() => setDetailDoc(d)}
@@ -2356,7 +2355,7 @@ export default function Documents() {
                         <div className="flex items-center gap-2">
                           {(() => { const s = getFileStyle(d.name); const Icon = s.icon; return (
                             <div className={`w-6 h-6 rounded-[4px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
-                              <Icon className={`w-3.5 h-3.5 ${s.iconColor}`} />
+                              <Icon className={`w-3.5 h-3.5 ${s.iconColor} ${s.fillColor}`} />
                             </div>
                           ); })()}
                           {isRenaming ? (
@@ -2432,21 +2431,45 @@ export default function Documents() {
           )}
         </div>
 
-        {/* Barra de status — todo Finder/Explorer mostra a contagem de itens
-            fixa no rodapé da janela, fora da área que rola (ADENDO-09 §13). */}
-        <div className="hidden sm:flex items-center justify-between px-4 sm:px-6 h-8 border-t border-[var(--border-default)] flex-shrink-0 text-mac-caption text-[var(--text-tertiary)]">
-          <span>
-            {sortedFolders.length === 0 && sortedDocuments.length === 0
-              ? "Pasta vazia"
-              : [
+        {/* Barra de caminho + status — uma linha só no rodapé do corpo da
+            janela (nunca na toolbar, HIG "Path controls"): a cadeia clicável
+            de ancestrais à esquerda, contagem de itens/seleção à direita.
+            Duas faixas empilhadas (caminho e status separados) ficavam
+            redundantes, principalmente na raiz onde o caminho é só o ícone
+            de Início sozinho em cima da contagem. */}
+        <div className="hidden sm:flex items-center justify-between gap-3 px-4 sm:px-6 h-8 border-t border-[var(--border-default)] flex-shrink-0 text-mac-caption text-[var(--text-tertiary)]">
+          <nav className="flex items-center gap-1 min-w-0 overflow-x-auto">
+            {breadcrumbs.map((crumb, idx) => (
+              <span key={idx} className="flex items-center gap-1 flex-shrink-0">
+                {idx > 0 && <ChevronRight className="w-3.5 h-3.5 text-[var(--text-tertiary)]" />}
+                <button
+                  onClick={() => navigateBreadcrumb(idx)}
+                  className={`text-mac-caption hover:text-teal-500 transition-colors duration-fast ${
+                    idx === breadcrumbs.length - 1
+                      ? "text-[var(--text-primary)] font-medium"
+                      : "text-[var(--text-secondary)]"
+                  }`}
+                >
+                  {idx === 0 ? <Home className="w-3.5 h-3.5" /> : crumb.name}
+                </button>
+              </span>
+            ))}
+          </nav>
+          <span className="flex-shrink-0">
+            {selected.size > 0 ? (
+              <span className="text-teal-500 font-medium">{selected.size} selecionado{selected.size !== 1 ? "s" : ""}</span>
+            ) : sortedFolders.length === 0 && sortedDocuments.length === 0 ? (
+              "Pasta vazia"
+            ) : (
+              <>
+                {[
                   sortedFolders.length > 0 ? `${sortedFolders.length} pasta${sortedFolders.length !== 1 ? "s" : ""}` : null,
                   sortedDocuments.length > 0 ? `${sortedDocuments.length} documento${sortedDocuments.length !== 1 ? "s" : ""}` : null,
                 ].filter(Boolean).join(", ")}
-            {filterQ && ` · ${items.length} exibido${items.length !== 1 ? "s" : ""}`}
+                {filterQ && ` · ${items.length} exibido${items.length !== 1 ? "s" : ""}`}
+              </>
+            )}
           </span>
-          {selected.size > 0 && (
-            <span className="text-teal-500 font-medium">{selected.size} selecionado{selected.size !== 1 ? "s" : ""}</span>
-          )}
         </div>
       </div>
 

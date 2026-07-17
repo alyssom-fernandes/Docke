@@ -139,7 +139,7 @@ export default function Search() {
                 >
                   {(() => { const s = getFileStyle(r.name); const Icon = s.icon; return (
                     <div className={`w-7 h-7 rounded-[6px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
-                      <Icon className={`w-4 h-4 ${s.iconColor}`} />
+                      <Icon className={`w-4 h-4 ${s.iconColor} ${s.fillColor}`} />
                     </div>
                   ); })()}
                   <div className="flex-1 min-w-0">

@@ -150,7 +150,7 @@ export default function CommandPalette() {
                     ) : (
                       (() => { const s = getFileStyle(r.name); const Icon = s.icon; return (
                         <div className={`w-5 h-5 rounded-[3px] flex items-center justify-center flex-shrink-0 ${i === activeIdx ? "" : s.bgColor}`}>
-                          <Icon className={`w-3 h-3 ${i === activeIdx ? "text-white" : s.iconColor}`} />
+                          <Icon className={`w-3 h-3 ${i === activeIdx ? "text-white fill-white/25" : `${s.iconColor} ${s.fillColor}`}`} />
                         </div>
                       ); })()
                     )}

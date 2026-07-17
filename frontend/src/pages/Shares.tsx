@@ -115,7 +115,7 @@ export default function Shares() {
                   ) : (
                     (() => { const style = getFileStyle(s.resource_name ?? ""); const Icon = style.icon; return (
                       <div className={`w-6 h-6 rounded-[4px] flex items-center justify-center flex-shrink-0 ${style.bgColor}`}>
-                        <Icon className={`w-3.5 h-3.5 ${style.iconColor}`} />
+                        <Icon className={`w-3.5 h-3.5 ${style.iconColor} ${style.fillColor}`} />
                       </div>
                     ); })()
                   )}

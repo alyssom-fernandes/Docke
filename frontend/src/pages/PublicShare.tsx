@@ -189,7 +189,7 @@ export default function PublicShare() {
                   return (
                     <li key={d.id} className="flex items-center gap-2 px-3 py-2.5 text-mac-body">
                       <div className={`w-6 h-6 rounded-[4px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
-                        <Icon className={`w-3.5 h-3.5 ${s.iconColor}`} />
+                        <Icon className={`w-3.5 h-3.5 ${s.iconColor} ${s.fillColor}`} />
                       </div>
                       <span className="flex-1 truncate text-[var(--text-primary)]">{d.name}</span>
                       <span className="text-mac-caption text-[var(--text-tertiary)]">{fmtSize(d.size_bytes)}</span>

@@ -204,7 +204,7 @@ export default function Dashboard() {
                 >
                   {(() => { const s = getFileStyle(doc.name); const Icon = s.icon; return (
                     <div className={`w-6 h-6 rounded-[4px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
-                      <Icon className={`w-3.5 h-3.5 ${s.iconColor}`} />
+                      <Icon className={`w-3.5 h-3.5 ${s.iconColor} ${s.fillColor}`} />
                     </div>
                   ); })()}
                   <span className="flex-1 text-mac-body text-[var(--text-primary)] truncate">{doc.name}</span>
@@ -236,11 +236,11 @@ export default function Dashboard() {
               {favorites.map((fav) => (
                 <li key={fav.id} className="flex items-center gap-2 px-5 py-2 hover:bg-[var(--bg-hover)] transition-colors duration-fast border-b border-[var(--border-default)] last:border-0">
                   {fav.item_type === "folder" ? (
-                    <FolderOpen className="w-4 h-4 text-teal-500 flex-shrink-0" />
+                    <FolderOpen className="w-4 h-4 text-teal-500 fill-teal-500/20 flex-shrink-0" />
                   ) : (
                     (() => { const s = getFileStyle(fav.item_name); const Icon = s.icon; return (
                       <div className={`w-6 h-6 rounded-[4px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
-                        <Icon className={`w-3.5 h-3.5 ${s.iconColor}`} />
+                        <Icon className={`w-3.5 h-3.5 ${s.iconColor} ${s.fillColor}`} />
                       </div>
                     ); })()
                   )}

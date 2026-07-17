@@ -186,7 +186,7 @@ function TreeNode({
           ) : null}
         </span>
         <FolderIcon
-          className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-teal-500" : "text-teal-500"}`}
+          className={`w-4 h-4 flex-shrink-0 fill-teal-500/20 ${isActive ? "text-teal-500" : "text-teal-500"}`}
         />
         <span className="truncate flex-1">{node.name}</span>
       </button>

@@ -30,7 +30,5 @@ supabase/.temp/
 .DS_Store
 Thumbs.db
 
-# Imagens de referência (logos, screenshots) — só uso local, não fazem parte da documentação versionada
-docs/*.png
-docs/*.jpg
-docs/*.jpeg
+# docs/ é só material de referência e planejamento local — nunca deve ir pro repositório
+docs/
