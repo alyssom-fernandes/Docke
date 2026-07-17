@@ -57,7 +57,7 @@ export default function Dropdown({
       {open && (
         <div
           role="listbox"
-          className="absolute top-full left-0 mt-1 w-full min-w-[220px] max-h-[280px] overflow-y-auto glass-panel glass-blur-strong rounded-[var(--radius-popover)] shadow-dropdown py-1 z-50"
+          className="popover-tail-left absolute top-full left-0 mt-1 w-full min-w-[220px] max-h-[280px] overflow-y-auto glass-panel glass-blur-strong rounded-[var(--radius-popover)] shadow-dropdown py-1 z-50"
         >
           {options.length === 0 ? (
             <p className="px-3 py-2 text-mac-caption text-[var(--text-tertiary)]">Nenhuma opção disponível.</p>
@@ -70,8 +70,12 @@ export default function Dropdown({
                 aria-selected={o.value === value}
                 onClick={() => { onChange(o.value); setOpen(false); }}
                 style={{ paddingLeft: `${12 + (o.depth ?? 0) * 16}px` }}
-                className={`w-full flex items-center justify-between gap-2 pr-3 py-1.5 text-mac-body text-left transition-colors duration-fast ${
-                  o.value === value ? "text-teal-500 font-medium" : "text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                // Hover com barra de destaque sólida (cor de acento cheia +
+                // texto branco) — padrão real de menu macOS, não o tint
+                // cinza neutro que uma lista/tabela usa. Vale só pra menus
+                // (este dropdown, menus de contexto, pull-downs).
+                className={`w-full flex items-center justify-between gap-2 pr-3 py-1.5 text-mac-body text-left transition-colors duration-fast hover:bg-teal-500 hover:text-white ${
+                  o.value === value ? "text-teal-500 font-medium" : "text-[var(--text-primary)]"
                 }`}
               >
                 <span className="truncate">{o.label}</span>

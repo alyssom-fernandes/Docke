@@ -29,3 +29,18 @@ export function fullDate(iso: string): string {
     year: "numeric",
   });
 }
+
+/** Rótulo de cabeçalho de grupo (estilo Central de Notificações/Atividade da
+ * Apple: "Hoje"/"Ontem"/"Esta semana"/mês) — usado pra agrupar listas de
+ * eventos por data em vez de repetir o carimbo relativo em cada linha. */
+export function dateGroupLabel(iso: string): string {
+  const now = new Date();
+  const d = new Date(iso);
+  const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const diffDays = Math.round((startOfDay(now) - startOfDay(d)) / DAY);
+  if (diffDays === 0) return "Hoje";
+  if (diffDays === 1) return "Ontem";
+  if (diffDays > 1 && diffDays < 7) return "Esta semana";
+  if (d.getFullYear() === now.getFullYear()) return d.toLocaleDateString("pt-BR", { month: "long" });
+  return d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+}

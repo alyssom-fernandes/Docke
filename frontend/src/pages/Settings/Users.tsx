@@ -320,14 +320,21 @@ export default function Users() {
         )}
       </div>
 
-      {loading ? (
-        <div className="space-y-2">
-          {[0, 1, 2].map((i) => <div key={i} className="h-14 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] animate-pulse" />)}
-        </div>
-      ) : Object.keys(byUser).length === 0 ? (
-        <EmptyState title="Nenhum usuário" icon={<UsersIcon className="w-6 h-6" />} />
-      ) : (
-        <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
+      {/* Uma única janela de vidro pra usuários + níveis de acesso (antes
+          eram dois glass-panel empilhados, lendo como "duas caixas" — mesmo
+          ajuste de unificação feito em Settings/Documents) — a segunda seção
+          fica separada só por um border-t, igual ao padrão de Preferences.tsx
+          (Tema/Densidade dentro do mesmo cartão). */}
+      <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
+        {loading ? (
+          <div className="p-5 space-y-2">
+            {[0, 1, 2].map((i) => <div key={i} className="h-14 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />)}
+          </div>
+        ) : Object.keys(byUser).length === 0 ? (
+          <div className="py-8">
+            <EmptyState title="Nenhum usuário" icon={<UsersIcon className="w-6 h-6" />} />
+          </div>
+        ) : (
           <ul>
             {Object.values(byUser).map((userGrants) => {
               const first = userGrants[0];
@@ -370,11 +377,9 @@ export default function Users() {
               );
             })}
           </ul>
-        </div>
-      )}
+        )}
 
-      <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
-        <div className="px-5 py-3 border-b border-[var(--border-default)] flex items-center gap-2">
+        <div className="px-5 py-3 border-t border-b border-[var(--border-default)] flex items-center gap-2">
           <Shield className="w-4 h-4 text-teal-500" />
           <h3 className="text-mac-body font-medium text-[var(--text-primary)]">Níveis de acesso</h3>
         </div>

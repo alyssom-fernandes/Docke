@@ -81,7 +81,7 @@ export default function Search() {
   }
 
   return (
-    <div className="space-y-6 max-w-[800px] mx-auto">
+    <div className="space-y-6">
       <h1 className="text-mac-title2 font-semibold text-[var(--text-primary)]">Busca avançada</h1>
 
       <form onSubmit={handleSubmit} className="flex gap-2">
@@ -118,22 +118,25 @@ export default function Search() {
       ) : results.length > 0 ? (
         <>
           <p className="text-mac-body text-[var(--text-secondary)]">{total} resultado{total !== 1 ? "s" : ""} para "{params.get("q")}"</p>
-          <ul className="space-y-3">
-            {results.map((r) => (
-              <li
-                key={r.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => navigate(`/documents?folder_id=${r.folder_id ?? ""}&doc=${r.id}`)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    navigate(`/documents?folder_id=${r.folder_id ?? ""}&doc=${r.id}`);
-                  }
-                }}
-                className="glass-panel glass-blur-card glass-highlight-line rounded-[16px] px-5 py-4 hover:border-teal-400 transition-colors duration-fast cursor-pointer"
-              >
-                <div className="flex items-start gap-3">
+          {/* Lista agrupada num único cartão com divisores — mesma convenção
+              usada em Atividade/Lixeira/Compartilhados, em vez de um cartão
+              flutuante por item (que destoava do resto do app no mobile). */}
+          <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
+            <ul>
+              {results.map((r) => (
+                <li
+                  key={r.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate(`/documents?folder_id=${r.folder_id ?? ""}&doc=${r.id}`)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      navigate(`/documents?folder_id=${r.folder_id ?? ""}&doc=${r.id}`);
+                    }
+                  }}
+                  className="flex items-start gap-3 px-5 py-3.5 hover:bg-[var(--bg-hover)] transition-colors duration-fast cursor-pointer border-b border-[var(--border-default)] last:border-0"
+                >
                   {(() => { const s = getFileStyle(r.name); const Icon = s.icon; return (
                     <div className={`w-7 h-7 rounded-[6px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
                       <Icon className={`w-4 h-4 ${s.iconColor}`} />
@@ -152,10 +155,10 @@ export default function Search() {
                       {fmtDate(r.created_at)}
                     </p>
                   </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
+          </div>
         </>
       ) : !searched ? (
         <EmptyState

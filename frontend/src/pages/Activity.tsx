@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Clock, Download, ChevronDown } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { relativeDate, fullDate } from "@/lib/date";
+import { fullDate, dateGroupLabel } from "@/lib/date";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import Avatar from "@/components/ui/Avatar";
@@ -47,6 +47,7 @@ const ACTION_LABELS: Record<string, string> = {
   favorite: "ancorou",
   unfavorite: "desancorou",
   undo: "desfez",
+  copy: "copiou a estrutura para",
 };
 
 export default function Activity() {
@@ -101,6 +102,18 @@ export default function Activity() {
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
+  // Agrupa por dia (Hoje/Ontem/Esta semana/mês) em vez de repetir o carimbo
+  // relativo em toda linha — mesma convenção da Central de Notificações da
+  // Apple. Eventos já vêm ordenados por created_at desc, então grupos
+  // consecutivos com o mesmo rótulo ficam automaticamente juntos.
+  const groups: { label: string; items: ActivityEvent[] }[] = [];
+  for (const ev of events) {
+    const label = dateGroupLabel(ev.created_at);
+    const last = groups[groups.length - 1];
+    if (last && last.label === label) last.items.push(ev);
+    else groups.push({ label, items: [ev] });
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -115,16 +128,16 @@ export default function Activity() {
             <ChevronDown className="w-3.5 h-3.5" />
           </button>
           {exportOpen && (
-            <div className="absolute top-full right-0 mt-1 w-40 glass-panel glass-blur-strong rounded-[var(--radius-popover)] shadow-dropdown py-1 z-50">
+            <div className="popover-tail-right absolute top-full right-0 mt-1 w-40 glass-panel glass-blur-strong rounded-[var(--radius-popover)] shadow-dropdown py-1 z-50">
               <button
                 onClick={() => exportActivity("csv")}
-                className="w-full text-left px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+                className="w-full text-left px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white transition-colors duration-fast"
               >
                 CSV
               </button>
               <button
                 onClick={() => exportActivity("xlsx")}
-                className="w-full text-left px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+                className="w-full text-left px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white transition-colors duration-fast"
               >
                 Excel (.xlsx)
               </button>
@@ -147,46 +160,58 @@ export default function Activity() {
         />
       ) : (
         <>
-          <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
-            <ul>
-              {events.map((ev) => {
-                const target = activityTarget(ev);
-                return (
-                  <li
-                    key={ev.id}
-                    role={target ? "button" : undefined}
-                    tabIndex={target ? 0 : undefined}
-                    onClick={target ? () => navigate(target) : undefined}
-                    onKeyDown={
-                      target
-                        ? (e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              navigate(target);
-                            }
+          <div className="space-y-4">
+            {groups.map((group) => (
+              <div key={group.label}>
+                <h2 className="px-1 pb-1.5 text-mac-caption font-semibold text-[var(--text-tertiary)] uppercase tracking-wide">
+                  {group.label}
+                </h2>
+                <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
+                  <ul>
+                    {group.items.map((ev) => {
+                      const target = activityTarget(ev);
+                      return (
+                        <li
+                          key={ev.id}
+                          role={target ? "button" : undefined}
+                          tabIndex={target ? 0 : undefined}
+                          onClick={target ? () => navigate(target) : undefined}
+                          onKeyDown={
+                            target
+                              ? (e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    navigate(target);
+                                  }
+                                }
+                              : undefined
                           }
-                        : undefined
-                    }
-                    title={target ? undefined : "Item não está mais disponível"}
-                    className={`flex items-center gap-3 px-5 py-3 transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 ${
-                      target ? "hover:bg-[var(--bg-hover)] cursor-pointer" : ""
-                    }`}
-                  >
-                    <Avatar name={ev.user_name} size="sm" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-mac-body text-[var(--text-primary)] truncate">
-                        <span className="font-medium">{ev.user_name}</span>{" "}
-                        {ACTION_LABELS[ev.action] ?? ev.action}{" "}
-                        <span className="text-[var(--text-secondary)]">{ev.item_name_snapshot}</span>
-                      </p>
-                    </div>
-                    <span className="text-mac-caption text-[var(--text-tertiary)] flex-shrink-0" title={fullDate(ev.created_at)}>
-                      {relativeDate(ev.created_at)}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
+                          title={target ? undefined : "Item não está mais disponível"}
+                          className={`flex items-start gap-3 px-5 py-3 transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 ${
+                            target ? "hover:bg-[var(--bg-hover)] cursor-pointer" : ""
+                          }`}
+                        >
+                          <Avatar name={ev.user_name} size="sm" />
+                          {/* line-clamp-2 (não truncate) — o nome do arquivo não
+                              pode mais cortar no meio da palavra por falta de
+                              espaço numa única linha. */}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-mac-body text-[var(--text-primary)] line-clamp-2">
+                              <span className="font-medium">{ev.user_name}</span>{" "}
+                              {ACTION_LABELS[ev.action] ?? ev.action}{" "}
+                              <span className="text-[var(--text-secondary)]">{ev.item_name_snapshot}</span>
+                            </p>
+                          </div>
+                          <span className="text-mac-caption text-[var(--text-tertiary)] flex-shrink-0" title={fullDate(ev.created_at)}>
+                            {new Date(ev.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              </div>
+            ))}
           </div>
 
           {totalPages > 1 && (

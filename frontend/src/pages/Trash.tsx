@@ -158,7 +158,7 @@ export default function Trash() {
                 </span>
                 <button
                   onClick={() => restore(item)}
-                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-full text-mac-caption text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-all duration-fast flex-shrink-0"
+                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 flex items-center justify-center gap-1 p-2.5 sm:px-2.5 sm:py-1 rounded-full text-mac-caption text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-all duration-fast flex-shrink-0"
                   title="Restaurar"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
@@ -166,7 +166,7 @@ export default function Trash() {
                 </button>
                 <button
                   onClick={() => setConfirmSingle(item)}
-                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-full text-mac-caption text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-all duration-fast flex-shrink-0"
+                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 flex items-center justify-center gap-1 p-2.5 sm:px-2.5 sm:py-1 rounded-full text-mac-caption text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-all duration-fast flex-shrink-0"
                   title="Excluir permanentemente"
                 >
                   <X className="w-3.5 h-3.5" />

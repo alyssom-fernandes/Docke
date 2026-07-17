@@ -102,13 +102,9 @@ async def create_upload_url(
     if folder["permission"] not in ("admin", "operador"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para fazer upload nesta pasta.")
 
-    # --- Conflito de nome na mesma pasta ---
-    conflict = await DocumentsService.find_name_conflict(conn, body.folder_id, raw_name)
-    if conflict is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Já existe um arquivo com este nome nesta pasta.",
-        )
+    # --- Conflito de nome na mesma pasta: sufixo automático "(1)", "(2)"...
+    #     em vez de bloquear (padrão Dropbox/Box — ADENDO-09 §13.4) ---
+    final_name = await DocumentsService.resolve_unique_name(conn, body.folder_id, raw_name)
 
     # --- Cria registro em documents (ocr_status=pending, storage_path já definido) ---
     document_id = uuid4()
@@ -118,7 +114,7 @@ async def create_upload_url(
     row = await DocumentsService.insert_pending_document(
         admin_conn,
         document_id=document_id, folder_id=body.folder_id, company_id=body.company_id,
-        name=raw_name, mime_type=_MIME_MAP.get(ext, body.content_type), file_type=ext,
+        name=final_name, mime_type=_MIME_MAP.get(ext, body.content_type), file_type=ext,
         size_bytes=body.size_bytes, storage_path=key, uploaded_by=user_id,
     )
 

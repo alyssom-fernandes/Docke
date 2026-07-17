@@ -12,11 +12,15 @@ type CheckboxProps = InputHTMLAttributes<HTMLInputElement>;
 const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(
   ({ className = "", checked, ...props }, ref) => (
     <span className={`relative inline-flex w-4 h-4 flex-shrink-0 ${className}`}>
+      {/* Alvo de toque maior que o glifo visível (16px) — mesmo padrão do
+          iOS/macOS: controle pequeno, área de clique maior por baixo. -inset-2
+          estende a área clicável ~8px em cada lado sem alterar o layout, já
+          que o <input> é absolute e não ocupa espaço no fluxo. */}
       <input
         ref={ref}
         type="checkbox"
         checked={checked}
-        className="peer absolute inset-0 w-4 h-4 opacity-0 cursor-pointer"
+        className="peer absolute -inset-2 opacity-0 cursor-pointer"
         {...props}
       />
       <span

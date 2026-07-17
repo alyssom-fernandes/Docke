@@ -255,11 +255,15 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      {/* flex-col no mobile — em linha única (row) os dois botões com
+          flex-shrink-0 nunca cediam espaço, empurrando o parágrafo pra uma
+          coluna estreitíssima e o botão "Novo campo" pra fora da tela
+          (overflow horizontal real, com scrollbar lateral). */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <p className="text-mac-caption text-[var(--text-tertiary)]">
           Campos personalizados disponíveis para aplicar nas pastas (aba "Aplicação na árvore").
         </p>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-shrink-0">
           <Button variant="secondary" size="sm" onClick={() => setShowCopy(true)}>
             <Copy className="w-3.5 h-3.5" /> Copiar de outra empresa
           </Button>
@@ -522,19 +526,26 @@ export default function Metadata() {
       <h2 className="text-mac-callout font-semibold text-[var(--text-primary)]">Metadados</h2>
 
       <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6">
-        <div className="flex items-center gap-1 mb-6 border-b border-[var(--border-default)]">
+        {/* Controle segmentado (cápsula com o segmento ativo em destaque) —
+            a Apple nunca usa abas sublinhadas de texto dentro de um painel
+            de Settings, o padrão nativo é esse pill de segmentos. */}
+        <div className="inline-flex items-center gap-0.5 p-1 mb-6 rounded-full bg-[var(--bg-hover)]">
           <button
             onClick={() => setTab("catalog")}
-            className={`flex items-center gap-1.5 px-3 py-2 text-mac-body border-b-2 transition-colors duration-fast ${
-              tab === "catalog" ? "border-teal-500 text-teal-500 font-medium" : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-mac-body transition-colors duration-fast ${
+              tab === "catalog"
+                ? "bg-[var(--bg-card)] text-[var(--text-primary)] font-medium shadow-sm"
+                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
             }`}
           >
             <Tags className="w-4 h-4" /> Catálogo
           </button>
           <button
             onClick={() => setTab("tree")}
-            className={`flex items-center gap-1.5 px-3 py-2 text-mac-body border-b-2 transition-colors duration-fast ${
-              tab === "tree" ? "border-teal-500 text-teal-500 font-medium" : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-mac-body transition-colors duration-fast ${
+              tab === "tree"
+                ? "bg-[var(--bg-card)] text-[var(--text-primary)] font-medium shadow-sm"
+                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
             }`}
           >
             <FolderTree className="w-4 h-4" /> Aplicação na árvore

@@ -8,6 +8,7 @@ import Button from "@/components/ui/Button";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import Switch from "@/components/ui/Switch";
 import Portal from "@/components/ui/Portal";
+import Dropdown from "@/components/ui/Dropdown";
 
 interface ShareLink {
   id: string;
@@ -116,16 +117,17 @@ export default function ShareModal({
 
           <div>
             <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Expiração</label>
-            <select
+            <Dropdown
               value={expiresIn}
-              onChange={(e) => setExpiresIn(e.target.value)}
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
-            >
-              <option value="24h">24 horas</option>
-              <option value="7d">7 dias</option>
-              <option value="30d">30 dias</option>
-              <option value="never">Nunca expira</option>
-            </select>
+              onChange={setExpiresIn}
+              placeholder="Expiração"
+              options={[
+                { value: "24h", label: "24 horas" },
+                { value: "7d", label: "7 dias" },
+                { value: "30d", label: "30 dias" },
+                { value: "never", label: "Nunca expira" },
+              ]}
+            />
           </div>
 
           {resourceType === "document" && (

@@ -14,7 +14,7 @@ const MORE_LINKS = [
   { to: "/shares", icon: Link2, label: "Compartilhados" },
   { to: "/activity", icon: Activity, label: "Atividade" },
   { to: "/trash", icon: Trash2, label: "Lixeira" },
-  { to: "/settings/profile", icon: Settings, label: "Configurações" },
+  { to: "/settings", icon: Settings, label: "Configurações" },
 ];
 
 export default function BottomTabBar() {
@@ -82,8 +82,13 @@ export default function BottomTabBar() {
             key={to}
             to={to}
             className={({ isActive }) =>
+              // moreOpen desmarca as outras abas enquanto a folha "Mais" está
+              // aberta — do contrário a aba de origem (ex: Docs) continua
+              // teal ao mesmo tempo que "Mais" também fica teal, parecendo
+              // duas abas "ativas" simultâneas (bug reportado: "Mais" parecia
+              // só uma caixa flutuante, não uma aba de verdade).
               `flex-1 min-w-0 flex flex-col items-center justify-center py-1.5 gap-0.5 text-[10px] rounded-[16px] transition-colors duration-fast ${
-                isActive
+                isActive && !moreOpen
                   ? "text-teal-500"
                   : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
               }`

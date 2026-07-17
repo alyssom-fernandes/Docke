@@ -81,6 +81,7 @@ function actionLabel(action: string) {
     favorite: "ancorou",
     unfavorite: "desancorou",
     undo: "desfez",
+    copy: "copiou a estrutura para",
   };
   return map[action] ?? action;
 }

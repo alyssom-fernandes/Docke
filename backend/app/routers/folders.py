@@ -25,6 +25,13 @@ class FolderMove(BaseModel):
     parent_id: UUID | None = None
 
 
+class FolderCopyStructure(BaseModel):
+    target_company_id: UUID
+    target_parent_id: UUID | None = None
+    include_metadata: bool = False
+    include_documents: bool = False
+
+
 # ---------------------------------------------------------------------------
 # GET /folders — lista pastas de uma empresa (filtra por parent_id opcional)
 # ---------------------------------------------------------------------------
@@ -169,6 +176,86 @@ async def move_folder(
 
     row = await FoldersService.get_folder_after_move(conn, folder_id)
     return dict(row)
+
+
+# ---------------------------------------------------------------------------
+# POST /folders/:id/copy-structure — copia a árvore de subpastas pra outra
+# pasta/empresa, opcionalmente levando campos de metadados e/ou documentos.
+# ---------------------------------------------------------------------------
+
+@router.post("/{folder_id}/copy-structure", status_code=status.HTTP_201_CREATED)
+async def copy_folder_structure(
+    folder_id: UUID,
+    body: FolderCopyStructure,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Recria a pasta + todos os descendentes sob outra pasta (mesma empresa ou
+    empresa diferente — um admin pode ter acesso a várias). Nunca reaproveita
+    o path de origem, mesmo copiando dentro da mesma empresa: é sempre uma
+    árvore nova, com nomes resolvidos contra colisão (padrão " (1)", " (2)").
+    """
+    user_id = claims["sub"]
+
+    source = await FoldersService.get_folder_for_copy(conn, folder_id)
+    if source is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta de origem não encontrada.")
+    if source["permission"] is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem acesso a esta pasta.")
+
+    target_parent_path: str | None = None
+    if body.target_parent_id is not None:
+        target_parent = await FoldersService.get_target_parent(conn, body.target_parent_id, body.target_company_id)
+        if target_parent is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta destino não encontrada.")
+        target_parent_path = target_parent["path"]
+        if str(body.target_company_id) == source["company_id"] and (
+            target_parent_path == source["path"] or target_parent_path.startswith(source["path"] + ".")
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Não é possível copiar uma pasta para dentro dela mesma.",
+            )
+
+    # Mesma checagem de create_folder: só admin cria pastas (aqui, na empresa destino).
+    target_permission = await FoldersService.check_permission(conn, user_id, target_parent_path, body.target_company_id)
+    if target_permission != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para copiar pastas para o destino escolhido.")
+
+    subtree = await FoldersService.get_subtree(conn, company_id=source["company_id"], path=source["path"])
+
+    id_map, path_map, new_root = await FoldersService.copy_folder_tree(
+        conn,
+        subtree=subtree, source_root_id=source["id"],
+        target_company_id=body.target_company_id, target_parent_id=body.target_parent_id,
+        target_parent_path=target_parent_path, created_by=user_id,
+    )
+
+    fields_copied = 0
+    if body.include_metadata:
+        fields_copied = await FoldersService.copy_folder_fields(
+            conn,
+            source_company_id=source["company_id"], source_path=source["path"], path_map=path_map,
+            target_company_id=body.target_company_id, created_by=user_id,
+        )
+
+    documents_copied = 0
+    if body.include_documents:
+        documents_copied = await FoldersService.copy_folder_documents(
+            conn, id_map=id_map, target_company_id=body.target_company_id, uploaded_by=user_id,
+        )
+
+    await FoldersService.log_copy_activity(
+        conn, folder_id=new_root["id"], company_id=str(body.target_company_id), name=new_root["name"],
+    )
+
+    return {
+        **dict(new_root),
+        "folders_copied": len(id_map),
+        "fields_copied": fields_copied,
+        "documents_copied": documents_copied,
+    }
 
 
 # ---------------------------------------------------------------------------

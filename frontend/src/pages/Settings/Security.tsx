@@ -1,5 +1,4 @@
 import { useState, FormEvent } from "react";
-import { Lock } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import { useToast } from "@/lib/toast";
@@ -45,10 +44,6 @@ export default function Security() {
       <h2 className="text-mac-callout font-semibold text-[var(--text-primary)]">Segurança</h2>
 
       <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6">
-        <div className="flex items-center gap-2 mb-5">
-          <Lock className="w-4 h-4 text-teal-500" />
-          <h3 className="text-mac-body font-medium text-[var(--text-primary)]">Trocar senha</h3>
-        </div>
         <form onSubmit={handleSubmit} className="space-y-4 max-w-[400px]">
           <Input
             label="Senha atual"

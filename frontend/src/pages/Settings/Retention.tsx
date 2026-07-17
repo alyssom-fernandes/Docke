@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Archive, AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
@@ -43,10 +43,7 @@ export default function Retention() {
       <h2 className="text-mac-callout font-semibold text-[var(--text-primary)]">Retenção</h2>
 
       <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6 space-y-5">
-        <div className="flex items-center gap-2">
-          <Archive className="w-4 h-4 text-teal-500" />
-          <h3 className="text-mac-body font-medium text-[var(--text-primary)]">Dias na lixeira antes da exclusão permanente</h3>
-        </div>
+        <p className="text-mac-body font-medium text-[var(--text-primary)]">Dias na lixeira antes da exclusão permanente</p>
 
         {loading ? (
           <div className="h-9 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse max-w-[200px]" />

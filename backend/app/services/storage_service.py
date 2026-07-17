@@ -229,6 +229,24 @@ def mock_read(key: str) -> bytes | None:
     return path.read_bytes()
 
 
+def copy_object(source_key: str, dest_key: str) -> None:
+    """
+    Duplica um objeto já existente pra uma nova key, sem baixar/re-subir pelo
+    cliente — usado por "copiar estrutura de pastas" ao levar os documentos
+    junto (o R2 copia server-to-server; o mock replica o arquivo local).
+    """
+    if _r2_configured:
+        _s3.copy_object(
+            Bucket=settings.R2_BUCKET_NAME,
+            CopySource={"Bucket": settings.R2_BUCKET_NAME, "Key": source_key},
+            Key=dest_key,
+        )
+        return
+    data = mock_read(source_key)
+    if data is not None:
+        mock_save(dest_key, data)
+
+
 def delete_object(key: str) -> None:
     """
     Remove o objeto do storage (I11: exclusão permanente deve remover o

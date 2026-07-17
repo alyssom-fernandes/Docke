@@ -11,7 +11,7 @@ import Trash from "@/pages/Trash";
 import Activity from "@/pages/Activity";
 import Favorites from "@/pages/Favorites";
 import Shares from "@/pages/Shares";
-import SettingsLayout from "@/pages/Settings/SettingsLayout";
+import SettingsLayout, { SettingsIndex } from "@/pages/Settings/SettingsLayout";
 import Profile from "@/pages/Settings/Profile";
 import Organization from "@/pages/Settings/Organization";
 import Users from "@/pages/Settings/Users";
@@ -68,7 +68,7 @@ function ProtectedRoutes() {
             <Route path="/favorites" element={<Favorites />} />
             <Route path="/shares" element={<Shares />} />
             <Route path="/settings" element={<SettingsLayout />}>
-              <Route index element={<Navigate to="/settings/profile" replace />} />
+              <Route index element={<SettingsIndex />} />
               <Route path="profile" element={<Profile />} />
               <Route path="organization" element={<Organization />} />
               <Route path="users" element={<Users />} />

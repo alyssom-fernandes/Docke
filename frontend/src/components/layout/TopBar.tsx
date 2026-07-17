@@ -7,6 +7,7 @@ import { useCompany } from "@/lib/CompanyContext";
 import { useCommandPalette } from "@/hooks/useCommandPalette";
 import Avatar from "@/components/ui/Avatar";
 import Button from "@/components/ui/Button";
+import Tooltip from "@/components/ui/Tooltip";
 import TaskCenter from "@/components/shared/TaskCenter";
 
 interface TopBarProps {
@@ -116,31 +117,31 @@ export default function TopBar({ onUploadClick }: TopBarProps) {
       <div className="flex items-center gap-0.5 p-1 rounded-full bg-[var(--bg-hover)]">
         {/* Ancorados e Configurações — só na faixa md–lg (tablet), onde nem a barra
             inferior mobile (<md) nem o Dock desktop (lg+) estão visíveis. */}
-        <button
-          onClick={() => navigate("/favorites")}
-          className={`hidden md:flex lg:hidden w-7 h-7 items-center justify-center rounded-full transition-colors duration-fast ${
-            location.pathname.startsWith("/favorites")
-              ? "text-teal-500 bg-teal-500/10"
-              : "text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/10"
-          }`}
-          aria-label="Ancorados"
-          title="Ancorados"
-        >
-          <Anchor className="w-4 h-4" />
-        </button>
+        <Tooltip label="Ancorados">
+          <button
+            onClick={() => navigate("/favorites")}
+            className={`hidden md:flex lg:hidden w-7 h-7 items-center justify-center rounded-full transition-colors duration-fast ${
+              location.pathname.startsWith("/favorites")
+                ? "text-teal-500 bg-teal-500/10"
+                : "text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/10"
+            }`}
+          >
+            <Anchor className="w-4 h-4" />
+          </button>
+        </Tooltip>
         <span className="hidden md:block lg:hidden w-px h-4 bg-[var(--border-default)]" />
-        <button
-          onClick={() => navigate("/settings/profile")}
-          className={`hidden md:flex lg:hidden w-7 h-7 items-center justify-center rounded-full transition-colors duration-fast ${
-            location.pathname.startsWith("/settings")
-              ? "text-teal-500 bg-teal-500/10"
-              : "text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/10"
-          }`}
-          aria-label="Configurações"
-          title="Configurações"
-        >
-          <Settings className="w-4 h-4" />
-        </button>
+        <Tooltip label="Configurações">
+          <button
+            onClick={() => navigate("/settings/profile")}
+            className={`hidden md:flex lg:hidden w-7 h-7 items-center justify-center rounded-full transition-colors duration-fast ${
+              location.pathname.startsWith("/settings")
+                ? "text-teal-500 bg-teal-500/10"
+                : "text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/10"
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+        </Tooltip>
         <span className="hidden md:block lg:hidden w-px h-4 bg-[var(--border-default)]" />
 
         {/* Theme toggle — no mobile mora no menu "Mais" da barra inferior */}

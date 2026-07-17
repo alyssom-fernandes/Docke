@@ -161,6 +161,32 @@ html, body {
 .text-mac-title1   { font-size: 22px; line-height: 28px; font-weight: 700; }
 .text-mac-large    { font-size: 26px; line-height: 32px; font-weight: 700; }
 
+/* ─── Popover tail — triângulo apontando pro elemento de origem, igual ao
+   balão de popover real do macOS (visto na referência docs/pdf/_Popovers).
+   Usa a mesma cor de --glass-panel-bg (não @supports condicional, é só um
+   preenchimento sólido pequeno — não precisa do backdrop-filter do painel).
+   .popover-tail-left ancora perto da borda esquerda (menus que abrem
+   left-0), .popover-tail-right perto da direita (menus que abrem right-0). */
+.popover-tail-left,
+.popover-tail-right {
+  position: relative;
+}
+.popover-tail-left::before,
+.popover-tail-right::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  width: 12px;
+  height: 12px;
+  background: var(--glass-panel-bg);
+  border-left: 1px solid var(--glass-border);
+  border-top: 1px solid var(--glass-border);
+  border-radius: 2px 0 0 0;
+  transform: rotate(45deg);
+}
+.popover-tail-left::before { left: 16px; }
+.popover-tail-right::before { right: 16px; }
+
 /* ─── Glass panel base ─── */
 .glass-panel {
   background: var(--glass-fallback-bg);
@@ -305,6 +331,21 @@ html, body {
   }
 }
 
+/* ─── Number input sem spinner nativo do SO ─── */
+/* As setinhas cinza padrão do Chrome/Edge em <input type="number"> são um
+   controle 100% do sistema operacional, sem nenhum jeito de estilizá-las —
+   a única forma de tirar essa "denúncia" de navegador é escondê-las e deixar
+   o campo como um texto numérico simples (padrão igualmente válido no
+   macOS: nem todo campo numérico tem stepper). */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
 /* ─── Focus visible: ring accent ─── */
 :focus-visible {
   outline: 3px solid #3FBFA8;
@@ -315,6 +356,30 @@ html, body {
 * {
   scrollbar-width: thin;
   scrollbar-color: rgba(0,0,0,0.18) transparent;
+}
+
+/* Scroll do <main> não pode reservar espaço de layout — senão o conteúdo
+   (tabelas, cards) fica alguns pixels mais estreito que a TopBar/Dock (que
+   são fixed, fora do fluxo de scroll, e não perdem essa largura).
+   overflow: overlay foi removido do Chromium moderno, então em vez disso
+   alargamos o <main> na largura real da barra e puxamos de volta com margem
+   negativa — a barra "vaza" pra fora da viewport (cortada pelo overflow-hidden
+   do wrapper raiz) e o padding do conteúdo volta a bater com a TopBar.
+   --sbw é medida em runtime (AppShell.tsx) via probe real — a largura
+   RESERVADA pelo navegador não é necessariamente igual ao width:7px do
+   ::-webkit-scrollbar abaixo (varia com DPI/zoom), então um valor fixo
+   sub ou sobre-compensaria dependendo do dispositivo. 7px é só o fallback
+   pra antes do useEffect rodar.
+   .scroll-compensate só é aplicada (via JS, AppShell.tsx) quando <main>
+   REALMENTE tem barra de rolagem — em páginas como Documentos, que gerenciam
+   o próprio scroll interno e nunca deixam <main> estourar, aplicar isso sem
+   condição faria o conteúdo ULTRAPASSAR a TopBar em vez de bater com ela. */
+.overlay-scroll {
+  overflow-y: auto;
+}
+.overlay-scroll.scroll-compensate {
+  width: calc(100% + var(--sbw, 7px));
+  margin-right: calc(-1 * var(--sbw, 7px));
 }
 .dark * {
   scrollbar-color: rgba(255,255,255,0.15) transparent;

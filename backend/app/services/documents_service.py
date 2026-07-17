@@ -56,6 +56,21 @@ class DocumentsService:
         )
 
     @staticmethod
+    async def resolve_unique_name(conn: asyncpg.Connection, folder_id: UUID, name: str) -> str:
+        """Sufixo automático " (1)", " (2)"... em nome duplicado — padrão
+        Dropbox/Box em vez de bloquear o upload (ADENDO-09 §13.4)."""
+        if await DocumentsService.find_name_conflict(conn, folder_id, name) is None:
+            return name
+        dot_idx = name.rfind(".")
+        base, ext = (name[:dot_idx], name[dot_idx:]) if dot_idx != -1 else (name, "")
+        n = 1
+        while True:
+            candidate = f"{base} ({n}){ext}"
+            if await DocumentsService.find_name_conflict(conn, folder_id, candidate) is None:
+                return candidate
+            n += 1
+
+    @staticmethod
     async def insert_pending_document(
         admin_conn: asyncpg.Connection,
         *, document_id: UUID, folder_id: UUID, company_id: UUID, name: str,
