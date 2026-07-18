@@ -66,11 +66,13 @@ export default function PublicShare() {
     } catch (e: any) {
       // Senha errada não pode derrubar a tela pro estado de erro fatal —
       // isso escondia o formulário pra sempre e o visitante não tinha como
-      // tentar de novo sem recarregar a página inteira. Só vira erro fatal
-      // quando já estamos dentro do conteúdo (ex.: pasta ficou indisponível
-      // durante a navegação).
-      if (content) setError(e.message);
-      else setPasswordError(e.message);
+      // tentar de novo sem recarregar a página inteira. Só desvia pro erro
+      // "retomável" quando existe de fato um formulário de senha na tela pra
+      // mostrá-lo; sem isso (link sem senha, ou erro depois de já estarmos
+      // dentro do conteúdo) precisa cair no estado de erro fatal, senão o
+      // erro não aparece em lugar nenhum.
+      if (!content && info?.has_password) setPasswordError(e.message);
+      else setError(e.message);
     } finally {
       setLoading(false);
     }
