@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from app.dependencies import get_app_role, get_current_user, get_db_admin
+from app.seed.demo_data import DEMO_USER_USERNAME
 from app.services.admin_service import AdminService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -111,3 +112,34 @@ async def storage_usage(
         else await AdminService.storage_usage_all(admin_conn)
     )
     return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# POST /admin/demo/reset — restaura as 3 empresas demo ao estado padrão
+# ---------------------------------------------------------------------------
+
+@router.post("/demo/reset", status_code=status.HTTP_204_NO_CONTENT)
+async def reset_demo(
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> None:
+    """
+    Apaga tudo que foi adicionado nas 3 empresas demo (documentos, pastas,
+    usuários extras, favoritos, links) e recria os dados padrão do zero.
+
+    Só a própria conta demo pode chamar isso — não é `_require_manager`
+    (admin/supremo de qualquer empresa real), é uma checagem própria e mais
+    estreita: só libera se `username == 'demo'`, então nenhum cliente real
+    consegue disparar isso contra os próprios dados nem por engano.
+    """
+    username = await admin_conn.fetchval(
+        "SELECT username FROM public.users WHERE id = $1", claims.get("sub")
+    )
+    if username != DEMO_USER_USERNAME:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Reset de dados só está disponível para a conta demo.",
+        )
+
+    from app.seed.demo_reset_service import reset_demo_data
+    await reset_demo_data(admin_conn)

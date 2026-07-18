@@ -1,7 +1,11 @@
 import { useState } from "react";
-import { Sliders, Sun, Moon, Monitor, Rows3, Rows4 } from "lucide-react";
+import { Sliders, Sun, Moon, Monitor, Rows3, Rows4, RotateCcw } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { getThemePreference, setThemePreference } from "@/lib/theme";
+import { useAuthContext } from "@/lib/AuthContext";
+import { useToast } from "@/lib/toast";
+import api from "@/lib/api";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 
 const THEME_OPTIONS = [
   { value: "light" as const, label: "Claro", icon: Sun },
@@ -18,10 +22,27 @@ const DENSITY_OPTIONS = [
 
 export default function Preferences() {
   usePageTitle("Preferências");
+  const { user } = useAuthContext();
+  const { success, error: showError } = useToast();
   const [theme, setTheme] = useState(getThemePreference());
   const [density, setDensity] = useState<Density>(
     () => (localStorage.getItem("docke_table_density") as Density) || "comfortable"
   );
+  const [confirmingReset, setConfirmingReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
+
+  async function resetDemoData() {
+    setResetting(true);
+    try {
+      await api.post("/admin/demo/reset");
+      success("Dados demo restaurados. Recarregando…");
+      setConfirmingReset(false);
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível resetar os dados demo.");
+      setResetting(false);
+    }
+  }
 
   function choose(value: "light" | "dark" | "system") {
     setThemePreference(value);
@@ -99,7 +120,43 @@ export default function Preferences() {
             Aplica-se à listagem de documentos.
           </p>
         </div>
+
+        {/* Só a própria conta demo vê isso — reset também roda sozinho a cada
+            24h (ver app/workers/maintenance_worker.py), este botão é só pra
+            quem quiser uma demonstração limpa na hora, sem esperar o ciclo. */}
+        {user?.username === "demo" && (
+          <div className="pt-6 border-t border-[var(--border-default)]">
+            <div className="flex items-center gap-2 mb-3">
+              <RotateCcw className="w-4 h-4 text-teal-500" />
+              <h3 className="text-mac-body font-medium text-[var(--text-primary)]">Dados demo</h3>
+            </div>
+            <p className="text-mac-caption text-[var(--text-secondary)] mb-3 max-w-[420px]">
+              Restaura as 3 empresas de exemplo ao estado padrão, apagando qualquer
+              documento, pasta, usuário ou link criado durante o uso. Roda sozinho
+              a cada 24h — use este botão se quiser uma demonstração limpa agora.
+            </p>
+            <button
+              onClick={() => setConfirmingReset(true)}
+              className="flex items-center gap-1.5 h-8 px-3.5 text-mac-body text-[var(--text-secondary)] border border-[var(--border-default)] rounded-full hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Resetar dados demo
+            </button>
+          </div>
+        )}
       </div>
+
+      {confirmingReset && (
+        <ConfirmModal
+          title="Resetar dados demo?"
+          description="Apaga tudo que foi adicionado nas 3 empresas de exemplo (documentos, pastas, usuários, links) e recria os dados padrão. Essa ação não pode ser desfeita."
+          confirmLabel="Resetar"
+          danger
+          loading={resetting}
+          onConfirm={resetDemoData}
+          onClose={() => setConfirmingReset(false)}
+        />
+      )}
     </div>
   );
 }

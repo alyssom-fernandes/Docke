@@ -1,6 +1,8 @@
 """
 ADR-025/030 — Job periódico de retenção de lixeira.
 ADR-031 (Notificações × Retenção) — aviso 2 dias antes da exclusão definitiva.
+Reset periódico de dados demo (evita acúmulo indefinido de uso orgânico dos
+visitantes na mesma empresa/conta compartilhada — ver app/seed/demo_reset_service.py).
 
 Roda no mesmo processo do backend (asyncio.create_task no lifespan), não é
 um cron externo — verifica a cada _CHECK_INTERVAL_SECS. Suficiente para o
@@ -8,10 +10,19 @@ volume de uso do Docke (mesma lógica do worker de OCR).
 """
 import asyncio
 import logging
+import time
+
+from app.config import settings
 
 logger = logging.getLogger("docke.maintenance_worker")
 
 _CHECK_INTERVAL_SECS = 3600  # roda a cada hora
+
+# None (não 0.0!) força um reset já na primeira iteração do loop — a origem
+# de time.monotonic() é arbitrária por plataforma (não é "segundos desde o
+# boot" garantido), então comparar contra 0.0 podia atrasar o primeiro reset
+# em até DEMO_RESET_INTERVAL_HOURS depois de todo deploy, sem nenhum aviso.
+_last_demo_reset_at: float | None = None
 
 
 async def maintenance_worker_loop() -> None:
@@ -34,6 +45,22 @@ async def _run_once() -> None:
     async with _admin_pool.acquire() as conn:
         await _notify_trash_expiring_soon(conn)
         await _purge_expired_trash(conn)
+        await _reset_demo_data_if_due(conn)
+
+
+async def _reset_demo_data_if_due(conn) -> None:
+    global _last_demo_reset_at
+    interval_secs = settings.DEMO_RESET_INTERVAL_HOURS * 3600
+    now = time.monotonic()
+    if _last_demo_reset_at is not None and now - _last_demo_reset_at < interval_secs:
+        return
+
+    from app.seed.demo_reset_service import reset_demo_data
+    try:
+        await reset_demo_data(conn)
+        _last_demo_reset_at = now
+    except Exception:
+        logger.exception("Falha no reset periódico de dados demo — tenta de novo no próximo ciclo.")
 
 
 async def _notify_trash_expiring_soon(conn) -> None:

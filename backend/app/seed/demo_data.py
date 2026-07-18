@@ -1,25 +1,33 @@
 """
-Seed do modo demo — M5.1.
+Seed do modo demo — M5.1. Reset automático/manual — ADR "reset periódico demo".
 
-Usa conexão direta com service role (asyncpg), sem RLS, conforme R1/Parte3.
-NUNCA exposto como endpoint HTTP — executado como script administrativo:
+Uso via CLI (conexão própria, fora do pool do app):
 
     python -m app.seed.demo_data
 
-Dados criados:
-  - 1 usuário demo  (username=demo@docke.app, admin nas 3 empresas)
-  - 3 empresas fictícias
-  - 4 pastas raiz por empresa (Fiscal, RH, Bancário, Contratos)
-  - ~50 documentos distribuídos (ocr=done maioria, 2-3 failed, 3 na lixeira)
+Uso programático (dentro do app — worker periódico e endpoint de reset manual,
+ver app/seed/demo_reset_service.py): `_build_demo_data(conn, demo_user_id, ...)`
+recebe uma conexão já aberta (do pool admin) em vez de abrir a sua própria —
+é o núcleo reaproveitado por ambos os caminhos.
+
+Dados criados por empresa:
+  - 1 usuário demo (username=demo, admin nas 3 empresas)
+  - 2 usuários de equipe extras (Operador/Visualizador) — mostram o sistema
+    de papéis populado sem precisar que um visitante crie usuários pra ver
+  - 4 pastas raiz (Fiscal, RH, Bancário, Contratos)
+  - ~17 documentos distribuídos (ocr=done maioria, 2 failed, 3 na lixeira)
+  - ~3 favoritos (âncoras) e 2 links de compartilhamento (1 com senha)
   - activity_log simulado nos últimos 7 dias
 """
 
 from __future__ import annotations
 
 import asyncio
+import bcrypt
 import hashlib
 import io
 import random
+import secrets
 import uuid
 import zipfile
 from datetime import datetime, timedelta, timezone
@@ -90,6 +98,17 @@ DEMO_USER_FULLNAME = "Usuário Demo"
 # direto como string neste arquivo e em SessionExpiredOverlay.tsx.
 DEMO_USER_EMAIL = settings.DEMO_EMAIL
 DEMO_USER_PASSWORD = settings.DEMO_PASSWORD
+
+# Usuários de equipe extras — só existem pra popular Configurações → Usuários
+# & Papéis com mais de uma linha (mostrando os 3 níveis de permissão em uso
+# de verdade). Ninguém precisa logar com essas contas — a senha é gerada e
+# descartada a cada reset (nunca exposta), só existe pra satisfazer a API do
+# Supabase Auth, que exige uma senha pra criar a conta.
+# (email, username, full_name, permission_level em user_company_access)
+EXTRA_USERS = [
+    ("operador.demo@docke.app", "operador.demo", "Operador Demo", "operador"),
+    ("visualizador.demo@docke.app", "visualizador.demo", "Visualizadora Demo", "visualizador"),
+]
 
 ACTIONS = ["upload", "view", "download", "view", "view", "download"]
 
@@ -229,12 +248,14 @@ def generate_file_content(ext: str, title: str, text: str) -> bytes:
 # Main seed
 # ---------------------------------------------------------------------------
 
-async def _ensure_demo_auth_account() -> str:
+async def _ensure_auth_account(email: str, password: str, *, reset_password: bool = True) -> str:
     """
-    Garante que existe uma conta real no Supabase Auth para o usuário demo
+    Garante que existe uma conta real no Supabase Auth para o e-mail dado
     (mesmo padrão do ADR-033 em companies.py: Admin API, email_confirm=True,
     sem disparar e-mail de convite). Idempotente: se já existir, reaproveita
     o id em vez de recriar — evita acumular contas órfãs no Auth a cada reset.
+    Generalizado a partir do antigo `_ensure_demo_auth_account` (agora usado
+    também para os usuários de equipe extras — EXTRA_USERS).
     """
     async with httpx.AsyncClient() as client:
         # ATENÇÃO: a Admin API do GoTrue/Supabase NÃO filtra por e-mail via
@@ -255,19 +276,20 @@ async def _ensure_demo_auth_account() -> str:
             timeout=10.0,
         )
         all_users = list_resp.json().get("users", []) if list_resp.status_code == 200 else []
-        existing = [u for u in all_users if u.get("email", "").lower() == DEMO_USER_EMAIL.lower()]
+        existing = [u for u in all_users if u.get("email", "").lower() == email.lower()]
         if existing:
             user_id = existing[0]["id"]
-            await client.put(
-                f"{settings.SUPABASE_URL}/auth/v1/admin/users/{user_id}",
-                headers={
-                    "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
-                    "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={"password": DEMO_USER_PASSWORD},
-                timeout=10.0,
-            )
+            if reset_password:
+                await client.put(
+                    f"{settings.SUPABASE_URL}/auth/v1/admin/users/{user_id}",
+                    headers={
+                        "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
+                        "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"password": password},
+                    timeout=10.0,
+                )
             return user_id
 
         create_resp = await client.post(
@@ -277,229 +299,306 @@ async def _ensure_demo_auth_account() -> str:
                 "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
                 "Content-Type": "application/json",
             },
-            json={"email": DEMO_USER_EMAIL, "password": DEMO_USER_PASSWORD, "email_confirm": True},
+            json={"email": email, "password": password, "email_confirm": True},
             timeout=10.0,
         )
         if create_resp.status_code not in (200, 201):
-            raise RuntimeError(f"Falha ao criar conta demo no Supabase Auth: {create_resp.text}")
+            raise RuntimeError(f"Falha ao criar conta no Supabase Auth ({email}): {create_resp.text}")
         return create_resp.json()["id"]
 
 
+def _hash_share_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+async def _build_demo_data(
+    conn: asyncpg.Connection,
+    demo_user_id: str,
+    extra_user_ids: dict[str, str],
+) -> None:
+    """
+    Núcleo do seed — recebe uma conexão já aberta (própria ou do pool admin
+    do app) e os ids das contas de Auth já garantidas. Chamado tanto pelo
+    `run_seed()` (CLI) quanto por `demo_reset_service.reset_demo_data()`
+    (worker periódico + endpoint de reset manual). Assume que o chamador já
+    está dentro de uma transação.
+    """
+    # ------------------------------------------------------------------
+    # 0. Limpar dados de demo anteriores (idempotente) — mantém os usuários
+    #    (mesmos ids do Auth), só limpa as empresas fictícias.
+    #    documents.company_id e activity_log.company_id são ON DELETE
+    #    RESTRICT (não CASCADE) — apagar companies direto falha com FK
+    #    violation assim que a 1ª rodada do seed já tiver criado dados
+    #    reais. Apagar essas duas tabelas primeiro (o resto — folders,
+    #    user_company_access, shares, notifications — já cascadeia de
+    #    companies) resolve. documents também cascadeia pra ocr_jobs/
+    #    favorites/document_versions/share_accesses (via shares).
+    # ------------------------------------------------------------------
+    old_company_ids = await conn.fetch(
+        "SELECT id FROM public.companies WHERE name = ANY($1::text[])",
+        [c[0] for c in COMPANIES],
+    )
+    old_ids = [r["id"] for r in old_company_ids]
+    if old_ids:
+        await conn.execute("DELETE FROM public.activity_log WHERE company_id = ANY($1::uuid[])", old_ids)
+        await conn.execute("DELETE FROM public.documents WHERE company_id = ANY($1::uuid[])", old_ids)
+        await conn.execute("DELETE FROM public.companies WHERE id = ANY($1::uuid[])", old_ids)
+    print("✔ Dados anteriores removidos.")
+
+    # ------------------------------------------------------------------
+    # 1. Criar/atualizar usuário demo + usuários de equipe extras em
+    #    public.users (mesmos ids das contas de Auth já garantidas)
+    # ------------------------------------------------------------------
+    await conn.execute(
+        """
+        INSERT INTO public.users (id, username, full_name, role)
+        VALUES ($1::uuid, $2, $3, 'admin')
+        ON CONFLICT (id) DO UPDATE SET username = EXCLUDED.username, full_name = EXCLUDED.full_name
+        """,
+        demo_user_id,
+        DEMO_USER_USERNAME,
+        DEMO_USER_FULLNAME,
+    )
+    print(f"✔ Usuário demo criado: {DEMO_USER_USERNAME} (id={demo_user_id[:8]}…)")
+
+    for email, username, full_name, _permission in EXTRA_USERS:
+        user_id = extra_user_ids[email]
+        await conn.execute(
+            """
+            INSERT INTO public.users (id, username, full_name, role)
+            VALUES ($1::uuid, $2, $3, 'usuario')
+            ON CONFLICT (id) DO UPDATE SET username = EXCLUDED.username, full_name = EXCLUDED.full_name
+            """,
+            user_id,
+            username,
+            full_name,
+        )
+    print(f"✔ {len(EXTRA_USERS)} usuários de equipe extras criados.")
+
+    for company_name, _ in COMPANIES:
+        # ---------------------------------------------------------------
+        # 2. Criar empresa
+        # ---------------------------------------------------------------
+        company_id = str(uuid.uuid4())
+        await conn.execute(
+            "INSERT INTO public.companies (id, name) VALUES ($1::uuid, $2)",
+            company_id,
+            company_name,
+        )
+
+        # ---------------------------------------------------------------
+        # 3. Conceder acesso — demo como admin, equipe extra com o
+        #    permission_level de cada um (visualizador/operador)
+        # ---------------------------------------------------------------
+        await conn.execute(
+            """
+            INSERT INTO public.user_company_access
+                (user_id, company_id, permission_level, folder_path)
+            VALUES ($1::uuid, $2::uuid, 'admin', NULL)
+            """,
+            demo_user_id,
+            company_id,
+        )
+        for email, _username, _full_name, permission_level in EXTRA_USERS:
+            await conn.execute(
+                """
+                INSERT INTO public.user_company_access
+                    (user_id, company_id, permission_level, folder_path)
+                VALUES ($1::uuid, $2::uuid, $3, NULL)
+                """,
+                extra_user_ids[email],
+                company_id,
+                permission_level,
+            )
+
+        # ---------------------------------------------------------------
+        # 4. Criar pastas raiz
+        # ---------------------------------------------------------------
+        folder_ids: list[str] = []
+        for folder_name in FOLDERS:
+            folder_id = str(uuid.uuid4())
+            label = make_label()
+            await conn.execute(
+                """
+                INSERT INTO public.folders
+                    (id, company_id, parent_id, path, name, created_by)
+                VALUES ($1::uuid, $2::uuid, NULL, $3::ltree, $4, $5::uuid)
+                """,
+                folder_id,
+                company_id,
+                label,
+                folder_name,
+                demo_user_id,
+            )
+            folder_ids.append(folder_id)
+            await asyncio.sleep(0.001)  # garante labels distintos
+
+        # ---------------------------------------------------------------
+        # 5. Criar documentos
+        # ---------------------------------------------------------------
+        docs_created: list[tuple[str, str]] = []  # (doc_id, name)
+
+        for i in range(1, 18):  # ~17 docs por empresa → ~51 total
+            tmpl, ext, folder_idx = random.choice(DOCUMENTS)
+            doc_name = tmpl.format(n=str(i).zfill(2))
+            folder_id = folder_ids[folder_idx]
+
+            doc_id = str(uuid.uuid4())
+            ocr_text = random.choice(OCR_TEXTS)
+
+            # 2 docs com OCR failed, 3 na lixeira (para os últimos docs)
+            if i >= 16:
+                ocr_status = "failed"
+                ocr_text = None
+            elif i == 15:
+                ocr_status = "failed"
+                ocr_text = None
+            else:
+                ocr_status = "done"
+
+            deleted_at = None
+            deleted_original_folder_id = None
+            if i >= 14 and i <= 16:
+                # Coloca na lixeira (soft-delete) — só para os últimos 3
+                deleted_at = rand_date(5)
+                deleted_original_folder_id = folder_id
+
+            mime_map = {
+                "pdf": "application/pdf",
+                "xml": "application/xml",
+                "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "jpg": "image/jpeg",
+                "txt": "text/plain",
+            }
+            mime_type = mime_map.get(ext, "application/octet-stream")
+
+            created_at = rand_date(30)
+
+            # Conteúdo real (não só o registro no banco) — sem isso o
+            # arquivo nunca existiu no R2 e não pode ser aberto/baixado.
+            storage_key = f"documents/{company_id}/{doc_id}.{ext}"
+            file_bytes = generate_file_content(ext, doc_name, ocr_text or "Documento de exemplo do modo demo.")
+            storage_service.put_object_bytes(storage_key, file_bytes, mime_type)
+            size = len(file_bytes)
+            content_hash = hashlib.sha256(file_bytes).hexdigest()
+
+            await conn.execute(
+                """
+                INSERT INTO public.documents
+                    (id, company_id, folder_id, name, mime_type, file_type, size_bytes,
+                     storage_path, content_hash, ocr_status, ocr_text,
+                     ocr_completed_at, deleted_at, deleted_original_folder_id,
+                     uploaded_by, created_at)
+                VALUES
+                    ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7,
+                     $8, $9, $10, $11,
+                     $12, $13, $14,
+                     $15::uuid, $16)
+                """,
+                doc_id,
+                company_id,
+                folder_id,
+                doc_name,
+                mime_type,
+                ext,
+                size,
+                storage_key,
+                content_hash,
+                ocr_status,
+                ocr_text,
+                datetime.now(timezone.utc) if ocr_status == "done" else None,
+                deleted_at,
+                deleted_original_folder_id,
+                demo_user_id,
+                created_at,
+            )
+            docs_created.append((doc_id, doc_name))
+
+        # ---------------------------------------------------------------
+        # 6. Atividade simulada (últimos 7 dias)
+        # ---------------------------------------------------------------
+        non_deleted_docs = [d for d in docs_created if docs_created.index(d) < 13]
+        for _ in range(20):
+            doc_id, doc_name = random.choice(non_deleted_docs)
+            action = random.choice(ACTIONS)
+            await conn.execute(
+                """
+                INSERT INTO public.activity_log
+                    (user_id, company_id, action, item_type, item_id,
+                     item_name_snapshot, created_at)
+                VALUES ($1::uuid, $2::uuid, $3, 'document', $4::uuid, $5, $6)
+                """,
+                demo_user_id,
+                company_id,
+                action,
+                doc_id,
+                doc_name,
+                rand_date(7),
+            )
+
+        # ---------------------------------------------------------------
+        # 7. Favoritos (âncoras) — 2 documentos + 1 pasta, do usuário demo
+        # ---------------------------------------------------------------
+        anchor_docs = non_deleted_docs[:2]
+        for doc_id, _doc_name in anchor_docs:
+            await conn.execute(
+                "INSERT INTO public.favorites (user_id, document_id) VALUES ($1::uuid, $2::uuid)",
+                demo_user_id, doc_id,
+            )
+        await conn.execute(
+            "INSERT INTO public.favorites (user_id, folder_id) VALUES ($1::uuid, $2::uuid)",
+            demo_user_id, folder_ids[0],
+        )
+
+        # ---------------------------------------------------------------
+        # 8. Links de compartilhamento — 1 aberto, 1 com senha
+        # ---------------------------------------------------------------
+        share_docs = non_deleted_docs[2:4]
+        for idx, (doc_id, _doc_name) in enumerate(share_docs):
+            token = uuid.uuid4().hex + uuid.uuid4().hex
+            token_hash = _hash_share_token(token)
+            password_hash = (
+                bcrypt.hashpw(b"demo1234", bcrypt.gensalt()).decode() if idx == 1 else None
+            )
+            await conn.execute(
+                """
+                INSERT INTO public.shares
+                    (resource_type, resource_id, company_id, token_hash, password_hash, expires_at, created_by)
+                VALUES ('document', $1::uuid, $2::uuid, $3, $4, now() + interval '30 days', $5::uuid)
+                """,
+                doc_id, company_id, token_hash, password_hash, demo_user_id,
+            )
+
+        print(f"  ✔ {company_name}: {len(docs_created)} docs, {len(folder_ids)} pastas, "
+              f"{len(anchor_docs) + 1} favoritos, {len(share_docs)} links")
+
+
 async def run_seed() -> None:
+    """CLI: `python -m app.seed.demo_data` — abre sua própria conexão."""
     if not DEMO_USER_PASSWORD:
         raise RuntimeError(
             "DEMO_PASSWORD não está configurada (Fly secret). "
             "Rode: fly secrets set DEMO_PASSWORD='...' antes de rodar o seed."
         )
-    demo_user_id = await _ensure_demo_auth_account()
+    demo_user_id = await _ensure_auth_account(DEMO_USER_EMAIL, DEMO_USER_PASSWORD)
     print(f"✔ Conta demo no Supabase Auth pronta (id={demo_user_id[:8]}…).")
+
+    extra_user_ids: dict[str, str] = {}
+    for email, _username, _full_name, _permission in EXTRA_USERS:
+        extra_user_ids[email] = await _ensure_auth_account(email, secrets.token_urlsafe(24))
+    print(f"✔ {len(EXTRA_USERS)} contas de equipe extras no Supabase Auth prontas.")
 
     conn = await asyncpg.connect(settings.asyncpg_url)
     print("✔ Conectado ao banco de dados.")
 
     try:
         await conn.execute("BEGIN")
-
-        # ------------------------------------------------------------------
-        # 0. Limpar dados de demo anteriores (idempotente) — mantém o
-        #    usuário demo (mesmo id do Auth), só limpa as empresas fictícias.
-        #    documents.company_id e activity_log.company_id são ON DELETE
-        #    RESTRICT (não CASCADE) — apagar companies direto falha com FK
-        #    violation assim que a 1ª rodada do seed já tiver criado dados
-        #    reais. Apagar essas duas tabelas primeiro (o resto — folders,
-        #    user_company_access, shares, notifications — já cascadeia de
-        #    companies) resolve. documents também cascadeia pra ocr_jobs/
-        #    favorites/document_versions.
-        # ------------------------------------------------------------------
-        old_company_ids = await conn.fetch(
-            "SELECT id FROM public.companies WHERE name = ANY($1::text[])",
-            [c[0] for c in COMPANIES],
-        )
-        old_ids = [r["id"] for r in old_company_ids]
-        if old_ids:
-            await conn.execute("DELETE FROM public.activity_log WHERE company_id = ANY($1::uuid[])", old_ids)
-            await conn.execute("DELETE FROM public.documents WHERE company_id = ANY($1::uuid[])", old_ids)
-            await conn.execute("DELETE FROM public.companies WHERE id = ANY($1::uuid[])", old_ids)
-        print("✔ Dados anteriores removidos.")
-
-        # ------------------------------------------------------------------
-        # 1. Criar/atualizar usuário demo em public.users (mesmo id do Auth)
-        # ------------------------------------------------------------------
-        await conn.execute(
-            """
-            INSERT INTO public.users (id, username, full_name, role)
-            VALUES ($1::uuid, $2, $3, 'admin')
-            ON CONFLICT (id) DO UPDATE SET username = EXCLUDED.username, full_name = EXCLUDED.full_name
-            """,
-            demo_user_id,
-            DEMO_USER_USERNAME,
-            DEMO_USER_FULLNAME,
-        )
-        print(f"✔ Usuário demo criado: {DEMO_USER_USERNAME} (id={demo_user_id[:8]}…)")
-
-        for company_name, _ in COMPANIES:
-            # ---------------------------------------------------------------
-            # 2. Criar empresa
-            # ---------------------------------------------------------------
-            company_id = str(uuid.uuid4())
-            await conn.execute(
-                "INSERT INTO public.companies (id, name) VALUES ($1::uuid, $2)",
-                company_id,
-                company_name,
-            )
-
-            # ---------------------------------------------------------------
-            # 3. Conceder acesso admin ao usuário demo
-            # ---------------------------------------------------------------
-            await conn.execute(
-                """
-                INSERT INTO public.user_company_access
-                    (user_id, company_id, permission_level, folder_path)
-                VALUES ($1::uuid, $2::uuid, 'admin', NULL)
-                """,
-                demo_user_id,
-                company_id,
-            )
-
-            # ---------------------------------------------------------------
-            # 4. Criar pastas raiz
-            # ---------------------------------------------------------------
-            folder_ids: list[str] = []
-            for folder_name in FOLDERS:
-                folder_id = str(uuid.uuid4())
-                label = make_label()
-                await conn.execute(
-                    """
-                    INSERT INTO public.folders
-                        (id, company_id, parent_id, path, name, created_by)
-                    VALUES ($1::uuid, $2::uuid, NULL, $3::ltree, $4, $5::uuid)
-                    """,
-                    folder_id,
-                    company_id,
-                    label,
-                    folder_name,
-                    demo_user_id,
-                )
-                folder_ids.append(folder_id)
-                await asyncio.sleep(0.001)  # garante labels distintos
-
-            # ---------------------------------------------------------------
-            # 5. Criar documentos
-            # ---------------------------------------------------------------
-            docs_created: list[tuple[str, str]] = []  # (doc_id, name)
-
-            for i in range(1, 18):  # ~17 docs por empresa → ~51 total
-                tmpl, ext, folder_idx = random.choice(DOCUMENTS)
-                doc_name = tmpl.format(n=str(i).zfill(2))
-                folder_id = folder_ids[folder_idx]
-
-                doc_id = str(uuid.uuid4())
-                ocr_text = random.choice(OCR_TEXTS)
-
-                # 2 docs com OCR failed, 3 na lixeira (para os últimos docs)
-                if i >= 16:
-                    ocr_status = "failed"
-                    ocr_text = None
-                elif i == 15:
-                    ocr_status = "failed"
-                    ocr_text = None
-                else:
-                    ocr_status = "done"
-
-                deleted_at = None
-                deleted_original_folder_id = None
-                if i >= 14 and i <= 16:
-                    # Coloca na lixeira (soft-delete) — só para os últimos 3
-                    deleted_at = rand_date(5)
-                    deleted_original_folder_id = folder_id
-
-                ts_search = (
-                    f"to_tsvector('portuguese', unaccent('{ocr_text[:200]}'))"
-                    if ocr_text
-                    else "to_tsvector('portuguese', '')"
-                )
-
-                mime_map = {
-                    "pdf": "application/pdf",
-                    "xml": "application/xml",
-                    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    "jpg": "image/jpeg",
-                    "txt": "text/plain",
-                }
-                mime_type = mime_map.get(ext, "application/octet-stream")
-
-                created_at = rand_date(30)
-
-                # Conteúdo real (não só o registro no banco) — sem isso o
-                # arquivo nunca existiu no R2 e não pode ser aberto/baixado.
-                storage_key = f"documents/{company_id}/{doc_id}.{ext}"
-                file_bytes = generate_file_content(ext, doc_name, ocr_text or "Documento de exemplo do modo demo.")
-                storage_service.put_object_bytes(storage_key, file_bytes, mime_type)
-                size = len(file_bytes)
-                content_hash = hashlib.sha256(file_bytes).hexdigest()
-
-                await conn.execute(
-                    """
-                    INSERT INTO public.documents
-                        (id, company_id, folder_id, name, mime_type, file_type, size_bytes,
-                         storage_path, content_hash, ocr_status, ocr_text,
-                         ocr_completed_at, deleted_at, deleted_original_folder_id,
-                         uploaded_by, created_at)
-                    VALUES
-                        ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7,
-                         $8, $9, $10, $11,
-                         $12, $13, $14,
-                         $15::uuid, $16)
-                    """,
-                    doc_id,
-                    company_id,
-                    folder_id,
-                    doc_name,
-                    mime_type,
-                    ext,
-                    size,
-                    storage_key,
-                    content_hash,
-                    ocr_status,
-                    ocr_text,
-                    datetime.now(timezone.utc) if ocr_status == "done" else None,
-                    deleted_at,
-                    deleted_original_folder_id,
-                    demo_user_id,
-                    created_at,
-                )
-                docs_created.append((doc_id, doc_name))
-
-            # ---------------------------------------------------------------
-            # 6. Atividade simulada (últimos 7 dias)
-            # ---------------------------------------------------------------
-            non_deleted_docs = [d for d in docs_created if docs_created.index(d) < 13]
-            for _ in range(20):
-                doc_id, doc_name = random.choice(non_deleted_docs)
-                action = random.choice(ACTIONS)
-                await conn.execute(
-                    """
-                    INSERT INTO public.activity_log
-                        (user_id, company_id, action, item_type, item_id,
-                         item_name_snapshot, created_at)
-                    VALUES ($1::uuid, $2::uuid, $3, 'document', $4::uuid, $5, $6)
-                    """,
-                    demo_user_id,
-                    company_id,
-                    action,
-                    doc_id,
-                    doc_name,
-                    rand_date(7),
-                )
-
-            print(f"  ✔ {company_name}: {len(docs_created)} docs, {len(folder_ids)} pastas")
-
+        await _build_demo_data(conn, demo_user_id, extra_user_ids)
         await conn.execute("COMMIT")
         print("\n✅ Seed concluído com sucesso!")
         print(f"   Login demo: {DEMO_USER_EMAIL} / {DEMO_USER_PASSWORD}")
         print("   Empresas: Comércio Alfa Modelo Ltda | Serviços Beta Referência SA | Indústria Gama Exemplo Ltda")
-
     except Exception as exc:
         await conn.execute("ROLLBACK")
         print(f"\n❌ Erro durante o seed: {exc}")
