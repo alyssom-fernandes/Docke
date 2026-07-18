@@ -187,7 +187,7 @@ export default function Activity() {
                               : undefined
                           }
                           title={target ? undefined : "Item não está mais disponível"}
-                          className={`flex items-start gap-3 px-5 py-3 transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 ${
+                          className={`flex items-center gap-3 px-5 py-3 transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 ${
                             target ? "hover:bg-[var(--bg-hover)] cursor-pointer" : ""
                           }`}
                         >
