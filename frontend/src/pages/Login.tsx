@@ -56,31 +56,40 @@ export default function Login() {
 
   return (
     <div className="relative min-h-screen overflow-hidden flex flex-col items-center justify-center px-4" style={{ background: "var(--wallpaper)" }}>
-      {/* Glow de acento — reforça a identidade da marca sobre o wallpaper compartilhado com o resto do app (G01) */}
+      {/* Glow de acento em camadas — dá "profundidade de ambiente" ao primeiro
+          contato, reforçando a identidade da marca sobre o wallpaper (G01). */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-60 dark:opacity-100 transition-opacity duration-slow"
+        className="pointer-events-none absolute inset-0 opacity-80 dark:opacity-100 transition-opacity duration-slow"
         style={{
           background:
-            "radial-gradient(600px circle at 20% 15%, rgba(13,148,136,0.14), transparent 60%), radial-gradient(500px circle at 85% 80%, rgba(13,148,136,0.10), transparent 60%)",
+            "radial-gradient(680px circle at 16% 12%, rgba(13,148,136,0.20), transparent 55%)," +
+            "radial-gradient(620px circle at 84% 82%, rgba(20,184,166,0.16), transparent 55%)," +
+            "radial-gradient(900px circle at 50% 118%, rgba(13,148,136,0.12), transparent 60%)",
         }}
+      />
+      {/* Spotlight suave atrás do formulário — foca o olhar no centro sem card */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[520px] h-[520px] rounded-full blur-[120px] opacity-50 dark:opacity-30"
+        style={{ background: "radial-gradient(circle, rgba(20,184,166,0.22), transparent 70%)" }}
       />
 
       <a href="#main-form" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 text-mac-body text-teal-500">
         Pular para formulário
       </a>
-      <div className="relative w-full max-w-[360px]">
+      <div className="relative w-full max-w-[320px]">
         {/* Logo */}
-        <div className="flex flex-col items-center mb-8">
-          <div className="brand-wordmark w-[150px] h-[43px]" role="img" aria-label="Docke" />
+        <div className="flex flex-col items-center mb-6">
+          <div className="brand-wordmark w-[124px] h-[36px]" role="img" aria-label="Docke" />
         </div>
 
-        {/* Conteúdo direto na tela, sem card — igual à referência */}
+        {/* Conteúdo direto na tela, sem card */}
         <div className="text-center">
-          <h1 className="text-mac-title3 font-semibold text-[var(--text-primary)] mb-1">Bem-vindo de volta</h1>
-          <p className="text-mac-body text-[var(--text-secondary)] mb-6">Gerenciamento eletrônico de documentos.</p>
+          <h1 className="text-mac-body font-semibold text-[var(--text-primary)] mb-1">Bem-vindo de volta</h1>
+          <p className="text-mac-caption text-[var(--text-secondary)] mb-5">Gerenciamento eletrônico de documentos.</p>
 
-          <form id="main-form" onSubmit={handleSubmit} className="flex flex-col gap-4 text-left" noValidate>
+          <form id="main-form" onSubmit={handleSubmit} className="flex flex-col gap-3.5 text-left" noValidate>
             <Input
               label="E-mail"
               type="email"
@@ -91,6 +100,7 @@ export default function Login() {
               autoComplete="email"
               autoFocus
               disabled={loading}
+              className="shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.25)]"
             />
             <Input
               label="Senha"
@@ -101,30 +111,33 @@ export default function Login() {
               error={errors.password}
               autoComplete="current-password"
               disabled={loading}
+              className="shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.25)]"
             />
             <Button type="submit" loading={loading} className="w-full mt-1">
               Entrar
             </Button>
           </form>
 
-          <div className="flex items-center gap-3 my-5 text-mac-caption text-[var(--text-tertiary)]">
+          <div className="flex items-center gap-3 my-4 text-mac-caption text-[var(--text-tertiary)]">
             <div className="flex-1 h-px bg-[var(--border-default)]" />
             ou
             <div className="flex-1 h-px bg-[var(--border-default)]" />
           </div>
 
-          <button
+          <Button
             type="button"
+            variant="secondary"
             onClick={handleDemoLogin}
-            disabled={demoLoading || loading}
-            className="w-full h-9 rounded-[var(--radius-control)] border border-[var(--border-default)] bg-[var(--bg-page)] text-mac-body text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast disabled:opacity-60"
+            loading={demoLoading}
+            disabled={loading}
+            className="w-full"
           >
-            {demoLoading ? "Entrando…" : "Acessar modo demo"}
-          </button>
+            Acessar modo demo
+          </Button>
         </div>
 
         {/* Footer */}
-        <div className="mt-8 text-center">
+        <div className="mt-7 text-center">
           <p className="text-mac-caption text-[var(--text-tertiary)]">
             Desenvolvido por{" "}
             <span

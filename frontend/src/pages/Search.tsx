@@ -1,9 +1,9 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { relativeDate } from "@/lib/date";
 import { getFileStyle } from "@/lib/fileType";
-import { Search as SearchIcon } from "lucide-react";
+import { Search as SearchIcon, X } from "lucide-react";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import EmptyState from "@/components/shared/EmptyState";
@@ -73,11 +73,42 @@ export default function Search() {
     if (q) { setQuery(q); doSearch(q); }
   }, [doSearch]);
 
+  // Busca ao vivo enquanto digita, com debounce — a HIG recomenda começar a
+  // busca assim que possível em vez de exigir Enter/clique ("If possible,
+  // start search immediately when a person types"). skipNext evita disparar
+  // de novo no primeiro render (a query inicial já é buscada pelo efeito
+  // acima, a partir da URL).
+  const skipNext = useRef(true);
+  useEffect(() => {
+    if (skipNext.current) { skipNext.current = false; return; }
+    if (!query.trim()) {
+      setSearched(false);
+      setResults([]);
+      setTotal(0);
+      setParams({}, { replace: true });
+      return;
+    }
+    const handle = setTimeout(() => {
+      setParams({ q: query.trim() }, { replace: true });
+      doSearch(query);
+    }, 350);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!query.trim()) return;
     setParams({ q: query.trim() });
     doSearch(query);
+  }
+
+  function clearQuery() {
+    setQuery("");
+    setSearched(false);
+    setResults([]);
+    setTotal(0);
+    setParams({}, { replace: true });
   }
 
   return (
@@ -88,12 +119,26 @@ export default function Search() {
         <div className="flex-1 relative">
           <SearchIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-placeholder)] pointer-events-none" />
           <input
-            type="search"
+            type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Digite para buscar documentos por conteúdo ou nome…"
-            className="w-full h-10 pl-10 pr-4 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-full text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+            className="w-full h-10 pl-10 pr-9 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-full text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
           />
+          {/* Botão de limpar customizado — type="text" em vez de "search" pra
+              não depender do X nativo do navegador (inconsistente entre
+              Chrome/Edge/Firefox e sem estilo do app); a HIG exige que todo
+              search field mostre Search icon + Clear button. */}
+          {query && (
+            <button
+              type="button"
+              onClick={clearQuery}
+              aria-label="Limpar busca"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors duration-fast"
+            >
+              <X className="w-3 h-3" strokeWidth={2.5} />
+            </button>
+          )}
         </div>
         <button
           type="submit"
@@ -138,8 +183,8 @@ export default function Search() {
                   className="flex items-start gap-3 px-5 py-3.5 hover:bg-[var(--bg-hover)] transition-colors duration-fast cursor-pointer border-b border-[var(--border-default)] last:border-0"
                 >
                   {(() => { const s = getFileStyle(r.name); const Icon = s.icon; return (
-                    <div className={`w-7 h-7 rounded-[6px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
-                      <Icon className={`w-4 h-4 ${s.iconColor} ${s.fillColor}`} />
+                    <div className={`w-6 h-6 rounded-[4px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
+                      <Icon className={`w-3.5 h-3.5 ${s.iconColor} ${s.fillColor}`} />
                     </div>
                   ); })()}
                   <div className="flex-1 min-w-0">

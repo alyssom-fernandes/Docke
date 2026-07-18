@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Building2, Plus, Image as ImageIcon } from "lucide-react";
+import { Building2, Plus, Image as ImageIcon, ChevronRight } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import api from "@/lib/api";
@@ -145,16 +145,15 @@ export default function Organization() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-mac-callout font-semibold text-[var(--text-primary)]">Organização</h2>
-        {isSupremo && (
+    <div className="space-y-4">
+      {isSupremo && (
+        <div className="flex justify-end">
           <Button size="sm" onClick={() => setEditing("new")}>
             <Plus className="w-3.5 h-3.5" />
             Nova empresa
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="space-y-2">
@@ -180,7 +179,6 @@ export default function Organization() {
                   </p>
                 </div>
                 {!org.is_active && <Badge variant="default">Inativa</Badge>}
-                <button onClick={() => setEditing(org)} className="px-2.5 py-1 rounded-full text-mac-caption text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors duration-fast">Editar</button>
                 {isSupremo && (
                   <button
                     onClick={() => setDeactivating(org)}
@@ -189,6 +187,16 @@ export default function Organization() {
                     {org.is_active ? "Desativar" : "Reativar"}
                   </button>
                 )}
+                {/* Seta de disclosure em vez de link "Editar" — padrão de
+                    linha-clicável do System Settings/iOS (linha inteira leva
+                    a mais detalhes, sem depender de hover pra parecer clicável). */}
+                <button
+                  onClick={() => setEditing(org)}
+                  aria-label={`Editar ${org.name}`}
+                  className="p-1.5 -mr-1.5 rounded-full text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors duration-fast flex-shrink-0"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
               </li>
             ))}
           </ul>

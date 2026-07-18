@@ -522,9 +522,7 @@ export default function Metadata() {
   if (!current) return null;
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-mac-callout font-semibold text-[var(--text-primary)]">Metadados</h2>
-
+    <div>
       <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6">
         {/* Controle segmentado (cápsula com o segmento ativo em destaque) —
             a Apple nunca usa abas sublinhadas de texto dentro de um painel

@@ -39,9 +39,7 @@ export default function Retention() {
   const carencia = Math.min(days, 7);
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-mac-callout font-semibold text-[var(--text-primary)]">Retenção</h2>
-
+    <div>
       <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6 space-y-5">
         <p className="text-mac-body font-medium text-[var(--text-primary)]">Dias na lixeira antes da exclusão permanente</p>
 

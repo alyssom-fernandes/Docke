@@ -2151,7 +2151,7 @@ export default function Documents() {
                     return (
                       <Fragment key={`folder-${f.id}`}>
                       <tr
-                        className={`border-b border-[var(--border-default)] even:bg-black/[0.04] dark:even:bg-white/[0.035] hover:bg-[var(--bg-hover)] transition-colors duration-fast group ${
+                        className={`border-b border-[var(--border-default)] odd:bg-black/[0.04] dark:odd:bg-white/[0.035] hover:bg-[var(--bg-hover)] transition-colors duration-fast group ${
                           isDropTarget ? "bg-teal-500/10 outline outline-2 outline-teal-400 -outline-offset-2" : ""
                         }`}
                         onClick={() => setFocusedId(f.id)}
@@ -2260,7 +2260,7 @@ export default function Documents() {
                       {expanded && expanded !== "loading" && expanded.folders.map((nf) => (
                         <tr
                           key={`nested-folder-${nf.id}`}
-                          className="border-b border-[var(--border-default)] even:bg-black/[0.04] dark:even:bg-white/[0.035] hover:bg-[var(--bg-hover)] transition-colors duration-fast cursor-pointer"
+                          className="border-b border-[var(--border-default)] odd:bg-black/[0.04] dark:odd:bg-white/[0.035] hover:bg-[var(--bg-hover)] transition-colors duration-fast cursor-pointer"
                           onClick={() => openFolder(nf)}
                         >
                           {selectionMode && <td className="px-4 py-2" />}
@@ -2284,7 +2284,7 @@ export default function Documents() {
                         return (
                           <tr
                             key={`nested-doc-${nd.id}`}
-                            className="border-b border-[var(--border-default)] even:bg-black/[0.04] dark:even:bg-white/[0.035] hover:bg-[var(--bg-hover)] transition-colors duration-fast cursor-pointer"
+                            className="border-b border-[var(--border-default)] odd:bg-black/[0.04] dark:odd:bg-white/[0.035] hover:bg-[var(--bg-hover)] transition-colors duration-fast cursor-pointer"
                             onClick={() => setDetailDoc(nd)}
                           >
                             {selectionMode && <td className="px-4 py-2" />}
@@ -2316,7 +2316,7 @@ export default function Documents() {
                       key={`doc-${d.id}`}
                       ref={(el) => { if (el) rowRefs.current.set(d.id, el); else rowRefs.current.delete(d.id); }}
                       className={`border-b border-[var(--border-default)] transition-colors duration-fast group cursor-pointer ${
-                        isSelected ? "bg-teal-500" : "even:bg-black/[0.04] dark:even:bg-white/[0.035] hover:bg-[var(--bg-hover)]"
+                        isSelected ? "bg-teal-500" : "odd:bg-black/[0.04] dark:odd:bg-white/[0.035] hover:bg-[var(--bg-hover)]"
                       } ${isDragging ? "opacity-40" : ""}`}
                       onClick={(e) => selectDocClick(e, d.id)}
                       onDoubleClick={() => setDetailDoc(d)}

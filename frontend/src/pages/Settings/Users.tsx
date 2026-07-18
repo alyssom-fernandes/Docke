@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Users as UsersIcon, UserPlus, X, Shield, RefreshCw, Plus, Folder } from "lucide-react";
+import { Users as UsersIcon, UserPlus, X, Shield, RefreshCw, Plus, Folder, ChevronDown } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import api from "@/lib/api";
@@ -266,6 +266,7 @@ export default function Users() {
   const [addingGrantFor, setAddingGrantFor] = useState<{ id: string; name: string } | null>(null);
   const [removingGrant, setRemovingGrant] = useState<Grant | null>(null);
   const [busy, setBusy] = useState(false);
+  const [rolesOpen, setRolesOpen] = useState(false);
 
   const canManage = user?.role === "supremo" || current?.permission_level === "admin";
 
@@ -309,16 +310,15 @@ export default function Users() {
   }, {});
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-mac-callout font-semibold text-[var(--text-primary)]">Usuários & Papéis</h2>
-        {canManage && current && (
+    <div className="space-y-4">
+      {canManage && current && (
+        <div className="flex justify-end">
           <Button size="sm" onClick={() => setCreating(true)}>
             <UserPlus className="w-3.5 h-3.5" />
             Novo usuário
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Uma única janela de vidro pra usuários + níveis de acesso (antes
           eram dois glass-panel empilhados, lendo como "duas caixas" — mesmo
@@ -379,18 +379,27 @@ export default function Users() {
           </ul>
         )}
 
-        <div className="px-5 py-3 border-t border-b border-[var(--border-default)] flex items-center gap-2">
+        {/* Recolhível — é texto de referência/ajuda, não uma configuração em
+            si, então não deve competir em espaço com a lista de usuários
+            (a razão do pane existir). Fechado por padrão. */}
+        <button
+          onClick={() => setRolesOpen((v) => !v)}
+          className="w-full px-5 py-3 border-t border-[var(--border-default)] flex items-center gap-2 text-left hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+        >
           <Shield className="w-4 h-4 text-teal-500" />
-          <h3 className="text-mac-body font-medium text-[var(--text-primary)]">Níveis de acesso</h3>
-        </div>
-        <ul>
-          {ROLES.map((r) => (
-            <li key={r.role} className="flex items-start gap-4 px-5 py-4 border-b border-[var(--border-default)] last:border-0">
-              <Badge variant={ROLE_VARIANT[r.role] ?? "default"}>{r.label}</Badge>
-              <p className="text-mac-body text-[var(--text-secondary)]">{r.description}</p>
-            </li>
-          ))}
-        </ul>
+          <h3 className="text-mac-body font-medium text-[var(--text-primary)] flex-1">Sobre os níveis de acesso</h3>
+          <ChevronDown className={`w-3.5 h-3.5 text-[var(--text-tertiary)] transition-transform duration-fast ${rolesOpen ? "rotate-180" : ""}`} />
+        </button>
+        {rolesOpen && (
+          <ul className="border-t border-[var(--border-default)]">
+            {ROLES.map((r) => (
+              <li key={r.role} className="flex items-start gap-4 px-5 py-4 border-b border-[var(--border-default)] last:border-0">
+                <Badge variant={ROLE_VARIANT[r.role] ?? "default"}>{r.label}</Badge>
+                <p className="text-mac-body text-[var(--text-secondary)]">{r.description}</p>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {creating && current && (

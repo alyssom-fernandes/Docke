@@ -40,9 +40,7 @@ export default function Security() {
   }
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-mac-callout font-semibold text-[var(--text-primary)]">Segurança</h2>
-
+    <div>
       <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6">
         <form onSubmit={handleSubmit} className="space-y-4 max-w-[400px]">
           <Input

@@ -31,9 +31,7 @@ export default function Profile() {
     // CONTEÚDO interno quando faz sentido; antes o Perfil era a única aba que
     // encolhia e centralizava o cartão inteiro, dando um "salto" de largura
     // ao trocar de aba.
-    <div className="space-y-6">
-      <h2 className="text-mac-callout font-semibold text-[var(--text-primary)]">Perfil</h2>
-
+    <div>
       <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6">
         <div className="max-w-[560px] space-y-6">
           {/* Avatar section */}
@@ -60,12 +58,13 @@ export default function Profile() {
               onChange={(e) => setFullName(e.target.value)}
               placeholder="Seu nome completo"
             />
-            <Input
-              label="Nome de usuário"
-              value={user?.username ?? ""}
-              placeholder="username"
-              disabled
-            />
+            {/* Valor não-editável mostrado como texto simples, não input
+                desabilitado — honesto sobre não aceitar clique/edição (padrão
+                macOS pra campos read-only em formulários de configuração). */}
+            <div className="flex flex-col gap-1">
+              <span className="text-mac-body font-medium text-[var(--text-secondary)]">Nome de usuário</span>
+              <span className="text-mac-body text-[var(--text-primary)]">@{user?.username}</span>
+            </div>
             <div className="flex justify-end">
               <Button type="submit" loading={saving} size="sm">
                 Salvar alterações

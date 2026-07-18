@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Lock, Download, FolderOpen, AlertCircle, ChevronRight } from "lucide-react";
 import { getFileStyle } from "@/lib/fileType";
+import Button from "@/components/ui/Button";
+import Input from "@/components/ui/Input";
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? "http://localhost:8000") + "/api/v1";
 
@@ -25,6 +27,7 @@ export default function PublicShare() {
   const [content, setContent] = useState<ContentState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const [path, setPath] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
@@ -44,6 +47,7 @@ export default function PublicShare() {
   async function fetchContent(folderId: string | null, pwd?: string) {
     setLoading(true);
     setError(null);
+    setPasswordError(null);
     try {
       const qs = folderId ? `?folder_id=${folderId}` : "";
       const r = await fetch(`${API_BASE}/s/${token}/content${qs}`, {
@@ -60,7 +64,13 @@ export default function PublicShare() {
         setPath([]);
       }
     } catch (e: any) {
-      setError(e.message);
+      // Senha errada não pode derrubar a tela pro estado de erro fatal —
+      // isso escondia o formulário pra sempre e o visitante não tinha como
+      // tentar de novo sem recarregar a página inteira. Só vira erro fatal
+      // quando já estamos dentro do conteúdo (ex.: pasta ficou indisponível
+      // durante a navegação).
+      if (content) setError(e.message);
+      else setPasswordError(e.message);
     } finally {
       setLoading(false);
     }
@@ -90,14 +100,32 @@ export default function PublicShare() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center px-4 py-10" style={{ background: "var(--wallpaper)" }}>
-      <div className="w-full max-w-[560px]">
+    <div className="relative min-h-screen overflow-hidden flex flex-col items-center px-4 py-10" style={{ background: "var(--wallpaper)" }}>
+      {/* Mesmo glow em camadas do Login — este link também é "primeiro contato"
+          com a marca pra quem recebe (cliente/parceiro externo sem conta). */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-80 dark:opacity-100 transition-opacity duration-slow"
+        style={{
+          background:
+            "radial-gradient(680px circle at 16% 12%, rgba(13,148,136,0.20), transparent 55%)," +
+            "radial-gradient(620px circle at 84% 82%, rgba(20,184,166,0.16), transparent 55%)," +
+            "radial-gradient(900px circle at 50% 118%, rgba(13,148,136,0.12), transparent 60%)",
+        }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[520px] h-[520px] rounded-full blur-[120px] opacity-50 dark:opacity-30"
+        style={{ background: "radial-gradient(circle, rgba(20,184,166,0.22), transparent 70%)" }}
+      />
+
+      <div className="relative w-full max-w-[560px]">
         <div className="flex items-center justify-center mb-8">
           <div className="brand-wordmark w-[130px] h-[37px]" role="img" aria-label="Docke" />
         </div>
 
-        <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-dialog)] p-6 shadow-modal">
-          {loading && !content && !error && (
+        <div className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] p-6 shadow-modal">
+          {loading && !content && !error && !info?.has_password && (
             <div className="flex justify-center py-10">
               <div className="w-6 h-6 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
             </div>
@@ -119,17 +147,19 @@ export default function PublicShare() {
                 <Lock className="w-6 h-6 text-amber-600 dark:text-amber-400" />
               </div>
               <p className="text-mac-body text-[var(--text-primary)] font-medium">"{info.name}" está protegido por senha</p>
-              <input
+              <Input
                 type="password"
                 autoFocus
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => { setPassword(e.target.value); setPasswordError(null); }}
                 placeholder="Senha"
-                className="w-full h-10 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+                error={passwordError ?? undefined}
+                disabled={loading}
+                className="shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.25)]"
               />
-              <button type="submit" className="w-full h-10 bg-teal-600 text-white text-mac-body font-medium rounded-[var(--radius-control)] hover:bg-teal-500 transition-colors duration-fast">
+              <Button type="submit" loading={loading} className="w-full">
                 Acessar
-              </button>
+              </Button>
             </form>
           )}
 
@@ -147,9 +177,9 @@ export default function PublicShare() {
               <a
                 href={content.preview_url}
                 download={content.name}
-                className="inline-flex items-center gap-1.5 h-9 px-4 bg-teal-600 text-white text-mac-body rounded-[var(--radius-control)] hover:bg-teal-500 transition-colors duration-fast"
+                className="inline-flex items-center gap-1.5 h-8 px-4 bg-teal-600 text-white text-mac-body font-medium rounded-full hover:bg-teal-500 transition-colors duration-fast"
               >
-                <Download className="w-4 h-4" />
+                <Download className="w-3.5 h-3.5" />
                 Baixar
               </a>
             </div>

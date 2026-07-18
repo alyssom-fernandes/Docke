@@ -14,13 +14,13 @@ const LAST_PANE_KEY = "docke_settings_last_pane";
 // (Screen Time, Family etc.): cada item tem uma cor própria, não um ícone
 // monocromático solto. Cores distintas ajudam a reconhecer a seção de relance.
 const TABS = [
-  { to: "/settings/profile", icon: User, label: "Perfil", color: "bg-blue-500", adminOnly: false, supremoOnly: false },
-  { to: "/settings/organization", icon: Building2, label: "Organização", color: "bg-slate-500", adminOnly: true, supremoOnly: false },
-  { to: "/settings/users", icon: UsersIcon, label: "Usuários & Papéis", color: "bg-indigo-500", adminOnly: true, supremoOnly: false },
-  { to: "/settings/metadata", icon: Tags, label: "Metadados", color: "bg-orange-500", adminOnly: true, supremoOnly: false },
-  { to: "/settings/security", icon: Lock, label: "Segurança", color: "bg-red-500", adminOnly: false, supremoOnly: false },
-  { to: "/settings/preferences", icon: Sliders, label: "Preferências", color: "bg-purple-500", adminOnly: false, supremoOnly: false },
-  { to: "/settings/retention", icon: Archive, label: "Retenção", color: "bg-amber-600", adminOnly: false, supremoOnly: true },
+  { to: "/settings/profile", icon: User, label: "Perfil", color: "bg-blue-500", adminOnly: false, supremoOnly: false, group: "Conta" },
+  { to: "/settings/security", icon: Lock, label: "Segurança", color: "bg-red-500", adminOnly: false, supremoOnly: false, group: "Conta" },
+  { to: "/settings/organization", icon: Building2, label: "Organização", color: "bg-slate-500", adminOnly: true, supremoOnly: false, group: "Organização" },
+  { to: "/settings/users", icon: UsersIcon, label: "Usuários & Papéis", color: "bg-indigo-500", adminOnly: true, supremoOnly: false, group: "Organização" },
+  { to: "/settings/metadata", icon: Tags, label: "Metadados", color: "bg-orange-500", adminOnly: true, supremoOnly: false, group: "Organização" },
+  { to: "/settings/retention", icon: Archive, label: "Retenção", color: "bg-amber-600", adminOnly: false, supremoOnly: true, group: "Organização" },
+  { to: "/settings/preferences", icon: Sliders, label: "Preferências", color: "bg-purple-500", adminOnly: false, supremoOnly: false, group: "Aplicativo" },
 ];
 
 function useVisibleTabs() {
@@ -60,6 +60,10 @@ export default function SettingsLayout() {
   useEffect(() => {
     if (!atIndex) localStorage.setItem(LAST_PANE_KEY, location.pathname);
   }, [location.pathname, atIndex]);
+
+  // Nome do pane atual — mostrado uma única vez (na moldura, não duplicado
+  // dentro de cada sub-página) igual ao título de janela do System Settings.
+  const activeTab = TABS.find((t) => location.pathname.startsWith(t.to));
 
   if (!isDesktop) {
     // Mobile: master-detail estilo iOS Settings. A lista (master) e o
@@ -130,9 +134,12 @@ export default function SettingsLayout() {
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
-        {/* Sem título aqui de propósito — cada sub-página já renderiza o
-            próprio <h2> (ex: Profile.tsx "Perfil"), duplicaria o cabeçalho.
-            Conteúdo fica no topo (como no iOS real) — não centraliza. */}
+        {/* Título do pane mora só aqui — as sub-páginas não repetem o nome
+            (evita duplicar "Perfil"/"Segurança" tanto no header quanto no
+            corpo). Conteúdo fica no topo (como no iOS real) — não centraliza. */}
+        {activeTab && (
+          <h2 className="px-1 pb-3 text-mac-title-2 font-bold text-[var(--text-primary)] flex-shrink-0">{activeTab.label}</h2>
+        )}
         <div className="flex-1 min-h-0 overflow-y-auto">
           <Outlet />
         </div>
@@ -164,34 +171,53 @@ export default function SettingsLayout() {
             />
           </div>
         </div>
-        <nav className="flex-1 overflow-y-auto p-1.5 space-y-0.5">
-          {visibleTabs
-            .filter((tab) => tab.label.toLowerCase().includes(sidebarQuery.trim().toLowerCase()))
-            .map((tab) => (
-            <NavLink
-              key={tab.to}
-              to={tab.to}
-              className={({ isActive }) =>
-                // Preenchimento sólido no item selecionado (não um tint sutil)
-                // — igual ao destaque de seleção real do System Settings.
-                `flex items-center gap-2.5 h-9 px-2.5 rounded-[8px] text-mac-body whitespace-nowrap transition-colors duration-fast ${
-                  isActive
-                    ? "bg-teal-500 text-white font-medium"
-                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                }`
-              }
-            >
-              <span className={`w-5 h-5 rounded-[6px] flex items-center justify-center flex-shrink-0 ${tab.color}`}>
-                <tab.icon className="w-3 h-3 text-white" strokeWidth={2.25} />
-              </span>
-              {tab.label}
-            </NavLink>
-          ))}
+        <nav className="flex-1 overflow-y-auto p-1.5">
+          {(() => {
+            const filtered = visibleTabs.filter((tab) => tab.label.toLowerCase().includes(sidebarQuery.trim().toLowerCase()));
+            const groups = Array.from(new Set(filtered.map((t) => t.group)));
+            return groups.map((group, gi) => (
+              <div key={group} className={gi > 0 ? "mt-3" : ""}>
+                {/* Cabeçalho de seção — mesmo estilo caption/uppercase usado
+                    nos agrupamentos da sidebar de pastas (Ancorados/Locais em
+                    Documents.tsx), só que sem disclosure: System Settings
+                    real não recolhe grupos, só separa visualmente. */}
+                <p className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">{group}</p>
+                <div className="space-y-0.5">
+                  {filtered.filter((t) => t.group === group).map((tab) => (
+                    <NavLink
+                      key={tab.to}
+                      to={tab.to}
+                      className={({ isActive }) =>
+                        // Preenchimento sólido no item selecionado (não um tint sutil)
+                        // — igual ao destaque de seleção real do System Settings.
+                        `flex items-center gap-2.5 h-9 px-2.5 rounded-[8px] text-mac-body whitespace-nowrap transition-colors duration-fast ${
+                          isActive
+                            ? "bg-teal-500 text-white font-medium"
+                            : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                        }`
+                      }
+                    >
+                      <span className={`w-5 h-5 rounded-[6px] flex items-center justify-center flex-shrink-0 ${tab.color}`}>
+                        <tab.icon className="w-3 h-3 text-white" strokeWidth={2.25} />
+                      </span>
+                      {tab.label}
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
+            ));
+          })()}
         </nav>
       </aside>
 
       <div className="flex-1 min-w-0 overflow-y-auto p-6">
-        <Outlet />
+        {/* Título do pane mora só aqui, e o conteúdo tem largura máxima —
+            System Settings nunca estica formulários/group boxes pra ocupar
+            uma janela larga inteira, mantém foco e legibilidade. */}
+        <div className="max-w-[720px] space-y-6">
+          {activeTab && <h2 className="text-mac-title3 font-semibold text-[var(--text-primary)]">{activeTab.label}</h2>}
+          <Outlet />
+        </div>
       </div>
     </div>
   );
