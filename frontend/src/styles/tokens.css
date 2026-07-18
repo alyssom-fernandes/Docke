@@ -21,7 +21,13 @@ html, body {
   --bg-card: #FFFFFF;
   --bg-elevated: #FFFFFF;
   --bg-hover: rgba(0,0,0,0.04);
-  --border-default: rgba(0,0,0,0.08);
+  /* 0.08 parecia "ok" isolado, mas contra um card branco puro isso derrete
+     pra uma diferença de luminância de ~8% — quase invisível — enquanto a
+     borda branca do modo escuro em 0.10-0.14 sobre um fundo #282828 dá um
+     salto de ~70%+. Opacidade igual não é contraste igual: precisa ser mais
+     forte no claro pra bater a mesma legibilidade percebida do escuro
+     (mesmo princípio do systemGray4 do macOS/iOS, que também não é sutil). */
+  --border-default: rgba(0,0,0,0.15);
   --text-primary: rgba(0,0,0,0.84);
   --text-secondary: rgba(0,0,0,0.56);
   --text-tertiary: rgba(0,0,0,0.48);
@@ -41,7 +47,7 @@ html, body {
      serem branco crocante e não deixarem vazar o gradiente do fundo. */
   --glass-bg: rgba(255,255,255,0.60);
   --glass-bg-strong: rgba(255,255,255,0.80);
-  --glass-border: rgba(0,0,0,0.08);
+  --glass-border: rgba(0,0,0,0.14);
   --glass-panel-bg: rgba(255,255,255,0.94);
   /* Deslocamento vertical baixo + desfoque maior = sombra ambiente que se espalha
      quase igual em todas as direções (painel "flutuando", não "apoiado embaixo").
@@ -60,7 +66,7 @@ html, body {
                         0 10px 56px rgba(0,0,0,0.13);
   --glass-highlight: linear-gradient(90deg, transparent, rgba(255,255,255,0.90), transparent);
   --glass-fallback-bg: rgba(255,255,255,0.92);
-  --glass-fallback-border: rgba(0,0,0,0.06);
+  --glass-fallback-border: rgba(0,0,0,0.12);
   --teal-bright: #0E9B86;
   --badge-teal-text: #086B61;
 
