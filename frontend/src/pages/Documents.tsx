@@ -845,6 +845,7 @@ export default function Documents() {
   const [contextMenu, setContextMenu] = useState<
     { x: number; y: number; kind: "document"; data: Document } | { x: number; y: number; kind: "folder"; data: Folder } | null
   >(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
   function openContextMenu(e: React.MouseEvent, kind: "document" | "folder", data: Document | Folder) {
     e.preventDefault();
     e.stopPropagation();
@@ -857,7 +858,13 @@ export default function Documents() {
   }
   useEffect(() => {
     if (!contextMenu) return;
-    function close() { setContextMenu(null); }
+    // Fecha só em mousedown FORA do menu — sem o containment check, qualquer
+    // clique num item (Renomear, Excluir, etc.) fechava o menu no mousedown,
+    // antes do click do próprio item disparar, engolindo a ação inteira.
+    function close(e: Event) {
+      if (contextMenuRef.current && e.target instanceof Node && contextMenuRef.current.contains(e.target)) return;
+      setContextMenu(null);
+    }
     function closeOnEscape(e: KeyboardEvent) { if (e.key === "Escape") setContextMenu(null); }
     document.addEventListener("mousedown", close);
     document.addEventListener("scroll", close, true);
@@ -2538,6 +2545,7 @@ export default function Documents() {
       {contextMenu && (
         <Portal>
           <div
+            ref={contextMenuRef}
             className="glass-panel glass-blur-strong fixed rounded-[var(--radius-popover)] shadow-dropdown py-1 z-50 w-[200px]"
             style={{ top: contextMenu.y, left: contextMenu.x }}
             onClick={(e) => e.stopPropagation()}
