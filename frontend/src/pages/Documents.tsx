@@ -509,7 +509,7 @@ function CreateFolderModal({ parentId, companyId, onClose, onDone }: { parentId:
 // Metadados personalizados (ADENDO-08 M-G): campos resolvidos pra pasta do
 // documento, com formulário dinâmico por tipo. Some da tela se a pasta não
 // tem nenhum campo aplicado — não polui Detalhes pra quem não usa a feature.
-function MetadataSection({ doc, companyId }: { doc: Document; companyId: string }) {
+function MetadataSection({ doc, companyId, onChanged }: { doc: Document; companyId: string; onChanged: () => void }) {
   const { success, error: showError } = useToast();
   const [fields, setFields] = useState<ResolvedField[]>([]);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -540,6 +540,10 @@ function MetadataSection({ doc, companyId }: { doc: Document; companyId: string 
         .map((f) => ({ custom_field_id: f.custom_field_id, value: values[f.custom_field_id].trim() }));
       await api.put(`/documents/${doc.id}/field-values`, body, { params: { company_id: companyId } });
       success("Metadados salvos.");
+      // Sem isso a coluna de metadado na tabela ficava com o valor antigo até
+      // recarregar a página inteira — o fetch em lote de fieldValues só refaz
+      // quando a referência de `documents` muda (ver efeito na Documents()).
+      onChanged();
     } catch (e: any) {
       showError(e?.response?.data?.detail ?? "Erro ao salvar metadados.");
     } finally {
@@ -703,7 +707,7 @@ function DetailDrawer({ doc, companyId, onClose, onFavorite, onPreview, onDelete
           </button>
         </div>
 
-        <MetadataSection doc={doc} companyId={companyId} />
+        <MetadataSection doc={doc} companyId={companyId} onChanged={onChanged} />
 
         <VersionsPanel documentId={doc.id} documentName={doc.name} onChanged={onChanged} />
       </div>

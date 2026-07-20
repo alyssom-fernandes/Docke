@@ -27,19 +27,28 @@ class CompaniesService:
 
     @staticmethod
     async def list_companies(conn: asyncpg.Connection) -> list[asyncpg.Record]:
+        """Empresas às quais o usuário tem QUALQUER acesso — inclusive só uma
+        concessão escopada por pasta (folder_path IS NOT NULL). Filtrar por
+        folder_path IS NULL aqui (como em user_manages_company, que é sobre
+        administrar a empresa, não sobre enxergá-la) deixava usuários com
+        acesso restrito a uma pasta sem nenhuma empresa na lista — travados
+        no onboarding de "criar organização" mesmo já tendo acesso concedido."""
         return await conn.fetch(
             """
-            SELECT
-              c.id::text,
-              c.name,
-              c.created_at,
-              uca.permission_level
-            FROM public.companies c
-            JOIN public.user_company_access uca
-              ON uca.company_id = c.id
-             AND uca.user_id    = auth.uid()
-             AND uca.folder_path IS NULL
-            ORDER BY c.name
+            SELECT id, name, created_at, permission_level FROM (
+              SELECT DISTINCT ON (c.id)
+                c.id::text AS id, c.name, c.created_at, uca.permission_level
+              FROM public.companies c
+              JOIN public.user_company_access uca
+                ON uca.company_id = c.id
+               AND uca.user_id    = auth.uid()
+              ORDER BY c.id,
+                CASE uca.permission_level
+                  WHEN 'admin' THEN 3 WHEN 'operador' THEN 2 ELSE 1
+                END DESC,
+                uca.folder_path NULLS FIRST
+            ) sub
+            ORDER BY name
             """
         )
 
