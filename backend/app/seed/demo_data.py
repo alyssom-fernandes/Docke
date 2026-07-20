@@ -513,6 +513,25 @@ async def _build_demo_data(
                 demo_user_id,
                 created_at,
             )
+
+            # Versão 1 do histórico (ADR-024/029) — sem isso a aba "Versões"
+            # fica vazia e um futuro "Enviar nova versão" seria rotulado
+            # incorretamente como "Versão 1" (mesmo bug real corrigido em
+            # confirm_upload_transaction, ver documents_service.py).
+            version_id = await conn.fetchval(
+                """
+                INSERT INTO public.document_versions
+                    (document_id, version_number, storage_key, size_bytes, mime_type, ocr_text, ocr_status, uploaded_by, created_at)
+                VALUES
+                    ($1::uuid, 1, $2, $3, $4, $5, $6, $7::uuid, $8)
+                RETURNING id
+                """,
+                doc_id, storage_key, size, mime_type, ocr_text, ocr_status, demo_user_id, created_at,
+            )
+            await conn.execute(
+                "UPDATE public.documents SET current_version_id = $2 WHERE id = $1",
+                doc_id, version_id,
+            )
             docs_created.append((doc_id, doc_name))
 
         # ---------------------------------------------------------------

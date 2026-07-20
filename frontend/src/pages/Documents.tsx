@@ -1203,6 +1203,12 @@ export default function Documents() {
   // Checkboxes ficam ocultos por padrão (poluem a tabela pra quem só navega);
   // o botão "Selecionar" na toolbar liga o modo de seleção em massa.
   const [selectionMode, setSelectionMode] = useState(false);
+  // Sair do modo de seleção precisa limpar `selected` — sem isso a barra
+  // flutuante "N selecionado(s) / Excluir" continuava ativa e clicável (e a
+  // linha ficava destacada) mesmo sem checkboxes visíveis na tabela.
+  useEffect(() => {
+    if (!selectionMode) setSelected(new Set());
+  }, [selectionMode]);
   const [toolbarMenuOpen, setToolbarMenuOpen] = useState(false);
   const toolbarMenuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {

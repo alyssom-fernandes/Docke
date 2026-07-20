@@ -119,7 +119,10 @@ class DocumentsService:
     async def confirm_upload_transaction(
         admin_conn: asyncpg.Connection, *, document_id: UUID, content_hash: str, user_id: str,
     ) -> asyncpg.Record:
-        """Atualiza hash, cria ocr_job e registra activity_log numa única transação (R3)."""
+        """Atualiza hash, cria ocr_job, registra activity_log e cria a versão 1 do
+        histórico (ADR-024/029) — sem isso, o upload original nunca aparece em
+        /versions e um re-upload posterior via "Enviar nova versão" seria
+        rotulado incorretamente como "Versão 1", numa única transação (R3)."""
         async with admin_conn.transaction():
             row = await admin_conn.fetchrow(
                 """
@@ -127,13 +130,26 @@ class DocumentsService:
                 SET content_hash = $2, updated_at = now()
                 WHERE id = $1
                 RETURNING id::text, name, folder_id, company_id, storage_path, content_hash,
-                          size_bytes, ocr_status, created_at, updated_at
+                          size_bytes, ocr_status, mime_type, created_at, updated_at
                 """,
                 document_id, content_hash,
             )
             await admin_conn.execute(
                 "INSERT INTO public.ocr_jobs (document_id, status) VALUES ($1, 'pending')",
                 document_id,
+            )
+            version_id = await admin_conn.fetchval(
+                """
+                INSERT INTO public.document_versions
+                  (document_id, version_number, storage_key, size_bytes, mime_type, uploaded_by)
+                VALUES ($1, 1, $2, $3, $4, $5)
+                RETURNING id
+                """,
+                document_id, row["storage_path"], row["size_bytes"], row["mime_type"], user_id,
+            )
+            await admin_conn.execute(
+                "UPDATE public.documents SET current_version_id = $2 WHERE id = $1",
+                document_id, version_id,
             )
             await admin_conn.execute(
                 """
