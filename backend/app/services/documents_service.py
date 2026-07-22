@@ -378,6 +378,19 @@ class DocumentsService:
         )
 
     @staticmethod
+    async def get_ocr_status_batch(conn: asyncpg.Connection, document_ids: list[UUID]) -> list[asyncpg.Record]:
+        """Status de OCR de um lote de documentos — usado pelo Task Center pra
+        acompanhar o pipeline upload → OCR → indexado sem recarregar a pasta inteira."""
+        return await conn.fetch(
+            """
+            SELECT id::text, ocr_status
+            FROM public.documents
+            WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
+            """,
+            document_ids,
+        )
+
+    @staticmethod
     async def list_by_folder(conn: asyncpg.Connection, folder_id: UUID, company_id: UUID) -> list[asyncpg.Record]:
         return await conn.fetch(
             """

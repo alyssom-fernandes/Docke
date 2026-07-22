@@ -39,6 +39,7 @@ import {
   Copy,
 } from "lucide-react";
 import api from "@/lib/api";
+import { useTaskCenter } from "@/lib/TaskContext";
 import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
 import { useNavigation } from "@/lib/NavigationContext";
@@ -295,8 +296,50 @@ async function walkEntry(entry: any, currentPath: string, collected: PendingFile
   }
 }
 
+// Acompanha o OCR de um lote recém-enviado por polling, atualizando cada
+// tarefa no Task Center até todas saírem de pending/processing (ou até um
+// teto de tentativas, pra não ficar girando pra sempre se algo travar).
+function pollOcrStatus(items: { documentId: string; taskId: string; fileName: string }[], updateTask: ReturnType<typeof useTaskCenter>["updateTask"]) {
+  const MAX_ATTEMPTS = 20; // ~60s a 3s por tentativa
+  let attempts = 0;
+  const pending = new Map(items.map((i) => [i.documentId, i]));
+
+  const tick = async () => {
+    if (pending.size === 0 || attempts >= MAX_ATTEMPTS) {
+      // o que sobrar sem resolução (timeout) fica marcado como concluído sem
+      // mais detalhes — o ícone de OCR na tabela é a fonte de verdade real.
+      for (const { taskId, fileName } of pending.values()) updateTask(taskId, { status: "done", label: fileName });
+      return;
+    }
+    attempts++;
+    try {
+      const { data } = await api.get<{ id: string; ocr_status: string }[]>("/documents/ocr-status", {
+        params: { document_ids: Array.from(pending.keys()).join(",") },
+      });
+      for (const row of data) {
+        const item = pending.get(row.id);
+        if (!item) continue;
+        if (row.ocr_status === "done") {
+          updateTask(item.taskId, { status: "done", label: `${item.fileName} · disponível na busca` });
+          pending.delete(row.id);
+        } else if (row.ocr_status === "failed") {
+          updateTask(item.taskId, { status: "failed", error: `${item.fileName}: falha ao extrair texto (OCR).` });
+          pending.delete(row.id);
+        } else {
+          updateTask(item.taskId, { label: `${item.fileName} · extraindo texto…` });
+        }
+      }
+    } catch {
+      // erro de rede na sondagem não derruba a tarefa — só tenta de novo no próximo tick
+    }
+    if (pending.size > 0) setTimeout(tick, 3000);
+  };
+  setTimeout(tick, 3000);
+}
+
 function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: string | null; companyId: string; onClose: () => void; onDone: () => void }) {
   const { success, error: showError } = useToast();
+  const { addTask, updateTask } = useTaskCenter();
   const [pending, setPending] = useState<PendingFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
@@ -348,32 +391,43 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
     setUploading(true);
     setProgress({ done: 0, total: pending.length });
     const folderCache = new Map<string, string>([["", folderId]]);
+    const uploaded: { documentId: string; taskId: string; fileName: string }[] = [];
     try {
       for (const { file, relativePath } of pending) {
-        const targetFolderId = await resolveFolderId(relativePath, folderCache);
+        const displayName = relativePath ? `${relativePath}/${file.name}` : file.name;
+        const taskId = addTask({ kind: "upload", label: displayName, status: "running" });
+        try {
+          const targetFolderId = await resolveFolderId(relativePath, folderCache);
 
-        // Etapa 1: solicitar URL de upload pré-assinada
-        const { data } = await api.post("/documents/upload-url", {
-          folder_id: targetFolderId,
-          company_id: companyId,
-          name: file.name,
-          size_bytes: file.size,
-          content_type: file.type || "application/octet-stream",
-        });
+          // Etapa 1: solicitar URL de upload pré-assinada
+          const { data } = await api.post("/documents/upload-url", {
+            folder_id: targetFolderId,
+            company_id: companyId,
+            name: file.name,
+            size_bytes: file.size,
+            content_type: file.type || "application/octet-stream",
+          });
 
-        // Etapa 2: fazer PUT direto no storage (R2 ou mock)
-        const putResp = await fetch(data.upload_url, {
-          method: "PUT",
-          body: file,
-          headers: { "Content-Type": file.type || "application/octet-stream" },
-        });
-        if (!putResp.ok) throw new Error(`Storage PUT falhou: ${putResp.status}`);
+          // Etapa 2: fazer PUT direto no storage (R2 ou mock)
+          const putResp = await fetch(data.upload_url, {
+            method: "PUT",
+            body: file,
+            headers: { "Content-Type": file.type || "application/octet-stream" },
+          });
+          if (!putResp.ok) throw new Error(`Storage PUT falhou: ${putResp.status}`);
 
-        // Etapa 3: confirmar upload e disparar OCR
-        await api.post(`/documents/${data.document_id}/confirm`);
+          // Etapa 3: confirmar upload e disparar OCR
+          await api.post(`/documents/${data.document_id}/confirm`);
+          updateTask(taskId, { label: `${displayName} · extraindo texto…` });
+          uploaded.push({ documentId: data.document_id, taskId, fileName: displayName });
+        } catch (fileErr: any) {
+          updateTask(taskId, { status: "failed", error: fileErr?.response?.data?.detail ?? fileErr?.message ?? "Falha no upload." });
+          throw fileErr;
+        }
 
         setProgress((p) => ({ ...p, done: p.done + 1 }));
       }
+      if (uploaded.length) pollOcrStatus(uploaded, updateTask);
       success(`${pending.length} arquivo${pending.length > 1 ? "s" : ""} enviado${pending.length > 1 ? "s" : ""}.`);
       onDone();
       onClose();

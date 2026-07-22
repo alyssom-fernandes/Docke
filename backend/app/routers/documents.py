@@ -558,6 +558,20 @@ async def get_xml_fields(
 # DEVE vir antes de GET "" para FastAPI não confundir "recent" como document_id
 # ---------------------------------------------------------------------------
 
+@router.get("/ocr-status")
+async def get_documents_ocr_status(
+    document_ids: str = Query(..., description="IDs separados por vírgula"),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """Status de OCR de um lote de documentos — usado pelo Task Center pra
+    acompanhar upload → extração → indexação sem recarregar a pasta inteira."""
+    ids = [UUID(x) for x in document_ids.split(",") if x.strip()]
+    if not ids:
+        return []
+    rows = await DocumentsService.get_ocr_status_batch(conn, ids)
+    return [dict(r) for r in rows]
+
+
 @router.get("/recent")
 async def list_recent_documents(
     company_id: UUID = Query(...),
