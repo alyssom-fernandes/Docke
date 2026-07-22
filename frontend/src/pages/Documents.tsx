@@ -56,6 +56,8 @@ import ShareModal from "@/components/documents/ShareModal";
 import CopyStructureModal from "@/components/documents/CopyStructureModal";
 import FolderTree from "@/components/documents/FolderTree";
 import Portal from "@/components/ui/Portal";
+import { SkeletonTableRow, SkeletonGridItem } from "@/components/shared/Skeleton";
+import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -823,6 +825,9 @@ export default function Documents() {
   }
 
   const [loading, setLoading] = useState(true);
+  // Regra dos 200ms: só mostra skeleton se a carga passar de 200ms, e uma vez
+  // visível fica pelo menos 500ms — evita o "flicker" em resposta de cache quente.
+  const showSkeleton = useDelayedLoading(loading);
   // Seções da sidebar recolhíveis (Ancorados/Locais) — o Finder real deixa
   // cada grupo com um chevron de disclosure independente, a sidebar do Docke
   // até agora era estática (sem essa possibilidade).
@@ -1899,11 +1904,28 @@ export default function Documents() {
           onMouseDown={handleBodyMouseDown}
         >
           {loading ? (
-            <div className="p-6 space-y-2">
-              {[0, 1, 2, 3].map((i) => (
-                <div key={i} className="h-11 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] animate-pulse" />
-              ))}
-            </div>
+            // Abaixo de 200ms não mostra nada (regra dos 200ms) — só depois
+            // disso o skeleton aparece, já na forma exata do que vai substituir.
+            showSkeleton ? (
+              viewMode === "grid" ? (
+                <div className="p-4 grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-1">
+                  {Array.from({ length: 12 }).map((_, i) => <SkeletonGridItem key={i} />)}
+                </div>
+              ) : (
+                <table className={`w-full table-auto sm:table-fixed select-none ${density === "compact" ? "[&_td]:!py-1" : "[&_td]:!py-1.5"}`}>
+                  <tbody>
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <SkeletonTableRow
+                        key={i}
+                        selectionMode={selectionMode}
+                        customFieldCount={resolvedFields.length}
+                        compact={density === "compact"}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              )
+            ) : null
           ) : items.length === 0 ? (
             <div className="flex items-center justify-center h-full">
               {filterQ ? (
