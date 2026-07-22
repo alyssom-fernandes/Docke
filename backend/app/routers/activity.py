@@ -5,7 +5,7 @@ from uuid import UUID
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
-from app.dependencies import get_current_user, get_db, get_db_admin
+from app.dependencies import get_app_role, get_current_user, get_db, get_db_admin
 from app.services.activity_service import ActivityService, REVERSIBLE_ACTIONS
 
 router = APIRouter(prefix="/activity", tags=["activity"])
@@ -86,6 +86,32 @@ async def export_activity_csv(
             "Content-Length": str(len(csv_bytes)),
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /activity/verify-integrity — recalcula a cadeia de hash e aponta onde
+# quebrou, se quebrou (Fase 2.9). Só admin/supremo — é uma ferramenta de
+# auditoria, não algo que qualquer membro da empresa precisa ver.
+# ---------------------------------------------------------------------------
+
+@router.get("/verify-integrity")
+async def verify_activity_integrity(
+    company_id: UUID = Query(...),
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    role = await get_app_role(conn, claims)
+    if role not in ("admin", "supremo"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Só administradores podem verificar a integridade da trilha de auditoria.")
+
+    rows = await ActivityService.verify_chain(conn, company_id=company_id)
+    broken = [dict(r) for r in rows if not r["ok"]]
+    return {
+        "total_events": len(rows),
+        "intact": len(broken) == 0,
+        "broken_count": len(broken),
+        "first_broken": broken[0] if broken else None,
+    }
 
 
 # ---------------------------------------------------------------------------

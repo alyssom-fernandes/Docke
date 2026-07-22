@@ -170,6 +170,15 @@ class ActivityService:
         return buf.getvalue().encode("utf-8-sig")  # BOM para Excel abrir corretamente
 
     @staticmethod
+    async def verify_chain(conn: asyncpg.Connection, *, company_id: UUID) -> list[asyncpg.Record]:
+        """Recalcula a cadeia de hash HMAC de uma empresa (função SQL SECURITY
+        DEFINER — a chave nunca passa pelo Python)."""
+        return await conn.fetch(
+            "SELECT event_id, event_created_at, ok, reason FROM public.activity_log_verify_chain($1)",
+            company_id,
+        )
+
+    @staticmethod
     async def get_event(conn: asyncpg.Connection, event_id: UUID) -> asyncpg.Record | None:
         return await conn.fetchrow(
             """
