@@ -511,12 +511,29 @@ function CreateFolderModal({ parentId, companyId, onClose, onDone }: { parentId:
 // Metadados personalizados (ADENDO-08 M-G): campos resolvidos pra pasta do
 // documento, com formulário dinâmico por tipo. Some da tela se a pasta não
 // tem nenhum campo aplicado — não polui Detalhes pra quem não usa a feature.
+type FieldSaveStatus = "idle" | "saving" | "saved" | "error";
+
+function FieldStatusIndicator({ status }: { status: FieldSaveStatus }) {
+  if (status === "idle") return null;
+  if (status === "saving") {
+    return <span className="text-mac-caption2 text-[var(--text-tertiary)] flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full border-2 border-current border-t-transparent animate-spin" />salvando…</span>;
+  }
+  if (status === "error") {
+    return <span className="text-mac-caption2 text-red-500">não foi possível salvar</span>;
+  }
+  return <span className="text-mac-caption2 text-teal-600 dark:text-teal-400">✓ salvo</span>;
+}
+
 function MetadataSection({ doc, companyId, onChanged }: { doc: Document; companyId: string; onChanged: () => void }) {
-  const { success, error: showError } = useToast();
+  const { error: showError } = useToast();
   const [fields, setFields] = useState<ResolvedField[]>([]);
   const [values, setValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  // Autosave por campo (Fase 1.5): cada campo tem seu próprio status —
+  // idle/saving/saved/error — em vez de um botão único "Salvar metadados".
+  const [fieldStatus, setFieldStatus] = useState<Record<string, FieldSaveStatus>>({});
+  const debounceRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const savedFlashRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
     if (!doc.folder_id) { setFields([]); setLoading(false); return; }
@@ -529,42 +546,69 @@ function MetadataSection({ doc, companyId, onChanged }: { doc: Document; company
       const vmap: Record<string, string> = {};
       for (const row of Array.isArray(vRes.data) ? vRes.data : []) vmap[row.custom_field_id] = row.value_text;
       setValues(vmap);
+      setFieldStatus({});
     }).catch(() => { setFields([]); setValues({}); }).finally(() => setLoading(false));
   }, [doc.id, doc.folder_id, companyId]);
 
-  if (loading || fields.length === 0) return null;
+  // Limpa todos os timers pendentes ao desmontar (troca de documento, fecha modal).
+  useEffect(() => () => {
+    Object.values(debounceRefs.current).forEach(clearTimeout);
+    Object.values(savedFlashRefs.current).forEach(clearTimeout);
+  }, []);
 
-  async function save() {
-    setSaving(true);
+  async function saveField(fieldId: string, rawValue: string) {
+    const trimmed = rawValue.trim();
+    // Campos tipados (CPF/CNPJ/data/competência) dão 400 se vazios no backend
+    // — mesma regra que o botão antigo já respeitava: campo esvaziado não
+    // dispara chamada nenhuma (não existe "limpar" campo hoje, é limitação
+    // pré-existente, fora do escopo do autosave).
+    if (!trimmed) { setFieldStatus((s) => ({ ...s, [fieldId]: "idle" })); return; }
+
+    setFieldStatus((s) => ({ ...s, [fieldId]: "saving" }));
     try {
-      const body = fields
-        .filter((f) => (values[f.custom_field_id] ?? "").trim())
-        .map((f) => ({ custom_field_id: f.custom_field_id, value: values[f.custom_field_id].trim() }));
-      await api.put(`/documents/${doc.id}/field-values`, body, { params: { company_id: companyId } });
-      success("Metadados salvos.");
-      // Sem isso a coluna de metadado na tabela ficava com o valor antigo até
-      // recarregar a página inteira — o fetch em lote de fieldValues só refaz
-      // quando a referência de `documents` muda (ver efeito na Documents()).
+      await api.put(
+        `/documents/${doc.id}/field-values`,
+        [{ custom_field_id: fieldId, value: trimmed }],
+        { params: { company_id: companyId } },
+      );
+      setFieldStatus((s) => ({ ...s, [fieldId]: "saved" }));
       onChanged();
+      // "✓ salvo" também é transitório — volta a idle depois de um tempo,
+      // senão o indicador fica preso permanentemente no campo.
+      if (savedFlashRefs.current[fieldId]) clearTimeout(savedFlashRefs.current[fieldId]);
+      savedFlashRefs.current[fieldId] = setTimeout(() => {
+        setFieldStatus((s) => (s[fieldId] === "saved" ? { ...s, [fieldId]: "idle" } : s));
+      }, 3000);
     } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Erro ao salvar metadados.");
-    } finally {
-      setSaving(false);
+      setFieldStatus((s) => ({ ...s, [fieldId]: "error" }));
+      showError(e?.response?.data?.detail ?? `Não foi possível salvar "${fields.find((f) => f.custom_field_id === fieldId)?.label ?? "campo"}".`);
     }
   }
+
+  function handleFieldChange(fieldId: string, value: string) {
+    setValues((v) => ({ ...v, [fieldId]: value }));
+    setFieldStatus((s) => ({ ...s, [fieldId]: "idle" })); // sai do "salvo"/"erro" assim que volta a digitar
+    if (debounceRefs.current[fieldId]) clearTimeout(debounceRefs.current[fieldId]);
+    debounceRefs.current[fieldId] = setTimeout(() => saveField(fieldId, value), 900);
+  }
+
+  if (loading || fields.length === 0) return null;
 
   return (
     <div className="pt-2 border-t border-[var(--border-default)] space-y-3">
       <p className="text-mac-body font-semibold text-[var(--text-secondary)]">Metadados</p>
       {fields.map((f) => (
         <div key={f.custom_field_id}>
-          <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1">
-            {f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}
-          </label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-mac-caption font-medium text-[var(--text-secondary)]">
+              {f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}
+            </label>
+            <FieldStatusIndicator status={fieldStatus[f.custom_field_id] ?? "idle"} />
+          </div>
           {f.type === "selecao" ? (
             <Dropdown
               value={values[f.custom_field_id] ?? ""}
-              onChange={(v) => setValues((prev) => ({ ...prev, [f.custom_field_id]: v }))}
+              onChange={(v) => { handleFieldChange(f.custom_field_id, v); saveField(f.custom_field_id, v); }}
               placeholder="—"
               options={((f.format_config?.options as string[]) ?? []).map((o) => ({ value: o, label: o }))}
             />
@@ -572,7 +616,13 @@ function MetadataSection({ doc, companyId, onChanged }: { doc: Document; company
             <input
               type="text"
               value={values[f.custom_field_id] ?? ""}
-              onChange={(e) => setValues((v) => ({ ...v, [f.custom_field_id]: e.target.value }))}
+              onChange={(e) => handleFieldChange(f.custom_field_id, e.target.value)}
+              onBlur={(e) => {
+                // Sair do campo confirma na hora em vez de esperar o debounce —
+                // não faz sentido a pessoa trocar de campo e ficar esperando.
+                if (debounceRefs.current[f.custom_field_id]) clearTimeout(debounceRefs.current[f.custom_field_id]);
+                saveField(f.custom_field_id, e.target.value);
+              }}
               placeholder={
                 f.type === "cpf" ? "000.000.000-00" :
                 f.type === "cnpj" ? "00.000.000/0000-00" :
@@ -585,7 +635,6 @@ function MetadataSection({ doc, companyId, onChanged }: { doc: Document; company
           )}
         </div>
       ))}
-      <Button size="sm" loading={saving} onClick={save} className="w-full">Salvar metadados</Button>
     </div>
   );
 }
