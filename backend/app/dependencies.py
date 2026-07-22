@@ -6,11 +6,12 @@ get_db_admin — conexão como superuser (bypassa RLS) para jobs administrativos
 get_current_user — valida JWT e retorna claims do usuário.
 """
 import json
+import uuid
 from typing import AsyncGenerator, Any
 
 import asyncpg
 import httpx
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 
@@ -152,7 +153,14 @@ async def get_current_user(
     return _decode_jwt(credentials.credentials)
 
 
+def _client_ip(request: Request) -> str:
+    """IP real do cliente — mesma lógica de rate_limit.client_ip_hash, mas sem
+    hashear: aqui é pra auditoria (activity_log.ip), não chave de rate-limit."""
+    return request.headers.get("fly-client-ip") or (request.client.host if request.client else "unknown")
+
+
 async def get_db(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
 ) -> AsyncGenerator[asyncpg.Connection, None]:
     """
@@ -175,18 +183,53 @@ async def get_db(
             )
             # Troca o role para que o RLS se aplique (LOCAL = apenas nesta transação)
             await conn.execute("SET LOCAL role TO authenticated")
+
+            # Fase 2.2: contexto da requisição pra activity_log — nenhum service
+            # precisa saber disso, o trigger de INSERT lê daqui sozinho
+            # (current_setting). correlation_id é o do header, se o chamador
+            # já estiver encadeando uma operação maior; senão, é o próprio
+            # request_id (a requisição é sua própria correlação raiz).
+            request_id = str(uuid.uuid4())
+            correlation_id = request.headers.get("x-correlation-id") or request_id
+            await conn.execute("SELECT set_config('request.id', $1, true)", request_id)
+            await conn.execute("SELECT set_config('request.correlation_id', $1, true)", correlation_id)
+            await conn.execute("SELECT set_config('request.ip', $1, true)", _client_ip(request))
+            await conn.execute("SELECT set_config('request.user_agent', $1, true)", request.headers.get("user-agent") or "")
+
             yield conn
 
 
-async def get_db_admin() -> AsyncGenerator[asyncpg.Connection, None]:
+async def get_db_admin(request: Request) -> AsyncGenerator[asyncpg.Connection, None]:
     """
     Conexão asyncpg como superuser (postgres).
     Bypassa RLS — use apenas para jobs do worker OCR e admin.
     Invariante I4: nunca exponha esta connection em rotas do usuário.
+
+    Só é chamada via Depends() em rotas HTTP (workers usam _admin_pool
+    diretamente, sem passar por esta função) — Request sempre existe aqui.
+
+    Diferente de get_db, NÃO envolve isso numa transaction — várias rotas
+    admin dependem do comportamento autocommit-por-statement de hoje, e
+    mudar isso é um refactor à parte. Por isso o set_config aqui é
+    session-scoped (false, não LOCAL) e precisa de limpeza manual no finally
+    — senão o contexto desta requisição vazaria pra próxima que reusar esta
+    mesma conexão do pool.
     """
     pool = _require_pool()
     async with pool.acquire() as conn:
-        yield conn
+        request_id = str(uuid.uuid4())
+        correlation_id = request.headers.get("x-correlation-id") or request_id
+        await conn.execute("SELECT set_config('request.id', $1, false)", request_id)
+        await conn.execute("SELECT set_config('request.correlation_id', $1, false)", correlation_id)
+        await conn.execute("SELECT set_config('request.ip', $1, false)", _client_ip(request))
+        await conn.execute("SELECT set_config('request.user_agent', $1, false)", request.headers.get("user-agent") or "")
+        try:
+            yield conn
+        finally:
+            await conn.execute("SELECT set_config('request.id', '', false)")
+            await conn.execute("SELECT set_config('request.correlation_id', '', false)")
+            await conn.execute("SELECT set_config('request.ip', '', false)")
+            await conn.execute("SELECT set_config('request.user_agent', '', false)")
 
 
 async def get_app_role(conn: asyncpg.Connection, claims: dict[str, Any]) -> str:
