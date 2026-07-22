@@ -2245,8 +2245,8 @@ export default function Documents() {
                 <col style={{ width: colWidths.name }} />
                 <col className="hidden sm:table-column" style={{ width: colWidths.created }} />
                 <col className="hidden sm:table-column" style={{ width: colWidths.size }} />
-                <col className="hidden sm:table-column" style={{ width: colWidths.ocr }} />
                 <col className="hidden md:table-column" style={{ width: colWidths.kind }} />
+                <col className="hidden sm:table-column" style={{ width: colWidths.ocr }} />
                 {resolvedFields.map((f) => (
                   <col key={f.custom_field_id} className="hidden sm:table-column" style={{ width: f.column_width ?? 130 }} />
                 ))}
@@ -2273,8 +2273,9 @@ export default function Documents() {
                     onResizeStart={(e) => startColResize("name", e)}
                     onResizeReset={() => resetColWidth("name")}
                   />
-                  {/* Ordem das colunas espelha o Finder: Nome, Modificado, Tamanho, Tipo —
-                      OCR é a única coluna sem equivalente, encaixada entre Tamanho e Tipo. */}
+                  {/* Ordem das colunas (regra da pesquisa): nome/tipo/data primeiro — o que
+                      identifica o arquivo — badges de status (OCR, e futuramente
+                      retenção/compartilhamento) sempre por último, nunca bloqueando o nome. */}
                   <SortableHeader
                     label="Criado em" sortKey="created_at" sort={sort} onSort={toggleSort}
                     className="hidden sm:table-cell"
@@ -2288,19 +2289,19 @@ export default function Documents() {
                     onResizeStart={(e) => startColResize("size", e)}
                     onResizeReset={() => resetColWidth("size")}
                   />
-                  <th className="relative px-3 py-2 text-mac-caption font-normal text-[var(--text-secondary)] text-left hidden sm:table-cell">
-                    OCR
-                    <div
-                      onMouseDown={(e) => startColResize("ocr", e)}
-                      onDoubleClick={() => resetColWidth("ocr")}
-                      className="absolute top-0 right-0 h-full w-2 cursor-col-resize select-none hover:bg-teal-400/40 active:bg-teal-400/60"
-                    />
-                  </th>
                   <th className="relative px-3 py-2 text-mac-caption font-normal text-[var(--text-secondary)] text-left hidden md:table-cell">
                     Tipo
                     <div
                       onMouseDown={(e) => startColResize("kind", e)}
                       onDoubleClick={() => resetColWidth("kind")}
+                      className="absolute top-0 right-0 h-full w-2 cursor-col-resize select-none hover:bg-teal-400/40 active:bg-teal-400/60"
+                    />
+                  </th>
+                  <th className="relative px-3 py-2 text-mac-caption font-normal text-[var(--text-secondary)] text-left hidden sm:table-cell">
+                    OCR
+                    <div
+                      onMouseDown={(e) => startColResize("ocr", e)}
+                      onDoubleClick={() => resetColWidth("ocr")}
                       className="absolute top-0 right-0 h-full w-2 cursor-col-resize select-none hover:bg-teal-400/40 active:bg-teal-400/60"
                     />
                   </th>
@@ -2443,8 +2444,8 @@ export default function Documents() {
                           </td>
                           <td className="px-3 py-2 text-mac-caption text-[var(--text-tertiary)] hidden sm:table-cell">—</td>
                           <td className="px-3 py-2 text-mac-caption text-[var(--text-tertiary)] text-right hidden sm:table-cell">—</td>
-                          <td className="px-3 py-2 hidden sm:table-cell" />
                           <td className="px-3 py-2 text-mac-caption text-[var(--text-tertiary)] hidden md:table-cell">Pasta</td>
+                          <td className="px-3 py-2 hidden sm:table-cell" />
                           {resolvedFields.map((rf) => <td key={rf.custom_field_id} className="hidden sm:table-cell" />)}
                           <td />
                         </tr>
@@ -2467,8 +2468,8 @@ export default function Documents() {
                             </td>
                             <td className="px-3 py-2 text-mac-caption text-[var(--text-tertiary)] hidden sm:table-cell">{fmtDate(nd.created_at)}</td>
                             <td className="px-3 py-2 text-mac-caption text-[var(--text-tertiary)] text-right hidden sm:table-cell">{fmtSize(nd.size_bytes)}</td>
-                            <td className="px-3 py-2 hidden sm:table-cell"><OcrIcon status={nd.ocr_status} /></td>
                             <td className="px-3 py-2 text-mac-caption text-[var(--text-tertiary)] hidden md:table-cell">{kindLabel(nd.name)}</td>
+                            <td className="px-3 py-2 hidden sm:table-cell"><OcrIcon status={nd.ocr_status} /></td>
                             {resolvedFields.map((rf) => <td key={rf.custom_field_id} className="hidden sm:table-cell" />)}
                             <td />
                           </tr>
@@ -2556,8 +2557,8 @@ export default function Documents() {
                       </td>
                       <td className={`px-3 py-2 text-mac-caption hidden sm:table-cell ${isSelected ? "text-white/80" : "text-[var(--text-tertiary)]"}`}>{fmtDate(d.created_at)}</td>
                       <td className={`px-3 py-2 text-mac-caption text-right hidden sm:table-cell ${isSelected ? "text-white/80" : "text-[var(--text-tertiary)]"}`}>{fmtSize(d.size_bytes)}</td>
-                      <td className="px-3 py-2 hidden sm:table-cell"><OcrIcon status={d.ocr_status} /></td>
                       <td className={`px-3 py-2 text-mac-caption hidden md:table-cell ${isSelected ? "text-white/80" : "text-[var(--text-tertiary)]"}`}>{kindLabel(d.name)}</td>
+                      <td className="px-3 py-2 hidden sm:table-cell"><OcrIcon status={d.ocr_status} /></td>
                       {resolvedFields.map((rf) => {
                         const value = fieldValues[d.id]?.[rf.custom_field_id];
                         return (

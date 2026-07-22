@@ -46,8 +46,8 @@ export function SkeletonTableRow({
       </td>
       <td className={`px-3 ${pad} hidden sm:table-cell`}><Bar w="70%" /></td>
       <td className={`px-3 ${pad} hidden sm:table-cell`}><Bar w="50%" className="ml-auto" /></td>
-      <td className={`px-3 ${pad} hidden sm:table-cell`}><Bar w="16px" /></td>
       <td className={`px-3 ${pad} hidden md:table-cell`}><Bar w="60%" /></td>
+      <td className={`px-3 ${pad} hidden sm:table-cell`}><Bar w="16px" /></td>
       {Array.from({ length: customFieldCount }).map((_, i) => (
         <td key={i} className={`px-3 ${pad} hidden sm:table-cell`}><Bar w="65%" /></td>
       ))}
