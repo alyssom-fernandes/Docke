@@ -142,7 +142,7 @@ export default function TaskCenter() {
       </button>
 
       {open && (
-        <div className="glass-panel glass-blur-strong fixed left-4 right-4 top-[84px] sm:absolute sm:left-auto sm:right-0 sm:top-full sm:w-[340px] sm:mt-1 rounded-[var(--radius-popover)] shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-50 overflow-hidden max-h-[70vh] flex flex-col">
+        <div className="glass-dialog glass-blur-strong fixed left-4 right-4 top-[84px] sm:absolute sm:left-auto sm:right-0 sm:top-full sm:w-[340px] sm:mt-1 rounded-[var(--radius-popover)] shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-50 overflow-hidden max-h-[70vh] flex flex-col">
           {/* Seção "Em andamento" — some inteira quando não há nada rodando */}
           {tasks.length > 0 && (
             <>
