@@ -66,7 +66,17 @@ module.exports = {
       transitionDuration: {
         fast: "100ms",
         normal: "150ms",
-        slow: "200ms",
+        slow: "220ms",
+      },
+      transitionTimingFunction: {
+        // Sobrescreve o DEFAULT do Tailwind (cubic-bezier(0.4,0,0.2,1), a curva
+        // "standard" do Material Design) por um ease-out de verdade. Sem isso,
+        // toda classe transition-* sem ease-* explícito herdava uma curva que
+        // não é nem ease-out nem ease-in-out — apenas parecida com as duas.
+        // Aplica-se globalmente (nenhum componente sobrescreve com uma curva
+        // própria hoje), então corrige os 130+ usos de duration-fast/normal/slow
+        // de uma vez, sem tocar em cada arquivo.
+        DEFAULT: "cubic-bezier(0, 0, 0.2, 1)",
       },
       boxShadow: {
         card: "0 4px 12px rgba(0,0,0,0.06)",
