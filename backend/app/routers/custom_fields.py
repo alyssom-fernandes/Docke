@@ -304,7 +304,6 @@ async def get_document_field_values(
 @router.put("/documents/{document_id}/field-values")
 async def set_document_field_values(
     document_id: UUID,
-    company_id: UUID = Query(...),
     body: list[DocumentFieldValueSet] = ...,
     conn: asyncpg.Connection = Depends(get_db),
     claims: dict[str, Any] = Depends(get_current_user),
@@ -315,9 +314,23 @@ async def set_document_field_values(
     garante QUEM pode escrever, não a forma do valor.
     """
     user_id = claims["sub"]
+
+    # company_id é derivado do documento no servidor — nunca aceito do cliente
+    # (R6): um valor arbitrário aqui corromperia relatórios/listagens filtrados
+    # por empresa mesmo com a RLS de document_field_value já protegendo o
+    # acesso via document_id corretamente.
+    company_id = await CustomFieldsService.get_document_company_id(conn, document_id)
+    if company_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+
+    # Uma query pra buscar todos os campos referenciados no lote, em vez de uma
+    # por item (N+1) — importante aqui porque um preenchimento de formulário
+    # inteiro chega de uma vez (10-20+ campos não é incomum).
+    fields_by_id = await CustomFieldsService.get_fields_bulk(conn, [item.custom_field_id for item in body])
+
     results = []
     for item in body:
-        field = await CustomFieldsService.get_field(conn, item.custom_field_id)
+        field = fields_by_id.get(str(item.custom_field_id))
         if field is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campo não encontrado.")
 

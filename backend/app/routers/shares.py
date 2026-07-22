@@ -41,6 +41,14 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+def _is_within_shared_root(candidate_path: str, root_path: str) -> bool:
+    """Equivalente ao operador ltree `@>` (ancestral-ou-igual), não um simples
+    prefixo de string: `str.startswith(root_path)` aceitaria incorretamente
+    "empresa.fiscal2" como estando dentro de "empresa.fiscal" só porque a
+    string bate no começo. Mesmo critério usado em permission_service.py."""
+    return candidate_path == root_path or candidate_path.startswith(root_path + ".")
+
+
 # ---------------------------------------------------------------------------
 # POST /shares — cria link de compartilhamento
 # ---------------------------------------------------------------------------
@@ -87,7 +95,10 @@ async def create_share(
     if body.expires_in == "custom":
         if body.custom_expires_at is None:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Informe custom_expires_at.")
-        expires_at = datetime.combine(body.custom_expires_at, datetime.min.time(), tzinfo=timezone.utc)
+        # datetime.max.time() (23:59:59) — o link fica válido ATÉ O FIM do dia
+        # escolhido. Com datetime.min.time() (00:00:00) o link expirava no
+        # início do próprio dia selecionado, um dia inteiro antes do esperado.
+        expires_at = datetime.combine(body.custom_expires_at, datetime.max.time(), tzinfo=timezone.utc)
     elif body.expires_in in _EXPIRY_MAP:
         delta = _EXPIRY_MAP[body.expires_in]
         expires_at = (datetime.now(timezone.utc) + delta) if delta else None
@@ -258,7 +269,7 @@ async def share_content(
 
     current_id = folder_id or root_folder["id"]
     current = await SharesService.get_active_folder(admin_conn, current_id)
-    if current is None or not str(current["path"]).startswith(str(root_folder["path"])):
+    if current is None or not _is_within_shared_root(str(current["path"]), str(root_folder["path"])):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Fora da pasta compartilhada.")
 
     subfolders = await SharesService.list_subfolders(admin_conn, current["id"])

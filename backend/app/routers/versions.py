@@ -12,6 +12,7 @@ Regras:
   storage_key (caso de uma restauração) antes de remover o objeto do storage.
 - Busca indexa só a versão atual (documents.ocr_text é sobrescrito a cada nova versão).
 """
+import logging
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -24,6 +25,8 @@ from app.dependencies import get_current_user, get_db, get_db_admin
 from app.services import storage_service
 from app.services.documents_service import DocumentsService
 from app.services.notification_service import notify_document_watchers
+
+logger = logging.getLogger("docke.versions")
 from app.services.versions_service import VersionsService
 
 router = APIRouter(prefix="/documents", tags=["versions"])
@@ -154,10 +157,26 @@ async def confirm_version(
             detail="Arquivo não encontrado no storage. Realize o upload antes de confirmar.",
         )
 
+    # size_bytes declarado em /upload-url vem do cliente e não é confiável (a
+    # presigned URL de PUT não impõe content-length-range) — o ContentLength
+    # real do HEAD é a única fonte confiável, aqui e no limite de tamanho.
+    real_size_bytes = meta.get("ContentLength")
+    if real_size_bytes is not None and real_size_bytes > settings.MAX_FILE_SIZE_BYTES:
+        try:
+            storage_service.delete_object(version["storage_key"])
+        except Exception:
+            pass
+        await VersionsService.delete_pending_version(admin_conn, version_id)
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Arquivo excede o limite de {settings.MAX_FILE_SIZE_BYTES // 1_048_576}MB.",
+        )
+
     async with admin_conn.transaction():
         await VersionsService.activate_version(
             admin_conn, document_id=document_id, version_id=version_id,
-            storage_key=version["storage_key"], mime_type=version["mime_type"], size_bytes=version["size_bytes"],
+            storage_key=version["storage_key"], mime_type=version["mime_type"],
+            size_bytes=real_size_bytes if real_size_bytes is not None else version["size_bytes"],
         )
         await DocumentsService.enqueue_ocr(admin_conn, document_id)
         await VersionsService.log_version_upload(admin_conn, document_id=document_id, user_id=claims["sub"])
@@ -279,4 +298,7 @@ async def delete_version(
         try:
             storage_service.delete_object(version["storage_key"])
         except Exception:
-            pass
+            logger.exception(
+                "Falha ao remover objeto do storage após excluir versão %s do documento %s (key=%s) — objeto pode ter ficado órfão.",
+                version_id, document_id, version["storage_key"],
+            )

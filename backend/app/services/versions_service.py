@@ -99,6 +99,23 @@ class VersionsService:
             """,
             document_id, version_id, storage_key, mime_type, size_bytes,
         )
+        # document_versions.size_bytes foi gravado com o valor declarado pelo
+        # cliente em /upload-url (fase 1) — sincroniza com o ContentLength real
+        # confirmado no HEAD do storage (fase 2), mesma fonte usada acima.
+        await admin_conn.execute(
+            "UPDATE public.document_versions SET size_bytes = $2 WHERE id = $1",
+            version_id, size_bytes,
+        )
+
+    @staticmethod
+    async def delete_pending_version(admin_conn: asyncpg.Connection, version_id: UUID) -> None:
+        """Remove uma linha de document_versions ainda não ativada (confirm falhou —
+        ex: tamanho real excede o limite). Documents.current_version_id nunca chega
+        a apontar pra ela, então é seguro remover sem deixar órfão."""
+        await admin_conn.execute(
+            "DELETE FROM public.document_versions WHERE id = $1",
+            version_id,
+        )
 
     @staticmethod
     async def log_version_upload(admin_conn: asyncpg.Connection, *, document_id: UUID, user_id: str) -> None:

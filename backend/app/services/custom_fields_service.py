@@ -17,6 +17,18 @@ VALID_TYPES = ("texto", "cpf", "cnpj", "data", "competencia", "numero", "selecao
 
 
 class CustomFieldsService:
+    # ─── Documento ───────────────────────────────────────────────────────────
+
+    @staticmethod
+    async def get_document_company_id(conn: asyncpg.Connection, document_id: UUID) -> UUID | None:
+        """company_id real do documento — nunca confiar no que o cliente manda
+        na query string ao gravar valores de metadado (R6: company_id gravado
+        precisa ser sempre o do próprio documento, não um valor arbitrário)."""
+        return await conn.fetchval(
+            "SELECT company_id FROM public.documents WHERE id = $1 AND deleted_at IS NULL",
+            document_id,
+        )
+
     # ─── Catálogo (custom_field) ────────────────────────────────────────────
 
     @staticmethod
@@ -39,6 +51,18 @@ class CustomFieldsService:
             "SELECT id::text, company_id::text, label, field_key, type, format_config FROM public.custom_field WHERE id = $1",
             field_id,
         )
+
+    @staticmethod
+    async def get_fields_bulk(conn: asyncpg.Connection, field_ids: list[UUID]) -> dict[str, asyncpg.Record]:
+        """Busca vários campos numa única query (evita N+1 no preenchimento em
+        lote de metadados — get_field() chamado uma vez por item do body)."""
+        if not field_ids:
+            return {}
+        rows = await conn.fetch(
+            "SELECT id::text, company_id::text, label, field_key, type, format_config FROM public.custom_field WHERE id = ANY($1::uuid[])",
+            field_ids,
+        )
+        return {r["id"]: r for r in rows}
 
     @staticmethod
     async def create_field(

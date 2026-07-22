@@ -26,6 +26,42 @@ _jwks: dict | None = None  # JWKS do Supabase Auth (ES256)
 # Pool lifecycle — chamado pelo lifespan de main.py
 # ---------------------------------------------------------------------------
 
+async def _fetch_jwks() -> dict | None:
+    """Busca o JWKS atual do Supabase Auth. Retorna None em falha (chamador decide o fallback)."""
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{settings.SUPABASE_URL}/auth/v1/.well-known/jwks.json",
+                timeout=5.0,
+            )
+            if resp.status_code == 200:
+                return resp.json()
+    except Exception:
+        pass
+    return None
+
+
+async def jwks_refresh_loop(interval_secs: int = 3600) -> None:
+    """
+    Revalida o JWKS periodicamente (padrão: a cada 1h). Sem isso, uma rotação
+    de chave no Supabase Auth (planejada ou de emergência) faz todo token ES256
+    cair no fallback HS256 e falhar com 401 até o próximo redeploy — outage
+    silencioso, sem nenhum sinal além dos usuários não conseguirem logar.
+    """
+    global _jwks
+    import asyncio
+    while True:
+        try:
+            await asyncio.sleep(interval_secs)
+            fresh = await _fetch_jwks()
+            if fresh is not None:
+                _jwks = fresh
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            pass  # mantém o _jwks anterior; tenta de novo no próximo ciclo
+
+
 async def init_db_pool() -> None:
     global _pool, _admin_pool, _jwks
     _pool = await asyncpg.create_pool(
@@ -43,17 +79,10 @@ async def init_db_pool() -> None:
     # allowed" até o próximo restart, um bug intermitente difícil de notar.
     import asyncio
     for attempt in range(3):
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(
-                    f"{settings.SUPABASE_URL}/auth/v1/.well-known/jwks.json",
-                    timeout=5.0,
-                )
-                if resp.status_code == 200:
-                    _jwks = resp.json()
-                    break
-        except Exception:
-            pass
+        fresh = await _fetch_jwks()
+        if fresh is not None:
+            _jwks = fresh
+            break
         if attempt < 2:
             await asyncio.sleep(1.5)
     # Se todas as tentativas falharem, _jwks permanece None e o fallback HS256

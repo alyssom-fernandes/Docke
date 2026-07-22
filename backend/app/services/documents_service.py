@@ -116,24 +116,50 @@ class DocumentsService:
         )
 
     @staticmethod
+    async def delete_pending_document(admin_conn: asyncpg.Connection, document_id: UUID) -> None:
+        """Remove um registro de documento ainda não confirmado (content_hash NULL).
+        Usado quando o objeto no storage falha a validação pós-upload (ex: excede
+        o limite de tamanho) — não faz sentido manter o registro pendente."""
+        await admin_conn.execute(
+            "DELETE FROM public.documents WHERE id = $1 AND content_hash IS NULL",
+            document_id,
+        )
+
+    @staticmethod
     async def confirm_upload_transaction(
         admin_conn: asyncpg.Connection, *, document_id: UUID, content_hash: str, user_id: str,
+        real_size_bytes: int | None = None,
     ) -> asyncpg.Record:
         """Atualiza hash, cria ocr_job, registra activity_log e cria a versão 1 do
         histórico (ADR-024/029) — sem isso, o upload original nunca aparece em
         /versions e um re-upload posterior via "Enviar nova versão" seria
-        rotulado incorretamente como "Versão 1", numa única transação (R3)."""
+        rotulado incorretamente como "Versão 1", numa única transação (R3).
+
+        real_size_bytes (do HEAD no storage) substitui o size_bytes declarado pelo
+        cliente em /upload-url quando disponível — o valor declarado não é confiável."""
         async with admin_conn.transaction():
-            row = await admin_conn.fetchrow(
-                """
-                UPDATE public.documents
-                SET content_hash = $2, updated_at = now()
-                WHERE id = $1
-                RETURNING id::text, name, folder_id, company_id, storage_path, content_hash,
-                          size_bytes, ocr_status, mime_type, created_at, updated_at
-                """,
-                document_id, content_hash,
-            )
+            if real_size_bytes is not None:
+                row = await admin_conn.fetchrow(
+                    """
+                    UPDATE public.documents
+                    SET content_hash = $2, size_bytes = $3, updated_at = now()
+                    WHERE id = $1
+                    RETURNING id::text, name, folder_id, company_id, storage_path, content_hash,
+                              size_bytes, ocr_status, mime_type, created_at, updated_at
+                    """,
+                    document_id, content_hash, real_size_bytes,
+                )
+            else:
+                row = await admin_conn.fetchrow(
+                    """
+                    UPDATE public.documents
+                    SET content_hash = $2, updated_at = now()
+                    WHERE id = $1
+                    RETURNING id::text, name, folder_id, company_id, storage_path, content_hash,
+                              size_bytes, ocr_status, mime_type, created_at, updated_at
+                    """,
+                    document_id, content_hash,
+                )
             await admin_conn.execute(
                 "INSERT INTO public.ocr_jobs (document_id, status) VALUES ($1, 'pending')",
                 document_id,

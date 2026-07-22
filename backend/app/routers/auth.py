@@ -79,7 +79,14 @@ async def _do_login(body: LoginRequest, request: Request, *, email_key_override:
     if resp.status_code != 200:
         rate_limit.record_failed_attempt(email_key, _LOGIN_ATTEMPTS, _LOGIN_WINDOW_SECS, _LOGIN_LOCKOUT_SECS)
         rate_limit.record_failed_attempt(ip_key, _LOGIN_ATTEMPTS, _LOGIN_WINDOW_SECS, _LOGIN_LOCKOUT_SECS)
-        detail = resp.json().get("error_description") or resp.json().get("msg") or "Credenciais inválidas"
+        # resp.json() chamado uma única vez (evita parse duplicado) e protegido
+        # contra corpo não-JSON (ex: 502 de um proxy na frente do Supabase) —
+        # sem o try, isso derrubava um 401 limpo num 500 sem detalhe nenhum.
+        try:
+            payload = resp.json()
+            detail = payload.get("error_description") or payload.get("msg") or "Credenciais inválidas"
+        except ValueError:
+            detail = "Credenciais inválidas"
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=detail,
@@ -141,6 +148,7 @@ class ChangePasswordRequest(BaseModel):
 @router.post("/change-password")
 async def change_password(
     body: ChangePasswordRequest,
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> dict[str, str]:
@@ -148,6 +156,10 @@ async def change_password(
     Troca a senha do usuário autenticado.
     Exige a senha atual: reautentica contra o Supabase Auth antes de aceitar a
     nova senha, para não permitir troca com apenas um token de sessão roubado.
+
+    Mesmo bloqueio por e-mail+IP do /auth/login: sem isso, alguém com um token
+    de sessão válido (XSS, dispositivo roubado) mas sem a senha poderia tentar
+    senhas indefinidamente contra esta rota pra descobri-la.
     """
     if len(body.new_password) < 8:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A nova senha deve ter no mínimo 8 caracteres.")
@@ -155,6 +167,16 @@ async def change_password(
     email = await AuthService.get_current_email(conn)
     if not email:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Não foi possível identificar o e-mail da conta.")
+
+    email_key = f"login-email:{email.lower().strip()}"
+    ip_key = f"login-ip:{rate_limit.client_ip_hash(request)}"
+    for key in (email_key, ip_key):
+        locked = rate_limit.is_locked_out(key)
+        if locked:
+            raise HTTPException(
+                status_code=status.HTTP_423_LOCKED,
+                detail=f"Muitas tentativas. Tente novamente em {int(locked // 60) + 1} minuto(s).",
+            )
 
     async with httpx.AsyncClient() as client:
         verify = await client.post(
@@ -164,6 +186,8 @@ async def change_password(
             timeout=10.0,
         )
         if verify.status_code != 200:
+            rate_limit.record_failed_attempt(email_key, _LOGIN_ATTEMPTS, _LOGIN_WINDOW_SECS, _LOGIN_LOCKOUT_SECS)
+            rate_limit.record_failed_attempt(ip_key, _LOGIN_ATTEMPTS, _LOGIN_WINDOW_SECS, _LOGIN_LOCKOUT_SECS)
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Senha atual incorreta.")
 
         update = await client.put(

@@ -286,12 +286,35 @@ async def create_member(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
     new_user_id = resp.json().get("id")
 
-    await CompaniesService.insert_user(admin_conn, user_id=new_user_id, username=body.username, full_name=body.full_name)
-    row = await CompaniesService.insert_access_grant(
-        admin_conn,
-        user_id=new_user_id, company_id=company_id,
-        permission_level=body.permission_level, folder_path=folder_path, granted_by=user_id,
-    )
+    # Os dois inserts (public.users + concessão de acesso) precisam ser
+    # atômicos entre si — sem isso, uma falha no segundo deixa um usuário
+    # órfão no banco (sem nenhum acesso) e ninguém consegue recriar a conta
+    # com o mesmo e-mail (já existe no Supabase Auth). Se algo falhar aqui,
+    # também desfazemos a conta recém-criada no Supabase Auth (compensação),
+    # já que não há transação cross-sistema entre a API HTTP e o Postgres.
+    try:
+        async with admin_conn.transaction():
+            await CompaniesService.insert_user(admin_conn, user_id=new_user_id, username=body.username, full_name=body.full_name)
+            row = await CompaniesService.insert_access_grant(
+                admin_conn,
+                user_id=new_user_id, company_id=company_id,
+                permission_level=body.permission_level, folder_path=folder_path, granted_by=user_id,
+            )
+    except Exception:
+        async with httpx.AsyncClient() as client:
+            try:
+                await client.delete(
+                    f"{settings.SUPABASE_URL}/auth/v1/admin/users/{new_user_id}",
+                    headers={
+                        "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
+                        "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
+                    },
+                    timeout=10.0,
+                )
+            except Exception:
+                pass  # melhor esforço — se falhar, sobra uma conta Auth sem uso, não um usuário travado
+        raise
+
     return dict(row) | {"username": body.username, "full_name": body.full_name}
 
 

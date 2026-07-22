@@ -128,8 +128,17 @@ async def rename_folder(
     folder_id: UUID,
     body: FolderRename,
     conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Renomeia a pasta (só o campo name — path ltree não muda no rename)."""
+    folder = await FoldersService.get_folder_for_move(conn, folder_id)
+    if folder is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada.")
+
+    permission = await FoldersService.check_permission(conn, claims["sub"], folder["path"], folder["company_id"])
+    if permission != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para renomear esta pasta.")
+
     row = await FoldersService.rename_folder(conn, folder_id, body.name)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada.")
@@ -141,6 +150,7 @@ async def move_folder(
     folder_id: UUID,
     body: FolderMove,
     conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     Move pasta para novo parent de forma atômica (R4/R8):
@@ -153,6 +163,11 @@ async def move_folder(
 
     old_path = folder["path"]
     company_id = folder["company_id"]
+    user_id = claims["sub"]
+
+    source_permission = await FoldersService.check_permission(conn, user_id, old_path, company_id)
+    if source_permission != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para mover esta pasta.")
 
     new_parent_path: str | None = None
     if body.parent_id is not None:
@@ -165,6 +180,12 @@ async def move_folder(
                 detail="Não é possível mover uma pasta para dentro de si mesma.",
             )
         new_parent_path = parent["path"]
+
+    # Mesma checagem no destino: admin na pasta pai onde a árvore vai passar a existir
+    # (raiz da empresa = folder_path NULL quando parent_id não é informado).
+    target_permission = await FoldersService.check_permission(conn, user_id, new_parent_path, company_id)
+    if target_permission != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para mover pastas para o destino escolhido.")
 
     old_nlevel = old_path.count(".") + 1
 

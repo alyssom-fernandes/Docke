@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -10,6 +11,7 @@ from app.services import storage_service
 from app.services.trash_service import TrashService
 
 router = APIRouter(prefix="/trash", tags=["trash"])
+logger = logging.getLogger("docke.trash")
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +165,10 @@ async def permanent_delete(
             try:
                 storage_service.delete_object(doc["storage_path"])
             except Exception:
-                pass
+                logger.exception(
+                    "Falha ao remover objeto do storage após exclusão permanente do documento %s (key=%s) — objeto pode ter ficado órfão.",
+                    item_id, doc["storage_path"],
+                )
 
     else:  # folder
         folder = await TrashService.get_folder_for_permanent_delete(admin_conn, item_id)

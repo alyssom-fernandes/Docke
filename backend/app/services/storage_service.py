@@ -14,8 +14,19 @@ import os
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 from app.config import settings
+
+
+def _content_disposition(disposition_type: str, filename: str) -> str:
+    """
+    Monta o header Content-Disposition com filename escapado (aspas e barras
+    invertidas removidas, nunca interpoladas cruas) + fallback filename*
+    RFC 5987 pra nomes com acentos/caracteres não-ASCII.
+    """
+    safe = filename.replace("\\", "").replace('"', "")
+    return f'{disposition_type}; filename="{safe}"; filename*=UTF-8\'\'{quote(filename)}'
 
 # Diretório do mock — usa TMPDIR do sistema para não poluir o projeto
 MOCK_DIR = Path(tempfile.gettempdir()) / "docke_mock_storage"
@@ -154,7 +165,7 @@ def generate_download_url(
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
 
     if _r2_configured:
-        disposition = f'attachment; filename="{filename}"'
+        disposition = _content_disposition("attachment", filename)
         url = _s3.generate_presigned_url(
             "get_object",
             Params={

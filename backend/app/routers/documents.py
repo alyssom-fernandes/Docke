@@ -165,9 +165,12 @@ async def confirm_upload(
 ) -> dict[str, Any]:
     """
     Fase 2 do upload em 2 etapas:
-    1. HEAD no storage para verificar que o objeto existe.
+    1. HEAD no storage para verificar que o objeto existe e obter o tamanho REAL
+       (o size_bytes declarado em /upload-url vem do cliente e não é confiável —
+       a presigned URL de PUT não impõe content-length-range, então o limite só
+       é de fato aplicado aqui, contra o ContentLength que o próprio storage relata).
     2. Calcula SHA-256 (streaming para não estourar memória em 50MB).
-    3. Atualiza documents com content_hash.
+    3. Atualiza documents com content_hash e o size_bytes real.
     4. Cria ocr_job em pending — mesma transação (R3).
     """
     doc = await DocumentsService.get_document_for_confirm(admin_conn, document_id, claims["sub"])
@@ -187,6 +190,21 @@ async def confirm_upload(
             detail="Arquivo não encontrado no storage. Realize o upload antes de confirmar.",
         )
 
+    real_size_bytes = meta.get("ContentLength")
+    if real_size_bytes is not None and real_size_bytes > settings.MAX_FILE_SIZE_BYTES:
+        # O cliente pode ter declarado um tamanho menor em /upload-url e enviado
+        # um arquivo maior direto pro storage (a URL pré-assinada não impõe
+        # limite). Remove o objeto e o registro pendente em vez de deixar lixo.
+        try:
+            storage_service.delete_object(key)
+        except Exception:
+            pass
+        await DocumentsService.delete_pending_document(admin_conn, document_id)
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Arquivo excede o limite de {settings.MAX_FILE_SIZE_BYTES // 1_048_576}MB.",
+        )
+
     content_hash = storage_service.compute_sha256(key)
     if content_hash is None:
         raise HTTPException(
@@ -203,6 +221,7 @@ async def confirm_upload(
 
     row = await DocumentsService.confirm_upload_transaction(
         admin_conn, document_id=document_id, content_hash=content_hash, user_id=claims["sub"],
+        real_size_bytes=real_size_bytes,
     )
     if row["folder_id"] is not None:
         await notify_folder_favoriters(
@@ -228,7 +247,8 @@ async def mock_download_file(safe_key: str, filename: str = "") -> Response:
     ext = safe_key.rsplit(".", 1)[-1].lower() if "." in safe_key else "bin"
     content_type = _MIME_MAP.get(ext, "application/octet-stream")
     safe_fn = filename or safe_key.rsplit("__", 1)[-1]
-    disposition = f'attachment; filename="{safe_fn}"; filename*=UTF-8\'\'{quote(safe_fn)}'
+    escaped_fn = safe_fn.replace("\\", "").replace('"', "")
+    disposition = f'attachment; filename="{escaped_fn}"; filename*=UTF-8\'\'{quote(safe_fn)}'
     return Response(content=data, media_type=content_type, headers={"Content-Disposition": disposition})
 
 
