@@ -597,24 +597,53 @@ function DetailDrawer({ doc, companyId, onClose, onFavorite, onPreview, onDelete
   const [favorited, setFavorited] = useState(doc.favorited ?? false);
   const [sharing, setSharing] = useState(false);
   const [shareCount, setShareCount] = useState(doc.active_share_count ?? 0);
+  // GET /favorites não expõe favorite_id em Document (só o boolean `favorited`) —
+  // o endpoint de remoção precisa do id do registro, então buscamos em paralelo
+  // assim que o modal abre (se já favoritado), pra desancorar poder ser otimista
+  // sem round-trip extra no clique.
+  const [favoriteId, setFavoriteId] = useState<string | null>(null);
 
   useEffect(() => { setFavorited(doc.favorited ?? false); }, [doc.id, doc.favorited]);
   useEffect(() => { setShareCount(doc.active_share_count ?? 0); }, [doc.id, doc.active_share_count]);
+  useEffect(() => {
+    setFavoriteId(null);
+    if (!doc.favorited) return;
+    let cancelled = false;
+    api.get<{ id: string; document_id: string | null }[]>("/favorites").then((r) => {
+      if (cancelled) return;
+      const match = r.data.find((f) => f.document_id === doc.id);
+      if (match) setFavoriteId(match.id);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [doc.id, doc.favorited]);
 
+  // Otimista: o ícone muda na hora do clique. Ancorar/desancorar é uma ação
+  // trivialmente reversível (ver Fase 1.4 do plano), então não precisa da
+  // janela de "Desfazer" com atraso usada em ações destrutivas — só rollback
+  // com motivo se a chamada falhar (nunca silencioso).
   async function toggleFavorite() {
+    const goingTo = !favorited;
+    setFavorited(goingTo);
     try {
-      if (favorited) {
-        // need favorite_id — simplified: refetch
-        showError("Use a lista de ancorados para remover.");
-      } else {
-        await api.post("/favorites", { document_id: doc.id });
-        setFavorited(true);
+      if (goingTo) {
+        const r = await api.post("/favorites", { document_id: doc.id });
+        setFavoriteId(r.data.id);
         success(`"${doc.name}" adicionado aos ancorados.`);
-        onFavorite();
+      } else {
+        let idToDelete = favoriteId;
+        if (!idToDelete) {
+          const list = await api.get<{ id: string; document_id: string | null }[]>("/favorites");
+          idToDelete = list.data.find((f) => f.document_id === doc.id)?.id ?? null;
+        }
+        if (!idToDelete) throw new Error("favorite_id não encontrado");
+        await api.delete(`/favorites/${idToDelete}`);
+        setFavoriteId(null);
       }
+      onFavorite();
     } catch (e: any) {
-      if (e?.response?.status === 409) { setFavorited(true); return; }
-      showError("Erro ao ancorar.");
+      setFavorited(!goingTo); // rollback
+      if (goingTo && e?.response?.status === 409) { setFavorited(true); return; } // já estava ancorado, ok
+      showError(goingTo ? "Não foi possível ancorar. Tente novamente." : "Não foi possível remover a ancoragem. Tente novamente.");
     }
   }
 
