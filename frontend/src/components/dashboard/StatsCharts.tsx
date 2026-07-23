@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { ChevronRight, ArrowUpRight, FolderOpen } from "lucide-react";
 
 // Fase 3.2/3.4: dois widgets de gráfico do dashboard — juntos ocupam bem
 // menos de 20% da tela (regra da pesquisa). Um hue só (teal, a cor da marca)
@@ -90,10 +91,14 @@ export function UploadsLineChart({ data }: { data: DailyUpload[] }) {
   );
 }
 
-/** Barra horizontal — top pastas por nº de documentos. Clicável (Fase 3.4:
- * drill-down até o documento — aqui até a pasta, que já lista os
- * documentos). Uma cor só: o comprimento da barra é o dado, não a cor. */
-export function FolderBarChart({ data }: { data: FolderBreakdown[] }) {
+/** Barra horizontal — top pastas por nº de documentos. Fase 3.7: este é o
+ * "filtro próprio do widget" — a linha inteira desce um nível na árvore
+ * (drill-down dentro do próprio gráfico, via onDrill), independente do
+ * filtro global de período que afeta o gráfico de uploads ao lado. O ícone
+ * de seta externa é o atalho pra sair do widget e ver os documentos de
+ * verdade, sem competir com o clique de drill-down na mesma área. Uma cor
+ * só: o comprimento da barra é o dado, não a cor. */
+export function FolderBarChart({ data, onDrill }: { data: FolderBreakdown[]; onDrill: (folderId: string, name: string) => void }) {
   const navigate = useNavigate();
   if (data.length === 0) return null;
   const max = Math.max(1, ...data.map((d) => d.document_count));
@@ -101,10 +106,11 @@ export function FolderBarChart({ data }: { data: FolderBreakdown[] }) {
   return (
     <ul className="space-y-2">
       {data.map((f) => (
-        <li key={f.id}>
+        <li key={f.id} className="flex items-center gap-1 group">
           <button
-            onClick={() => navigate(`/documents?folder_id=${f.id}`)}
-            className="w-full flex items-center gap-2 group text-left"
+            onClick={() => onDrill(f.id, f.name)}
+            className="flex-1 min-w-0 flex items-center gap-2 text-left"
+            title={`Ver documentos por pasta dentro de "${f.name}"`}
           >
             <span className="w-20 flex-shrink-0 text-mac-caption text-[var(--text-secondary)] truncate group-hover:text-teal-500 transition-colors duration-fast">
               {f.name}
@@ -118,9 +124,48 @@ export function FolderBarChart({ data }: { data: FolderBreakdown[] }) {
             <span className="w-6 flex-shrink-0 text-mac-caption text-[var(--text-tertiary)] text-right tabular-nums">
               {f.document_count}
             </span>
+            <ChevronRight className="w-3 h-3 text-[var(--text-tertiary)] flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-fast" />
+          </button>
+          <button
+            onClick={() => navigate(`/documents?folder_id=${f.id}`)}
+            title={`Abrir pasta "${f.name}" em Documentos`}
+            aria-label={`Abrir pasta ${f.name} em Documentos`}
+            className="flex-shrink-0 p-1 rounded-[4px] text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100 hover:text-teal-500 hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+          >
+            <ArrowUpRight className="w-3.5 h-3.5" />
           </button>
         </li>
       ))}
     </ul>
+  );
+}
+
+export interface FolderCrumb {
+  id: string | null;
+  name: string;
+}
+
+/** Breadcrumb do filtro próprio do widget "Documentos por pasta" — mesma
+ * lógica de navegação hierárquica já usada em Documents.tsx, só que
+ * isolada aqui dentro do card (não navega a página, só refiltra o gráfico). */
+export function FolderChartBreadcrumb({ path, onNavigate }: { path: FolderCrumb[]; onNavigate: (index: number) => void }) {
+  return (
+    <div className="flex items-center gap-1 min-w-0 text-mac-caption text-[var(--text-tertiary)]">
+      <FolderOpen className="w-3 h-3 flex-shrink-0" />
+      {path.map((crumb, i) => (
+        <span key={crumb.id ?? "root"} className="flex items-center gap-1 min-w-0">
+          {i > 0 && <ChevronRight className="w-2.5 h-2.5 flex-shrink-0" />}
+          <button
+            onClick={() => onNavigate(i)}
+            disabled={i === path.length - 1}
+            className={`truncate transition-colors duration-fast ${
+              i === path.length - 1 ? "text-[var(--text-secondary)] font-medium cursor-default" : "hover:text-teal-500"
+            }`}
+          >
+            {crumb.name}
+          </button>
+        </span>
+      ))}
+    </div>
   );
 }

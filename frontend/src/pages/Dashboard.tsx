@@ -23,7 +23,55 @@ import { useCompany } from "@/lib/CompanyContext";
 import Avatar from "@/components/ui/Avatar";
 import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/shared/EmptyState";
-import { UploadsLineChart, FolderBarChart, type DailyUpload, type FolderBreakdown } from "@/components/dashboard/StatsCharts";
+import {
+  UploadsLineChart,
+  FolderBarChart,
+  FolderChartBreadcrumb,
+  type DailyUpload,
+  type FolderBreakdown,
+  type FolderCrumb,
+} from "@/components/dashboard/StatsCharts";
+
+// Fase 3.7: filtro global sticky — sobrevive a reload e navegação porque
+// mora no localStorage, escopado por empresa (o período de uma não deve
+// vazar como default pra outra). O filtro de pasta do widget ao lado NÃO é
+// sticky de propósito: é um drill-down transiente, sempre volta pra raiz
+// ao trocar de empresa ou recarregar — sticky ali só confundiria ("por que
+// meu gráfico começou dentro de uma pasta?").
+const PERIOD_OPTIONS = [7, 14, 30, 90] as const;
+type Period = (typeof PERIOD_OPTIONS)[number];
+
+function periodStorageKey(companyId: string) {
+  return `docke_dashboard_period_${companyId}`;
+}
+
+function loadStickyPeriod(companyId: string): Period {
+  const raw = localStorage.getItem(periodStorageKey(companyId));
+  const n = Number(raw);
+  return (PERIOD_OPTIONS as readonly number[]).includes(n) ? (n as Period) : 14;
+}
+
+/** Fase 3.6, com escopo deliberadamente reduzido: os dois gráficos do
+ * dashboard somam no máximo ~90 linhas (um ponto por dia + uma barra por
+ * pasta) — não existe volume real que justifique fila assíncrona + R2 +
+ * link assinado (a pesquisa pede isso pra exports de milhares de linhas,
+ * não pra uma dúzia de pontos de um gráfico). Export direto no cliente,
+ * com o contexto (empresa, período, filtro de pasta, timestamp) embutido
+ * no próprio arquivo — mesmo princípio de "todo export carrega contexto",
+ * só que sem a infraestrutura que este volume de dado não precisa.
+ */
+function downloadCsv(filename: string, header: string, rows: string[][], contextLines: string[]) {
+  const csvBody = rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(",")).join("\n");
+  const csvContext = contextLines.map((l) => `# ${l}`).join("\n");
+  const csv = `${csvContext}\n${header}\n${csvBody}`;
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -152,13 +200,26 @@ export default function Dashboard() {
   const [obligations, setObligations] = useState<ObligationInstance[]>([]);
   const [dailyUploads, setDailyUploads] = useState<DailyUpload[]>([]);
   const [byFolder, setByFolder] = useState<FolderBreakdown[]>([]);
+  const [chartsLoading, setChartsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   // Fase 3.3: cooldown de 15s no cliente espelha o cooldown por empresa que
   // o backend já impõe — evita bater a cara no 429 clicando repetido.
   const [refreshCooldown, setRefreshCooldown] = useState(0);
 
+  // Fase 3.7: período é o filtro GLOBAL (afeta o gráfico de uploads);
+  // folderPath é o filtro PRÓPRIO do widget de pastas — os dois vivem
+  // separados de propósito, cada um refiltra só o seu gráfico.
+  const [period, setPeriod] = useState<Period>(14);
+  const [folderPath, setFolderPath] = useState<FolderCrumb[]>([{ id: null, name: "Todas as pastas" }]);
+
   const emptyStats: Stats = { total_documents: 0, total_folders: 0, total_favorites: 0, recent_uploads: 0, documents_today: 0, refreshed_at: null };
+
+  useEffect(() => {
+    if (!current) return;
+    setPeriod(loadStickyPeriod(current.id));
+    setFolderPath([{ id: null, name: "Todas as pastas" }]);
+  }, [current?.id]);
 
   useEffect(() => {
     if (!current) return;
@@ -166,21 +227,75 @@ export default function Dashboard() {
 
     Promise.all([
       api.get(`/companies/${current.id}/stats`).catch(() => ({ data: emptyStats })),
-      api.get(`/companies/${current.id}/stats/charts`).catch(() => ({ data: { daily_uploads: [], by_folder: [] } })),
       api.get("/documents/recent", { params: { company_id: current.id, limit: 5 } }).catch(() => ({ data: [] })),
       api.get("/favorites").catch(() => ({ data: [] })),
       api.get("/activity", { params: { company_id: current.id, page_size: 8 } }).catch(() => ({ data: { results: [] } })),
       api.get(`/companies/${current.id}/obligations/instances`).catch(() => ({ data: [] })),
-    ]).then(([statsRes, chartsRes, recentRes, favsRes, actRes, oblRes]) => {
+    ]).then(([statsRes, recentRes, favsRes, actRes, oblRes]) => {
       setStats(statsRes.data);
-      setDailyUploads(Array.isArray(chartsRes.data?.daily_uploads) ? chartsRes.data.daily_uploads : []);
-      setByFolder(Array.isArray(chartsRes.data?.by_folder) ? chartsRes.data.by_folder : []);
       setRecent(Array.isArray(recentRes.data) ? recentRes.data : []);
       setFavorites(Array.isArray(favsRes.data) ? favsRes.data : []);
       setActivity(Array.isArray(actRes.data) ? actRes.data : (actRes.data.results ?? []));
       setObligations(Array.isArray(oblRes.data) ? oblRes.data : []);
     }).finally(() => setLoading(false));
   }, [current?.id]);
+
+  // Gráficos ficam num efeito à parte: trocar o período ou descer uma
+  // pasta no widget não deve refazer a chamada de stats/recentes/atividade
+  // inteira, só os dois gráficos que dependem desses filtros.
+  useEffect(() => {
+    if (!current) return;
+    setChartsLoading(true);
+    const folderId = folderPath[folderPath.length - 1].id;
+    api
+      .get(`/companies/${current.id}/stats/charts`, { params: { days: period, ...(folderId ? { folder_id: folderId } : {}) } })
+      .then((r) => {
+        setDailyUploads(Array.isArray(r.data?.daily_uploads) ? r.data.daily_uploads : []);
+        setByFolder(Array.isArray(r.data?.by_folder) ? r.data.by_folder : []);
+      })
+      .catch(() => {
+        setDailyUploads([]);
+        setByFolder([]);
+      })
+      .finally(() => setChartsLoading(false));
+  }, [current?.id, period, folderPath]);
+
+  function changePeriod(p: Period) {
+    setPeriod(p);
+    if (current) localStorage.setItem(periodStorageKey(current.id), String(p));
+  }
+
+  function drillFolder(folderId: string, name: string) {
+    setFolderPath((path) => [...path, { id: folderId, name }]);
+  }
+
+  function navigateBreadcrumb(index: number) {
+    setFolderPath((path) => path.slice(0, index + 1));
+  }
+
+  function exportChartsCsv() {
+    if (!current) return;
+    const now = new Date();
+    const folderLabel = folderPath.map((c) => c.name).join(" > ");
+    const context = [
+      `Empresa: ${current.name}`,
+      `Período: últimos ${period} dias`,
+      `Filtro de pasta: ${folderLabel}`,
+      `Gerado em: ${now.toLocaleString("pt-BR")} por ${JSON.parse(localStorage.getItem("docke_user") ?? "{}")?.username ?? "usuário"}`,
+    ];
+    downloadCsv(
+      `dashboard-uploads-${current.id}-${now.toISOString().slice(0, 10)}.csv`,
+      "data,documentos_enviados",
+      dailyUploads.map((d) => [d.date, String(d.count)]),
+      context,
+    );
+    downloadCsv(
+      `dashboard-por-pasta-${current.id}-${now.toISOString().slice(0, 10)}.csv`,
+      "pasta,documentos",
+      byFolder.map((f) => [f.name, String(f.document_count)]),
+      context,
+    );
+  }
 
   useEffect(() => {
     if (refreshCooldown <= 0) return;
@@ -255,17 +370,64 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Fase 3.2: os dois gráficos do dashboard — juntos, uma fração pequena
-          da tela (regra "menos de 20% é gráfico" da pesquisa). */}
-      {!loading && (dailyUploads.length > 0 || byFolder.length > 0) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-5">
-            <h2 className="text-mac-body font-semibold text-[var(--text-secondary)] mb-3">Uploads · últimos 14 dias</h2>
-            <UploadsLineChart data={dailyUploads} />
+      {/* Fase 3.2/3.6/3.7: os dois gráficos do dashboard — juntos, uma fração
+          pequena da tela (regra "menos de 20% é gráfico" da pesquisa). O
+          seletor de período é o filtro GLOBAL (sticky, por empresa); o
+          breadcrumb dentro do card de pastas é o filtro PRÓPRIO daquele
+          widget, independente do período. */}
+      {!loading && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-0.5 p-0.5 rounded-[8px] bg-[var(--bg-hover)]">
+              {PERIOD_OPTIONS.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => changePeriod(p)}
+                  className={`px-2.5 h-6 rounded-[6px] text-mac-caption font-medium transition-colors duration-fast ${
+                    period === p ? "bg-teal-500 text-white" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  }`}
+                >
+                  {p}d
+                </button>
+              ))}
+            </div>
+            {(dailyUploads.length > 0 || byFolder.length > 0) && (
+              <button
+                onClick={exportChartsCsv}
+                className="flex items-center gap-1 text-mac-caption text-[var(--text-secondary)] hover:text-teal-500 transition-colors duration-fast"
+              >
+                <Download className="w-3 h-3" />
+                Exportar CSV
+              </button>
+            )}
           </div>
-          <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-5">
-            <h2 className="text-mac-body font-semibold text-[var(--text-secondary)] mb-3">Documentos por pasta</h2>
-            <FolderBarChart data={byFolder} />
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-5">
+              <h2 className="text-mac-body font-semibold text-[var(--text-secondary)] mb-3">Uploads · últimos {period} dias</h2>
+              {chartsLoading ? (
+                <div className="h-[88px] bg-[var(--bg-hover)] rounded animate-pulse" />
+              ) : dailyUploads.length > 0 ? (
+                <UploadsLineChart data={dailyUploads} />
+              ) : (
+                <p className="text-mac-caption text-[var(--text-tertiary)] py-4">Nenhum upload neste período.</p>
+              )}
+            </div>
+            <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-5">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <h2 className="text-mac-body font-semibold text-[var(--text-secondary)] flex-shrink-0">Documentos por pasta</h2>
+                {folderPath.length > 1 && <FolderChartBreadcrumb path={folderPath} onNavigate={navigateBreadcrumb} />}
+              </div>
+              {chartsLoading ? (
+                <div className="h-[88px] bg-[var(--bg-hover)] rounded animate-pulse" />
+              ) : byFolder.length > 0 ? (
+                <FolderBarChart data={byFolder} onDrill={drillFolder} />
+              ) : (
+                <p className="text-mac-caption text-[var(--text-tertiary)] py-4">
+                  {folderPath.length > 1 ? "Nenhuma subpasta com documentos aqui." : "Nenhum documento ainda."}
+                </p>
+              )}
+            </div>
           </div>
         </div>
       )}

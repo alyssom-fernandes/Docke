@@ -215,40 +215,55 @@ class CompaniesService:
         await conn.execute("SELECT public.refresh_company_stats()")
 
     @staticmethod
-    async def get_dashboard_charts(conn: asyncpg.Connection, company_id: UUID) -> dict[str, Any]:
+    async def get_dashboard_charts(
+        conn: asyncpg.Connection,
+        company_id: UUID,
+        days: int = 14,
+        folder_id: UUID | None = None,
+    ) -> dict[str, Any]:
         """
         Fase 3.2/3.4: dados dos dois gráficos do dashboard — sempre ao vivo
         via `conn` (RLS ativa), nunca da materialized view, porque aqui a
         quebra por pasta É o dado sensível (Fase 3.8 se aplica com força
         total: um operador só pode ver a contagem das pastas que ele
         acessa, nunca a lista completa de pastas da empresa).
+
+        Fase 3.7: `days` é o filtro GLOBAL do período (aplica só aos dois
+        gráficos — os stat cards no topo continuam vindo da materialized
+        view, que só guarda o agregado fixo de 7 dias; misturar os dois
+        quebraria o propósito da Fase 3.1 de nunca contar ao vivo a cada
+        carregamento). `folder_id` é o filtro PRÓPRIO do gráfico "Documentos
+        por pasta" — deixa o usuário descer um nível na árvore sem afetar
+        o gráfico de uploads ao lado, exatamente a distinção "filtro global
+        vs filtro por widget" que a pesquisa pediu.
         """
         daily = await conn.fetch(
             """
             SELECT d::date AS day, coalesce(cnt, 0) AS count
-            FROM generate_series(current_date - interval '13 days', current_date, interval '1 day') AS d
+            FROM generate_series(current_date - ($2::int - 1) * interval '1 day', current_date, interval '1 day') AS d
             LEFT JOIN (
               SELECT created_at::date AS day, count(*) AS cnt
               FROM public.documents
               WHERE company_id = $1 AND deleted_at IS NULL
-                AND created_at >= current_date - interval '13 days'
+                AND created_at >= current_date - ($2::int - 1) * interval '1 day'
               GROUP BY created_at::date
             ) x ON x.day = d::date
             ORDER BY d
             """,
-            company_id,
+            company_id, days,
         )
         by_folder = await conn.fetch(
             """
             SELECT f.id::text, f.name, count(d.id) AS document_count
             FROM public.folders f
             LEFT JOIN public.documents d ON d.folder_id = f.id AND d.deleted_at IS NULL
-            WHERE f.company_id = $1 AND f.deleted_at IS NULL AND f.parent_id IS NULL
+            WHERE f.company_id = $1 AND f.deleted_at IS NULL
+              AND f.parent_id IS NOT DISTINCT FROM $2::uuid
             GROUP BY f.id, f.name
             ORDER BY document_count DESC, f.name
             LIMIT 6
             """,
-            company_id,
+            company_id, folder_id,
         )
         return {
             "daily_uploads": [{"date": r["day"].isoformat(), "count": r["count"]} for r in daily],

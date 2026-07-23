@@ -2,7 +2,7 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 import httpx
@@ -186,17 +186,21 @@ async def refresh_company_stats(
 @router.get("/{company_id}/stats/charts")
 async def company_stats_charts(
     company_id: UUID,
+    days: int = Query(14, description="Janela do gráfico de uploads — filtro global do dashboard."),
+    folder_id: UUID | None = Query(None, description="Filtro próprio do gráfico de pastas — desce um nível na árvore."),
     conn: asyncpg.Connection = Depends(get_db),
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
-    Fase 3.2/3.4: série diária de uploads (14 dias) + top pastas por
-    documentos, pra dashboard. Sempre calculado ao vivo via RLS — nunca da
-    materialized view (aqui a quebra por pasta é o dado sensível).
+    Fase 3.2/3.4/3.7: série diária de uploads + documentos por pasta, pra
+    dashboard. Sempre calculado ao vivo via RLS — nunca da materialized
+    view (aqui a quebra por pasta é o dado sensível).
     """
+    if days not in (7, 14, 30, 90):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="days precisa ser 7, 14, 30 ou 90.")
     if not await CompaniesService.is_member(conn, claims["sub"], company_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem acesso a esta empresa.")
-    return await CompaniesService.get_dashboard_charts(conn, company_id)
+    return await CompaniesService.get_dashboard_charts(conn, company_id, days=days, folder_id=folder_id)
 
 
 @router.patch("/{company_id}")
