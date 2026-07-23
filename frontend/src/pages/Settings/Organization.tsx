@@ -131,7 +131,7 @@ const TIPO_JURIDICO_LABEL: Record<string, string> = {
 };
 const UFS = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
 
-function FiscalProfileSection({ companyId, isAdmin }: { companyId: string; isAdmin: boolean }) {
+function FiscalProfileSection({ companyId, companyName, isAdmin }: { companyId: string; companyName: string; isAdmin: boolean }) {
   const { success, error: showError } = useToast();
   const [profile, setProfile] = useState<FiscalProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -168,13 +168,15 @@ function FiscalProfileSection({ companyId, isAdmin }: { companyId: string; isAdm
   }
 
   return (
-    <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-5 space-y-4">
+    <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-5 space-y-4 border border-teal-500/20">
       <div className="flex items-center gap-2">
-        <ScrollText className="w-4 h-4 text-teal-500" />
-        <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Perfil fiscal</h2>
+        <ScrollText className="w-4 h-4 text-teal-500 flex-shrink-0" />
+        <h2 className="text-mac-body font-semibold text-[var(--text-primary)] truncate">
+          Perfil fiscal <span className="text-[var(--text-tertiary)] font-normal">de</span> {companyName}
+        </h2>
       </div>
       <p className="text-mac-caption text-[var(--text-secondary)]">
-        Usado pelas regras condicionais de obrigações (ex.: empresas do Simples Nacional não precisam de ECD). Deixe em branco o que não souber agora — nenhuma obrigação fica escondida por falta de preenchimento.
+        Específico desta empresa — cada empresa da organização tem o próprio perfil. Para editar outra, troque a empresa selecionada no topo da tela. Usado pelas regras condicionais de obrigações (ex.: empresas do Simples Nacional não precisam de ECD). Deixe em branco o que não souber agora — nenhuma obrigação fica escondida por falta de preenchimento.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
@@ -263,16 +265,17 @@ export default function Organization() {
 
   return (
     <div className="space-y-4">
-      {current && <FiscalProfileSection companyId={current.id} isAdmin={isCurrentAdmin} />}
+      {current && <FiscalProfileSection companyId={current.id} companyName={current.name} isAdmin={isCurrentAdmin} />}
 
-      {isSupremo && (
-        <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-3 pt-1">
+        <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Todas as empresas da organização</h2>
+        {isSupremo && (
           <Button size="sm" onClick={() => setEditing("new")}>
             <Plus className="w-3.5 h-3.5" />
             Nova empresa
           </Button>
-        </div>
-      )}
+        )}
+      </div>
 
       {loading ? (
         <div className="space-y-2">
