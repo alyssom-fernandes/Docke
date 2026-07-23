@@ -90,7 +90,11 @@ export default function Obligations() {
   const isAdmin = current?.permission_level === "admin" || current?.permission_level === "supremo";
 
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [instances, setInstances] = useState<Instance[]>([]);
+  // Sempre TODAS as instâncias, sem filtro de status — a Central de
+  // Conformidade e a Matriz precisam ver o conjunto inteiro pra calcular
+  // porcentagens e desenhar todas as colunas/linhas; o filtro de status da
+  // visão em Lista é aplicado no cliente (filteredInstances), não no fetch.
+  const [allInstances, setAllInstances] = useState<Instance[]>([]);
   const [dependencies, setDependencies] = useState<Dependency[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -101,19 +105,22 @@ export default function Obligations() {
   const [view, setView] = useState<"list" | "matrix">("list");
   const [matrixInstanceModal, setMatrixInstanceModal] = useState<{ template: Template; period: string } | null>(null);
 
+  const filteredInstances = useMemo(
+    () => (statusFilter ? allInstances.filter((i) => i.effective_status === statusFilter) : allInstances),
+    [allInstances, statusFilter]
+  );
+
   function load() {
     if (!current) return;
     setLoading(true);
     Promise.all([
       api.get<Template[]>("/companies/" + current.id + "/obligations/templates"),
-      api.get<Instance[]>("/companies/" + current.id + "/obligations/instances", {
-        params: statusFilter ? { status: statusFilter } : {},
-      }),
+      api.get<Instance[]>("/companies/" + current.id + "/obligations/instances"),
       api.get<Dependency[]>("/companies/" + current.id + "/obligations/dependencies"),
     ])
       .then(([t, i, d]) => {
         setTemplates(Array.isArray(t.data) ? t.data : []);
-        setInstances(Array.isArray(i.data) ? i.data : []);
+        setAllInstances(Array.isArray(i.data) ? i.data : []);
         setDependencies(Array.isArray(d.data) ? d.data : []);
       })
       .catch(() => {})
@@ -130,7 +137,7 @@ export default function Obligations() {
     }
   }
 
-  useEffect(load, [current?.id, statusFilter]);
+  useEffect(load, [current?.id]);
 
   async function dispense(instance: Instance) {
     const motivo = window.prompt("Motivo da dispensa (obrigatório):");
@@ -159,6 +166,14 @@ export default function Obligations() {
           </Button>
         )}
       </div>
+
+      {/* Central de Conformidade (Fase 4.7) */}
+      {allInstances.length > 0 && (
+        <ComplianceCenter
+          instances={allInstances}
+          onFilter={(status) => { setStatusFilter(status); setView("list"); }}
+        />
+      )}
 
       {/* Modelos */}
       <section className="space-y-2">
@@ -269,7 +284,7 @@ export default function Obligations() {
               <div key={i} className="h-14 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] animate-pulse" />
             ))}
           </div>
-        ) : instances.length === 0 ? (
+        ) : allInstances.length === 0 ? (
           <EmptyState
             title="Nenhuma instância encontrada"
             description="Gere uma instância a partir de um modelo acima para começar a acompanhar o prazo."
@@ -278,14 +293,16 @@ export default function Obligations() {
         ) : view === "matrix" ? (
           <CompletionMatrix
             templates={templates}
-            instances={instances}
+            instances={allInstances}
             onCellClick={(inst) => setLinkingInstance(inst)}
             onEmptyCellClick={(template, period) => setMatrixInstanceModal({ template, period })}
           />
+        ) : filteredInstances.length === 0 ? (
+          <p className="text-mac-caption text-[var(--text-tertiary)] px-1">Nenhuma instância com esse status.</p>
         ) : (
           <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
             <ul>
-              {instances.map((inst) => (
+              {filteredInstances.map((inst) => (
                 <li key={inst.id} className="flex items-center gap-3 px-5 py-3 border-b border-[var(--border-default)] last:border-0">
                   <div className="flex-1 min-w-0">
                     <div className="text-mac-body text-[var(--text-primary)] truncate">{inst.template_name} · {inst.period}</div>
@@ -433,6 +450,78 @@ function CompletionMatrix({
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full border border-dashed border-[var(--border-default)] inline-block" /> Sem instância</span>
       </div>
     </div>
+  );
+}
+
+// Fase 4.7 — Central de Conformidade: não mostra documentos, mostra as
+// perguntas que o gestor realmente faz. Cada card é clicável e abre a lista
+// já filtrada — nenhum número aqui é um beco sem saída (mesma regra dos
+// KPIs do dashboard, Fase 3). Tudo calculado a partir de allInstances, já
+// carregado pela tela — sem endpoint novo.
+function ComplianceCenter({ instances, onFilter }: { instances: Instance[]; onFilter: (status: string) => void }) {
+  const relevant = instances.filter((i) => i.effective_status !== "dispensado" && i.effective_status !== "cancelado");
+  const approved = relevant.filter((i) => i.effective_status === "approved").length;
+  const pct = relevant.length > 0 ? Math.round((approved / relevant.length) * 100) : null;
+
+  const atRisk = instances.filter((i) => i.effective_status === "at_risk").length;
+  const overdue = instances.filter((i) => i.effective_status === "overdue").length;
+  const blocked = instances.filter((i) => i.effective_status === "blocked").length;
+  const expired = instances.filter((i) => i.effective_status === "expired").length;
+  const criticalPending = instances.filter(
+    (i) => i.criticality === "critica" && !["approved", "dispensado", "cancelado"].includes(i.effective_status)
+  ).length;
+
+  const byDept = new Map<string, number>();
+  instances
+    .filter((i) => !["approved", "dispensado", "cancelado"].includes(i.effective_status))
+    .forEach((i) => {
+      const key = i.department?.trim() || "Sem departamento";
+      byDept.set(key, (byDept.get(key) ?? 0) + 1);
+    });
+  const deptEntries = Array.from(byDept.entries()).sort((a, b) => b[1] - a[1]);
+
+  const cards: { label: string; value: string; hint?: string; onClick?: () => void; tone: "default" | "warning" | "error" | "info" }[] = [
+    { label: "Conformidade geral", value: pct !== null ? `${pct}%` : "—", hint: `${approved} de ${relevant.length} obrigações`, tone: "default" },
+    { label: "Críticas pendentes", value: String(criticalPending), tone: criticalPending > 0 ? "error" : "default" },
+    { label: "Vencendo em breve", value: String(atRisk), onClick: atRisk > 0 ? () => onFilter("at_risk") : undefined, tone: "warning" },
+    { label: "Atrasadas", value: String(overdue), onClick: overdue > 0 ? () => onFilter("overdue") : undefined, tone: "error" },
+    { label: "Bloqueadas", value: String(blocked), onClick: blocked > 0 ? () => onFilter("blocked") : undefined, tone: "info" },
+    { label: "Expiradas", value: String(expired), onClick: expired > 0 ? () => onFilter("expired") : undefined, tone: "error" },
+  ];
+
+  const toneClass: Record<string, string> = {
+    default: "text-[var(--text-primary)]",
+    warning: "text-amber-500",
+    error: "text-red-500",
+    info: "text-blue-500",
+  };
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-mac-callout font-semibold text-[var(--text-primary)]">Central de Conformidade</h2>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {cards.map((c) => (
+          <button
+            key={c.label}
+            onClick={c.onClick}
+            disabled={!c.onClick}
+            className={`glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-4 text-left transition-transform duration-fast ${c.onClick ? "hover:scale-[1.02] cursor-pointer" : "cursor-default"}`}
+          >
+            <div className={`text-mac-title2 font-semibold ${toneClass[c.tone]}`}>{c.value}</div>
+            <div className="text-mac-caption text-[var(--text-secondary)] mt-1">{c.label}</div>
+            {c.hint && <div className="text-mac-caption2 text-[var(--text-tertiary)] mt-0.5">{c.hint}</div>}
+          </button>
+        ))}
+      </div>
+      {deptEntries.length > 0 && (
+        <div className="flex items-center gap-3 flex-wrap text-mac-caption text-[var(--text-secondary)]">
+          <span className="text-[var(--text-tertiary)]">Pendências por departamento:</span>
+          {deptEntries.map(([dept, count]) => (
+            <span key={dept}>{dept} <strong className="text-[var(--text-primary)]">{count}</strong></span>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
