@@ -19,7 +19,7 @@ const TABS = [
   { to: "/settings/organization", icon: Building2, label: "Organização", color: "bg-slate-500", adminOnly: true, supremoOnly: false, group: "Organização" },
   { to: "/settings/users", icon: UsersIcon, label: "Usuários & Papéis", color: "bg-indigo-500", adminOnly: true, supremoOnly: false, group: "Organização" },
   { to: "/settings/metadata", icon: Tags, label: "Metadados", color: "bg-orange-500", adminOnly: true, supremoOnly: false, group: "Organização" },
-  { to: "/settings/retention", icon: Archive, label: "Retenção", color: "bg-amber-600", adminOnly: false, supremoOnly: true, group: "Organização" },
+  { to: "/settings/retention", icon: Archive, label: "Retenção", color: "bg-amber-600", adminOnly: true, supremoOnly: false, group: "Organização" },
   { to: "/settings/preferences", icon: Sliders, label: "Preferências", color: "bg-purple-500", adminOnly: false, supremoOnly: false, group: "Aplicativo" },
 ];
 
