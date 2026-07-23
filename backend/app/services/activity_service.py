@@ -42,6 +42,7 @@ class ActivityService:
         user_id: UUID | None,
         action: str | None,
         item_type: str | None,
+        item_id: UUID | None = None,
         date_from: date | None,
         date_to: date | None,
         page: int,
@@ -78,14 +79,23 @@ class ActivityService:
               AND ($4::text IS NULL OR al.item_type  = $4)
               AND ($5::date IS NULL OR al.created_at >= $5::date)
               AND ($6::date IS NULL OR al.created_at <  ($6 + interval '1 day')::date)
+              AND ($9::uuid IS NULL OR al.item_id    = $9)
             ORDER BY al.created_at DESC
             LIMIT $7 OFFSET $8
             """,
-            company_id, user_id, action, item_type, date_from, date_to, page_size, offset,
+            company_id, user_id, action, item_type, date_from, date_to, page_size, offset, item_id,
         )
         total = rows[0]["total_count"] if rows else 0
+        results = []
+        for r in rows:
+            item = {k: v for k, v in dict(r).items() if k != "total_count"}
+            # asyncpg devolve jsonb como string crua — sem isso o frontend recebe
+            # '{"a":"b"}' como texto (Object.entries vira índice:caractere).
+            if isinstance(item.get("metadata"), str):
+                item["metadata"] = json.loads(item["metadata"])
+            results.append(item)
         return {
-            "results": [{k: v for k, v in dict(r).items() if k != "total_count"} for r in rows],
+            "results": results,
             "total": total,
             "page": page,
             "page_size": page_size,

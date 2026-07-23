@@ -23,6 +23,7 @@ async def list_activity(
     user_id: UUID | None = Query(None),
     action: str | None = Query(None),
     item_type: str | None = Query(None),
+    item_id: UUID | None = Query(None, description="Filtra pela timeline de um documento/pasta específico (Fase 2.6)"),
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
     page: int = Query(1, ge=1),
@@ -31,12 +32,12 @@ async def list_activity(
 ) -> dict[str, Any]:
     """
     Lista eventos do activity_log filtrados por empresa.
-    Filtros opcionais: user_id, action, item_type, date_from, date_to.
+    Filtros opcionais: user_id, action, item_type, item_id, date_from, date_to.
     RLS garante que só company members veem os logs da empresa.
     """
     return await ActivityService.list_events(
         conn,
-        company_id=company_id, user_id=user_id, action=action, item_type=item_type,
+        company_id=company_id, user_id=user_id, action=action, item_type=item_type, item_id=item_id,
         date_from=date_from, date_to=date_to, page=page, page_size=page_size,
     )
 

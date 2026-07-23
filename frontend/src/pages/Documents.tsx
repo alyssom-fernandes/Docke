@@ -53,6 +53,7 @@ import TruncatedFileName from "@/components/ui/TruncatedFileName";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import PreviewModal from "@/components/documents/PreviewModal";
 import VersionsPanel from "@/components/documents/VersionsPanel";
+import ActivityFeed from "@/components/shared/ActivityFeed";
 import ShareModal from "@/components/documents/ShareModal";
 import CopyStructureModal from "@/components/documents/CopyStructureModal";
 import FolderTree from "@/components/documents/FolderTree";
@@ -693,6 +694,32 @@ function MetadataSection({ doc, companyId, onChanged }: { doc: Document; company
   );
 }
 
+// Fase 2.6: mesmo componente ActivityFeed do painel de administração
+// (Activity.tsx), só trocando o filtro inicial (item_id = este documento) —
+// colapsado por padrão, carrega só quando aberto (padrão igual ao de Versões).
+function DocumentActivitySection({ docId, companyId }: { docId: string; companyId: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border-t border-[var(--border-default)] pt-3">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between text-mac-body text-[var(--text-primary)] hover:text-teal-500 transition-colors duration-fast"
+      >
+        <span className="flex items-center gap-2">
+          <Clock className="w-4 h-4" />
+          Atividade
+        </span>
+        {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+      </button>
+      {open && (
+        <div className="mt-3">
+          <ActivityFeed companyId={companyId} itemId={docId} pageSize={20} groupByDay={false} emptyDescription="Nenhuma atividade registrada neste documento ainda." />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DetailDrawer({ doc, companyId, onClose, onFavorite, onPreview, onDelete, onChanged }: { doc: Document; companyId: string; onClose: () => void; onFavorite: () => void; onPreview: () => void; onDelete: () => void; onChanged: () => void }) {
   const { success, error: showError } = useToast();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -844,6 +871,8 @@ function DetailDrawer({ doc, companyId, onClose, onFavorite, onPreview, onDelete
         <MetadataSection doc={doc} companyId={companyId} onChanged={onChanged} />
 
         <VersionsPanel documentId={doc.id} documentName={doc.name} onChanged={onChanged} />
+
+        <DocumentActivitySection docId={doc.id} companyId={companyId} />
       </div>
       </div>
 

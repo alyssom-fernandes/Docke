@@ -29,6 +29,13 @@ class CustomFieldsService:
             document_id,
         )
 
+    @staticmethod
+    async def get_document_company_and_name(conn: asyncpg.Connection, document_id: UUID) -> asyncpg.Record | None:
+        return await conn.fetchrow(
+            "SELECT company_id, name FROM public.documents WHERE id = $1 AND deleted_at IS NULL",
+            document_id,
+        )
+
     # ─── Catálogo (custom_field) ────────────────────────────────────────────
 
     @staticmethod
@@ -220,11 +227,16 @@ class CustomFieldsService:
     ) -> asyncpg.Record:
         return await conn.fetchrow(
             """
+            WITH old AS (
+              SELECT value_text FROM public.document_field_value
+              WHERE document_id = $1 AND custom_field_id = $3
+            )
             INSERT INTO public.document_field_value (document_id, company_id, custom_field_id, value_text, value_date, value_number, updated_by)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT (document_id, custom_field_id)
             DO UPDATE SET value_text = $4, value_date = $5, value_number = $6, updated_by = $7, updated_at = now()
-            RETURNING id::text, document_id::text, custom_field_id::text, value_text, value_date, value_number
+            RETURNING id::text, document_id::text, custom_field_id::text, value_text, value_date, value_number,
+              (SELECT value_text FROM old) AS old_value_text
             """,
             document_id, company_id, custom_field_id, value_text, value_date, value_number, updated_by,
         )

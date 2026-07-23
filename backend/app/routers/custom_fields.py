@@ -7,6 +7,7 @@ _can_manage_company em companies.py) — preencher valores é liberado a quem j�
 pode editar o documento (checado via RLS de document_field_value, que espelha
 documents_update).
 """
+import json
 import re
 import unicodedata
 from typing import Any
@@ -319,9 +320,10 @@ async def set_document_field_values(
     # (R6): um valor arbitrário aqui corromperia relatórios/listagens filtrados
     # por empresa mesmo com a RLS de document_field_value já protegendo o
     # acesso via document_id corretamente.
-    company_id = await CustomFieldsService.get_document_company_id(conn, document_id)
-    if company_id is None:
+    doc = await CustomFieldsService.get_document_company_and_name(conn, document_id)
+    if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+    company_id = doc["company_id"]
 
     # Uma query pra buscar todos os campos referenciados no lote, em vez de uma
     # por item (N+1) — importante aqui porque um preenchimento de formulário
@@ -382,4 +384,19 @@ async def set_document_field_values(
             value_text=value_text, value_date=value_date, value_number=value_number, updated_by=user_id,
         )
         results.append(dict(row))
+
+        # Fase 2.4 (before/after de metadados): só grava evento se o valor
+        # realmente mudou — reenviar o mesmo valor (ex.: autosave disparando
+        # de novo no blur) não deveria virar ruído na timeline.
+        old_value = row["old_value_text"]
+        if old_value != value_text:
+            await conn.execute(
+                """
+                INSERT INTO public.activity_log
+                  (user_id, company_id, action, item_type, item_id, item_name_snapshot, event_category, metadata)
+                VALUES ($1::uuid, $2::uuid, 'update_metadata', 'document', $3::uuid, $4, 'metadata', $5::jsonb)
+                """,
+                user_id, str(company_id), str(document_id), doc["name"],
+                json.dumps({"field_label": field["label"], "custom_field_id": str(item.custom_field_id), "old_value": old_value, "new_value": value_text}),
+            )
     return results
