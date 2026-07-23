@@ -25,6 +25,7 @@ interface Template {
   department: string | null;
   sla_days: number;
   weight: number;
+  validity_months: number | null;
   active: boolean;
 }
 
@@ -41,6 +42,7 @@ interface Instance {
   dispensa_motivo: string | null;
   document_count: number;
   blocking_templates: string[] | null;
+  document_expires_at: string | null;
 }
 
 interface Dependency {
@@ -56,6 +58,7 @@ const STATUS_LABEL: Record<string, string> = {
   at_risk: "Vencendo",
   overdue: "Atrasada",
   blocked: "Bloqueada",
+  expired: "Expirada",
   reviewing: "Em revisão",
   approved: "Aprovada",
   dispensado: "Dispensada",
@@ -67,6 +70,7 @@ const STATUS_VARIANT: Record<string, "default" | "success" | "error" | "warning"
   at_risk: "warning",
   overdue: "error",
   blocked: "info",
+  expired: "error",
   reviewing: "info",
   approved: "success",
   dispensado: "default",
@@ -171,6 +175,7 @@ export default function Obligations() {
                       {FREQ_LABEL[t.frequency] ?? t.frequency}
                       {t.department ? ` · ${t.department}` : ""}
                       {t.sla_days > 0 ? ` · alerta ${t.sla_days}d antes do prazo` : ""}
+                      {t.validity_months ? ` · documento vale ${t.validity_months} ${t.validity_months === 1 ? "mês" : "meses"}` : ""}
                     </div>
                   </div>
                   <Button variant="ghost" size="sm" onClick={() => setShowInstanceModal(t)}>
@@ -260,10 +265,13 @@ export default function Obligations() {
                         <span className="inline-flex items-center gap-1">
                           <Lock className="w-3 h-3" /> Aguardando: {inst.blocking_templates?.join(", ")}
                         </span>
+                      ) : inst.effective_status === "expired" ? (
+                        <span>O documento vinculado venceu {relativeDate(inst.document_expires_at!)} — precisa de um documento atualizado.</span>
                       ) : (
                         <>
                           Prazo {relativeDate(inst.due_date)}
                           {inst.document_count > 0 ? ` · ${inst.document_count} documento(s) vinculado(s)` : " · sem documento vinculado"}
+                          {inst.effective_status === "approved" && inst.document_expires_at ? ` · válido até ${new Date(inst.document_expires_at + "T00:00:00").toLocaleDateString("pt-BR")}` : ""}
                           {inst.dispensa_motivo ? ` · Dispensada: ${inst.dispensa_motivo}` : ""}
                         </>
                       )}
@@ -333,6 +341,7 @@ function TemplateModal({ companyId, onClose, onCreated }: { companyId: string; o
   const [frequency, setFrequency] = useState("mensal");
   const [criticality, setCriticality] = useState("media");
   const [slaDays, setSlaDays] = useState(7);
+  const [validityMonths, setValidityMonths] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function submit() {
@@ -342,6 +351,7 @@ function TemplateModal({ companyId, onClose, onCreated }: { companyId: string; o
       await api.post(`/companies/${companyId}/obligations/templates`, {
         company_id: companyId, name: name.trim(), department: department.trim() || null,
         frequency, criticality, sla_days: slaDays,
+        validity_months: validityMonths.trim() ? Number(validityMonths) : null,
       });
       success("Modelo de obrigação criado.");
       onCreated();
@@ -378,6 +388,14 @@ function TemplateModal({ companyId, onClose, onCreated }: { companyId: string; o
       <div>
         <label className={labelClass}>Avisar quantos dias antes do prazo</label>
         <input type="number" min={0} className={inputClass} value={slaDays} onChange={(e) => setSlaDays(Number(e.target.value))} />
+      </div>
+      <div>
+        <label className={labelClass}>Validade do documento em meses (opcional)</label>
+        <input
+          type="number" min={1} className={inputClass} value={validityMonths}
+          onChange={(e) => setValidityMonths(e.target.value)}
+          placeholder="Deixe em branco se o documento não expira sozinho"
+        />
       </div>
       <div className="flex justify-end gap-2 pt-2">
         <Button variant="ghost" onClick={onClose}>Cancelar</Button>

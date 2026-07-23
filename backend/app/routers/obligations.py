@@ -61,6 +61,7 @@ class TemplateCreate(BaseModel):
     department: str | None = None
     sla_days: int = 0
     weight: int = 1
+    validity_months: int | None = None
     rules_json: dict[str, Any] = {}
 
     @field_validator("frequency")
@@ -77,6 +78,13 @@ class TemplateCreate(BaseModel):
             raise ValueError(f"criticality deve ser um de: {', '.join(CRITICALITIES)}")
         return v
 
+    @field_validator("validity_months")
+    @classmethod
+    def _valid_validity(cls, v: int | None) -> int | None:
+        if v is not None and v <= 0:
+            raise ValueError("validity_months deve ser positivo (ou omitido/null pra 'nunca expira').")
+        return v
+
 
 class TemplateUpdate(BaseModel):
     name: str | None = None
@@ -85,6 +93,8 @@ class TemplateUpdate(BaseModel):
     department: str | None = None
     sla_days: int | None = None
     weight: int | None = None
+    validity_months: int | None = None
+    clear_validity_months: bool = False
     active: bool | None = None
 
 
@@ -146,7 +156,7 @@ async def create_template(
     row = await ObligationsService.create_template(
         conn, company_id=company_id, name=body.name, description=body.description, frequency=body.frequency,
         criticality=body.criticality, department=body.department, sla_days=body.sla_days, weight=body.weight,
-        rules_json=body.rules_json, created_by=user_id,
+        validity_months=body.validity_months, rules_json=body.rules_json, created_by=user_id,
     )
     return dict(row)
 
@@ -166,7 +176,8 @@ async def update_template(
 
     row = await ObligationsService.update_template(
         conn, template_id, name=body.name, description=body.description, criticality=body.criticality,
-        department=body.department, sla_days=body.sla_days, weight=body.weight, active=body.active,
+        department=body.department, sla_days=body.sla_days, weight=body.weight,
+        validity_months=body.validity_months, clear_validity_months=body.clear_validity_months, active=body.active,
     )
     return dict(row)
 

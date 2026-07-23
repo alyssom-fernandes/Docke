@@ -12,8 +12,14 @@ Fase 4.2 (parte 1) — dependências entre obrigações: uma instância cujo
 template depende de outro (ex.: SPED depende de NF) fica com
 `effective_status = 'blocked'` enquanto a instância do pré-requisito, no
 MESMO período, não estiver `approved`/`dispensado`. Regras condicionais
-(depende de perfil fiscal que a empresa não guarda hoje), matriz 2D (4.4) e
-Self-Service Collect (4.6) não fazem parte desta fatia.
+(depende de perfil fiscal que a empresa não guarda hoje) não fazem parte
+desta fatia.
+
+Fase 4.3 (parte 1) — validade/caducidade do documento: se o template tem
+`validity_months`, o documento vinculado mais recente ENVELHECE — passado
+esse prazo, uma instância antes `approved` vira `expired` (calculado na
+leitura, igual aos outros estados derivados). `NOT_APPLICABLE`, matriz 2D
+(4.4) e Self-Service Collect (4.6) não fazem parte desta fatia.
 """
 import json
 from typing import Any
@@ -38,15 +44,29 @@ BLOCKING_LATERAL_SQL = """
   ) bl ON true
 """
 
+# LATERAL: data em que o documento comprobatório mais recente perde validade
+# (linked_at do vínculo mais novo + validity_months do template). NULL se o
+# template não tem validade definida ou não há documento vinculado ainda.
+VALIDITY_LATERAL_SQL = """
+  LEFT JOIN LATERAL (
+    SELECT (max(od.linked_at)::date + (ot.validity_months || ' months')::interval)::date AS expires_at
+    FROM public.obligation_documents od
+    WHERE od.obligation_instance_id = oi.id
+  ) exp ON true
+"""
+
 EFFECTIVE_STATUS_SQL = """
   CASE
-    WHEN oi.status IN ('reviewing', 'approved', 'dispensado', 'cancelado') THEN oi.status
+    WHEN oi.status IN ('reviewing', 'dispensado', 'cancelado') THEN oi.status
+    WHEN oi.status = 'approved' AND exp.expires_at IS NOT NULL AND exp.expires_at < CURRENT_DATE THEN 'expired'
+    WHEN oi.status = 'approved' THEN 'approved'
     WHEN bl.blocking_templates IS NOT NULL THEN 'blocked'
     WHEN oi.due_date < CURRENT_DATE THEN 'overdue'
     WHEN oi.due_date <= CURRENT_DATE + GREATEST(ot.sla_days, 0) THEN 'at_risk'
     ELSE 'pending'
   END AS effective_status,
-  bl.blocking_templates
+  bl.blocking_templates,
+  exp.expires_at AS document_expires_at
 """
 
 
@@ -74,23 +94,24 @@ class ObligationsService:
     async def create_template(
         conn: asyncpg.Connection, *, company_id: UUID, name: str, description: str | None,
         frequency: str, criticality: str, department: str | None, sla_days: int, weight: int,
-        rules_json: dict[str, Any], created_by: str,
+        validity_months: int | None, rules_json: dict[str, Any], created_by: str,
     ) -> asyncpg.Record:
         return await conn.fetchrow(
             """
             INSERT INTO public.obligation_templates
-              (company_id, name, description, frequency, criticality, department, sla_days, weight, rules_json, created_by)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)
+              (company_id, name, description, frequency, criticality, department, sla_days, weight, validity_months, rules_json, created_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11)
             RETURNING *
             """,
             company_id, name, description, frequency, criticality, department, sla_days, weight,
-            json.dumps(rules_json), created_by,
+            validity_months, json.dumps(rules_json), created_by,
         )
 
     @staticmethod
     async def update_template(
         conn: asyncpg.Connection, template_id: UUID, *, name: str | None, description: str | None,
-        criticality: str | None, department: str | None, sla_days: int | None, weight: int | None, active: bool | None,
+        criticality: str | None, department: str | None, sla_days: int | None, weight: int | None,
+        validity_months: int | None, clear_validity_months: bool, active: bool | None,
     ) -> asyncpg.Record:
         return await conn.fetchrow(
             """
@@ -101,11 +122,13 @@ class ObligationsService:
                 department = COALESCE($5, department),
                 sla_days = COALESCE($6, sla_days),
                 weight = COALESCE($7, weight),
-                active = COALESCE($8, active)
+                validity_months = CASE WHEN $9 THEN NULL ELSE COALESCE($8, validity_months) END,
+                active = COALESCE($10, active)
             WHERE id = $1
             RETURNING *
             """,
-            template_id, name, description, criticality, department, sla_days, weight, active,
+            template_id, name, description, criticality, department, sla_days, weight,
+            validity_months, clear_validity_months, active,
         )
 
     @staticmethod
@@ -167,6 +190,7 @@ class ObligationsService:
             FROM public.obligation_instances oi
             JOIN public.obligation_templates ot ON ot.id = oi.template_id
             {BLOCKING_LATERAL_SQL}
+            {VALIDITY_LATERAL_SQL}
             WHERE {' AND '.join(conditions)}
             ORDER BY oi.due_date
             """,
@@ -185,6 +209,7 @@ class ObligationsService:
             FROM public.obligation_instances oi
             JOIN public.obligation_templates ot ON ot.id = oi.template_id
             {BLOCKING_LATERAL_SQL}
+            {VALIDITY_LATERAL_SQL}
             WHERE oi.id = $1
             """,
             instance_id,
