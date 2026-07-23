@@ -8,8 +8,12 @@ persistidos — porque dependem de "hoje", não de um evento; persistir exigiria
 um job de recorrência que ainda não existe (fica para a Fase 4.5, junto dos
 alertas idempotentes). `effective_status` é o campo que a UI deve usar.
 
-Regras condicionais (4.2), matriz 2D (4.4) e Self-Service Collect (4.6) não
-fazem parte desta fatia.
+Fase 4.2 (parte 1) — dependências entre obrigações: uma instância cujo
+template depende de outro (ex.: SPED depende de NF) fica com
+`effective_status = 'blocked'` enquanto a instância do pré-requisito, no
+MESMO período, não estiver `approved`/`dispensado`. Regras condicionais
+(depende de perfil fiscal que a empresa não guarda hoje), matriz 2D (4.4) e
+Self-Service Collect (4.6) não fazem parte desta fatia.
 """
 import json
 from typing import Any
@@ -17,13 +21,32 @@ from uuid import UUID
 
 import asyncpg
 
+# LATERAL: pra cada instância, agrega os nomes dos templates dos quais ela
+# depende e que ainda não foram satisfeitos no mesmo período (dep_oi.id IS
+# NULL = pré-requisito nem tem instância gerada ainda nesse período).
+BLOCKING_LATERAL_SQL = """
+  LEFT JOIN LATERAL (
+    SELECT array_agg(DISTINCT dep_t.name ORDER BY dep_t.name) AS blocking_templates
+    FROM public.obligation_template_dependencies otd
+    JOIN public.obligation_templates dep_t ON dep_t.id = otd.depends_on_template_id
+    LEFT JOIN public.obligation_instances dep_oi
+      ON dep_oi.template_id = otd.depends_on_template_id
+     AND dep_oi.company_id = oi.company_id
+     AND dep_oi.period = oi.period
+    WHERE otd.template_id = oi.template_id
+      AND (dep_oi.id IS NULL OR dep_oi.status NOT IN ('approved', 'dispensado'))
+  ) bl ON true
+"""
+
 EFFECTIVE_STATUS_SQL = """
   CASE
     WHEN oi.status IN ('reviewing', 'approved', 'dispensado', 'cancelado') THEN oi.status
+    WHEN bl.blocking_templates IS NOT NULL THEN 'blocked'
     WHEN oi.due_date < CURRENT_DATE THEN 'overdue'
     WHEN oi.due_date <= CURRENT_DATE + GREATEST(ot.sla_days, 0) THEN 'at_risk'
     ELSE 'pending'
-  END AS effective_status
+  END AS effective_status,
+  bl.blocking_templates
 """
 
 
@@ -90,6 +113,40 @@ class ObligationsService:
         await conn.execute("UPDATE public.obligation_templates SET archived_at = now() WHERE id = $1", template_id)
 
     # -------------------------------------------------------------------
+    # Dependências entre templates (Fase 4.2)
+    # -------------------------------------------------------------------
+    @staticmethod
+    async def list_dependencies(conn: asyncpg.Connection, company_id: UUID) -> list[asyncpg.Record]:
+        return await conn.fetch(
+            """
+            SELECT otd.*, t.name AS template_name, dep.name AS depends_on_name
+            FROM public.obligation_template_dependencies otd
+            JOIN public.obligation_templates t ON t.id = otd.template_id
+            JOIN public.obligation_templates dep ON dep.id = otd.depends_on_template_id
+            WHERE otd.company_id = $1
+            ORDER BY t.name
+            """,
+            company_id,
+        )
+
+    @staticmethod
+    async def add_dependency(
+        conn: asyncpg.Connection, *, company_id: UUID, template_id: UUID, depends_on_template_id: UUID, created_by: str,
+    ) -> asyncpg.Record:
+        return await conn.fetchrow(
+            """
+            INSERT INTO public.obligation_template_dependencies (company_id, template_id, depends_on_template_id, created_by)
+            VALUES ($1, $2, $3, $4)
+            RETURNING *
+            """,
+            company_id, template_id, depends_on_template_id, created_by,
+        )
+
+    @staticmethod
+    async def remove_dependency(conn: asyncpg.Connection, dependency_id: UUID) -> None:
+        await conn.execute("DELETE FROM public.obligation_template_dependencies WHERE id = $1", dependency_id)
+
+    # -------------------------------------------------------------------
     # Instances
     # -------------------------------------------------------------------
     @staticmethod
@@ -109,6 +166,7 @@ class ObligationsService:
                    (SELECT count(*) FROM public.obligation_documents od WHERE od.obligation_instance_id = oi.id) AS document_count
             FROM public.obligation_instances oi
             JOIN public.obligation_templates ot ON ot.id = oi.template_id
+            {BLOCKING_LATERAL_SQL}
             WHERE {' AND '.join(conditions)}
             ORDER BY oi.due_date
             """,
@@ -126,6 +184,7 @@ class ObligationsService:
                    {EFFECTIVE_STATUS_SQL}
             FROM public.obligation_instances oi
             JOIN public.obligation_templates ot ON ot.id = oi.template_id
+            {BLOCKING_LATERAL_SQL}
             WHERE oi.id = $1
             """,
             instance_id,

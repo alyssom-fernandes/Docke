@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, X, FileText, Link2, Trash2, ShieldQuestion } from "lucide-react";
+import { Plus, X, FileText, Link2, Trash2, ShieldQuestion, GitBranch, Lock } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
@@ -40,12 +40,22 @@ interface Instance {
   status: string;
   dispensa_motivo: string | null;
   document_count: number;
+  blocking_templates: string[] | null;
+}
+
+interface Dependency {
+  id: string;
+  template_id: string;
+  template_name: string;
+  depends_on_template_id: string;
+  depends_on_name: string;
 }
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "Pendente",
   at_risk: "Vencendo",
   overdue: "Atrasada",
+  blocked: "Bloqueada",
   reviewing: "Em revisão",
   approved: "Aprovada",
   dispensado: "Dispensada",
@@ -56,6 +66,7 @@ const STATUS_VARIANT: Record<string, "default" | "success" | "error" | "warning"
   pending: "default",
   at_risk: "warning",
   overdue: "error",
+  blocked: "info",
   reviewing: "info",
   approved: "success",
   dispensado: "default",
@@ -76,11 +87,13 @@ export default function Obligations() {
 
   const [templates, setTemplates] = useState<Template[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
+  const [dependencies, setDependencies] = useState<Dependency[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showInstanceModal, setShowInstanceModal] = useState<Template | null>(null);
   const [linkingInstance, setLinkingInstance] = useState<Instance | null>(null);
+  const [showDependencyModal, setShowDependencyModal] = useState(false);
 
   function load() {
     if (!current) return;
@@ -90,13 +103,25 @@ export default function Obligations() {
       api.get<Instance[]>("/companies/" + current.id + "/obligations/instances", {
         params: statusFilter ? { status: statusFilter } : {},
       }),
+      api.get<Dependency[]>("/companies/" + current.id + "/obligations/dependencies"),
     ])
-      .then(([t, i]) => {
+      .then(([t, i, d]) => {
         setTemplates(Array.isArray(t.data) ? t.data : []);
         setInstances(Array.isArray(i.data) ? i.data : []);
+        setDependencies(Array.isArray(d.data) ? d.data : []);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+  }
+
+  async function removeDependency(dep: Dependency) {
+    try {
+      await api.delete(`/obligations/dependencies/${dep.id}`, { params: { company_id: current!.id } });
+      success("Dependência removida.");
+      load();
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível remover a dependência.");
+    }
   }
 
   useEffect(load, [current?.id, statusFilter]);
@@ -158,6 +183,42 @@ export default function Obligations() {
         )}
       </section>
 
+      {/* Dependências */}
+      {templates.length >= 2 && (
+        <section className="space-y-2">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <h2 className="text-mac-callout font-semibold text-[var(--text-primary)]">Dependências</h2>
+            {isAdmin && (
+              <Button variant="ghost" size="sm" onClick={() => setShowDependencyModal(true)}>
+                <GitBranch className="w-3.5 h-3.5" /> Nova dependência
+              </Button>
+            )}
+          </div>
+          {dependencies.length === 0 ? (
+            <p className="text-mac-caption text-[var(--text-tertiary)]">
+              Nenhuma dependência cadastrada — nenhum modelo está condicionado à conclusão de outro.
+            </p>
+          ) : (
+            <ul className="space-y-1.5">
+              {dependencies.map((d) => (
+                <li key={d.id} className="flex items-center gap-2 text-mac-caption text-[var(--text-secondary)]">
+                  <GitBranch className="w-3.5 h-3.5 text-teal-500 flex-shrink-0" />
+                  <span>
+                    <strong className="text-[var(--text-primary)]">{d.template_name}</strong> só fica ativa depois de{" "}
+                    <strong className="text-[var(--text-primary)]">{d.depends_on_name}</strong> ser aprovada no mesmo período
+                  </span>
+                  {isAdmin && (
+                    <button onClick={() => removeDependency(d)} className="p-1 rounded-[6px] text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]" title="Remover dependência">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
       {/* Instâncias */}
       <section className="space-y-2">
         <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -195,13 +256,21 @@ export default function Obligations() {
                   <div className="flex-1 min-w-0">
                     <div className="text-mac-body text-[var(--text-primary)] truncate">{inst.template_name} · {inst.period}</div>
                     <div className="text-mac-caption text-[var(--text-tertiary)]">
-                      Prazo {relativeDate(inst.due_date)}
-                      {inst.document_count > 0 ? ` · ${inst.document_count} documento(s) vinculado(s)` : " · sem documento vinculado"}
-                      {inst.dispensa_motivo ? ` · Dispensada: ${inst.dispensa_motivo}` : ""}
+                      {inst.effective_status === "blocked" ? (
+                        <span className="inline-flex items-center gap-1">
+                          <Lock className="w-3 h-3" /> Aguardando: {inst.blocking_templates?.join(", ")}
+                        </span>
+                      ) : (
+                        <>
+                          Prazo {relativeDate(inst.due_date)}
+                          {inst.document_count > 0 ? ` · ${inst.document_count} documento(s) vinculado(s)` : " · sem documento vinculado"}
+                          {inst.dispensa_motivo ? ` · Dispensada: ${inst.dispensa_motivo}` : ""}
+                        </>
+                      )}
                     </div>
                   </div>
                   <StatusBadge status={inst.effective_status} />
-                  {inst.effective_status !== "dispensado" && inst.effective_status !== "cancelado" && (
+                  {inst.effective_status !== "dispensado" && inst.effective_status !== "cancelado" && inst.effective_status !== "blocked" && (
                     <>
                       <Button variant="ghost" size="sm" onClick={() => setLinkingInstance(inst)}>
                         <Link2 className="w-3.5 h-3.5" /> Vincular documento
@@ -228,6 +297,9 @@ export default function Obligations() {
       )}
       {linkingInstance && (
         <LinkDocumentModal companyId={current!.id} instance={linkingInstance} onClose={() => setLinkingInstance(null)} onLinked={() => { setLinkingInstance(null); load(); }} />
+      )}
+      {showDependencyModal && (
+        <DependencyModal companyId={current!.id} templates={templates} onClose={() => setShowDependencyModal(false)} onCreated={() => { setShowDependencyModal(false); load(); }} />
       )}
     </div>
   );
@@ -416,6 +488,54 @@ function LinkDocumentModal({ companyId, instance, onClose, onLinked }: { company
           <Trash2 className="w-3 h-3" /> Documentos já vinculados podem ser removidos na aba Atividade do documento.
         </p>
       )}
+    </ModalShell>
+  );
+}
+
+function DependencyModal({ companyId, templates, onClose, onCreated }: { companyId: string; templates: Template[]; onClose: () => void; onCreated: () => void }) {
+  const { success, error: showError } = useToast();
+  const [templateId, setTemplateId] = useState(templates[0]?.id ?? "");
+  const [dependsOnId, setDependsOnId] = useState(templates[1]?.id ?? "");
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    if (!templateId || !dependsOnId || templateId === dependsOnId) return;
+    setSaving(true);
+    try {
+      await api.post(`/companies/${companyId}/obligations/dependencies`, { template_id: templateId, depends_on_template_id: dependsOnId });
+      success("Dependência criada.");
+      onCreated();
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível criar a dependência.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const options = templates.map((t) => ({ value: t.id, label: t.name }));
+
+  return (
+    <ModalShell title="Nova dependência" onClose={onClose}>
+      <p className="text-mac-caption text-[var(--text-secondary)]">
+        A obrigação abaixo só fica ativa depois que a segunda for aprovada no mesmo período — evita cobrar algo que ainda não faz sentido cobrar.
+      </p>
+      <div>
+        <label className={labelClass}>Obrigação (fica bloqueada)</label>
+        <Dropdown value={templateId} onChange={setTemplateId} placeholder="Escolha a obrigação" options={options} />
+      </div>
+      <div>
+        <label className={labelClass}>Depende de</label>
+        <Dropdown value={dependsOnId} onChange={setDependsOnId} placeholder="Escolha o pré-requisito" options={options.filter((o) => o.value !== templateId)} />
+      </div>
+      {templateId === dependsOnId && templateId !== "" && (
+        <p className="text-mac-caption text-red-500">Uma obrigação não pode depender de si mesma.</p>
+      )}
+      <div className="flex justify-end gap-2 pt-2">
+        <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+        <Button variant="primary" onClick={submit} disabled={saving || !templateId || !dependsOnId || templateId === dependsOnId}>
+          {saving ? "Criando…" : "Criar dependência"}
+        </Button>
+      </div>
     </ModalShell>
   );
 }

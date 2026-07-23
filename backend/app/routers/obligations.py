@@ -111,6 +111,11 @@ class DocumentLink(BaseModel):
     document_id: UUID
 
 
+class DependencyCreate(BaseModel):
+    template_id: UUID
+    depends_on_template_id: UUID
+
+
 # ---------------------------------------------------------------------------
 # Templates
 # ---------------------------------------------------------------------------
@@ -305,3 +310,58 @@ async def unlink_document(
     role = await get_app_role(conn, claims)
     await _require_operator(conn, claims["sub"], UUID(str(existing["company_id"])), role)
     await ObligationsService.unlink_document(conn, instance_id, document_id)
+
+
+# ---------------------------------------------------------------------------
+# Dependências entre templates (Fase 4.2, parte 1)
+# ---------------------------------------------------------------------------
+
+@router.get("/companies/{company_id}/obligations/dependencies")
+async def list_dependencies(
+    company_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+) -> list[dict[str, Any]]:
+    rows = await ObligationsService.list_dependencies(conn, company_id)
+    return [dict(r) for r in rows]
+
+
+@router.post("/companies/{company_id}/obligations/dependencies", status_code=status.HTTP_201_CREATED)
+async def add_dependency(
+    company_id: UUID,
+    body: DependencyCreate,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    user_id = claims["sub"]
+    role = await get_app_role(conn, claims)
+    await _require_admin(conn, user_id, company_id, role)
+
+    for tid in (body.template_id, body.depends_on_template_id):
+        t = await ObligationsService.get_template(conn, tid)
+        if t is None or UUID(str(t["company_id"])) != company_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template de obrigação não encontrado nesta empresa.")
+
+    try:
+        row = await ObligationsService.add_dependency(
+            conn, company_id=company_id, template_id=body.template_id,
+            depends_on_template_id=body.depends_on_template_id, created_by=user_id,
+        )
+    except asyncpg.UniqueViolationError:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Essa dependência já existe.")
+    except asyncpg.CheckViolationError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uma obrigação não pode depender de si mesma.")
+    except asyncpg.RaiseError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return dict(row)
+
+
+@router.delete("/obligations/dependencies/{dependency_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_dependency(
+    dependency_id: UUID,
+    company_id: UUID = Query(...),
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> None:
+    role = await get_app_role(conn, claims)
+    await _require_admin(conn, claims["sub"], company_id, role)
+    await ObligationsService.remove_dependency(conn, dependency_id)
