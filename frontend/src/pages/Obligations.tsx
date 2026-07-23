@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Plus, X, FileText, Link2, Trash2, ShieldQuestion, GitBranch, Lock } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Plus, X, FileText, Link2, Trash2, ShieldQuestion, GitBranch, Lock, List, LayoutGrid } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
@@ -98,6 +98,8 @@ export default function Obligations() {
   const [showInstanceModal, setShowInstanceModal] = useState<Template | null>(null);
   const [linkingInstance, setLinkingInstance] = useState<Instance | null>(null);
   const [showDependencyModal, setShowDependencyModal] = useState(false);
+  const [view, setView] = useState<"list" | "matrix">("list");
+  const [matrixInstanceModal, setMatrixInstanceModal] = useState<{ template: Template; period: string } | null>(null);
 
   function load() {
     if (!current) return;
@@ -228,16 +230,36 @@ export default function Obligations() {
       <section className="space-y-2">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h2 className="text-mac-callout font-semibold text-[var(--text-primary)]">Instâncias</h2>
-          <div className="w-48">
-            <Dropdown
-              value={statusFilter}
-              onChange={setStatusFilter}
-              placeholder="Todos os status"
-              options={[
-                { value: "", label: "Todos os status" },
-                ...Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label })),
-              ]}
-            />
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-0.5 p-0.5 bg-[var(--bg-hover)] rounded-[var(--radius-control)]">
+              <button
+                onClick={() => setView("list")}
+                className={`p-1.5 rounded-[6px] transition-colors duration-fast ${view === "list" ? "bg-[var(--bg-card)] text-teal-500" : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"}`}
+                title="Lista"
+              >
+                <List className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setView("matrix")}
+                className={`p-1.5 rounded-[6px] transition-colors duration-fast ${view === "matrix" ? "bg-[var(--bg-card)] text-teal-500" : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"}`}
+                title="Matriz de completude"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {view === "list" && (
+              <div className="w-48">
+                <Dropdown
+                  value={statusFilter}
+                  onChange={setStatusFilter}
+                  placeholder="Todos os status"
+                  options={[
+                    { value: "", label: "Todos os status" },
+                    ...Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label })),
+                  ]}
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -252,6 +274,13 @@ export default function Obligations() {
             title="Nenhuma instância encontrada"
             description="Gere uma instância a partir de um modelo acima para começar a acompanhar o prazo."
             icon={<ShieldQuestion className="w-6 h-6" />}
+          />
+        ) : view === "matrix" ? (
+          <CompletionMatrix
+            templates={templates}
+            instances={instances}
+            onCellClick={(inst) => setLinkingInstance(inst)}
+            onEmptyCellClick={(template, period) => setMatrixInstanceModal({ template, period })}
           />
         ) : (
           <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
@@ -303,12 +332,106 @@ export default function Obligations() {
       {showInstanceModal && (
         <InstanceModal companyId={current!.id} template={showInstanceModal} onClose={() => setShowInstanceModal(null)} onCreated={() => { setShowInstanceModal(null); load(); }} />
       )}
+      {matrixInstanceModal && (
+        <InstanceModal
+          companyId={current!.id} template={matrixInstanceModal.template} defaultPeriod={matrixInstanceModal.period}
+          onClose={() => setMatrixInstanceModal(null)} onCreated={() => { setMatrixInstanceModal(null); load(); }}
+        />
+      )}
       {linkingInstance && (
         <LinkDocumentModal companyId={current!.id} instance={linkingInstance} onClose={() => setLinkingInstance(null)} onLinked={() => { setLinkingInstance(null); load(); }} />
       )}
       {showDependencyModal && (
         <DependencyModal companyId={current!.id} templates={templates} onClose={() => setShowDependencyModal(false)} onCreated={() => { setShowDependencyModal(false); load(); }} />
       )}
+    </div>
+  );
+}
+
+// Fase 4.4 — Matriz 2D de completude (linhas = período, colunas = tipo de
+// obrigação). Reaproveita os dados já carregados de templates/instâncias —
+// nenhum endpoint novo. Pílula colorida = status; célula tracejada = ainda
+// sem instância gerada nesse período (clicável, abre o modal de geração já
+// com o período preenchido).
+const MATRIX_PILL: Record<string, string> = {
+  approved: "bg-emerald-500",
+  at_risk: "bg-amber-400",
+  expired: "bg-amber-400",
+  overdue: "bg-red-500",
+  blocked: "bg-blue-400",
+  reviewing: "bg-blue-400",
+  pending: "bg-[var(--bg-hover)] border border-[var(--border-default)]",
+  dispensado: "bg-[var(--bg-hover)] border border-[var(--border-default)]",
+  cancelado: "bg-[var(--bg-hover)] border border-[var(--border-default)]",
+};
+
+function CompletionMatrix({
+  templates, instances, onCellClick, onEmptyCellClick,
+}: {
+  templates: Template[]; instances: Instance[];
+  onCellClick: (inst: Instance) => void; onEmptyCellClick: (template: Template, period: string) => void;
+}) {
+  const activeTemplates = useMemo(() => templates.filter((t) => t.active), [templates]);
+  const periods = useMemo(() => Array.from(new Set(instances.map((i) => i.period))).sort(), [instances]);
+  const byKey = useMemo(() => {
+    const map = new Map<string, Instance>();
+    instances.forEach((i) => map.set(`${i.template_id}|${i.period}`, i));
+    return map;
+  }, [instances]);
+
+  if (periods.length === 0 || activeTemplates.length === 0) {
+    return <p className="text-mac-caption text-[var(--text-tertiary)]">Sem dados suficientes para montar a matriz ainda.</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr>
+              <th className="text-left px-4 py-2.5 text-mac-caption font-medium text-[var(--text-secondary)] sticky left-0 bg-[var(--bg-card)] whitespace-nowrap">Período</th>
+              {activeTemplates.map((t) => (
+                <th key={t.id} className="px-3 py-2.5 text-mac-caption font-medium text-[var(--text-secondary)] whitespace-nowrap text-center">{t.name}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {periods.map((period) => (
+              <tr key={period} className="border-t border-[var(--border-default)]">
+                <td className="px-4 py-2.5 text-mac-caption text-[var(--text-primary)] font-medium sticky left-0 bg-[var(--bg-card)] whitespace-nowrap">{period}</td>
+                {activeTemplates.map((t) => {
+                  const inst = byKey.get(`${t.id}|${period}`);
+                  return (
+                    <td key={t.id} className="px-3 py-2.5 text-center">
+                      {inst ? (
+                        <button
+                          onClick={() => onCellClick(inst)}
+                          title={`${t.name} · ${period} — ${STATUS_LABEL[inst.effective_status] ?? inst.effective_status}`}
+                          className={`w-4 h-4 rounded-full inline-block hover:ring-2 hover:ring-teal-400/50 transition-all duration-fast ${MATRIX_PILL[inst.effective_status] ?? "bg-[var(--bg-hover)]"}`}
+                        />
+                      ) : (
+                        <button
+                          onClick={() => onEmptyCellClick(t, period)}
+                          title={`Gerar instância de ${t.name} para ${period}`}
+                          className="w-4 h-4 rounded-full inline-block border border-dashed border-[var(--border-default)] hover:border-teal-400 transition-colors duration-fast"
+                        />
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex items-center gap-4 flex-wrap text-mac-caption text-[var(--text-tertiary)]">
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" /> Aprovada</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" /> Vencendo/Expirada</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" /> Atrasada</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-400 inline-block" /> Bloqueada/Em revisão</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[var(--bg-hover)] border border-[var(--border-default)] inline-block" /> Pendente/Dispensada</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full border border-dashed border-[var(--border-default)] inline-block" /> Sem instância</span>
+      </div>
     </div>
   );
 }
@@ -405,10 +528,10 @@ function TemplateModal({ companyId, onClose, onCreated }: { companyId: string; o
   );
 }
 
-function InstanceModal({ companyId, template, onClose, onCreated }: { companyId: string; template: Template; onClose: () => void; onCreated: () => void }) {
+function InstanceModal({ companyId, template, defaultPeriod, onClose, onCreated }: { companyId: string; template: Template; defaultPeriod?: string; onClose: () => void; onCreated: () => void }) {
   const { success, error: showError } = useToast();
   const now = new Date();
-  const [period, setPeriod] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
+  const [period, setPeriod] = useState(defaultPeriod ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
   const [dueDate, setDueDate] = useState(() => {
     const d = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     return d.toISOString().slice(0, 10);
