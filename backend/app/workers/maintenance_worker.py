@@ -17,6 +17,7 @@ from app.config import settings
 logger = logging.getLogger("docke.maintenance_worker")
 
 _CHECK_INTERVAL_SECS = 3600  # roda a cada hora
+_STATS_REFRESH_INTERVAL_SECS = 15 * 60  # Fase 3.1/3.3 — "atualizado há X" promete no máximo 15min de atraso
 
 # None (não 0.0!) força um reset já na primeira iteração do loop — a origem
 # de time.monotonic() é arbitrária por plataforma (não é "segundos desde o
@@ -35,6 +36,26 @@ async def maintenance_worker_loop() -> None:
         except Exception as exc:
             logger.exception("Erro inesperado no maintenance worker: %s", exc)
         await asyncio.sleep(_CHECK_INTERVAL_SECS)
+
+
+async def stats_refresh_loop() -> None:
+    """
+    Loop separado do maintenance_worker_loop principal (que roda de hora em
+    hora) — os agregados do dashboard (Fase 3.1) prometem no máximo 15min de
+    atraso pro usuário, então precisam do próprio ritmo.
+    """
+    while True:
+        try:
+            from app.dependencies import _admin_pool
+            if _admin_pool is not None:
+                async with _admin_pool.acquire() as conn:
+                    await conn.execute("SELECT public.refresh_company_stats()")
+        except asyncio.CancelledError:
+            logger.info("Stats refresh worker cancelado.")
+            break
+        except Exception as exc:
+            logger.exception("Erro ao atualizar mv_company_stats: %s", exc)
+        await asyncio.sleep(_STATS_REFRESH_INTERVAL_SECS)
 
 
 async def _run_once() -> None:

@@ -14,6 +14,7 @@ import {
   Move,
   Trash2,
   Download,
+  RefreshCw,
 } from "lucide-react";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
@@ -28,6 +29,7 @@ interface Stats {
   total_folders: number;
   total_favorites: number;
   recent_uploads: number;
+  refreshed_at: string | null;
 }
 
 interface RecentDoc {
@@ -82,6 +84,7 @@ function actionLabel(action: string) {
     unfavorite: "desancorou",
     undo: "desfez",
     copy: "copiou a estrutura para",
+    update_metadata: "atualizou um campo de",
   };
   return map[action] ?? action;
 }
@@ -124,13 +127,19 @@ export default function Dashboard() {
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  // Fase 3.3: cooldown de 15s no cliente espelha o cooldown por empresa que
+  // o backend já impõe — evita bater a cara no 429 clicando repetido.
+  const [refreshCooldown, setRefreshCooldown] = useState(0);
+
+  const emptyStats: Stats = { total_documents: 0, total_folders: 0, total_favorites: 0, recent_uploads: 0, refreshed_at: null };
 
   useEffect(() => {
     if (!current) return;
     setLoading(true);
 
     Promise.all([
-      api.get(`/companies/${current.id}/stats`).catch(() => ({ data: { total_documents: 0, total_folders: 0, total_favorites: 0, recent_uploads: 0 } })),
+      api.get(`/companies/${current.id}/stats`).catch(() => ({ data: emptyStats })),
       api.get("/documents/recent", { params: { company_id: current.id, limit: 5 } }).catch(() => ({ data: [] })),
       api.get("/favorites").catch(() => ({ data: [] })),
       api.get("/activity", { params: { company_id: current.id, page_size: 8 } }).catch(() => ({ data: { results: [] } })),
@@ -141,6 +150,27 @@ export default function Dashboard() {
       setActivity(Array.isArray(actRes.data) ? actRes.data : (actRes.data.results ?? []));
     }).finally(() => setLoading(false));
   }, [current?.id]);
+
+  useEffect(() => {
+    if (refreshCooldown <= 0) return;
+    const id = setTimeout(() => setRefreshCooldown((s) => s - 1), 1000);
+    return () => clearTimeout(id);
+  }, [refreshCooldown]);
+
+  async function refreshStats() {
+    if (!current || refreshing || refreshCooldown > 0) return;
+    setRefreshing(true);
+    try {
+      const r = await api.post(`/companies/${current.id}/stats/refresh`);
+      setStats(r.data);
+      setRefreshCooldown(15);
+    } catch {
+      // 429 (cooldown do servidor) ou erro de rede — silencioso, o número
+      // exibido continua o último válido, nada quebra visualmente.
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   if (!current) {
     return (
@@ -153,6 +183,25 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Fase 3.3: "atualizado há X" — o número vem de uma materialized view
+          recalculada a cada 15min pelo worker; sem isso fica ambíguo se o
+          usuário está vendo dado em tempo real ou não. */}
+      {!loading && stats && (
+        <div className="flex items-center justify-end gap-2 -mb-2">
+          <span className="text-mac-caption text-[var(--text-tertiary)]">
+            {stats.refreshed_at ? `Atualizado ${relativeDate(stats.refreshed_at)}` : "Atualizando…"}
+          </span>
+          <button
+            onClick={refreshStats}
+            disabled={refreshing || refreshCooldown > 0}
+            className="flex items-center gap-1 text-mac-caption text-[var(--text-secondary)] hover:text-teal-500 disabled:opacity-40 disabled:pointer-events-none transition-colors duration-fast"
+          >
+            <RefreshCw className={`w-3 h-3 ${refreshing ? "animate-spin" : ""}`} />
+            {refreshCooldown > 0 ? `Aguarde ${refreshCooldown}s` : "Atualizar"}
+          </button>
+        </div>
+      )}
+
       {/* Stats */}
       {loading ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">

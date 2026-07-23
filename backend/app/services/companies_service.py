@@ -129,23 +129,44 @@ class CompaniesService:
         )
 
     @staticmethod
-    async def get_stats(conn: asyncpg.Connection, company_id: UUID) -> asyncpg.Record:
+    async def is_member(conn: asyncpg.Connection, user_id: str, company_id: UUID) -> bool:
+        return bool(await conn.fetchval(
+            "SELECT EXISTS (SELECT 1 FROM public.user_company_access WHERE user_id = $1 AND company_id = $2)",
+            user_id, company_id,
+        ))
+
+    @staticmethod
+    async def get_stats(conn: asyncpg.Connection, company_id: UUID) -> asyncpg.Record | None:
+        """
+        Fase 3.1: total_documents/total_folders/recent_uploads vêm da
+        materialized view (mv_company_stats), não de COUNT(*) direto —
+        `refreshed_at` deixa explícito pro frontend há quanto tempo esse
+        número é verdade (Fase 3.3, "atualizado há X").
+
+        total_favorites continua ao vivo: é por usuário (auth.uid()), não
+        da empresa — materializar por empresa estaria errado.
+
+        Materialized view não tem RLS — o caller PRECISA ter checado
+        is_member() antes de chamar isto.
+        """
         return await conn.fetchrow(
             """
             SELECT
-              (SELECT COUNT(*) FROM public.documents d
-               WHERE d.company_id = $1 AND d.deleted_at IS NULL) AS total_documents,
-              (SELECT COUNT(*) FROM public.folders f
-               WHERE f.company_id = $1 AND f.deleted_at IS NULL) AS total_folders,
+              mv.total_documents, mv.total_folders, mv.recent_uploads,
+              csr.refreshed_at,
               (SELECT COUNT(*) FROM public.favorites fav
                JOIN public.documents d ON d.id = fav.document_id
-               WHERE d.company_id = $1 AND fav.user_id = auth.uid()) AS total_favorites,
-              (SELECT COUNT(*) FROM public.documents d
-               WHERE d.company_id = $1 AND d.deleted_at IS NULL
-                 AND d.created_at >= now() - interval '7 days') AS recent_uploads
+               WHERE d.company_id = $1 AND fav.user_id = auth.uid()) AS total_favorites
+            FROM public.mv_company_stats mv
+            LEFT JOIN public.company_stats_refresh csr ON csr.company_id = mv.company_id
+            WHERE mv.company_id = $1
             """,
             company_id,
         )
+
+    @staticmethod
+    async def refresh_stats(conn: asyncpg.Connection) -> None:
+        await conn.execute("SELECT public.refresh_company_stats()")
 
     @staticmethod
     async def update_company(

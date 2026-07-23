@@ -9,7 +9,7 @@ import httpx
 
 from app.config import settings
 from app.dependencies import get_app_role, get_current_user, get_db, get_db_admin
-from app.services import storage_service
+from app.services import rate_limit, storage_service
 from app.services.companies_service import CompaniesService
 
 router = APIRouter(prefix="/companies", tags=["companies"])
@@ -139,7 +139,37 @@ async def company_stats(
     conn: asyncpg.Connection = Depends(get_db),
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """Retorna contadores de documentos, pastas, favoritos e uploads recentes da empresa."""
+    """
+    Contadores de documentos, pastas, favoritos e uploads recentes da
+    empresa. total_documents/total_folders/recent_uploads vêm de uma
+    materialized view (Fase 3.1) — como ela não tem RLS (limitação do
+    Postgres para materialized views), a checagem de membro é manual aqui.
+    """
+    if not await CompaniesService.is_member(conn, claims["sub"], company_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem acesso a esta empresa.")
+    row = await CompaniesService.get_stats(conn, company_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empresa não encontrada.")
+    return dict(row)
+
+
+@router.post("/{company_id}/stats/refresh")
+async def refresh_company_stats(
+    company_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Fase 3.3: atualização manual sob demanda, com cooldown de 15s por
+    empresa (não por usuário — se alguém já atualizou há 5s, o dado já
+    está fresco pra todo mundo, não faz sentido cada usuário ter seu
+    próprio cooldown).
+    """
+    if not await CompaniesService.is_member(conn, claims["sub"], company_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem acesso a esta empresa.")
+    if not rate_limit.check_and_record(f"stats-refresh:{company_id}", max_count=1, window_seconds=15):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Aguarde alguns segundos antes de atualizar de novo.")
+    await CompaniesService.refresh_stats(conn)
     row = await CompaniesService.get_stats(conn, company_id)
     return dict(row)
 

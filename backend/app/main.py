@@ -30,8 +30,9 @@ async def lifespan(app: FastAPI):
     if settings.ENABLE_OCR_WORKER:
         from app.workers.ocr_worker import ocr_worker_loop
         asyncio.create_task(ocr_worker_loop())
-    from app.workers.maintenance_worker import maintenance_worker_loop
+    from app.workers.maintenance_worker import maintenance_worker_loop, stats_refresh_loop
     asyncio.create_task(maintenance_worker_loop())
+    asyncio.create_task(stats_refresh_loop())
     yield
     await close_db_pool()
 
