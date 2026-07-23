@@ -12,6 +12,7 @@ na fila de revisão (Aprovar/Rejeitar/Adiar) também — mas "Aprovar" aqui
 APENAS marca o status; não dispara nenhuma exclusão real (isso é uma fatia
 futura, combinada separadamente com o usuário).
 """
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -19,12 +20,14 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, field_validator
 
-from app.dependencies import get_app_role, get_current_user, get_db
+from app.dependencies import get_app_role, get_current_user, get_db, get_db_admin
+from app.services import storage_service
 from app.services.companies_service import CompaniesService
 from app.services.custom_fields_service import CustomFieldsService
-from app.services.retention_service import RetentionService
+from app.services.retention_service import RetentionService, UnderHoldError
 
 router = APIRouter(tags=["retention-legal"])
+logger = logging.getLogger("docke.retention")
 
 TRIGGER_TYPES = ("upload_date", "custom_field")
 QUEUE_DECISIONS = ("approved", "rejected", "deferred")
@@ -87,6 +90,13 @@ class HoldCreate(BaseModel):
         if not v.strip():
             raise ValueError("reason é obrigatório — todo hold precisa de um motivo registrado.")
         return v.strip()
+
+
+class QueueExecute(BaseModel):
+    # Fase 5.9: "confirmação por digitação no expurgo definitivo" — não é
+    # decorativo, é a defesa contra clique acidental num botão que apaga
+    # de verdade. Precisa bater exatamente com o nome do documento.
+    confirm_name: str
 
 
 class QueueDecision(BaseModel):
@@ -312,3 +322,76 @@ async def decide_queue_item(
         conn, queue_id, decision=body.status, notes=body.notes, deferred_until=deferred_until, reviewed_by=claims["sub"],
     )
     return dict(row)
+
+
+# ---------------------------------------------------------------------------
+# Execução real do descarte (5.4-5.6) — passo SEPARADO de "Aprovar", com sua
+# própria confirmação forte. Só admin/supremo, só item já 'approved'.
+# ---------------------------------------------------------------------------
+
+@router.post("/retention/queue/{queue_id}/execute")
+async def execute_purge(
+    queue_id: UUID,
+    body: QueueExecute,
+    company_id: UUID = Query(...),
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    role = await get_app_role(conn, claims)
+    await _require_admin(conn, claims["sub"], company_id, role)
+
+    queue_rows = await RetentionService.list_queue(conn, company_id, status_filter="approved")
+    target = next((r for r in queue_rows if r["id"] == queue_id), None)
+    if target is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Item não encontrado na fila com status 'approved' — só é possível executar descarte já aprovado.",
+        )
+    if body.confirm_name.strip() != target["document_name"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="O nome digitado não confere com o nome do documento — nada foi excluído.",
+        )
+
+    try:
+        result = await RetentionService.execute_purge(conn, admin_conn, queue_id=queue_id, executed_by=claims["sub"])
+    except UnderHoldError:
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail="Documento entrou sob retenção legal (legal hold) depois da aprovação — descarte bloqueado. Revise o hold antes de tentar de novo.",
+        )
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item não encontrado ou documento já não existe mais.")
+
+    # Remoção do storage acontece DEPOIS do commit do banco — mesma ordem
+    # do permanent_delete em trash.py: se falhar aqui, o registro já sumiu
+    # e a evidência (certificado) já foi emitida; só vira log, não bloqueia.
+    if result["storage_path"]:
+        try:
+            storage_service.delete_object(result["storage_path"])
+        except Exception:
+            logger.exception(
+                "Falha ao remover objeto do storage após execução de descarte (certificado=%s, key=%s) — objeto pode ter ficado órfão.",
+                result["certificate"]["id"], result["storage_path"],
+            )
+
+    return result["certificate"]
+
+
+# ---------------------------------------------------------------------------
+# Certificados de destruição (5.6) — evidência que sobrevive ao documento
+# ---------------------------------------------------------------------------
+
+@router.get("/companies/{company_id}/retention/certificates")
+async def list_certificates(
+    company_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> list[dict[str, Any]]:
+    role = await get_app_role(conn, claims)
+    await _require_admin(conn, claims["sub"], company_id, role)
+    rows = await conn.fetch(
+        "SELECT * FROM public.destruction_certificates WHERE company_id = $1 ORDER BY executed_at DESC", company_id,
+    )
+    return [dict(r) for r in rows]

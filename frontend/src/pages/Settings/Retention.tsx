@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, ScrollText, Lock, Unlock, Inbox, Trash2, Plus } from "lucide-react";
+import { AlertTriangle, ScrollText, Lock, Unlock, Inbox, Trash2, Plus, FileWarning, ShieldCheck } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
@@ -57,6 +57,17 @@ interface QueueItem {
   deferred_until: string | null;
 }
 
+interface Certificate {
+  id: string;
+  document_name_snapshot: string;
+  document_sha256: string | null;
+  folder_path_snapshot: string | null;
+  policy_name_snapshot: string;
+  legal_basis_snapshot: string | null;
+  executed_by_name_snapshot: string;
+  executed_at: string;
+}
+
 const inputClass = "w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70";
 const labelClass = "block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5";
 
@@ -76,6 +87,8 @@ export default function Retention() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [holds, setHolds] = useState<Hold[]>([]);
   const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [approvedQueue, setApprovedQueue] = useState<QueueItem[]>([]);
+  const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [loading, setLoading] = useState(true);
 
   function load() {
@@ -90,13 +103,17 @@ export default function Retention() {
       api.get<Assignment[]>(`/companies/${current.id}/retention/assignments`),
       api.get<Hold[]>(`/companies/${current.id}/retention/holds`),
       api.get<QueueItem[]>(`/companies/${current.id}/retention/queue`, { params: { status: "pending" } }),
+      api.get<QueueItem[]>(`/companies/${current.id}/retention/queue`, { params: { status: "approved" } }),
+      api.get<Certificate[]>(`/companies/${current.id}/retention/certificates`).catch(() => ({ data: [] })),
     ])
-      .then(([f, p, a, h, q]) => {
+      .then(([f, p, a, h, q, aq, c]) => {
         setFolders(Array.isArray(f.data) ? f.data : []);
         setPolicies(Array.isArray(p.data) ? p.data : []);
         setAssignments(Array.isArray(a.data) ? a.data : []);
         setHolds(Array.isArray(h.data) ? h.data : []);
         setQueue(Array.isArray(q.data) ? q.data : []);
+        setApprovedQueue(Array.isArray(aq.data) ? aq.data : []);
+        setCertificates(Array.isArray(c.data) ? c.data : []);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -156,7 +173,7 @@ export default function Retention() {
       deferredUntil = window.prompt("Adiar até quando? (yyyy-mm-dd)");
       if (!deferredUntil) return;
     } else if (decision === "approved") {
-      if (!window.confirm(`Aprovar "${item.document_name}" para descarte? Isso NÃO exclui o documento agora — só marca como aprovado, aguardando a etapa de execução (ainda não implementada).`)) return;
+      if (!window.confirm(`Aprovar "${item.document_name}" para descarte? Isso NÃO exclui o documento agora — só marca como aprovado. A exclusão real é um passo seguinte e separado, feito depois na seção "Aprovados aguardando execução", com sua própria confirmação.`)) return;
     }
     try {
       await api.post(`/retention/queue/${item.id}/decision`, { status: decision, notes, deferred_until: deferredUntil }, { params: { company_id: current!.id } });
@@ -164,6 +181,23 @@ export default function Retention() {
       load();
     } catch (e: any) {
       showError(e?.response?.data?.detail ?? "Não foi possível registrar a decisão.");
+    }
+  }
+
+  async function executePurge(item: QueueItem) {
+    // Fase 5.9: confirmação por digitação — o texto precisa bater exato
+    // com o nome do documento, senão o backend recusa (defesa em dobro,
+    // não só no cliente).
+    const typed = window.prompt(
+      `ATENÇÃO — isso apaga "${item.document_name}" definitivamente (banco de dados + arquivo). Essa ação é IRREVERSÍVEL e gera um certificado de destruição.\n\nDigite o nome exato do documento pra confirmar:`,
+    );
+    if (typed === null) return;
+    try {
+      await api.post(`/retention/queue/${item.id}/execute`, { confirm_name: typed }, { params: { company_id: current!.id } });
+      success(`"${item.document_name}" descartado — certificado de destruição emitido.`);
+      load();
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível executar o descarte.");
     }
   }
 
@@ -209,7 +243,7 @@ export default function Retention() {
           <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Fila de descarte — aguardando revisão</h2>
         </div>
         <p className="text-mac-caption text-[var(--text-secondary)]">
-          Documentos cujo prazo de retenção já passou entram aqui automaticamente (varredura diária) — nenhum é apagado sem essa revisão. "Aprovar" só marca a decisão; a exclusão em si ainda não está implementada nesta fase.
+          Documentos cujo prazo de retenção já passou entram aqui automaticamente (varredura diária) — nenhum é apagado sem essa revisão. "Aprovar" só marca a decisão; a exclusão em si é um passo separado, feito depois na seção "Aprovados aguardando execução".
         </p>
         {loading ? (
           <div className="h-14 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />
@@ -233,6 +267,57 @@ export default function Retention() {
           </ul>
         )}
       </div>
+
+      {/* Fase 5.4-5.6: execução real — passo SEPARADO da aprovação, de propósito */}
+      {!loading && approvedQueue.length > 0 && (
+        <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6 space-y-4 border border-red-500/20">
+          <div className="flex items-center gap-2">
+            <FileWarning className="w-4 h-4 text-red-500" />
+            <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Aprovados aguardando execução</h2>
+          </div>
+          <p className="text-mac-caption text-[var(--text-secondary)]">
+            Já foram aprovados na fila acima, mas ainda NÃO foram excluídos. Executar é definitivo e irreversível — apaga o documento do banco e do armazenamento, e gera um certificado de destruição.
+          </p>
+          <ul className="border border-[var(--border-default)] rounded-[var(--radius-control)] divide-y divide-[var(--border-default)] overflow-hidden">
+            {approvedQueue.map((q) => (
+              <li key={q.id} className="flex items-center gap-3 px-4 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-mac-body text-[var(--text-primary)] truncate">{q.document_name}</p>
+                  <p className="text-mac-caption text-[var(--text-tertiary)]">{q.policy_name_snapshot} · aprovado</p>
+                </div>
+                <Button variant="danger" size="sm" onClick={() => executePurge(q)}>
+                  <Trash2 className="w-3.5 h-3.5" /> Executar descarte
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Fase 5.6: certificados de destruição — evidência que sobrevive ao documento */}
+      {!loading && certificates.length > 0 && (
+        <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6 space-y-4">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-teal-500" />
+            <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Certificados de destruição</h2>
+          </div>
+          <p className="text-mac-caption text-[var(--text-secondary)]">
+            Registro permanente de todo descarte já executado — continua legível mesmo depois que o documento não existe mais.
+          </p>
+          <ul className="border border-[var(--border-default)] rounded-[var(--radius-control)] divide-y divide-[var(--border-default)] overflow-hidden">
+            {certificates.map((c) => (
+              <li key={c.id} className="px-4 py-3">
+                <p className="text-mac-body text-[var(--text-primary)] truncate">{c.document_name_snapshot}</p>
+                <p className="text-mac-caption text-[var(--text-tertiary)]">
+                  {c.policy_name_snapshot}{c.legal_basis_snapshot ? ` (${c.legal_basis_snapshot})` : ""} · destruído em {new Date(c.executed_at).toLocaleString("pt-BR")} por {c.executed_by_name_snapshot}
+                  {c.folder_path_snapshot ? ` · pasta original: ${c.folder_path_snapshot.replace(/\./g, " / ")}` : ""}
+                </p>
+                {c.document_sha256 && <p className="text-mac-caption2 text-[var(--text-tertiary)] font-mono truncate">SHA-256: {c.document_sha256}</p>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

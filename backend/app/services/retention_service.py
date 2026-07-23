@@ -1,13 +1,22 @@
 """
-Fase 5.1-5.3 — Retenção legal: política / atribuição / hold / fila de revisão.
+Fase 5.1-5.6 — Retenção legal: política / atribuição / hold / fila de
+revisão / execução real do descarte + certificado de destruição.
 
-Nada aqui apaga um documento. Ver comentário de cabeçalho da migration
-20260723000026_retention_model.sql para o raciocínio completo.
+5.1-5.5 nunca apagam um documento — só calculam prazo, bloqueiam exclusão
+sob hold, ou registram uma decisão humana na fila. Só `execute_purge`
+(5.4-5.6) de fato apaga, e só aceita item já 'approved' — a aprovação
+sozinha nunca chega até aqui automaticamente. Ver comentário de cabeçalho
+das migrations 20260723000026 e 20260723000027 para o raciocínio completo.
 """
+import json
 from typing import Any
 from uuid import UUID
 
 import asyncpg
+
+
+class UnderHoldError(Exception):
+    """Levantado quando execute_purge encontra hold ativo na revalidação — o router traduz pra 423."""
 
 
 class RetentionService:
@@ -158,3 +167,86 @@ class RetentionService:
             """,
             queue_id, decision, notes, deferred_until, reviewed_by,
         )
+
+    # -------------------------------------------------------------------
+    # Execução real do descarte (5.4-5.6) — a ÚNICA função deste arquivo
+    # que apaga um documento de verdade. Só aceita item já 'approved' na
+    # fila; reverifica hold no instante da execução (pode ter mudado desde
+    # a aprovação); e gera o certificado ANTES de apagar, na mesma
+    # transação — se o INSERT do certificado falhar, o DELETE nunca roda.
+    # -------------------------------------------------------------------
+    @staticmethod
+    async def execute_purge(
+        conn: asyncpg.Connection, admin_conn: asyncpg.Connection, *, queue_id: UUID, executed_by: str,
+    ) -> dict[str, Any] | None:
+        queue_item = await conn.fetchrow(
+            "SELECT * FROM public.retention_review_queue WHERE id = $1 AND status = 'approved'", queue_id,
+        )
+        if queue_item is None:
+            return None
+
+        if await RetentionService.document_is_under_hold(conn, queue_item["document_id"]):
+            raise UnderHoldError()
+
+        doc = await admin_conn.fetchrow(
+            """
+            SELECT d.id, d.name, d.company_id, d.storage_path, d.content_hash,
+              (
+                SELECT string_agg(anc.name, ' / ' ORDER BY nlevel(anc.path))
+                FROM public.folders anc
+                WHERE anc.company_id = d.company_id AND anc.path @> f.path
+              ) AS folder_path
+            FROM public.documents d
+            LEFT JOIN public.folders f ON f.id = d.folder_id
+            WHERE d.id = $1
+            """,
+            queue_item["document_id"],
+        )
+        if doc is None:
+            return None
+
+        executed_by_name = await admin_conn.fetchval(
+            "SELECT COALESCE(full_name, username, 'usuário') FROM public.users WHERE id = $1", executed_by,
+        )
+        reviewed_by_name = None
+        if queue_item["reviewed_by"]:
+            reviewed_by_name = await admin_conn.fetchval(
+                "SELECT COALESCE(full_name, username) FROM public.users WHERE id = $1", queue_item["reviewed_by"],
+            )
+        legal_basis = None
+        if queue_item["policy_id"]:
+            legal_basis = await admin_conn.fetchval(
+                "SELECT legal_basis FROM public.retention_policies WHERE id = $1", queue_item["policy_id"],
+            )
+
+        async with admin_conn.transaction():
+            certificate = await admin_conn.fetchrow(
+                """
+                INSERT INTO public.destruction_certificates
+                  (company_id, document_id, document_name_snapshot, document_sha256, folder_path_snapshot,
+                   queue_item_id, policy_name_snapshot, legal_basis_snapshot,
+                   reviewed_by, reviewed_by_name_snapshot, reviewed_at, review_notes,
+                   executed_by, executed_by_name_snapshot)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                RETURNING *
+                """,
+                doc["company_id"], doc["id"], doc["name"], doc["content_hash"], doc["folder_path"],
+                queue_item["id"], queue_item["policy_name_snapshot"], legal_basis,
+                queue_item["reviewed_by"], reviewed_by_name, queue_item["reviewed_at"], queue_item["review_notes"],
+                executed_by, executed_by_name,
+            )
+            await admin_conn.execute("DELETE FROM public.documents WHERE id = $1", doc["id"])
+            await admin_conn.execute(
+                """
+                INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, metadata)
+                VALUES ($1::uuid, $2::uuid, 'delete', 'document', $3::uuid, $4, $5::jsonb)
+                """,
+                executed_by, str(doc["company_id"]), str(doc["id"]), doc["name"],
+                json.dumps({
+                    "reason": "retention_purge",
+                    "certificate_id": str(certificate["id"]),
+                    "policy_name": queue_item["policy_name_snapshot"],
+                }),
+            )
+
+        return {"certificate": dict(certificate), "storage_path": doc["storage_path"]}
