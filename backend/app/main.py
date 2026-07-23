@@ -16,6 +16,7 @@ from app.routers import (
     folders,
     notifications,
     obligations,
+    retention_legal,
     search,
     shares,
     trash,
@@ -72,6 +73,7 @@ app.include_router(shares.router, prefix=PREFIX)
 app.include_router(shares.public_router, prefix=PREFIX)
 app.include_router(notifications.router, prefix=PREFIX)
 app.include_router(obligations.router, prefix=PREFIX)
+app.include_router(retention_legal.router, prefix=PREFIX)
 
 
 @app.get("/health", tags=["health"])

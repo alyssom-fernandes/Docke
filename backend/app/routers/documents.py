@@ -653,6 +653,10 @@ async def delete_document(
     if doc["permission"] == "operador" and str(doc["uploaded_by"]) != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você só pode excluir documentos que você mesmo inseriu.")
 
+    from app.services.retention_service import RetentionService
+    if await RetentionService.document_is_under_hold(conn, document_id):
+        raise HTTPException(status_code=status.HTTP_423_LOCKED, detail="Documento bloqueado para exclusão — está sob retenção legal (legal hold).")
+
     await DocumentsService.soft_delete_single(admin_conn, document_id)
 
 

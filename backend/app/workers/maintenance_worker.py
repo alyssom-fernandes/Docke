@@ -14,7 +14,12 @@ import logging
 import time
 
 from app.config import settings
-from app.services.obligations_service import BLOCKING_LATERAL_SQL, EFFECTIVE_STATUS_SQL, VALIDITY_LATERAL_SQL
+from app.services.obligations_service import (
+    BLOCKING_LATERAL_SQL,
+    EFFECTIVE_STATUS_SQL,
+    NOT_APPLICABLE_LATERAL_SQL,
+    VALIDITY_LATERAL_SQL,
+)
 
 logger = logging.getLogger("docke.maintenance_worker")
 
@@ -69,7 +74,35 @@ async def _run_once() -> None:
         await _notify_trash_expiring_soon(conn)
         await _purge_expired_trash(conn)
         await _notify_obligation_alerts(conn)
+        await _scan_retention_expirations(conn)
         await _reset_demo_data_if_due(conn)
+
+
+async def _scan_retention_expirations(conn) -> None:
+    """
+    Fase 5.5: varre documentos ativos cujo prazo de retenção calculado
+    (`document_retention_info`) já passou e que NÃO estão sob legal hold,
+    inserindo-os na fila de revisão humana. Nunca apaga nada — só registra o
+    candidato. Idempotente pelo índice único parcial em
+    `retention_review_queue` (no máximo uma entrada pending/deferred por
+    documento) — reprocessar o scan não duplica a fila nem "ressuscita" um
+    item que já foi decidido (approved/rejected ficam fora do índice, então
+    não bloqueiam uma reentrada se o documento voltar a vencer sob uma nova
+    política — mas isso é cenário raro e aceitável nesta fatia).
+    """
+    await conn.execute(
+        """
+        INSERT INTO public.retention_review_queue (company_id, document_id, policy_id, policy_name_snapshot, computed_expires_at)
+        SELECT d.company_id, d.id, info.policy_id, info.policy_name, info.expires_at
+        FROM public.documents d
+        CROSS JOIN LATERAL public.document_retention_info(d.id) info
+        WHERE d.deleted_at IS NULL
+          AND info.expires_at IS NOT NULL
+          AND info.expires_at < CURRENT_DATE
+          AND NOT public.document_is_under_hold(d.id)
+        ON CONFLICT (document_id) WHERE status IN ('pending', 'deferred') DO NOTHING
+        """
+    )
 
 
 _OBLIGATION_ALERT_STATUSES = ("overdue", "at_risk", "blocked", "expired")
@@ -107,6 +140,7 @@ async def _notify_obligation_alerts(conn) -> None:
         JOIN public.obligation_templates ot ON ot.id = oi.template_id
         {BLOCKING_LATERAL_SQL}
         {VALIDITY_LATERAL_SQL}
+        {NOT_APPLICABLE_LATERAL_SQL}
         WHERE ot.archived_at IS NULL
         """
     )

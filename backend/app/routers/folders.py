@@ -304,5 +304,9 @@ async def delete_folder(
     if folder["permission"] != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para deletar esta pasta.")
 
+    from app.services.retention_service import RetentionService
+    if await RetentionService.folder_is_under_hold(conn, folder_id):
+        raise HTTPException(status_code=status.HTTP_423_LOCKED, detail="Pasta bloqueada para exclusão — está sob retenção legal (legal hold).")
+
     await FoldersService.soft_delete_folder_cascade(admin_conn, folder["path"])
     await FoldersService.log_delete_activity(conn, folder_id=folder_id, company_id=folder["company_id"], name=folder["name"])

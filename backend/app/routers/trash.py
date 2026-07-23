@@ -149,6 +149,10 @@ async def permanent_delete(
         if permission != "admin":
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Apenas administradores da empresa podem excluir permanentemente.")
 
+        from app.services.retention_service import RetentionService
+        if await RetentionService.document_is_under_hold(admin_conn, item_id):
+            raise HTTPException(status_code=status.HTTP_423_LOCKED, detail="Documento bloqueado para exclusão — está sob retenção legal (legal hold).")
+
         async with admin_conn.transaction():
             await TrashService.permanently_delete_document(admin_conn, item_id)
             await TrashService.log_activity(
@@ -178,6 +182,10 @@ async def permanent_delete(
         permission = await TrashService.get_company_admin_permission(admin_conn, user_id, folder["company_id"])
         if permission != "admin":
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Apenas administradores da empresa podem excluir permanentemente.")
+
+        from app.services.retention_service import RetentionService
+        if await RetentionService.folder_is_under_hold(admin_conn, item_id):
+            raise HTTPException(status_code=status.HTTP_423_LOCKED, detail="Pasta bloqueada para exclusão — está sob retenção legal (legal hold).")
 
         # Hard delete da pasta — os documentos já devem ter sido deletados previamente
         # (soft delete cascateou para eles). Verificamos antes de tentar.
