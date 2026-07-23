@@ -1,6 +1,6 @@
 import { type ElementType } from "react";
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, FolderOpen, Search, Anchor, Link2, Activity, Trash2, Settings } from "lucide-react";
+import { LayoutDashboard, FolderOpen, Search, Anchor, Link2, Activity, ShieldQuestion, Trash2, Settings } from "lucide-react";
 
 // Navegação primária do desktop (lg+), estilo Dock do macOS: só ícone,
 // flutuante — o Dock real nunca mostra rótulo de texto fixo sob o ícone,
@@ -16,6 +16,7 @@ const ITEMS: Array<{ to: string; icon: ElementType; label: string }> = [
   { to: "/favorites", icon: Anchor, label: "Ancorados" },
   { to: "/shares", icon: Link2, label: "Links" },
   { to: "/activity", icon: Activity, label: "Atividade" },
+  { to: "/obligations", icon: ShieldQuestion, label: "Obrigações" },
   { to: "/trash", icon: Trash2, label: "Lixeira" },
   { to: "/settings/profile", icon: Settings, label: "Ajustes" },
 ];

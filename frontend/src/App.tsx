@@ -11,6 +11,7 @@ import Trash from "@/pages/Trash";
 import Activity from "@/pages/Activity";
 import Favorites from "@/pages/Favorites";
 import Shares from "@/pages/Shares";
+import Obligations from "@/pages/Obligations";
 import SettingsLayout, { SettingsIndex } from "@/pages/Settings/SettingsLayout";
 import Profile from "@/pages/Settings/Profile";
 import Organization from "@/pages/Settings/Organization";
@@ -67,6 +68,7 @@ function ProtectedRoutes() {
             <Route path="/activity" element={<Activity />} />
             <Route path="/favorites" element={<Favorites />} />
             <Route path="/shares" element={<Shares />} />
+            <Route path="/obligations" element={<Obligations />} />
             <Route path="/settings" element={<SettingsLayout />}>
               <Route index element={<SettingsIndex />} />
               <Route path="profile" element={<Profile />} />

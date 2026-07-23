@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { NavLink, useNavigate, useLocation } from "react-router-dom";
-import { LayoutDashboard, FolderOpen, Search, Anchor, MoreHorizontal, Link2, Activity, Trash2, Settings, Sun, Moon, X } from "lucide-react";
+import { LayoutDashboard, FolderOpen, Search, Anchor, MoreHorizontal, Link2, Activity, ShieldQuestion, Trash2, Settings, Sun, Moon, X } from "lucide-react";
 import { toggleTheme, getTheme } from "@/lib/theme";
 
 const TABS = [
@@ -13,6 +13,7 @@ const TABS = [
 const MORE_LINKS = [
   { to: "/shares", icon: Link2, label: "Compartilhados" },
   { to: "/activity", icon: Activity, label: "Atividade" },
+  { to: "/obligations", icon: ShieldQuestion, label: "Obrigações" },
   { to: "/trash", icon: Trash2, label: "Lixeira" },
   { to: "/settings", icon: Settings, label: "Configurações" },
 ];
