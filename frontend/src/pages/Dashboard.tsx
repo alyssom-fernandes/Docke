@@ -21,6 +21,7 @@ import { useCompany } from "@/lib/CompanyContext";
 import Avatar from "@/components/ui/Avatar";
 import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/shared/EmptyState";
+import { UploadsLineChart, FolderBarChart, type DailyUpload, type FolderBreakdown } from "@/components/dashboard/StatsCharts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,7 @@ interface Stats {
   total_folders: number;
   total_favorites: number;
   recent_uploads: number;
+  documents_today: number;
   refreshed_at: string | null;
 }
 
@@ -104,13 +106,16 @@ function actionIcon(action: string) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function StatCard({ label, value, icon: Icon, color }: { label: string; value: number; icon: ElementType; color: string }) {
+// Fase 3.5: "número sempre com contexto" — nunca um total sozinho sem
+// explicar se é muito, pouco, ou o de sempre.
+function StatCard({ label, value, icon: Icon, color, context }: { label: string; value: number; icon: ElementType; color: string; context?: string }) {
   return (
     <div className="glass-panel glass-blur-card glass-highlight-line glass-interactive relative rounded-[var(--radius-panel)] p-5 flex items-center gap-3.5">
       <Icon className={`w-5 h-5 flex-shrink-0 ${color}`} strokeWidth={1.5} />
       <div>
         <p className="text-mac-title1 font-semibold text-[var(--text-primary)]">{value.toLocaleString("pt-BR")}</p>
         <p className="text-mac-caption text-[var(--text-secondary)] mt-0.5">{label}</p>
+        {context && <p className="text-mac-caption2 text-teal-600 dark:text-teal-400 mt-0.5">{context}</p>}
       </div>
     </div>
   );
@@ -126,13 +131,15 @@ export default function Dashboard() {
   const [recent, setRecent] = useState<RecentDoc[]>([]);
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
+  const [dailyUploads, setDailyUploads] = useState<DailyUpload[]>([]);
+  const [byFolder, setByFolder] = useState<FolderBreakdown[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   // Fase 3.3: cooldown de 15s no cliente espelha o cooldown por empresa que
   // o backend já impõe — evita bater a cara no 429 clicando repetido.
   const [refreshCooldown, setRefreshCooldown] = useState(0);
 
-  const emptyStats: Stats = { total_documents: 0, total_folders: 0, total_favorites: 0, recent_uploads: 0, refreshed_at: null };
+  const emptyStats: Stats = { total_documents: 0, total_folders: 0, total_favorites: 0, recent_uploads: 0, documents_today: 0, refreshed_at: null };
 
   useEffect(() => {
     if (!current) return;
@@ -140,11 +147,14 @@ export default function Dashboard() {
 
     Promise.all([
       api.get(`/companies/${current.id}/stats`).catch(() => ({ data: emptyStats })),
+      api.get(`/companies/${current.id}/stats/charts`).catch(() => ({ data: { daily_uploads: [], by_folder: [] } })),
       api.get("/documents/recent", { params: { company_id: current.id, limit: 5 } }).catch(() => ({ data: [] })),
       api.get("/favorites").catch(() => ({ data: [] })),
       api.get("/activity", { params: { company_id: current.id, page_size: 8 } }).catch(() => ({ data: { results: [] } })),
-    ]).then(([statsRes, recentRes, favsRes, actRes]) => {
+    ]).then(([statsRes, chartsRes, recentRes, favsRes, actRes]) => {
       setStats(statsRes.data);
+      setDailyUploads(Array.isArray(chartsRes.data?.daily_uploads) ? chartsRes.data.daily_uploads : []);
+      setByFolder(Array.isArray(chartsRes.data?.by_folder) ? chartsRes.data.by_folder : []);
       setRecent(Array.isArray(recentRes.data) ? recentRes.data : []);
       setFavorites(Array.isArray(favsRes.data) ? favsRes.data : []);
       setActivity(Array.isArray(actRes.data) ? actRes.data : (actRes.data.results ?? []));
@@ -211,10 +221,31 @@ export default function Dashboard() {
         </div>
       ) : stats && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
-          <StatCard label="Documentos" value={stats.total_documents} icon={FileText} color="text-teal-500 dark:text-teal-400" />
+          <StatCard
+            label="Documentos" value={stats.total_documents} icon={FileText} color="text-teal-500 dark:text-teal-400"
+            context={stats.documents_today > 0 ? `+${stats.documents_today} hoje` : undefined}
+          />
           <StatCard label="Pastas" value={stats.total_folders} icon={FolderOpen} color="text-teal-500 dark:text-teal-400" />
           <StatCard label="Ancorados" value={stats.total_favorites} icon={Anchor} color="text-teal-500 dark:text-teal-400" />
-          <StatCard label="Uploads recentes" value={stats.recent_uploads} icon={Clock} color="text-teal-500 dark:text-teal-400" />
+          <StatCard
+            label="Uploads recentes" value={stats.recent_uploads} icon={Clock} color="text-teal-500 dark:text-teal-400"
+            context="últimos 7 dias"
+          />
+        </div>
+      )}
+
+      {/* Fase 3.2: os dois gráficos do dashboard — juntos, uma fração pequena
+          da tela (regra "menos de 20% é gráfico" da pesquisa). */}
+      {!loading && (dailyUploads.length > 0 || byFolder.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-5">
+            <h2 className="text-mac-body font-semibold text-[var(--text-secondary)] mb-3">Uploads · últimos 14 dias</h2>
+            <UploadsLineChart data={dailyUploads} />
+          </div>
+          <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-5">
+            <h2 className="text-mac-body font-semibold text-[var(--text-secondary)] mb-3">Documentos por pasta</h2>
+            <FolderBarChart data={byFolder} />
+          </div>
         </div>
       )}
 

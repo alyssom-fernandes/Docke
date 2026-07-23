@@ -167,7 +167,7 @@ class CompaniesService:
         return await conn.fetchrow(
             """
             SELECT
-              mv.total_documents, mv.total_folders, mv.recent_uploads,
+              mv.total_documents, mv.total_folders, mv.recent_uploads, mv.documents_today,
               csr.refreshed_at,
               (SELECT COUNT(*) FROM public.favorites fav
                JOIN public.documents d ON d.id = fav.document_id
@@ -202,6 +202,9 @@ class CompaniesService:
               (SELECT COUNT(*) FROM public.documents d
                WHERE d.company_id = $1 AND d.deleted_at IS NULL
                  AND d.created_at >= now() - interval '7 days') AS recent_uploads,
+              (SELECT COUNT(*) FROM public.documents d
+               WHERE d.company_id = $1 AND d.deleted_at IS NULL
+                 AND d.created_at >= now() - interval '1 day') AS documents_today,
               now() AS refreshed_at
             """,
             company_id,
@@ -210,6 +213,47 @@ class CompaniesService:
     @staticmethod
     async def refresh_stats(conn: asyncpg.Connection) -> None:
         await conn.execute("SELECT public.refresh_company_stats()")
+
+    @staticmethod
+    async def get_dashboard_charts(conn: asyncpg.Connection, company_id: UUID) -> dict[str, Any]:
+        """
+        Fase 3.2/3.4: dados dos dois gráficos do dashboard — sempre ao vivo
+        via `conn` (RLS ativa), nunca da materialized view, porque aqui a
+        quebra por pasta É o dado sensível (Fase 3.8 se aplica com força
+        total: um operador só pode ver a contagem das pastas que ele
+        acessa, nunca a lista completa de pastas da empresa).
+        """
+        daily = await conn.fetch(
+            """
+            SELECT d::date AS day, coalesce(cnt, 0) AS count
+            FROM generate_series(current_date - interval '13 days', current_date, interval '1 day') AS d
+            LEFT JOIN (
+              SELECT created_at::date AS day, count(*) AS cnt
+              FROM public.documents
+              WHERE company_id = $1 AND deleted_at IS NULL
+                AND created_at >= current_date - interval '13 days'
+              GROUP BY created_at::date
+            ) x ON x.day = d::date
+            ORDER BY d
+            """,
+            company_id,
+        )
+        by_folder = await conn.fetch(
+            """
+            SELECT f.id::text, f.name, count(d.id) AS document_count
+            FROM public.folders f
+            LEFT JOIN public.documents d ON d.folder_id = f.id AND d.deleted_at IS NULL
+            WHERE f.company_id = $1 AND f.deleted_at IS NULL AND f.parent_id IS NULL
+            GROUP BY f.id, f.name
+            ORDER BY document_count DESC, f.name
+            LIMIT 6
+            """,
+            company_id,
+        )
+        return {
+            "daily_uploads": [{"date": r["day"].isoformat(), "count": r["count"]} for r in daily],
+            "by_folder": [dict(r) for r in by_folder],
+        }
 
     @staticmethod
     async def update_company(

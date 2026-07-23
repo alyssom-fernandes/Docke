@@ -183,6 +183,22 @@ async def refresh_company_stats(
     return dict(row)
 
 
+@router.get("/{company_id}/stats/charts")
+async def company_stats_charts(
+    company_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Fase 3.2/3.4: série diária de uploads (14 dias) + top pastas por
+    documentos, pra dashboard. Sempre calculado ao vivo via RLS — nunca da
+    materialized view (aqui a quebra por pasta é o dado sensível).
+    """
+    if not await CompaniesService.is_member(conn, claims["sub"], company_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem acesso a esta empresa.")
+    return await CompaniesService.get_dashboard_charts(conn, company_id)
+
+
 @router.patch("/{company_id}")
 async def update_company(
     company_id: UUID,
