@@ -18,6 +18,7 @@ from pydantic import BaseModel, field_validator
 
 from app.dependencies import get_app_role, get_current_user, get_db
 from app.services.companies_service import CompaniesService
+from app.services.fiscal_profile_service import VALID_FAIXAS, VALID_REGIMES, VALID_TIPOS_JURIDICOS, FiscalProfileService
 from app.services.obligations_service import ObligationsService
 
 router = APIRouter(tags=["obligations"])
@@ -25,6 +26,7 @@ router = APIRouter(tags=["obligations"])
 FREQUENCIES = ("mensal", "anual", "unica", "evento")
 CRITICALITIES = ("baixa", "media", "alta", "critica")
 MANUAL_STATUSES = ("reviewing", "approved", "dispensado", "cancelado")
+CONDITIONAL_FIELDS = ("regime_tributario", "faixa_funcionarios", "uf", "tipo_juridico")
 
 
 async def _require_admin(conn: asyncpg.Connection, user_id: str, company_id: UUID, role: str) -> None:
@@ -50,6 +52,19 @@ async def _require_operator(conn: asyncpg.Connection, user_id: str, company_id: 
     )
     if not allowed:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Apenas admin ou operador com acesso à empresa gerenciam instâncias.")
+
+
+def _validate_rules_json(v: dict[str, Any]) -> dict[str, Any]:
+    naw = v.get("not_applicable_when")
+    if naw is None:
+        return v
+    if not isinstance(naw, dict) or "field" not in naw or "in" not in naw:
+        raise ValueError("not_applicable_when deve ter o formato {'field': ..., 'in': [valor, ...]}")
+    if naw["field"] not in CONDITIONAL_FIELDS:
+        raise ValueError(f"field deve ser um de: {', '.join(CONDITIONAL_FIELDS)}")
+    if not isinstance(naw["in"], list) or len(naw["in"]) == 0:
+        raise ValueError("'in' deve ser uma lista não vazia de valores")
+    return v
 
 
 class TemplateCreate(BaseModel):
@@ -85,6 +100,11 @@ class TemplateCreate(BaseModel):
             raise ValueError("validity_months deve ser positivo (ou omitido/null pra 'nunca expira').")
         return v
 
+    @field_validator("rules_json")
+    @classmethod
+    def _valid_rules(cls, v: dict[str, Any]) -> dict[str, Any]:
+        return _validate_rules_json(v)
+
 
 class TemplateUpdate(BaseModel):
     name: str | None = None
@@ -95,7 +115,15 @@ class TemplateUpdate(BaseModel):
     weight: int | None = None
     validity_months: int | None = None
     clear_validity_months: bool = False
+    rules_json: dict[str, Any] | None = None
     active: bool | None = None
+
+    @field_validator("rules_json")
+    @classmethod
+    def _valid_rules(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        if v is None:
+            return v
+        return _validate_rules_json(v)
 
 
 class InstanceCreate(BaseModel):
@@ -177,7 +205,8 @@ async def update_template(
     row = await ObligationsService.update_template(
         conn, template_id, name=body.name, description=body.description, criticality=body.criticality,
         department=body.department, sla_days=body.sla_days, weight=body.weight,
-        validity_months=body.validity_months, clear_validity_months=body.clear_validity_months, active=body.active,
+        validity_months=body.validity_months, clear_validity_months=body.clear_validity_months,
+        rules_json=body.rules_json, active=body.active,
     )
     return dict(row)
 
@@ -376,3 +405,72 @@ async def remove_dependency(
     role = await get_app_role(conn, claims)
     await _require_admin(conn, claims["sub"], company_id, role)
     await ObligationsService.remove_dependency(conn, dependency_id)
+
+
+# ---------------------------------------------------------------------------
+# Perfil fiscal da empresa (Fase 4.2/4.3, parte 2)
+# ---------------------------------------------------------------------------
+
+class FiscalProfileUpdate(BaseModel):
+    regime_tributario: str | None = None
+    faixa_funcionarios: str | None = None
+    uf: str | None = None
+    tipo_juridico: str | None = None
+
+    @field_validator("regime_tributario")
+    @classmethod
+    def _valid_regime(cls, v: str | None) -> str | None:
+        if v is not None and v not in VALID_REGIMES:
+            raise ValueError(f"regime_tributario deve ser um de: {', '.join(VALID_REGIMES)}")
+        return v
+
+    @field_validator("faixa_funcionarios")
+    @classmethod
+    def _valid_faixa(cls, v: str | None) -> str | None:
+        if v is not None and v not in VALID_FAIXAS:
+            raise ValueError(f"faixa_funcionarios deve ser um de: {', '.join(VALID_FAIXAS)}")
+        return v
+
+    @field_validator("tipo_juridico")
+    @classmethod
+    def _valid_tipo(cls, v: str | None) -> str | None:
+        if v is not None and v not in VALID_TIPOS_JURIDICOS:
+            raise ValueError(f"tipo_juridico deve ser um de: {', '.join(VALID_TIPOS_JURIDICOS)}")
+        return v
+
+    @field_validator("uf")
+    @classmethod
+    def _valid_uf(cls, v: str | None) -> str | None:
+        if v is not None:
+            v = v.strip().upper()
+            if len(v) != 2 or not v.isalpha():
+                raise ValueError("uf deve ter 2 letras (ex.: SP, RJ).")
+        return v
+
+
+@router.get("/companies/{company_id}/fiscal-profile")
+async def get_fiscal_profile(
+    company_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    row = await FiscalProfileService.get(conn, company_id)
+    if row is None:
+        return {"company_id": str(company_id), "regime_tributario": None, "faixa_funcionarios": None, "uf": None, "tipo_juridico": None, "updated_at": None}
+    return dict(row)
+
+
+@router.put("/companies/{company_id}/fiscal-profile")
+async def update_fiscal_profile(
+    company_id: UUID,
+    body: FiscalProfileUpdate,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    role = await get_app_role(conn, claims)
+    await _require_admin(conn, claims["sub"], company_id, role)
+
+    row = await FiscalProfileService.upsert(
+        conn, company_id, regime_tributario=body.regime_tributario, faixa_funcionarios=body.faixa_funcionarios,
+        uf=body.uf, tipo_juridico=body.tipo_juridico, updated_by=claims["sub"],
+    )
+    return dict(row)

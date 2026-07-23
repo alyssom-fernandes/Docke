@@ -16,6 +16,11 @@ import Dropdown from "@/components/ui/Dropdown";
 // ficam para fatias seguintes; esta tela cobre só o CRUD do modelo base e a
 // vinculação manual de documento comprobatório.
 
+interface NotApplicableWhen {
+  field: string;
+  in: string[];
+}
+
 interface Template {
   id: string;
   name: string;
@@ -26,6 +31,7 @@ interface Template {
   sla_days: number;
   weight: number;
   validity_months: number | null;
+  rules_json: { not_applicable_when?: NotApplicableWhen };
   active: boolean;
 }
 
@@ -59,6 +65,7 @@ const STATUS_LABEL: Record<string, string> = {
   overdue: "Atrasada",
   blocked: "Bloqueada",
   expired: "Expirada",
+  not_applicable: "Não aplicável",
   reviewing: "Em revisão",
   approved: "Aprovada",
   dispensado: "Dispensada",
@@ -71,13 +78,46 @@ const STATUS_VARIANT: Record<string, "default" | "success" | "error" | "warning"
   overdue: "error",
   blocked: "info",
   expired: "error",
+  not_applicable: "default",
   reviewing: "info",
   approved: "success",
   dispensado: "default",
   cancelado: "default",
 };
 
+const CONDITIONAL_FIELD_LABEL: Record<string, string> = {
+  regime_tributario: "Regime tributário",
+  faixa_funcionarios: "Quantidade de funcionários",
+  uf: "UF",
+  tipo_juridico: "Tipo jurídico",
+};
+
+const CONDITIONAL_VALUE_OPTIONS: Record<string, { value: string; label: string }[]> = {
+  regime_tributario: [
+    { value: "simples_nacional", label: "Simples Nacional" },
+    { value: "lucro_presumido", label: "Lucro Presumido" },
+    { value: "lucro_real", label: "Lucro Real" },
+  ],
+  faixa_funcionarios: [
+    { value: "nenhum", label: "Nenhum funcionário" },
+    { value: "1_a_10", label: "1 a 10" },
+    { value: "11_a_50", label: "11 a 50" },
+    { value: "51_a_200", label: "51 a 200" },
+    { value: "201_mais", label: "201 ou mais" },
+  ],
+  tipo_juridico: [
+    { value: "mei", label: "MEI" },
+    { value: "ltda", label: "LTDA" },
+    { value: "sa", label: "S.A." },
+    { value: "eireli", label: "EIRELI" },
+    { value: "outro", label: "Outro" },
+  ],
+  uf: [],
+};
+
 const FREQ_LABEL: Record<string, string> = { mensal: "Mensal", anual: "Anual", unica: "Única", evento: "Por evento" };
+
+const UFS = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
 
 function StatusBadge({ status }: { status: string }) {
   return <Badge variant={STATUS_VARIANT[status] ?? "default"}>{STATUS_LABEL[status] ?? status}</Badge>;
@@ -307,7 +347,9 @@ export default function Obligations() {
                   <div className="flex-1 min-w-0">
                     <div className="text-mac-body text-[var(--text-primary)] truncate">{inst.template_name} · {inst.period}</div>
                     <div className="text-mac-caption text-[var(--text-tertiary)]">
-                      {inst.effective_status === "blocked" ? (
+                      {inst.effective_status === "not_applicable" ? (
+                        <span>Não se aplica a esta empresa, de acordo com o perfil fiscal cadastrado.</span>
+                      ) : inst.effective_status === "blocked" ? (
                         <span className="inline-flex items-center gap-1">
                           <Lock className="w-3 h-3" /> Aguardando: {inst.blocking_templates?.join(", ")}
                         </span>
@@ -324,7 +366,7 @@ export default function Obligations() {
                     </div>
                   </div>
                   <StatusBadge status={inst.effective_status} />
-                  {inst.effective_status !== "dispensado" && inst.effective_status !== "cancelado" && inst.effective_status !== "blocked" && (
+                  {inst.effective_status !== "dispensado" && inst.effective_status !== "cancelado" && inst.effective_status !== "blocked" && inst.effective_status !== "not_applicable" && (
                     <>
                       <Button variant="ghost" size="sm" onClick={() => setLinkingInstance(inst)}>
                         <Link2 className="w-3.5 h-3.5" /> Vincular documento
@@ -380,6 +422,7 @@ const MATRIX_PILL: Record<string, string> = {
   pending: "bg-[var(--bg-hover)] border border-[var(--border-default)]",
   dispensado: "bg-[var(--bg-hover)] border border-[var(--border-default)]",
   cancelado: "bg-[var(--bg-hover)] border border-[var(--border-default)]",
+  not_applicable: "bg-[var(--bg-hover)] border border-dotted border-[var(--text-tertiary)]",
 };
 
 function CompletionMatrix({
@@ -459,7 +502,7 @@ function CompletionMatrix({
 // KPIs do dashboard, Fase 3). Tudo calculado a partir de allInstances, já
 // carregado pela tela — sem endpoint novo.
 function ComplianceCenter({ instances, onFilter }: { instances: Instance[]; onFilter: (status: string) => void }) {
-  const relevant = instances.filter((i) => i.effective_status !== "dispensado" && i.effective_status !== "cancelado");
+  const relevant = instances.filter((i) => i.effective_status !== "dispensado" && i.effective_status !== "cancelado" && i.effective_status !== "not_applicable");
   const approved = relevant.filter((i) => i.effective_status === "approved").length;
   const pct = relevant.length > 0 ? Math.round((approved / relevant.length) * 100) : null;
 
@@ -554,16 +597,23 @@ function TemplateModal({ companyId, onClose, onCreated }: { companyId: string; o
   const [criticality, setCriticality] = useState("media");
   const [slaDays, setSlaDays] = useState(7);
   const [validityMonths, setValidityMonths] = useState("");
+  const [conditionalEnabled, setConditionalEnabled] = useState(false);
+  const [conditionalField, setConditionalField] = useState("regime_tributario");
+  const [conditionalValues, setConditionalValues] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   async function submit() {
     if (!name.trim()) return;
     setSaving(true);
     try {
+      const rules_json = conditionalEnabled && conditionalValues.length > 0
+        ? { not_applicable_when: { field: conditionalField, in: conditionalValues } }
+        : {};
       await api.post(`/companies/${companyId}/obligations/templates`, {
         company_id: companyId, name: name.trim(), department: department.trim() || null,
         frequency, criticality, sla_days: slaDays,
         validity_months: validityMonths.trim() ? Number(validityMonths) : null,
+        rules_json,
       });
       success("Modelo de obrigação criado.");
       onCreated();
@@ -608,6 +658,48 @@ function TemplateModal({ companyId, onClose, onCreated }: { companyId: string; o
           onChange={(e) => setValidityMonths(e.target.value)}
           placeholder="Deixe em branco se o documento não expira sozinho"
         />
+      </div>
+      <div className="border-t border-[var(--border-default)] pt-3">
+        <label className="flex items-center gap-2 text-mac-caption font-medium text-[var(--text-secondary)] cursor-pointer">
+          <input
+            type="checkbox" checked={conditionalEnabled}
+            onChange={(e) => { setConditionalEnabled(e.target.checked); setConditionalValues([]); }}
+          />
+          Regra condicional (opcional) — não se aplica a certas empresas
+        </label>
+        {conditionalEnabled && (
+          <div className="space-y-2.5 mt-3">
+            <div>
+              <label className={labelClass}>Campo do perfil fiscal</label>
+              <Dropdown
+                value={conditionalField}
+                onChange={(v) => { setConditionalField(v); setConditionalValues([]); }}
+                placeholder="Campo"
+                options={Object.entries(CONDITIONAL_FIELD_LABEL).map(([value, label]) => ({ value, label }))}
+              />
+            </div>
+            <p className="text-mac-caption text-[var(--text-tertiary)]">Não se aplica quando o perfil fiscal da empresa for:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {(conditionalField === "uf" ? UFS.map((u) => ({ value: u, label: u })) : CONDITIONAL_VALUE_OPTIONS[conditionalField] ?? []).map((opt) => {
+                const active = conditionalValues.includes(opt.value);
+                return (
+                  <button
+                    key={opt.value} type="button"
+                    onClick={() => setConditionalValues((prev) => active ? prev.filter((v) => v !== opt.value) : [...prev, opt.value])}
+                    className={`px-2.5 py-1 rounded-full text-mac-caption border transition-colors duration-fast ${
+                      active ? "bg-teal-500/15 border-teal-500 text-teal-600 dark:text-teal-400" : "border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            {conditionalEnabled && conditionalValues.length === 0 && (
+              <p className="text-mac-caption text-[var(--text-tertiary)]">Selecione ao menos um valor, ou desmarque a regra condicional.</p>
+            )}
+          </div>
+        )}
       </div>
       <div className="flex justify-end gap-2 pt-2">
         <Button variant="ghost" onClick={onClose}>Cancelar</Button>

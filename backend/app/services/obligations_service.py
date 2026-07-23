@@ -18,8 +18,17 @@ desta fatia.
 Fase 4.3 (parte 1) — validade/caducidade do documento: se o template tem
 `validity_months`, o documento vinculado mais recente ENVELHECE — passado
 esse prazo, uma instância antes `approved` vira `expired` (calculado na
-leitura, igual aos outros estados derivados). `NOT_APPLICABLE`, matriz 2D
-(4.4) e Self-Service Collect (4.6) não fazem parte desta fatia.
+leitura, igual aos outros estados derivados).
+
+Fase 4.2/4.3 (parte 2) — regras condicionais via perfil fiscal da empresa
+(`company_fiscal_profile`, migration 20260723000025): um template pode
+carregar em `rules_json` uma condição `not_applicable_when` (ex.: "não se
+aplica se regime_tributario for simples_nacional"). Se o perfil fiscal da
+empresa bate com a condição, `effective_status = 'not_applicable'` — a
+obrigação não conta como pendência nenhuma. Empresa sem perfil fiscal
+preenchido: a condição simplesmente não é avaliada (nada é escondido) —
+mesma filosofia conservadora dos outros estados derivados. Self-Service
+Collect (4.6) não faz parte desta fatia.
 """
 import json
 from typing import Any
@@ -55,9 +64,35 @@ VALIDITY_LATERAL_SQL = """
   ) exp ON true
 """
 
+# LATERAL: avalia rules_json->'not_applicable_when' (formato {"field": "...",
+# "in": [...]}) contra o perfil fiscal da empresa. Só os 4 campos do perfil
+# são reconhecidos (CASE fechado, não SQL dinâmico). Sem perfil preenchido
+# ou sem a regra definida, is_not_applicable vem NULL/false — a condição
+# simplesmente não filtra nada (filosofia conservadora: nunca esconder por
+# falta de dado).
+NOT_APPLICABLE_LATERAL_SQL = """
+  LEFT JOIN public.company_fiscal_profile fp ON fp.company_id = oi.company_id
+  LEFT JOIN LATERAL (
+    SELECT (
+      ot.rules_json ? 'not_applicable_when'
+      AND fp.company_id IS NOT NULL
+      AND (
+        CASE ot.rules_json->'not_applicable_when'->>'field'
+          WHEN 'regime_tributario' THEN fp.regime_tributario
+          WHEN 'faixa_funcionarios' THEN fp.faixa_funcionarios
+          WHEN 'uf' THEN fp.uf
+          WHEN 'tipo_juridico' THEN fp.tipo_juridico
+          ELSE NULL
+        END
+      ) IN (SELECT jsonb_array_elements_text(ot.rules_json->'not_applicable_when'->'in'))
+    ) AS is_not_applicable
+  ) na ON true
+"""
+
 EFFECTIVE_STATUS_SQL = """
   CASE
     WHEN oi.status IN ('reviewing', 'dispensado', 'cancelado') THEN oi.status
+    WHEN na.is_not_applicable THEN 'not_applicable'
     WHEN oi.status = 'approved' AND exp.expires_at IS NOT NULL AND exp.expires_at < CURRENT_DATE THEN 'expired'
     WHEN oi.status = 'approved' THEN 'approved'
     WHEN bl.blocking_templates IS NOT NULL THEN 'blocked'
@@ -111,7 +146,8 @@ class ObligationsService:
     async def update_template(
         conn: asyncpg.Connection, template_id: UUID, *, name: str | None, description: str | None,
         criticality: str | None, department: str | None, sla_days: int | None, weight: int | None,
-        validity_months: int | None, clear_validity_months: bool, active: bool | None,
+        validity_months: int | None, clear_validity_months: bool, rules_json: dict[str, Any] | None,
+        active: bool | None,
     ) -> asyncpg.Record:
         return await conn.fetchrow(
             """
@@ -123,12 +159,13 @@ class ObligationsService:
                 sla_days = COALESCE($6, sla_days),
                 weight = COALESCE($7, weight),
                 validity_months = CASE WHEN $9 THEN NULL ELSE COALESCE($8, validity_months) END,
-                active = COALESCE($10, active)
+                rules_json = COALESCE($10::jsonb, rules_json),
+                active = COALESCE($11, active)
             WHERE id = $1
             RETURNING *
             """,
             template_id, name, description, criticality, department, sla_days, weight,
-            validity_months, clear_validity_months, active,
+            validity_months, clear_validity_months, json.dumps(rules_json) if rules_json is not None else None, active,
         )
 
     @staticmethod
@@ -191,6 +228,7 @@ class ObligationsService:
             JOIN public.obligation_templates ot ON ot.id = oi.template_id
             {BLOCKING_LATERAL_SQL}
             {VALIDITY_LATERAL_SQL}
+            {NOT_APPLICABLE_LATERAL_SQL}
             WHERE {' AND '.join(conditions)}
             ORDER BY oi.due_date
             """,
@@ -210,6 +248,7 @@ class ObligationsService:
             JOIN public.obligation_templates ot ON ot.id = oi.template_id
             {BLOCKING_LATERAL_SQL}
             {VALIDITY_LATERAL_SQL}
+            {NOT_APPLICABLE_LATERAL_SQL}
             WHERE oi.id = $1
             """,
             instance_id,

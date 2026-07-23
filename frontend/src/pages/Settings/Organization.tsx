@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Building2, Plus, Image as ImageIcon, ChevronRight } from "lucide-react";
+import { Building2, Plus, Image as ImageIcon, ChevronRight, ScrollText } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import api from "@/lib/api";
@@ -11,6 +11,7 @@ import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/shared/EmptyState";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import Portal from "@/components/ui/Portal";
+import Dropdown from "@/components/ui/Dropdown";
 
 interface Org {
   id: string;
@@ -106,6 +107,121 @@ function OrgModal({ org, onClose, onDone }: { org: Org | null; onClose: () => vo
   );
 }
 
+interface FiscalProfile {
+  regime_tributario: string | null;
+  faixa_funcionarios: string | null;
+  uf: string | null;
+  tipo_juridico: string | null;
+}
+
+const REGIME_LABEL: Record<string, string> = {
+  simples_nacional: "Simples Nacional",
+  lucro_presumido: "Lucro Presumido",
+  lucro_real: "Lucro Real",
+};
+const FAIXA_LABEL: Record<string, string> = {
+  nenhum: "Nenhum funcionário",
+  "1_a_10": "1 a 10",
+  "11_a_50": "11 a 50",
+  "51_a_200": "51 a 200",
+  "201_mais": "201 ou mais",
+};
+const TIPO_JURIDICO_LABEL: Record<string, string> = {
+  mei: "MEI", ltda: "LTDA", sa: "S.A.", eireli: "EIRELI", outro: "Outro",
+};
+const UFS = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
+
+function FiscalProfileSection({ companyId, isAdmin }: { companyId: string; isAdmin: boolean }) {
+  const { success, error: showError } = useToast();
+  const [profile, setProfile] = useState<FiscalProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  function load() {
+    setLoading(true);
+    api.get<FiscalProfile>(`/companies/${companyId}/fiscal-profile`)
+      .then((r) => setProfile(r.data))
+      .catch(() => setProfile({ regime_tributario: null, faixa_funcionarios: null, uf: null, tipo_juridico: null }))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(load, [companyId]);
+
+  async function update(field: keyof FiscalProfile, value: string) {
+    if (!profile) return;
+    const next = { ...profile, [field]: value || null };
+    setProfile(next);
+    setSaving(true);
+    try {
+      await api.put(`/companies/${companyId}/fiscal-profile`, next);
+      success("Perfil fiscal atualizado.");
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível salvar o perfil fiscal.");
+      load();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading || !profile) {
+    return <div className="h-32 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-panel)] animate-pulse" />;
+  }
+
+  return (
+    <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-5 space-y-4">
+      <div className="flex items-center gap-2">
+        <ScrollText className="w-4 h-4 text-teal-500" />
+        <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Perfil fiscal</h2>
+      </div>
+      <p className="text-mac-caption text-[var(--text-secondary)]">
+        Usado pelas regras condicionais de obrigações (ex.: empresas do Simples Nacional não precisam de ECD). Deixe em branco o que não souber agora — nenhuma obrigação fica escondida por falta de preenchimento.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Regime tributário</label>
+          <Dropdown
+            value={profile.regime_tributario ?? ""}
+            onChange={(v) => update("regime_tributario", v)}
+            placeholder="Não informado"
+            disabled={!isAdmin || saving}
+            options={[{ value: "", label: "Não informado" }, ...Object.entries(REGIME_LABEL).map(([value, label]) => ({ value, label }))]}
+          />
+        </div>
+        <div>
+          <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Quantidade de funcionários</label>
+          <Dropdown
+            value={profile.faixa_funcionarios ?? ""}
+            onChange={(v) => update("faixa_funcionarios", v)}
+            placeholder="Não informado"
+            disabled={!isAdmin || saving}
+            options={[{ value: "", label: "Não informado" }, ...Object.entries(FAIXA_LABEL).map(([value, label]) => ({ value, label }))]}
+          />
+        </div>
+        <div>
+          <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">UF</label>
+          <Dropdown
+            value={profile.uf ?? ""}
+            onChange={(v) => update("uf", v)}
+            placeholder="Não informado"
+            disabled={!isAdmin || saving}
+            options={[{ value: "", label: "Não informado" }, ...UFS.map((uf) => ({ value: uf, label: uf }))]}
+          />
+        </div>
+        <div>
+          <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Tipo jurídico</label>
+          <Dropdown
+            value={profile.tipo_juridico ?? ""}
+            onChange={(v) => update("tipo_juridico", v)}
+            placeholder="Não informado"
+            disabled={!isAdmin || saving}
+            options={[{ value: "", label: "Não informado" }, ...Object.entries(TIPO_JURIDICO_LABEL).map(([value, label]) => ({ value, label }))]}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Organization() {
   usePageTitle("Organização");
   const { user } = useAuthContext();
@@ -118,6 +234,7 @@ export default function Organization() {
   const [busy, setBusy] = useState(false);
 
   const isSupremo = user?.role === "supremo";
+  const isCurrentAdmin = current?.permission_level === "admin" || current?.permission_level === "supremo";
 
   function load() {
     setLoading(true);
@@ -146,6 +263,8 @@ export default function Organization() {
 
   return (
     <div className="space-y-4">
+      {current && <FiscalProfileSection companyId={current.id} isAdmin={isCurrentAdmin} />}
+
       {isSupremo && (
         <div className="flex justify-end">
           <Button size="sm" onClick={() => setEditing("new")}>
