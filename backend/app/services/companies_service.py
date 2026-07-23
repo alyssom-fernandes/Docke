@@ -136,6 +136,20 @@ class CompaniesService:
         ))
 
     @staticmethod
+    async def has_unscoped_access(conn: asyncpg.Connection, user_id: str, company_id: UUID) -> bool:
+        """
+        True se o usuário tem alguma concessão folder_path IS NULL (empresa
+        toda) — usado pra decidir se os agregados do dashboard podem vir da
+        materialized view (que não tem RLS e enxerga TUDO da empresa) ou
+        precisam ser calculados ao vivo, restritos ao que o operador
+        escopado por pasta realmente pode ver (Fase 3.8).
+        """
+        return bool(await conn.fetchval(
+            "SELECT EXISTS (SELECT 1 FROM public.user_company_access WHERE user_id = $1 AND company_id = $2 AND folder_path IS NULL)",
+            user_id, company_id,
+        ))
+
+    @staticmethod
     async def get_stats(conn: asyncpg.Connection, company_id: UUID) -> asyncpg.Record | None:
         """
         Fase 3.1: total_documents/total_folders/recent_uploads vêm da
@@ -146,8 +160,9 @@ class CompaniesService:
         total_favorites continua ao vivo: é por usuário (auth.uid()), não
         da empresa — materializar por empresa estaria errado.
 
-        Materialized view não tem RLS — o caller PRECISA ter checado
-        is_member() antes de chamar isto.
+        CUIDADO: materialized view não tem RLS — enxerga a empresa inteira
+        sem respeitar concessão restrita a pasta. Só chamar isto depois de
+        confirmar has_unscoped_access(); caso contrário usar get_stats_live().
         """
         return await conn.fetchrow(
             """
@@ -160,6 +175,34 @@ class CompaniesService:
             FROM public.mv_company_stats mv
             LEFT JOIN public.company_stats_refresh csr ON csr.company_id = mv.company_id
             WHERE mv.company_id = $1
+            """,
+            company_id,
+        )
+
+    @staticmethod
+    async def get_stats_live(conn: asyncpg.Connection, company_id: UUID) -> asyncpg.Record:
+        """
+        Fase 3.8: caminho pra quem só tem concessão restrita a pasta — usa
+        `conn` (role authenticated, RLS ativa), então os COUNT(*) abaixo já
+        saem naturalmente limitados ao que o usuário pode ver. Mais lento que
+        a materialized view, mas é exatamente por isso que ela não pode ser
+        usada aqui: um número rápido e errado é pior que um número lento e
+        certo numa tela de auditoria/conformidade.
+        """
+        return await conn.fetchrow(
+            """
+            SELECT
+              (SELECT COUNT(*) FROM public.documents d
+               WHERE d.company_id = $1 AND d.deleted_at IS NULL) AS total_documents,
+              (SELECT COUNT(*) FROM public.folders f
+               WHERE f.company_id = $1 AND f.deleted_at IS NULL) AS total_folders,
+              (SELECT COUNT(*) FROM public.favorites fav
+               JOIN public.documents d ON d.id = fav.document_id
+               WHERE d.company_id = $1 AND fav.user_id = auth.uid()) AS total_favorites,
+              (SELECT COUNT(*) FROM public.documents d
+               WHERE d.company_id = $1 AND d.deleted_at IS NULL
+                 AND d.created_at >= now() - interval '7 days') AS recent_uploads,
+              now() AS refreshed_at
             """,
             company_id,
         )

@@ -147,9 +147,15 @@ async def company_stats(
     """
     if not await CompaniesService.is_member(conn, claims["sub"], company_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem acesso a esta empresa.")
-    row = await CompaniesService.get_stats(conn, company_id)
-    if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empresa não encontrada.")
+    if await CompaniesService.has_unscoped_access(conn, claims["sub"], company_id):
+        row = await CompaniesService.get_stats(conn, company_id)
+        if row is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empresa não encontrada.")
+    else:
+        # Fase 3.8: concessão restrita a pasta não pode ver o agregado da
+        # empresa inteira que a materialized view carrega — cai pro cálculo
+        # ao vivo, que respeita RLS.
+        row = await CompaniesService.get_stats_live(conn, company_id)
     return dict(row)
 
 
@@ -170,7 +176,10 @@ async def refresh_company_stats(
     if not rate_limit.check_and_record(f"stats-refresh:{company_id}", max_count=1, window_seconds=15):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Aguarde alguns segundos antes de atualizar de novo.")
     await CompaniesService.refresh_stats(conn)
-    row = await CompaniesService.get_stats(conn, company_id)
+    if await CompaniesService.has_unscoped_access(conn, claims["sub"], company_id):
+        row = await CompaniesService.get_stats(conn, company_id)
+    else:
+        row = await CompaniesService.get_stats_live(conn, company_id)
     return dict(row)
 
 
