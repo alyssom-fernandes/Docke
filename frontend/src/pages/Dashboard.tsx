@@ -15,6 +15,8 @@ import {
   Trash2,
   Download,
   RefreshCw,
+  ShieldQuestion,
+  Lock,
 } from "lucide-react";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
@@ -48,6 +50,22 @@ interface Favorite {
   item_id: string;
   item_name: string;
 }
+
+interface ObligationInstance {
+  id: string;
+  template_name: string;
+  period: string;
+  due_date: string;
+  effective_status: string;
+  blocking_templates: string[] | null;
+}
+
+const OBLIGATION_STATUS_LABEL: Record<string, string> = {
+  overdue: "Atrasada",
+  at_risk: "Vencendo",
+  blocked: "Bloqueada",
+  expired: "Expirada",
+};
 
 interface ActivityEvent {
   id: string;
@@ -131,6 +149,7 @@ export default function Dashboard() {
   const [recent, setRecent] = useState<RecentDoc[]>([]);
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
+  const [obligations, setObligations] = useState<ObligationInstance[]>([]);
   const [dailyUploads, setDailyUploads] = useState<DailyUpload[]>([]);
   const [byFolder, setByFolder] = useState<FolderBreakdown[]>([]);
   const [loading, setLoading] = useState(true);
@@ -151,13 +170,15 @@ export default function Dashboard() {
       api.get("/documents/recent", { params: { company_id: current.id, limit: 5 } }).catch(() => ({ data: [] })),
       api.get("/favorites").catch(() => ({ data: [] })),
       api.get("/activity", { params: { company_id: current.id, page_size: 8 } }).catch(() => ({ data: { results: [] } })),
-    ]).then(([statsRes, chartsRes, recentRes, favsRes, actRes]) => {
+      api.get(`/companies/${current.id}/obligations/instances`).catch(() => ({ data: [] })),
+    ]).then(([statsRes, chartsRes, recentRes, favsRes, actRes, oblRes]) => {
       setStats(statsRes.data);
       setDailyUploads(Array.isArray(chartsRes.data?.daily_uploads) ? chartsRes.data.daily_uploads : []);
       setByFolder(Array.isArray(chartsRes.data?.by_folder) ? chartsRes.data.by_folder : []);
       setRecent(Array.isArray(recentRes.data) ? recentRes.data : []);
       setFavorites(Array.isArray(favsRes.data) ? favsRes.data : []);
       setActivity(Array.isArray(actRes.data) ? actRes.data : (actRes.data.results ?? []));
+      setObligations(Array.isArray(oblRes.data) ? oblRes.data : []);
     }).finally(() => setLoading(false));
   }, [current?.id]);
 
@@ -247,6 +268,14 @@ export default function Dashboard() {
             <FolderBarChart data={byFolder} />
           </div>
         </div>
+      )}
+
+      {/* Fase 3.9: obrigações urgentes — só aparece pra quem já usa o
+          módulo (Fase 4). Prioriza o que precisa de ação (regra da
+          pesquisa: "Temos 500 mil documentos. 327 exigem ação hoje.") em
+          vez de mais um número solto. */}
+      {!loading && obligations.length > 0 && (
+        <ObligationsWidget obligations={obligations} />
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -392,6 +421,54 @@ export default function Dashboard() {
           </ul>
         )}
       </div>
+    </div>
+  );
+}
+
+function ObligationsWidget({ obligations }: { obligations: ObligationInstance[] }) {
+  const navigate = useNavigate();
+  const urgent = obligations
+    .filter((o) => o.effective_status === "overdue" || o.effective_status === "at_risk" || o.effective_status === "expired")
+    .sort((a, b) => a.due_date.localeCompare(b.due_date))
+    .slice(0, 5);
+  const blockedCount = obligations.filter((o) => o.effective_status === "blocked").length;
+
+  return (
+    <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-2 border-b border-[var(--border-default)]">
+        <h2 className="text-mac-body font-semibold text-[var(--text-secondary)]">Obrigações</h2>
+        <Link to="/obligations" className="flex items-center gap-1 text-mac-caption text-[var(--text-secondary)] hover:text-teal-500">
+          Ver central de conformidade <ChevronRight className="w-3 h-3" />
+        </Link>
+      </div>
+      {urgent.length === 0 ? (
+        <div className="px-5 py-4 text-mac-body text-[var(--text-secondary)] flex items-center gap-2">
+          <ShieldQuestion className="w-4 h-4 text-teal-500" />
+          Nenhuma obrigação atrasada ou vencendo.
+          {blockedCount > 0 && <span className="text-mac-caption text-[var(--text-tertiary)]">({blockedCount} bloqueada{blockedCount > 1 ? "s" : ""} aguardando pré-requisito)</span>}
+        </div>
+      ) : (
+        <ul>
+          {urgent.map((o) => (
+            <li
+              key={o.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate("/obligations")}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/obligations"); } }}
+              className="flex items-center gap-3 px-5 py-2 hover:bg-[var(--bg-hover)] transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 cursor-pointer"
+            >
+              {o.effective_status === "overdue" ? (
+                <Clock className="w-4 h-4 text-red-500 flex-shrink-0" />
+              ) : (
+                <Lock className="w-4 h-4 text-amber-500 flex-shrink-0" />
+              )}
+              <span className="flex-1 min-w-0 text-mac-body text-[var(--text-primary)] truncate">{o.template_name} · {o.period}</span>
+              <Badge variant={o.effective_status === "overdue" ? "error" : "warning"}>{OBLIGATION_STATUS_LABEL[o.effective_status] ?? o.effective_status}</Badge>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
