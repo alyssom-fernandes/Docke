@@ -20,6 +20,7 @@ import Metadata from "@/pages/Settings/Metadata";
 import Security from "@/pages/Settings/Security";
 import Preferences from "@/pages/Settings/Preferences";
 import Retention from "@/pages/Settings/Retention";
+import AdminHome from "@/pages/Settings/AdminHome";
 import Onboarding, { isOnboardingComplete } from "@/components/shared/Onboarding";
 import SessionExpiredOverlay from "@/components/shared/SessionExpiredOverlay";
 import PublicShare from "@/pages/PublicShare";
@@ -72,6 +73,7 @@ function ProtectedRoutes() {
             <Route path="/settings" element={<SettingsLayout />}>
               <Route index element={<SettingsIndex />} />
               <Route path="profile" element={<Profile />} />
+              <Route path="admin" element={<AdminHome />} />
               <Route path="organization" element={<Organization />} />
               <Route path="users" element={<Users />} />
               <Route path="metadata" element={<Metadata />} />

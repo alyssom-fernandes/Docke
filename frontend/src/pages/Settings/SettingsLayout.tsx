@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Outlet, NavLink, Navigate, useLocation, useNavigate } from "react-router-dom";
-import { User, Building2, Users as UsersIcon, Lock, Sliders, Archive, Tags, ChevronRight, ChevronLeft, Search } from "lucide-react";
+import { User, Building2, Users as UsersIcon, Lock, Sliders, Archive, Tags, ChevronRight, ChevronLeft, Search, LayoutGrid } from "lucide-react";
 import { useAuthContext } from "@/lib/AuthContext";
 import { useCompany } from "@/lib/CompanyContext";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -20,6 +20,7 @@ const LAST_PANE_KEY = "docke_settings_last_pane";
 const TABS = [
   { to: "/settings/profile", icon: User, label: "Perfil", color: "bg-blue-500", adminOnly: false, supremoOnly: false, group: "Conta", keywords: ["nome", "avatar", "username"] },
   { to: "/settings/security", icon: Lock, label: "Segurança", color: "bg-red-500", adminOnly: false, supremoOnly: false, group: "Conta", keywords: ["senha", "trocar senha", "password"] },
+  { to: "/settings/admin", icon: LayoutGrid, label: "Visão geral", color: "bg-teal-600", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["administração", "resumo", "painel", "overview"] },
   { to: "/settings/organization", icon: Building2, label: "Organização", color: "bg-slate-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["empresa", "cnpj", "desativar", "reativar", "perfil fiscal"] },
   { to: "/settings/users", icon: UsersIcon, label: "Usuários & Papéis", color: "bg-indigo-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["usuário", "membro", "grupo", "grupos", "permissão", "acesso", "operador", "visualizador", "admin", "explain access"] },
   { to: "/settings/metadata", icon: Tags, label: "Metadados", color: "bg-orange-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["campo", "campos", "cpf", "cnpj", "catálogo", "aplicação na árvore", "herança", "obrigatório"] },
