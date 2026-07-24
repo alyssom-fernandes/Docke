@@ -216,11 +216,23 @@ async def confirm_upload(
             detail="Não foi possível calcular o hash do arquivo.",
         )
 
+    # Fase 11.4: dedup real — a UNIQUE(company_id, content_hash) é um invariante
+    # deliberado desde a M1.2 (um documento por conteúdo por empresa) e NÃO deve
+    # ser removida; duas linhas de documento nunca podem compartilhar o mesmo
+    # content_hash. O que a Fase 11.4 corrige é o desperdício: antes, ao rejeitar
+    # com 409, o arquivo que acabou de subir inteiro pro R2 ficava órfão pra
+    # sempre (nunca era removido), e o registro pendente (content_hash NULL)
+    # também ficava preso na tabela. Agora ambos são limpos antes do 409.
     duplicate = await DocumentsService.find_duplicate_by_hash(admin_conn, doc["company_id"], content_hash, document_id)
     if duplicate is not None:
+        try:
+            storage_service.delete_object(key)
+        except Exception:
+            pass  # melhor esforço — mesmo padrão de trash.py; o dedup não deve travar por isso
+        await DocumentsService.delete_pending_document(admin_conn, document_id)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Arquivo idêntico (mesmo SHA-256) já existe nesta empresa.",
+            detail=f'Arquivo idêntico (mesmo SHA-256) já existe nesta empresa: "{duplicate["name"]}".',
         )
 
     row = await DocumentsService.confirm_upload_transaction(

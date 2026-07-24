@@ -109,9 +109,11 @@ class DocumentsService:
         )
 
     @staticmethod
-    async def find_duplicate_by_hash(admin_conn: asyncpg.Connection, company_id: UUID, content_hash: str, exclude_id: UUID) -> UUID | None:
-        return await admin_conn.fetchval(
-            "SELECT id FROM public.documents WHERE company_id = $1 AND content_hash = $2 AND id != $3",
+    async def find_duplicate_by_hash(admin_conn: asyncpg.Connection, company_id: UUID, content_hash: str, exclude_id: UUID) -> asyncpg.Record | None:
+        """Fase 11.4: devolve o nome do duplicado (mensagem de erro mais útil —
+        "já existe como X" em vez de só "já existe")."""
+        return await admin_conn.fetchrow(
+            "SELECT id, name FROM public.documents WHERE company_id = $1 AND content_hash = $2 AND id != $3 AND deleted_at IS NULL",
             company_id, content_hash, exclude_id,
         )
 
