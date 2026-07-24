@@ -9,9 +9,12 @@ interface ConfirmModalProps {
   confirmLabel?: string;
   danger?: boolean;
   loading?: boolean;
-  /** Nível "Alto" do design system: exige digitar CONFIRMAR para habilitar o botão danger. */
+  /** Nível "Alto" do design system: exige digitar um valor específico para habilitar o botão danger. */
   requireTypedConfirmation?: boolean;
-  onConfirm: () => void;
+  /** Valor exato que precisa ser digitado (default "CONFIRMAR"). Use um valor dinâmico
+   * (ex: nome do documento) para ações onde digitar a palavra genérica seria fraco demais. */
+  typedConfirmationValue?: string;
+  onConfirm: (typedValue: string) => void;
   onClose: () => void;
 }
 
@@ -28,6 +31,7 @@ export default function ConfirmModal({
   danger = false,
   loading = false,
   requireTypedConfirmation = false,
+  typedConfirmationValue = "CONFIRMAR",
   onConfirm,
   onClose,
 }: ConfirmModalProps) {
@@ -68,7 +72,7 @@ export default function ConfirmModal({
                 type="text"
                 value={typedValue}
                 onChange={(e) => setTypedValue(e.target.value)}
-                placeholder="Digite CONFIRMAR"
+                placeholder={`Digite ${typedConfirmationValue}`}
                 className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
               />
             </div>
@@ -81,8 +85,8 @@ export default function ConfirmModal({
               variant={danger ? "danger" : "primary"}
               size="sm"
               loading={loading}
-              disabled={requireTypedConfirmation && typedValue !== "CONFIRMAR"}
-              onClick={onConfirm}
+              disabled={requireTypedConfirmation && typedValue !== typedConfirmationValue}
+              onClick={() => onConfirm(typedValue)}
             >
               {confirmLabel}
             </Button>

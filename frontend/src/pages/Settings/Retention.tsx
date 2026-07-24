@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, ScrollText, Lock, Unlock, Inbox, Trash2, Plus, FileWarning, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ScrollText, Lock, Unlock, Inbox, Trash2, Plus, ShieldCheck } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
@@ -8,6 +8,8 @@ import { useToast } from "@/lib/toast";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Dropdown from "@/components/ui/Dropdown";
+import ConfirmModal from "@/components/ui/ConfirmModal";
+import DangerZone from "@/components/shared/DangerZone";
 
 // Fase 5.1-5.3 — Retenção legal: política / atribuição / hold / fila de
 // revisão. Nada aqui apaga um documento: política só calcula uma data, hold
@@ -85,6 +87,12 @@ export default function Retention() {
   const [days, setDays] = useState(30);
   const [loadingDays, setLoadingDays] = useState(true);
   const [savingDays, setSavingDays] = useState(false);
+
+  // Fase 10.2: Danger Zone padronizada — troca o window.prompt() nativo
+  // (fora do design system) por ConfirmModal com confirmação por digitação
+  // do nome exato do documento.
+  const [purgingItem, setPurgingItem] = useState<QueueItem | null>(null);
+  const [purging, setPurging] = useState(false);
 
   // --- políticas / atribuições / holds / fila ---
   const [folders, setFolders] = useState<FolderOption[]>([]);
@@ -189,20 +197,21 @@ export default function Retention() {
     }
   }
 
-  async function executePurge(item: QueueItem) {
+  async function executePurge(item: QueueItem, typedName: string) {
     // Fase 5.9: confirmação por digitação — o texto precisa bater exato
     // com o nome do documento, senão o backend recusa (defesa em dobro,
-    // não só no cliente).
-    const typed = window.prompt(
-      `ATENÇÃO — isso apaga "${item.document_name}" definitivamente (banco de dados + arquivo). Essa ação é IRREVERSÍVEL e gera um certificado de destruição.\n\nDigite o nome exato do documento pra confirmar:`,
-    );
-    if (typed === null) return;
+    // não só no cliente). Fase 10.2: modal padronizado (ConfirmModal +
+    // DangerZone) no lugar do window.prompt() nativo anterior.
+    setPurging(true);
     try {
-      await api.post(`/retention/queue/${item.id}/execute`, { confirm_name: typed }, { params: { company_id: current!.id } });
+      await api.post(`/retention/queue/${item.id}/execute`, { confirm_name: typedName }, { params: { company_id: current!.id } });
       success(`"${item.document_name}" descartado — certificado de destruição emitido.`);
+      setPurgingItem(null);
       load();
     } catch (e: any) {
       showError(e?.response?.data?.detail ?? "Não foi possível executar o descarte.");
+    } finally {
+      setPurging(false);
     }
   }
 
@@ -273,16 +282,13 @@ export default function Retention() {
         )}
       </div>
 
-      {/* Fase 5.4-5.6: execução real — passo SEPARADO da aprovação, de propósito */}
+      {/* Fase 5.4-5.6: execução real — passo SEPARADO da aprovação, de propósito.
+          Fase 10.2: DangerZone padronizada em vez de border-red-500/20 solto. */}
       {!loading && approvedQueue.length > 0 && (
-        <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6 space-y-4 border border-red-500/20">
-          <div className="flex items-center gap-2">
-            <FileWarning className="w-4 h-4 text-red-500" />
-            <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Aprovados aguardando execução</h2>
-          </div>
-          <p className="text-mac-caption text-[var(--text-secondary)]">
-            Já foram aprovados na fila acima, mas ainda NÃO foram excluídos. Executar é definitivo e irreversível — apaga o documento do banco e do armazenamento, e gera um certificado de destruição.
-          </p>
+        <DangerZone
+          title="Aprovados aguardando execução"
+          description="Já foram aprovados na fila acima, mas ainda NÃO foram excluídos. Executar é definitivo e irreversível — apaga o documento do banco e do armazenamento, e gera um certificado de destruição."
+        >
           <ul className="border border-[var(--border-default)] rounded-[var(--radius-control)] divide-y divide-[var(--border-default)] overflow-hidden">
             {approvedQueue.map((q) => (
               <li key={q.id} className="flex items-center gap-3 px-4 py-3">
@@ -290,13 +296,27 @@ export default function Retention() {
                   <p className="text-mac-body text-[var(--text-primary)] truncate">{q.document_name}</p>
                   <p className="text-mac-caption text-[var(--text-tertiary)]">{q.policy_name_snapshot} · aprovado</p>
                 </div>
-                <Button variant="danger" size="sm" onClick={() => executePurge(q)}>
+                <Button variant="danger" size="sm" onClick={() => setPurgingItem(q)}>
                   <Trash2 className="w-3.5 h-3.5" /> Executar descarte
                 </Button>
               </li>
             ))}
           </ul>
-        </div>
+        </DangerZone>
+      )}
+
+      {purgingItem && (
+        <ConfirmModal
+          title={`Executar descarte de "${purgingItem.document_name}"?`}
+          description="Isso apaga o documento definitivamente (banco de dados + arquivo). Essa ação é IRREVERSÍVEL e gera um certificado de destruição. Digite o nome exato do documento para confirmar."
+          confirmLabel="Executar descarte"
+          danger
+          loading={purging}
+          requireTypedConfirmation
+          typedConfirmationValue={purgingItem.document_name}
+          onConfirm={(typed) => executePurge(purgingItem, typed)}
+          onClose={() => setPurgingItem(null)}
+        />
       )}
 
       {/* Fase 5.6: certificados de destruição — evidência que sobrevive ao documento */}

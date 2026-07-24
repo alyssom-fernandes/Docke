@@ -391,9 +391,10 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
       {deleting && (
         <ConfirmModal
           title={`Excluir "${deleting.label}"?`}
-          description="Exclusão de verdade — só funciona se o campo nunca foi preenchido em nenhum documento. Se já foi usado, arquive em vez de excluir."
+          description="Exclusão de verdade e irreversível — só funciona se o campo nunca foi preenchido em nenhum documento. Se já foi usado, arquive em vez de excluir."
           confirmLabel="Excluir"
           danger
+          requireTypedConfirmation
           onConfirm={confirmDelete}
           onClose={() => setDeleting(null)}
         />
