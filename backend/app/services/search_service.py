@@ -232,6 +232,7 @@ class SearchService:
             SELECT
               d.id::text,
               d.name,
+              'document' AS type,
               d.file_type,
               d.folder_id::text,
               f.name AS folder_name,
