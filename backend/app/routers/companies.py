@@ -11,6 +11,7 @@ from app.config import settings
 from app.dependencies import get_app_role, get_current_user, get_db, get_db_admin
 from app.services import rate_limit, storage_service
 from app.services.companies_service import CompaniesService
+from app.services.groups_service import GroupsService
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -470,6 +471,178 @@ async def remove_member(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Você não pode remover o próprio acesso.")
 
     await CompaniesService.delete_member(admin_conn, member_id, company_id)
+
+
+# ---------------------------------------------------------------------------
+# Fase 9.2 — Grupos (atribuição de acesso por grupo, além da concessão direta)
+# ---------------------------------------------------------------------------
+
+class GroupCreate(BaseModel):
+    name: str
+
+
+@router.get("/{company_id}/groups")
+async def list_groups(
+    company_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+) -> list[dict[str, Any]]:
+    rows = await GroupsService.list_groups(conn, company_id)
+    return [dict(r) for r in rows]
+
+
+@router.get("/{company_id}/groups/{group_id}")
+async def get_group(
+    company_id: UUID,
+    group_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    detail = await GroupsService.get_group_detail(conn, group_id, company_id)
+    if detail is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grupo não encontrado.")
+    return detail
+
+
+@router.post("/{company_id}/groups", status_code=status.HTTP_201_CREATED)
+async def create_group(
+    company_id: UUID,
+    body: GroupCreate,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    user_id = claims["sub"]
+    role = await get_app_role(conn, claims)
+    if not await _can_manage_company(conn, user_id, company_id, role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nome do grupo é obrigatório.")
+    if await GroupsService.name_exists(admin_conn, company_id, name):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Já existe um grupo com esse nome nesta empresa.")
+
+    row = await GroupsService.create_group(admin_conn, company_id=company_id, name=name, created_by=user_id)
+    return dict(row)
+
+
+@router.delete("/{company_id}/groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_group(
+    company_id: UUID,
+    group_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> None:
+    user_id = claims["sub"]
+    role = await get_app_role(conn, claims)
+    if not await _can_manage_company(conn, user_id, company_id, role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
+    if not await GroupsService.group_exists(admin_conn, group_id, company_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grupo não encontrado.")
+
+    await GroupsService.delete_group(admin_conn, group_id)
+
+
+class GroupMemberAdd(BaseModel):
+    user_id: UUID
+
+
+@router.post("/{company_id}/groups/{group_id}/members", status_code=status.HTTP_201_CREATED)
+async def add_group_member(
+    company_id: UUID,
+    group_id: UUID,
+    body: GroupMemberAdd,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    user_id = claims["sub"]
+    role = await get_app_role(conn, claims)
+    if not await _can_manage_company(conn, user_id, company_id, role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
+    if not await GroupsService.group_exists(admin_conn, group_id, company_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grupo não encontrado.")
+    if not await GroupsService.member_of_company(admin_conn, body.user_id, company_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não é membro desta empresa.")
+
+    await GroupsService.add_member(admin_conn, group_id, body.user_id)
+    return {"group_id": str(group_id), "user_id": str(body.user_id)}
+
+
+@router.delete("/{company_id}/groups/{group_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_group_member(
+    company_id: UUID,
+    group_id: UUID,
+    member_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> None:
+    user_id = claims["sub"]
+    role = await get_app_role(conn, claims)
+    if not await _can_manage_company(conn, user_id, company_id, role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
+    if not await GroupsService.group_exists(admin_conn, group_id, company_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grupo não encontrado.")
+
+    await GroupsService.remove_member(admin_conn, group_id, member_id)
+
+
+class GroupAccessGrantCreate(BaseModel):
+    permission_level: str
+    folder_id: UUID | None = None
+
+
+@router.post("/{company_id}/groups/{group_id}/access", status_code=status.HTTP_201_CREATED)
+async def add_group_access_grant(
+    company_id: UUID,
+    group_id: UUID,
+    body: GroupAccessGrantCreate,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    user_id = claims["sub"]
+    role = await get_app_role(conn, claims)
+    if not await _can_manage_company(conn, user_id, company_id, role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
+    if body.permission_level not in ("visualizador", "operador", "admin"):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="permission_level inválido.")
+    if not await GroupsService.group_exists(admin_conn, group_id, company_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grupo não encontrado.")
+
+    folder_path = None
+    if body.folder_id is not None:
+        folder_path = await GroupsService.get_folder_path(admin_conn, body.folder_id, company_id)
+        if folder_path is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada nesta empresa.")
+
+    row = await GroupsService.insert_access_grant(
+        admin_conn,
+        group_id=group_id, company_id=company_id,
+        permission_level=body.permission_level, folder_path=folder_path, granted_by=user_id,
+    )
+    return dict(row)
+
+
+@router.delete("/{company_id}/groups/{group_id}/access/{access_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_group_access_grant(
+    company_id: UUID,
+    group_id: UUID,
+    access_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> None:
+    user_id = claims["sub"]
+    role = await get_app_role(conn, claims)
+    if not await _can_manage_company(conn, user_id, company_id, role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
+
+    grant = await GroupsService.get_access_grant(admin_conn, access_id, company_id)
+    if grant is None or str(grant["group_id"]) != str(group_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Concessão não encontrada.")
+
+    await GroupsService.delete_access_grant(admin_conn, access_id)
 
 
 # ---------------------------------------------------------------------------
