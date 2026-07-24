@@ -109,8 +109,12 @@ async def create_folder(
     # escrita esbarra só na RLS, que rejeita a linha com uma exceção crua do
     # Postgres — isso não vira um 403 limpo, derruba a conexão (net::ERR_FAILED
     # no browser, sem resposta HTTP nenhuma chegando ao cliente).
+    # Fase 9.5: corrige divergência conhecida — operador (equivalente a
+    # "editor" no resto do mercado GED) pode criar subpastas dentro do
+    # próprio escopo de acesso; reorganizar a árvore (renomear/mover)
+    # continua exigindo admin, sem mudança.
     permission = await FoldersService.check_permission(conn, user_id, check_path, body.company_id)
-    if permission != "admin":
+    if permission not in ("admin", "operador"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para criar pasta aqui.")
 
     row = await FoldersService.insert_folder(

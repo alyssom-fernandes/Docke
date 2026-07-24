@@ -43,6 +43,29 @@ async def _can_manage_company(conn: asyncpg.Connection, user_id: str, company_id
     return await CompaniesService.user_manages_company(conn, user_id, company_id)
 
 
+async def _can_manage_scope(conn: asyncpg.Connection, user_id: str, company_id: UUID, role: str, target_path: str | None) -> bool:
+    """
+    Fase 9.5 — corrige uma divergência conhecida: até aqui, gerenciar usuários
+    (criar membro, conceder/remover acesso) exigia admin da EMPRESA TODA
+    (folder_path IS NULL) — um admin escopado a uma subpasta (ex: "Admin da
+    pasta Fiscal") não conseguia gerenciar acesso nem dentro do próprio
+    escopo. Agora: admin da empresa toda (ou supremo) continua podendo
+    gerenciar qualquer escopo; admin de subpasta só pode gerenciar acesso
+    DENTRO da própria subpasta (target_path precisa ser ela mesma ou uma
+    descendente) — nunca concede acesso à empresa toda (target_path=None)
+    nem a um escopo fora do seu próprio.
+    Usado só para as ações de "gerenciar usuários" (membro/concessão) —
+    ações de empresa (configurações, retenção, grupos) continuam exigindo
+    _can_manage_company (admin da empresa toda), sem mudança de escopo.
+    """
+    if await _can_manage_company(conn, user_id, company_id, role):
+        return True
+    admin_path = await CompaniesService.scoped_admin_folder_path(conn, user_id, company_id)
+    if admin_path is None or target_path is None:
+        return False
+    return target_path == admin_path or target_path.startswith(admin_path + ".")
+
+
 @router.get("")
 async def list_companies(
     conn: asyncpg.Connection = Depends(get_db),
@@ -315,21 +338,25 @@ async def create_member(
     """
     user_id = claims["sub"]
     role = await get_app_role(conn, claims)
-    if not await _can_manage_company(conn, user_id, company_id, role):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
     if body.permission_level not in ("visualizador", "operador", "admin"):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="permission_level inválido.")
     if len(body.password) < 8:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A senha deve ter no mínimo 8 caracteres.")
-
-    if await CompaniesService.username_exists(admin_conn, body.username):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username já existe.")
 
     folder_path = None
     if body.folder_id is not None:
         folder_path = await CompaniesService.get_folder_path(admin_conn, body.folder_id, company_id)
         if folder_path is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada nesta empresa.")
+
+    # Fase 9.5: admin de subpasta pode criar membro escopado à própria
+    # subpasta (ou descendente); só admin da empresa toda pode conceder
+    # acesso à empresa inteira (folder_id=None) ou fora do próprio escopo.
+    if not await _can_manage_scope(conn, user_id, company_id, role, folder_path):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra este escopo.")
+
+    if await CompaniesService.username_exists(admin_conn, body.username):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username já existe.")
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(
@@ -400,8 +427,6 @@ async def add_access_grant(
     """
     user_id = claims["sub"]
     role = await get_app_role(conn, claims)
-    if not await _can_manage_company(conn, user_id, company_id, role):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
     if body.permission_level not in ("visualizador", "operador", "admin"):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="permission_level inválido.")
 
@@ -413,6 +438,11 @@ async def add_access_grant(
         folder_path = await CompaniesService.get_folder_path(admin_conn, body.folder_id, company_id)
         if folder_path is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada nesta empresa.")
+
+    # Fase 9.5: mesmo escopo de create_member — admin de subpasta gerencia
+    # concessões só dentro da própria subpasta.
+    if not await _can_manage_scope(conn, user_id, company_id, role, folder_path):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra este escopo.")
 
     row = await CompaniesService.insert_access_grant(
         admin_conn,
@@ -433,12 +463,14 @@ async def remove_access_grant(
     """Remove uma concessão específica (não necessariamente todas as do usuário)."""
     user_id = claims["sub"]
     role = await get_app_role(conn, claims)
-    if not await _can_manage_company(conn, user_id, company_id, role):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
 
     grant = await CompaniesService.get_access_grant(admin_conn, access_id, company_id)
     if grant is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Concessão não encontrada.")
+
+    # Fase 9.5: admin de subpasta só remove concessões dentro do próprio escopo.
+    if not await _can_manage_scope(conn, user_id, company_id, role, grant["folder_path"]):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra este escopo.")
 
     remaining = await CompaniesService.count_grants_for_user(admin_conn, grant["user_id"], company_id)
     if remaining <= 1:

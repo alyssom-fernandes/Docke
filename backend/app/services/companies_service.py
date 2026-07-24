@@ -26,6 +26,26 @@ class CompaniesService:
         ))
 
     @staticmethod
+    async def scoped_admin_folder_path(conn: asyncpg.Connection, user_id: str, company_id: UUID) -> str | None:
+        """
+        Fase 9.5: o folder_path de uma concessão 'admin' escopada a subpasta
+        (folder_path IS NOT NULL) do usuário nesta empresa, se houver — usado
+        por _can_manage_scope para liberar gerenciamento de usuários dentro
+        do próprio escopo de um admin de subpasta (nunca da empresa toda,
+        que já é coberta por user_manages_company).
+        """
+        return await conn.fetchval(
+            """
+            SELECT folder_path FROM public.user_company_access
+            WHERE user_id = $1 AND company_id = $2
+              AND permission_level = 'admin' AND folder_path IS NOT NULL
+            ORDER BY nlevel(folder_path) ASC
+            LIMIT 1
+            """,
+            user_id, company_id,
+        )
+
+    @staticmethod
     async def list_companies(conn: asyncpg.Connection) -> list[asyncpg.Record]:
         """Empresas às quais o usuário tem QUALQUER acesso — inclusive só uma
         concessão escopada por pasta (folder_path IS NOT NULL). Filtrar por
@@ -334,7 +354,7 @@ class CompaniesService:
     @staticmethod
     async def get_access_grant(admin_conn: asyncpg.Connection, access_id: UUID, company_id: UUID) -> asyncpg.Record | None:
         return await admin_conn.fetchrow(
-            "SELECT user_id FROM public.user_company_access WHERE id = $1 AND company_id = $2",
+            "SELECT user_id, folder_path FROM public.user_company_access WHERE id = $1 AND company_id = $2",
             access_id, company_id,
         )
 
