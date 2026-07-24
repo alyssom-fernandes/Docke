@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Users as UsersIcon, UserPlus, X, Shield, RefreshCw, Plus, Folder, ChevronDown } from "lucide-react";
+import { Users as UsersIcon, UserPlus, X, Shield, RefreshCw, Plus, Folder, ChevronDown, UsersRound, Trash2 } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import api from "@/lib/api";
@@ -28,6 +28,34 @@ interface FolderOption {
   id: string;
   name: string;
   path: string;
+}
+
+interface GroupSummary {
+  id: string;
+  name: string;
+  created_at: string;
+  member_count: number;
+  grant_count: number;
+}
+
+interface GroupMember {
+  user_id: string;
+  full_name: string;
+  username: string;
+  added_at: string;
+}
+
+interface GroupGrant {
+  access_id: string;
+  role: string;
+  folder_id: string | null;
+  folder_name: string | null;
+  created_at: string;
+}
+
+interface GroupDetail extends GroupSummary {
+  members: GroupMember[];
+  grants: GroupGrant[];
 }
 
 const ROLE_LABEL: Record<string, string> = { visualizador: "Visualizador", operador: "Operador", admin: "Admin" };
@@ -254,6 +282,338 @@ function AddGrantModal({ companyId, memberId, memberName, folders, onClose, onDo
   );
 }
 
+function GroupDetailPanel({ companyId, group, members, folders, canManage, onClose, onChanged }: {
+  companyId: string; group: GroupSummary; members: { user_id: string; full_name: string; username: string }[];
+  folders: FolderOption[]; canManage: boolean; onClose: () => void; onChanged: () => void;
+}) {
+  const { success, error: showError } = useToast();
+  const [detail, setDetail] = useState<GroupDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [addingMember, setAddingMember] = useState(false);
+  const [memberToAdd, setMemberToAdd] = useState("");
+  const [addingGrant, setAddingGrant] = useState(false);
+  const [grantRole, setGrantRole] = useState("visualizador");
+  const [grantFolder, setGrantFolder] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  function load() {
+    setLoading(true);
+    api.get<GroupDetail>(`/companies/${companyId}/groups/${group.id}`)
+      .then((res) => setDetail(res.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }
+  useEffect(load, [group.id]);
+
+  const memberOptions = members.filter((m) => !detail?.members.some((dm) => dm.user_id === m.user_id));
+
+  async function addMember() {
+    if (!memberToAdd) return;
+    setBusy(true);
+    try {
+      await api.post(`/companies/${companyId}/groups/${group.id}/members`, { user_id: memberToAdd });
+      success("Membro adicionado ao grupo.");
+      setAddingMember(false);
+      setMemberToAdd("");
+      load();
+      onChanged();
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível adicionar o membro.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeMember(userId: string) {
+    setBusy(true);
+    try {
+      await api.delete(`/companies/${companyId}/groups/${group.id}/members/${userId}`);
+      load();
+      onChanged();
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível remover o membro.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addGrant() {
+    setBusy(true);
+    try {
+      await api.post(`/companies/${companyId}/groups/${group.id}/access`, {
+        permission_level: grantRole,
+        folder_id: grantFolder || null,
+      });
+      success("Concessão adicionada ao grupo.");
+      setAddingGrant(false);
+      setGrantFolder("");
+      load();
+      onChanged();
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível adicionar a concessão.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeGrant(accessId: string) {
+    setBusy(true);
+    try {
+      await api.delete(`/companies/${companyId}/groups/${group.id}/access/${accessId}`);
+      load();
+      onChanged();
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível remover a concessão.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <li className="border-b border-[var(--border-default)] last:border-0 bg-[var(--bg-page)]/40">
+      <div className="px-5 py-3">
+        {loading || !detail ? (
+          <div className="h-6 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse w-1/3" />
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-mac-caption font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Membros</p>
+              {canManage && !addingMember && (
+                <button onClick={() => setAddingMember(true)} className="inline-flex items-center gap-1 text-mac-caption text-teal-500 hover:text-teal-600">
+                  <Plus className="w-3 h-3" /> Adicionar
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {detail.members.length === 0 && <span className="text-mac-caption text-[var(--text-tertiary)]">Nenhum membro ainda.</span>}
+              {detail.members.map((m) => (
+                <span key={m.user_id} className="inline-flex items-center gap-1.5 pl-2 pr-1.5 py-0.5 rounded-full bg-[var(--bg-card)] border border-[var(--border-default)] text-mac-caption text-[var(--text-primary)]">
+                  {m.full_name}
+                  {canManage && (
+                    <button onClick={() => removeMember(m.user_id)} disabled={busy} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+            {addingMember && (
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <Dropdown
+                    value={memberToAdd}
+                    placeholder="Selecione um usuário…"
+                    onChange={setMemberToAdd}
+                    options={memberOptions.map((m) => ({ value: m.user_id, label: `${m.full_name} (@${m.username})` }))}
+                  />
+                </div>
+                <Button size="sm" onClick={addMember} loading={busy} disabled={!memberToAdd}>Adicionar</Button>
+                <Button size="sm" variant="secondary" onClick={() => { setAddingMember(false); setMemberToAdd(""); }}>Cancelar</Button>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-2 border-t border-[var(--border-default)]">
+              <p className="text-mac-caption font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Acesso concedido ao grupo</p>
+              {canManage && !addingGrant && (
+                <button onClick={() => setAddingGrant(true)} className="inline-flex items-center gap-1 text-mac-caption text-teal-500 hover:text-teal-600">
+                  <Plus className="w-3 h-3" /> Conceder
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {detail.grants.length === 0 && <span className="text-mac-caption text-[var(--text-tertiary)]">Nenhuma concessão ainda — o grupo não dá acesso a nada.</span>}
+              {detail.grants.map((g) => (
+                <span key={g.access_id} className="inline-flex items-center gap-1.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-[var(--bg-page)] border border-[var(--border-default)]">
+                  <Badge variant={ROLE_VARIANT[g.role] ?? "default"}>{ROLE_LABEL[g.role] ?? g.role}</Badge>
+                  <span className="text-mac-caption text-[var(--text-secondary)] flex items-center gap-1">
+                    {g.folder_id ? (<><Folder className="w-3 h-3" />{g.folder_name ?? "Pasta"}</>) : "Empresa toda"}
+                  </span>
+                  {canManage && (
+                    <button onClick={() => removeGrant(g.access_id)} disabled={busy} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+            {addingGrant && (
+              <div className="flex items-end gap-2 flex-wrap">
+                <div className="w-[160px]">
+                  <label className="block text-mac-caption text-[var(--text-tertiary)] mb-1">Papel</label>
+                  <Dropdown value={grantRole} placeholder="Selecione…" onChange={setGrantRole} options={[
+                    { value: "visualizador", label: "Visualizador" },
+                    { value: "operador", label: "Operador" },
+                    { value: "admin", label: "Admin" },
+                  ]} />
+                </div>
+                <div className="flex-1 min-w-[180px]">
+                  <label className="block text-mac-caption text-[var(--text-tertiary)] mb-1">Escopo</label>
+                  <FolderSelect folders={folders} value={grantFolder} onChange={setGrantFolder} />
+                </div>
+                <Button size="sm" onClick={addGrant} loading={busy}>Conceder</Button>
+                <Button size="sm" variant="secondary" onClick={() => { setAddingGrant(false); setGrantFolder(""); }}>Cancelar</Button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      <button onClick={onClose} className="w-full px-5 py-1.5 border-t border-[var(--border-default)] text-mac-caption text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast">
+        Recolher
+      </button>
+    </li>
+  );
+}
+
+function GroupsSection({ companyId, members, folders, canManage }: {
+  companyId: string; members: { user_id: string; full_name: string; username: string }[]; folders: FolderOption[]; canManage: boolean;
+}) {
+  const { success, error: showError } = useToast();
+  const [groups, setGroups] = useState<GroupSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState<GroupSummary | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  function load() {
+    setLoading(true);
+    api.get<GroupSummary[]>(`/companies/${companyId}/groups`)
+      .then((res) => setGroups(Array.isArray(res.data) ? res.data : []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }
+  useEffect(load, [companyId]);
+
+  async function createGroup() {
+    const name = newName.trim();
+    if (!name) return;
+    setSaving(true);
+    try {
+      await api.post(`/companies/${companyId}/groups`, { name });
+      success(`Grupo "${name}" criado.`);
+      setNewName("");
+      setCreating(false);
+      load();
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível criar o grupo.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteGroup(g: GroupSummary) {
+    setBusy(true);
+    try {
+      await api.delete(`/companies/${companyId}/groups/${g.id}`);
+      success(`Grupo "${g.name}" removido.`);
+      setRemoving(null);
+      if (expanded === g.id) setExpanded(null);
+      load();
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível remover o grupo.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-default)]">
+        <div className="flex items-center gap-2">
+          <UsersRound className="w-4 h-4 text-teal-500" />
+          <h3 className="text-mac-body font-medium text-[var(--text-primary)]">Grupos</h3>
+        </div>
+        {canManage && !creating && (
+          <Button size="sm" variant="secondary" onClick={() => setCreating(true)}>
+            <Plus className="w-3.5 h-3.5" /> Novo grupo
+          </Button>
+        )}
+      </div>
+
+      {creating && (
+        <div className="flex items-center gap-2 px-5 py-3 border-b border-[var(--border-default)]">
+          <input
+            autoFocus
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") createGroup(); if (e.key === "Escape") setCreating(false); }}
+            placeholder="Nome do grupo (ex: Grupo Financeiro)"
+            className="flex-1 h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+          />
+          <Button size="sm" onClick={createGroup} loading={saving} disabled={!newName.trim()}>Criar</Button>
+          <Button size="sm" variant="secondary" onClick={() => { setCreating(false); setNewName(""); }}>Cancelar</Button>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="p-5 space-y-2">
+          {[0, 1].map((i) => <div key={i} className="h-10 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />)}
+        </div>
+      ) : groups.length === 0 ? (
+        <div className="py-6 px-5 text-mac-caption text-[var(--text-tertiary)]">
+          Nenhum grupo ainda. Grupos permitem conceder acesso a vários usuários de uma vez — o acesso de um usuário via grupo é resolvido junto com as concessões diretas dele, com a mesma regra de especificidade (a mais próxima da pasta vence).
+        </div>
+      ) : (
+        <ul>
+          {groups.map((g) => (
+            <div key={g.id}>
+              <li
+                className="flex items-center gap-3 px-5 py-3 hover:bg-[var(--bg-hover)] border-b border-[var(--border-default)] cursor-pointer group"
+                onClick={() => setExpanded(expanded === g.id ? null : g.id)}
+              >
+                <div className="w-8 h-8 rounded-full bg-indigo-500/15 flex items-center justify-center flex-shrink-0">
+                  <UsersRound className="w-4 h-4 text-indigo-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-mac-body font-medium text-[var(--text-primary)] truncate">{g.name}</p>
+                  <p className="text-mac-caption text-[var(--text-tertiary)]">
+                    {g.member_count} {g.member_count === 1 ? "membro" : "membros"} · {g.grant_count} {g.grant_count === 1 ? "concessão" : "concessões"}
+                  </p>
+                </div>
+                <ChevronDown className={`w-3.5 h-3.5 text-[var(--text-tertiary)] transition-transform duration-fast ${expanded === g.id ? "rotate-180" : ""}`} />
+                {canManage && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setRemoving(g); }}
+                    className="opacity-0 group-hover:opacity-100 p-1.5 rounded-[6px] text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-500/10 transition-all duration-fast"
+                    title="Excluir grupo"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </li>
+              {expanded === g.id && (
+                <GroupDetailPanel
+                  companyId={companyId}
+                  group={g}
+                  members={members}
+                  folders={folders}
+                  canManage={canManage}
+                  onClose={() => setExpanded(null)}
+                  onChanged={load}
+                />
+              )}
+            </div>
+          ))}
+        </ul>
+      )}
+
+      {removing && (
+        <ConfirmModal
+          title={`Excluir o grupo "${removing.name}"?`}
+          description="Todos os membros e concessões de acesso deste grupo são removidos junto. Usuários que só tinham acesso via este grupo perdem esse acesso — o restante das concessões deles (diretas ou de outros grupos) não é afetado."
+          confirmLabel="Excluir grupo"
+          danger
+          loading={busy}
+          onConfirm={() => deleteGroup(removing)}
+          onClose={() => setRemoving(null)}
+        />
+      )}
+    </div>
+  );
+}
+
 export default function Users() {
   usePageTitle("Usuários");
   const { current } = useCompany();
@@ -401,6 +761,15 @@ export default function Users() {
           </ul>
         )}
       </div>
+
+      {current && (
+        <GroupsSection
+          companyId={current.id}
+          members={Object.values(byUser).map((g) => ({ user_id: g[0].user_id, full_name: g[0].full_name, username: g[0].username }))}
+          folders={folders}
+          canManage={canManage}
+        />
+      )}
 
       {creating && current && (
         <CreateMemberModal companyId={current.id} folders={folders} onClose={() => setCreating(false)} onDone={load} />
