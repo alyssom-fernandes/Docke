@@ -233,7 +233,35 @@ async def confirm_upload(
             f'Novo documento "{row["name"]}" foi enviado a uma pasta que você ancorou.',
         )
 
-    return dict(row)
+    # Fase 8.5: fast-path fiscal — reaproveita o parser de NFe/NFCe já usado
+    # em GET /documents/:id/xml-fields pra preencher tipo_fiscal/competencia
+    # sozinho no confirm, em vez de exigir que alguém abra o XML manualmente
+    # depois pra descobrir que era uma nota fiscal. Documento acabou de ser
+    # criado (tipo_fiscal/competencia sempre NULL aqui), então não há risco
+    # de sobrescrever algo que a pessoa já preencheu à mão.
+    result = dict(row)
+    ext = row["name"].rsplit(".", 1)[-1].lower() if "." in row["name"] else ""
+    if ext == "xml" or row["mime_type"] == "application/xml":
+        xml_bytes = storage_service.read_object(row["storage_path"])
+        if xml_bytes is not None:
+            nfe_fields = DocumentsService.extract_nfe_fields(xml_bytes)
+            if nfe_fields is not None and nfe_fields.get("recognized"):
+                data_emissao = nfe_fields.get("data_emissao")
+                competencia = None
+                if data_emissao:
+                    try:
+                        competencia = date.fromisoformat(data_emissao[:10]).replace(day=1)
+                    except ValueError:
+                        competencia = None
+                updated = await DocumentsService.patch_metadata(
+                    admin_conn, document_id,
+                    name=None, sector=None, competencia=competencia, tipo_fiscal="NF-e",
+                )
+                if updated is not None:
+                    result["tipo_fiscal"] = updated["tipo_fiscal"]
+                    result["competencia"] = updated["competencia"]
+
+    return result
 
 
 # ---------------------------------------------------------------------------
