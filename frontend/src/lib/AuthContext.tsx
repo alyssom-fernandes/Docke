@@ -7,6 +7,7 @@ interface AuthCtx {
   login: (email: string, password: string) => Promise<void>;
   loginDemo: () => Promise<void>;
   logout: () => void;
+  updateProfile: (fullName: string) => Promise<void>;
 }
 
 const Ctx = createContext<AuthCtx | null>(null);

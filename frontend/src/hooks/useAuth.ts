@@ -15,6 +15,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   loginDemo: () => Promise<void>;
   logout: () => void;
+  updateProfile: (fullName: string) => Promise<void>;
 }
 
 export function useAuth(): AuthState {
@@ -91,5 +92,17 @@ export function useAuth(): AuthState {
     window.location.href = "/login";
   }
 
-  return { user, isLoading, login, loginDemo, logout };
+  // Fase 10.3: atualiza o nome no backend e reflete no estado global de
+  // uma vez (avatar da TopBar, menu de usuário etc. reagem sozinhos).
+  async function updateProfile(fullName: string) {
+    const res = await api.patch("/auth/me", { full_name: fullName });
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, full_name: res.data.full_name };
+      localStorage.setItem("docke_user", JSON.stringify(next));
+      return next;
+    });
+  }
+
+  return { user, isLoading, login, loginDemo, logout, updateProfile };
 }

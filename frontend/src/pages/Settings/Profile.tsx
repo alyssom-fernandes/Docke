@@ -1,14 +1,14 @@
-import { useState, FormEvent, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useAuthContext } from "@/lib/AuthContext";
 import { useToast } from "@/lib/toast";
 import Input from "@/components/ui/Input";
-import Button from "@/components/ui/Button";
+import SaveBar from "@/components/shared/SaveBar";
 
 export default function Profile() {
   usePageTitle("Perfil");
-  const { user } = useAuthContext();
-  const { success } = useToast();
+  const { user, updateProfile } = useAuthContext();
+  const { success, error: showError } = useToast();
   const [saving, setSaving] = useState(false);
   const [fullName, setFullName] = useState(user?.full_name ?? "");
 
@@ -16,13 +16,22 @@ export default function Profile() {
     if (user) setFullName(user.full_name);
   }, [user]);
 
-  function handleSubmit(e: FormEvent) {
-    e.preventDefault();
+  const dirty = fullName.trim() !== "" && fullName !== user?.full_name;
+
+  async function handleSave() {
     setSaving(true);
-    setTimeout(() => {
-      setSaving(false);
+    try {
+      await updateProfile(fullName.trim());
       success("Perfil atualizado.");
-    }, 800);
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível atualizar o perfil.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleDiscard() {
+    setFullName(user?.full_name ?? "");
   }
 
   return (
@@ -51,7 +60,7 @@ export default function Profile() {
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-4">
             <Input
               label="Nome completo"
               value={fullName}
@@ -65,13 +74,11 @@ export default function Profile() {
               <span className="text-mac-body font-medium text-[var(--text-secondary)]">Nome de usuário</span>
               <span className="text-mac-body text-[var(--text-primary)]">@{user?.username}</span>
             </div>
-            <div className="flex justify-end">
-              <Button type="submit" loading={saving} size="sm">
-                Salvar alterações
-              </Button>
-            </div>
-          </form>
+          </div>
         </div>
+        {/* Fase 10.3: Save Bar só aparece com alteração pendente — sem
+            botão "Salvar" estático quando nada mudou. */}
+        <SaveBar visible={dirty} saving={saving} onSave={handleSave} onDiscard={handleDiscard} />
       </div>
     </div>
   );

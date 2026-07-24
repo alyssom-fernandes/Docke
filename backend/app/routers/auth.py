@@ -137,6 +137,32 @@ async def get_me(
 
 
 # ---------------------------------------------------------------------------
+# PATCH /auth/me — Fase 10.3: atualiza o próprio perfil (só full_name por
+# ora). Antes, "Salvar alterações" em Perfil.tsx era decorativo — nunca
+# chamava a API, só mostrava um toast falso depois de um setTimeout.
+# ---------------------------------------------------------------------------
+
+class UpdateProfileRequest(BaseModel):
+    full_name: str
+
+
+@router.patch("/me")
+async def update_me(
+    body: UpdateProfileRequest,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    full_name = body.full_name.strip()
+    if not full_name:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nome completo não pode ficar vazio.")
+
+    row = await AuthService.update_own_profile(conn, full_name=full_name)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não encontrado.")
+    return dict(row)
+
+
+# ---------------------------------------------------------------------------
 # POST /auth/change-password — troca de senha (ADR-015, seção Segurança)
 # ---------------------------------------------------------------------------
 
