@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState, useCallback, type ElementType } 
 import { useSearchParams } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { relativeDate, fullDate } from "@/lib/date";
 import { getFileStyle } from "@/lib/fileType";
 import {
@@ -766,10 +767,16 @@ function DocumentActivitySection({ docId, companyId }: { docId: string; companyI
   );
 }
 
-function DetailDrawer({ doc, companyId, onClose, onFavorite, onPreview, onDelete, onChanged }: { doc: Document; companyId: string; onClose: () => void; onFavorite: () => void; onPreview: () => void; onDelete: () => void; onChanged: () => void }) {
+function DetailDrawer({ doc, companyId, variant = "modal", onClose, onFavorite, onPreview, onDelete, onChanged }: {
+  doc: Document; companyId: string; variant?: "modal" | "panel";
+  onClose: () => void; onFavorite: () => void; onPreview: () => void; onDelete: () => void; onChanged: () => void;
+}) {
   const { success, error: showError } = useToast();
   const containerRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(containerRef);
+  // Painel lateral não bloqueia o resto da tela (não é modal) — trap de foco
+  // só faz sentido pro modal mobile, senão Tab fica preso no painel e nunca
+  // volta pra tabela.
+  useFocusTrap(containerRef, variant === "modal");
   const [favorited, setFavorited] = useState(doc.favorited ?? false);
   const [sharing, setSharing] = useState(false);
   const [shareCount, setShareCount] = useState(doc.active_share_count ?? 0);
@@ -835,9 +842,124 @@ function DetailDrawer({ doc, companyId, onClose, onFavorite, onPreview, onDelete
     }
   }
 
+  // Fase 8.1: o mesmo conteúdo alimenta tanto o modal (mobile) quanto o painel
+  // lateral persistente (desktop) — só a moldura muda entre os dois.
+  const body = (
+    <div className="space-y-5">
+      <div className="flex items-start gap-3">
+        {(() => { const s = getFileStyle(doc.name); const Icon = s.icon; return (
+          <div className={`w-10 h-10 rounded-[var(--radius-control)] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
+            <Icon className={`w-5 h-5 ${s.iconColor} ${s.fillColor}`} />
+          </div>
+        ); })()}
+        <div className="flex-1 min-w-0">
+          <p className="text-mac-body font-medium text-[var(--text-primary)] break-words">{doc.name}</p>
+          <p className="text-mac-caption text-[var(--text-secondary)] mt-0.5">{fmtSize(doc.size_bytes)}</p>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Row label="Tipo" value={doc.mime_type} />
+        <Row label="Tamanho" value={fmtSize(doc.size_bytes)} />
+        <Row label="Criado em" value={fmtDateFull(doc.created_at)} />
+        <div className="flex justify-between py-1">
+          <span className="text-mac-caption text-[var(--text-secondary)]">OCR</span>
+          {ocrBadge(doc.ocr_status)}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2 pt-2 border-t border-[var(--border-default)]">
+        <button
+          onClick={onPreview}
+          className="w-full h-9 flex items-center justify-center gap-2 text-mac-body bg-teal-600 text-white rounded-full hover:bg-teal-500 transition-colors duration-fast"
+        >
+          <Eye className="w-4 h-4" />
+          Visualizar
+        </button>
+        <button
+          onClick={download}
+          className="w-full h-9 flex items-center justify-center gap-2 text-mac-body border border-[var(--border-default)] rounded-full text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+        >
+          <Download className="w-4 h-4" />
+          Baixar
+        </button>
+        <button
+          onClick={toggleFavorite}
+          className={`w-full h-9 flex items-center justify-center gap-2 text-mac-body border rounded-full transition-colors duration-fast ${
+            favorited
+              ? "border-teal-200 dark:border-teal-900/40 text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20"
+              : "border-[var(--border-default)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+          }`}
+        >
+          <Anchor className={`w-4 h-4 ${favorited ? "fill-current" : ""}`} />
+          {favorited ? "Remover ancoragem" : "Ancorar como favorito"}
+        </button>
+        <button
+          onClick={() => setSharing(true)}
+          className={`w-full h-9 flex items-center justify-center gap-2 text-mac-body border rounded-full transition-colors duration-fast ${
+            shareCount > 0
+              ? "border-teal-200 dark:border-teal-900/40 text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20"
+              : "border-[var(--border-default)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+          }`}
+        >
+          <Share2 className="w-4 h-4" />
+          {shareCount > 0 ? `Compartilhado (${shareCount})` : "Compartilhar"}
+        </button>
+        <button
+          onClick={onDelete}
+          className="w-full h-9 flex items-center justify-center gap-2 text-mac-body border border-red-200 dark:border-red-900/40 rounded-full text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors duration-fast"
+        >
+          <Trash2 className="w-4 h-4" />
+          Excluir
+        </button>
+      </div>
+
+      <MetadataSection doc={doc} companyId={companyId} onChanged={onChanged} />
+
+      <VersionsPanel documentId={doc.id} documentName={doc.name} onChanged={onChanged} />
+
+      <DocumentActivitySection docId={doc.id} companyId={companyId} />
+    </div>
+  );
+
+  const shareModal = sharing && (
+    <ShareModal
+      resourceType="document"
+      resourceId={doc.id}
+      name={doc.name}
+      onClose={() => setSharing(false)}
+      onChanged={setShareCount}
+    />
+  );
+
+  if (variant === "panel") {
+    // Painel fixo — vive dentro da mesma janela de vidro da tabela, nunca
+    // cobre o conteúdo (Fase 8.1, consenso das 11 rodadas: "painel lateral
+    // persistente, nunca modal"). Só desktop (lg+): no mobile não há largura
+    // sobrando pra split view, então o modal centralizado continua sendo o
+    // único jeito de ver detalhes.
+    return (
+      <div className="hidden lg:flex flex-col w-[340px] flex-shrink-0 border-l border-[var(--border-default)] overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)] flex-shrink-0">
+          <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Detalhes</h2>
+          <button onClick={onClose} className="p-1 rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div ref={containerRef} className="flex-1 overflow-y-auto p-5">
+          {body}
+        </div>
+        {shareModal}
+      </div>
+    );
+  }
+
   return (
     <Portal>
-    <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div
+      className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4 lg:hidden"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[420px] max-h-[85vh] overflow-y-auto">
       <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
         <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Detalhes</h2>
@@ -845,92 +967,11 @@ function DetailDrawer({ doc, companyId, onClose, onFavorite, onPreview, onDelete
           <X className="w-4 h-4" />
         </button>
       </div>
-      <div className="p-5 space-y-5">
-        <div className="flex items-start gap-3">
-          {(() => { const s = getFileStyle(doc.name); const Icon = s.icon; return (
-            <div className={`w-10 h-10 rounded-[var(--radius-control)] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
-              <Icon className={`w-5 h-5 ${s.iconColor} ${s.fillColor}`} />
-            </div>
-          ); })()}
-          <div className="flex-1 min-w-0">
-            <p className="text-mac-body font-medium text-[var(--text-primary)] break-words">{doc.name}</p>
-            <p className="text-mac-caption text-[var(--text-secondary)] mt-0.5">{fmtSize(doc.size_bytes)}</p>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Row label="Tipo" value={doc.mime_type} />
-          <Row label="Tamanho" value={fmtSize(doc.size_bytes)} />
-          <Row label="Criado em" value={fmtDateFull(doc.created_at)} />
-          <div className="flex justify-between py-1">
-            <span className="text-mac-caption text-[var(--text-secondary)]">OCR</span>
-            {ocrBadge(doc.ocr_status)}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2 pt-2 border-t border-[var(--border-default)]">
-          <button
-            onClick={onPreview}
-            className="w-full h-9 flex items-center justify-center gap-2 text-mac-body bg-teal-600 text-white rounded-full hover:bg-teal-500 transition-colors duration-fast"
-          >
-            <Eye className="w-4 h-4" />
-            Visualizar
-          </button>
-          <button
-            onClick={download}
-            className="w-full h-9 flex items-center justify-center gap-2 text-mac-body border border-[var(--border-default)] rounded-full text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
-          >
-            <Download className="w-4 h-4" />
-            Baixar
-          </button>
-          <button
-            onClick={toggleFavorite}
-            className={`w-full h-9 flex items-center justify-center gap-2 text-mac-body border rounded-full transition-colors duration-fast ${
-              favorited
-                ? "border-teal-200 dark:border-teal-900/40 text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20"
-                : "border-[var(--border-default)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
-            }`}
-          >
-            <Anchor className={`w-4 h-4 ${favorited ? "fill-current" : ""}`} />
-            {favorited ? "Remover ancoragem" : "Ancorar como favorito"}
-          </button>
-          <button
-            onClick={() => setSharing(true)}
-            className={`w-full h-9 flex items-center justify-center gap-2 text-mac-body border rounded-full transition-colors duration-fast ${
-              shareCount > 0
-                ? "border-teal-200 dark:border-teal-900/40 text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20"
-                : "border-[var(--border-default)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
-            }`}
-          >
-            <Share2 className="w-4 h-4" />
-            {shareCount > 0 ? `Compartilhado (${shareCount})` : "Compartilhar"}
-          </button>
-          <button
-            onClick={onDelete}
-            className="w-full h-9 flex items-center justify-center gap-2 text-mac-body border border-red-200 dark:border-red-900/40 rounded-full text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors duration-fast"
-          >
-            <Trash2 className="w-4 h-4" />
-            Excluir
-          </button>
-        </div>
-
-        <MetadataSection doc={doc} companyId={companyId} onChanged={onChanged} />
-
-        <VersionsPanel documentId={doc.id} documentName={doc.name} onChanged={onChanged} />
-
-        <DocumentActivitySection docId={doc.id} companyId={companyId} />
+      <div className="p-5">
+        {body}
       </div>
       </div>
-
-      {sharing && (
-        <ShareModal
-          resourceType="document"
-          resourceId={doc.id}
-          name={doc.name}
-          onClose={() => setSharing(false)}
-          onChanged={setShareCount}
-        />
-      )}
+      {shareModal}
     </div>
     </Portal>
   );
@@ -1061,6 +1102,10 @@ export default function Documents() {
   const { current } = useCompany();
   const { toast, success, error: showError } = useToast();
   const nav = useNavigation();
+  // Fase 8.1: painel lateral persistente só cabe em telas largas (mesmo
+  // breakpoint `lg` já usado pra sidebar de pastas) — no mobile o modal
+  // centralizado continua sendo o único jeito de ver detalhes.
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
 
   // Restore saved nav state (session-only, React Context)
   const saved = nav.getFolderState(NAV_KEY);
@@ -1888,10 +1933,19 @@ export default function Documents() {
     if (selected.size === 1 && selected.has(id)) {
       setSelected(new Set());
       setFocusedId(null);
+      if (isDesktop) setDetailDoc(null);
       return;
     }
     setSelected(new Set([id]));
     setFocusedId(id);
+    // Fase 8.1: clique simples já abre o painel lateral persistente no
+    // desktop — sem esse gatilho o painel "nunca modal" das 11 rodadas não
+    // teria como aparecer sem um segundo clique/duplo-clique. No mobile não
+    // mexe em nada (só "..." e duplo-toque continuam abrindo o modal).
+    if (isDesktop) {
+      const doc = documents.find((d) => d.id === id);
+      if (doc) setDetailDoc(doc);
+    }
   }
 
   // Toque longo entra no modo de seleção e marca o item — padrão universal
@@ -2828,11 +2882,17 @@ export default function Documents() {
         </div>
       </div>
 
-      {/* Detail Drawer */}
+      {/* Fase 8.1: painel lateral persistente no desktop (vive dentro da mesma
+          janela de vidro, flex sibling da tabela — "nunca modal", consenso
+          das 11 rodadas de pesquisa), modal centralizado no mobile (sem
+          espaço pra split view). DetailDrawer decide a moldura sozinho a
+          partir de `variant`; a posição aqui só importa pro variant="panel"
+          (o "modal" é Portal-rendered, sai daqui de qualquer jeito). */}
       {detailDoc && current && (
         <DetailDrawer
           doc={detailDoc}
           companyId={current.id}
+          variant={isDesktop ? "panel" : "modal"}
           onClose={() => setDetailDoc(null)}
           onPreview={() => setPreviewDoc(detailDoc)}
           onFavorite={loadSidebarFavorites}
