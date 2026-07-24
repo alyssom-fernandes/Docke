@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Users as UsersIcon, UserPlus, X, Shield, RefreshCw, Plus, Folder, ChevronDown, UsersRound, Trash2 } from "lucide-react";
+import { Users as UsersIcon, UserPlus, X, Shield, RefreshCw, Plus, Folder, ChevronDown, UsersRound, Trash2, HelpCircle, Check, XCircle } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import api from "@/lib/api";
@@ -56,6 +56,21 @@ interface GroupGrant {
 interface GroupDetail extends GroupSummary {
   members: GroupMember[];
   grants: GroupGrant[];
+}
+
+interface ExplainCandidate {
+  source: "direto" | "grupo";
+  group_name: string | null;
+  permission_level: string;
+  folder_path: string | null;
+  folder_name: string | null;
+  specificity: number;
+  is_winner: boolean;
+}
+
+interface ExplainResult {
+  resolved: string | null;
+  candidates: ExplainCandidate[];
 }
 
 const ROLE_LABEL: Record<string, string> = { visualizador: "Visualizador", operador: "Operador", admin: "Admin" };
@@ -278,6 +293,97 @@ function AddGrantModal({ companyId, memberId, memberName, folders, onClose, onDo
         </div>
       </div>
     </div>
+    </Portal>
+  );
+}
+
+function ExplainAccessModal({ companyId, userId, userName, folders, onClose }: {
+  companyId: string; userId: string; userName: string; folders: FolderOption[]; onClose: () => void;
+}) {
+  const [folderId, setFolderId] = useState("");
+  const [result, setResult] = useState<ExplainResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const containerRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(containerRef);
+
+  function load(fid: string) {
+    setLoading(true);
+    api.get<ExplainResult>(`/companies/${companyId}/explain-access`, {
+      params: { user_id: userId, folder_id: fid || undefined },
+    })
+      .then((res) => setResult(res.data))
+      .catch(() => setResult(null))
+      .finally(() => setLoading(false));
+  }
+  useEffect(() => load(folderId), [folderId]);
+
+  return (
+    <Portal>
+      <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[480px]">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
+            <h2 className="text-mac-body font-semibold text-[var(--text-primary)] flex items-center gap-2">
+              <HelpCircle className="w-4 h-4 text-teal-500" />
+              Por que {userName} tem esse acesso?
+            </h2>
+            <button onClick={onClose} className="p-1 rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="p-5 space-y-4">
+            <div>
+              <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Escopo a verificar</label>
+              <FolderSelect folders={folders} value={folderId} onChange={setFolderId} />
+            </div>
+
+            {loading ? (
+              <div className="space-y-2">
+                {[0, 1].map((i) => <div key={i} className="h-8 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />)}
+              </div>
+            ) : !result || result.candidates.length === 0 ? (
+              <div className="space-y-2">
+                <p className="text-mac-body text-[var(--text-primary)]">{userName} NÃO possui acesso a este escopo porque:</p>
+                <ul className="space-y-1.5">
+                  <li className="flex items-center gap-2 text-mac-body text-[var(--text-secondary)]">
+                    <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" /> Não possui concessão direta que cubra este escopo
+                  </li>
+                  <li className="flex items-center gap-2 text-mac-body text-[var(--text-secondary)]">
+                    <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" /> Não pertence a nenhum grupo com acesso a este escopo
+                  </li>
+                </ul>
+                <div className="pt-2 border-t border-[var(--border-default)] flex items-center justify-between">
+                  <span className="text-mac-caption text-[var(--text-tertiary)]">Resultado</span>
+                  <Badge variant="default">Sem acesso</Badge>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-mac-body text-[var(--text-primary)]">{userName} possui acesso porque:</p>
+                <ul className="space-y-1.5">
+                  {result.candidates.map((c, i) => (
+                    <li key={i} className={`flex items-start gap-2 text-mac-body ${c.is_winner ? "text-[var(--text-primary)]" : "text-[var(--text-tertiary)] line-through decoration-[var(--border-default)]"}`}>
+                      {c.is_winner ? <Check className="w-4 h-4 text-teal-500 flex-shrink-0 mt-0.5" /> : <span className="w-4 h-4 flex-shrink-0" />}
+                      <span>
+                        {c.source === "grupo" ? <>Está no grupo <strong>{c.group_name}</strong>, que tem</> : "Tem concessão direta de"}{" "}
+                        <Badge variant={ROLE_VARIANT[c.permission_level] ?? "default"}>{ROLE_LABEL[c.permission_level] ?? c.permission_level}</Badge>{" "}
+                        {c.folder_path ? `na pasta "${c.folder_name ?? "?"}"` : "na empresa toda"}
+                        {!c.is_winner && <span className="text-mac-caption"> (perde para uma concessão mais específica)</span>}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="pt-2 border-t border-[var(--border-default)] flex items-center justify-between">
+                  <span className="text-mac-caption text-[var(--text-tertiary)]">Resultado</span>
+                  <Badge variant={ROLE_VARIANT[result.resolved ?? ""] ?? "default"}>{ROLE_LABEL[result.resolved ?? ""] ?? result.resolved}</Badge>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 px-5 py-4 border-t border-[var(--border-default)]">
+            <Button variant="secondary" size="sm" onClick={onClose}>Fechar</Button>
+          </div>
+        </div>
+      </div>
     </Portal>
   );
 }
@@ -624,6 +730,7 @@ export default function Users() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [addingGrantFor, setAddingGrantFor] = useState<{ id: string; name: string } | null>(null);
+  const [explaining, setExplaining] = useState<{ id: string; name: string } | null>(null);
   const [removingGrant, setRemovingGrant] = useState<Grant | null>(null);
   const [busy, setBusy] = useState(false);
   const [rolesOpen, setRolesOpen] = useState(false);
@@ -702,7 +809,18 @@ export default function Users() {
                 <li key={first.user_id} className="flex items-start gap-3 px-5 py-3 hover:bg-[var(--bg-hover)] border-b border-[var(--border-default)] last:border-0 group">
                   <Avatar name={first.full_name} size="sm" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-mac-body font-medium text-[var(--text-primary)] truncate">{first.full_name}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-mac-body font-medium text-[var(--text-primary)] truncate">{first.full_name}</p>
+                      {canManage && (
+                        <button
+                          onClick={() => setExplaining({ id: first.user_id, name: first.full_name })}
+                          title="Explicar este acesso"
+                          className="text-[var(--text-tertiary)] hover:text-teal-500 transition-colors duration-fast flex-shrink-0"
+                        >
+                          <HelpCircle className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                     <p className="text-mac-caption text-[var(--text-secondary)] truncate mb-1.5">@{first.username}</p>
                     <div className="flex flex-wrap gap-1.5">
                       {userGrants.map((g) => (
@@ -773,6 +891,16 @@ export default function Users() {
 
       {creating && current && (
         <CreateMemberModal companyId={current.id} folders={folders} onClose={() => setCreating(false)} onDone={load} />
+      )}
+
+      {explaining && current && (
+        <ExplainAccessModal
+          companyId={current.id}
+          userId={explaining.id}
+          userName={explaining.name}
+          folders={folders}
+          onClose={() => setExplaining(null)}
+        />
       )}
 
       {addingGrantFor && current && (

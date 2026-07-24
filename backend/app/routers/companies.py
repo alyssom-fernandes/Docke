@@ -10,6 +10,7 @@ import httpx
 from app.config import settings
 from app.dependencies import get_app_role, get_current_user, get_db, get_db_admin
 from app.services import rate_limit, storage_service
+from app.services.access_explain_service import AccessExplainService
 from app.services.companies_service import CompaniesService
 from app.services.groups_service import GroupsService
 
@@ -643,6 +644,34 @@ async def remove_group_access_grant(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Concessão não encontrada.")
 
     await GroupsService.delete_access_grant(admin_conn, access_id)
+
+
+# ---------------------------------------------------------------------------
+# Fase 9.3 — Explain Access: mostra a cadeia de motivos por trás do acesso
+# efetivo de um usuário (direto vs. grupo, especificidade, quem venceu).
+# ---------------------------------------------------------------------------
+
+@router.get("/{company_id}/explain-access")
+async def explain_access(
+    company_id: UUID,
+    user_id: UUID = Query(...),
+    folder_id: UUID | None = Query(None),
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    actor_id = claims["sub"]
+    role = await get_app_role(conn, claims)
+    if not await _can_manage_company(conn, actor_id, company_id, role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
+
+    target_path = None
+    if folder_id is not None:
+        target_path = await AccessExplainService.get_folder_path(admin_conn, folder_id, company_id)
+        if target_path is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada nesta empresa.")
+
+    return await AccessExplainService.explain(admin_conn, user_id=user_id, company_id=company_id, target_path=target_path)
 
 
 # ---------------------------------------------------------------------------
