@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Tags, Plus, X, Archive, FolderTree, Copy, GripVertical, Trash2 } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
@@ -403,11 +404,11 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
 
 // ─── Aba: Aplicação na árvore ─────────────────────────────────────────────────
 
-function TreeTab({ companyId }: { companyId: string }) {
+function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFolderId?: string }) {
   const { success, error: showError } = useToast();
   const [folders, setFolders] = useState<FolderOption[]>([]);
   const [allFields, setAllFields] = useState<CustomField[]>([]);
-  const [folderId, setFolderId] = useState("");
+  const [folderId, setFolderId] = useState(initialFolderId ?? "");
   const [resolved, setResolved] = useState<ResolvedField[]>([]);
   const [rules, setRules] = useState<FolderFieldRule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -627,7 +628,12 @@ function TreeTab({ companyId }: { companyId: string }) {
 export default function Metadata() {
   usePageTitle("Metadados");
   const { current, companies } = useCompany();
-  const [tab, setTab] = useState<"catalog" | "tree">("catalog");
+  // Fase 10.1: deep link vindo do menu de contexto da pasta em Documents.tsx
+  // (/settings/metadata?tab=tree&folder=<id>) — abre já na aba certa com a
+  // pasta pré-selecionada, em vez de forçar o usuário a navegar até lá.
+  const [searchParams] = useSearchParams();
+  const initialFolderId = searchParams.get("folder") ?? undefined;
+  const [tab, setTab] = useState<"catalog" | "tree">(searchParams.get("tab") === "tree" ? "tree" : "catalog");
 
   if (!current) return null;
 
@@ -660,7 +666,7 @@ export default function Metadata() {
           </button>
         </div>
 
-        {tab === "catalog" ? <CatalogTab companyId={current.id} companies={companies} /> : <TreeTab companyId={current.id} />}
+        {tab === "catalog" ? <CatalogTab companyId={current.id} companies={companies} /> : <TreeTab companyId={current.id} initialFolderId={initialFolderId} />}
       </div>
     </div>
   );

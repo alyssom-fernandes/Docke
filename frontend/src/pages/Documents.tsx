@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState, useCallback, type ElementType } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -39,6 +39,9 @@ import {
   Search,
   Copy,
   GitBranch,
+  Shield,
+  Tags,
+  Archive,
 } from "lucide-react";
 import api from "@/lib/api";
 import { useTaskCenter } from "@/lib/TaskContext";
@@ -1670,6 +1673,8 @@ export default function Documents() {
       .catch(() => setFieldValues({}));
   }, [resolvedFields.length, documents]);
 
+  const navigate = useNavigate();
+
   // Deep link vindo da busca: /documents?folder_id=<id>&doc=<id>
   const [searchParams, setSearchParams] = useSearchParams();
   const [pendingDocId, setPendingDocId] = useState<string | null>(null);
@@ -3014,6 +3019,25 @@ export default function Documents() {
                   className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white hover:[&_svg]:text-white transition-colors duration-fast text-left"
                 >
                   <Copy className="w-4 h-4 text-[var(--text-tertiary)]" /> Copiar estrutura para...
+                </button>
+                <div className="my-1 border-t border-[var(--border-default)]" />
+                <button
+                  onClick={() => { navigate(`/settings/users?folder=${contextMenu.data.id}`); setContextMenu(null); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white hover:[&_svg]:text-white transition-colors duration-fast text-left"
+                >
+                  <Shield className="w-4 h-4 text-[var(--text-tertiary)]" /> Permissões desta pasta
+                </button>
+                <button
+                  onClick={() => { navigate(`/settings/metadata?tab=tree&folder=${contextMenu.data.id}`); setContextMenu(null); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white hover:[&_svg]:text-white transition-colors duration-fast text-left"
+                >
+                  <Tags className="w-4 h-4 text-[var(--text-tertiary)]" /> Metadados desta pasta
+                </button>
+                <button
+                  onClick={() => { navigate(`/settings/retention?folder=${contextMenu.data.id}`); setContextMenu(null); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white hover:[&_svg]:text-white transition-colors duration-fast text-left"
+                >
+                  <Archive className="w-4 h-4 text-[var(--text-tertiary)]" /> Retenção desta pasta
                 </button>
                 <div className="my-1 border-t border-[var(--border-default)]" />
                 <button

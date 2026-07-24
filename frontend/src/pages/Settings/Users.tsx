@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Users as UsersIcon, UserPlus, X, Shield, RefreshCw, Plus, Folder, ChevronDown, UsersRound, Trash2, HelpCircle, Check, XCircle } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { Users as UsersIcon, UserPlus, X, Shield, RefreshCw, Plus, Folder, ChevronDown, UsersRound, Trash2, HelpCircle, Check, XCircle, Filter } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import api from "@/lib/api";
@@ -725,6 +726,11 @@ export default function Users() {
   const { current } = useCompany();
   const { user } = useAuthContext();
   const { success, error: showError } = useToast();
+  // Fase 10.1: deep link vindo do menu de contexto da pasta em Documents.tsx
+  // (/settings/users?folder=<id>) — filtra a lista pras concessões dessa
+  // pasta específica, em vez de mostrar todas as concessões da empresa.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const folderFilter = searchParams.get("folder");
   const [grants, setGrants] = useState<Grant[]>([]);
   const [folders, setFolders] = useState<FolderOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -801,14 +807,30 @@ export default function Users() {
   }
 
   // Agrupa concessões por usuário — um mesmo usuário pode ter várias linhas
-  // (uma por pasta escopada), cada uma com seu próprio access_id.
-  const byUser = grants.reduce<Record<string, Grant[]>>((acc, g) => {
+  // (uma por pasta escopada), cada uma com seu próprio access_id. Quando
+  // filtrado por pasta (folderFilter), mostra só as linhas daquela pasta
+  // exata (não da empresa toda nem de outras pastas) — é um raio-x de quem
+  // tem concessão DIRETA especificamente ali, não o efetivo (que já é
+  // coberto pelo Explain Access da 9.3).
+  const filteredGrants = folderFilter ? grants.filter((g) => g.folder_id === folderFilter) : grants;
+  const byUser = filteredGrants.reduce<Record<string, Grant[]>>((acc, g) => {
     (acc[g.user_id] ??= []).push(g);
     return acc;
   }, {});
+  const filteredFolderName = folderFilter ? folders.find((f) => f.id === folderFilter)?.name : undefined;
 
   return (
     <div className="space-y-4">
+      {folderFilter && (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-[var(--radius-control)] bg-teal-500/10 border border-teal-500/30 text-mac-body text-[var(--text-primary)]">
+          <Filter className="w-4 h-4 text-teal-500 flex-shrink-0" />
+          <span className="flex-1">Mostrando só concessões diretas da pasta <strong>{filteredFolderName ?? "selecionada"}</strong>.</span>
+          <button onClick={() => setSearchParams({})} className="text-mac-caption text-teal-500 hover:text-teal-600 font-medium flex-shrink-0">
+            Ver todos
+          </button>
+        </div>
+      )}
+
       {canManage && current && (
         <div className="flex justify-end">
           <Button size="sm" onClick={() => setCreating(true)}>

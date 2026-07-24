@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { AlertTriangle, ScrollText, Lock, Unlock, Inbox, Trash2, Plus, FileWarning, ShieldCheck } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
@@ -75,6 +76,10 @@ export default function Retention() {
   usePageTitle("Retenção");
   const { current } = useCompany();
   const { success, error: showError } = useToast();
+  // Fase 10.1: deep link vindo do menu de contexto da pasta em Documents.tsx
+  // (/settings/retention?folder=<id>).
+  const [searchParams] = useSearchParams();
+  const initialFolderId = searchParams.get("folder") ?? undefined;
 
   // --- lixeira (já existia) ---
   const [days, setDays] = useState(30);
@@ -231,7 +236,7 @@ export default function Retention() {
       <PolicySection companyId={current?.id} policies={policies} loading={loading} onArchive={archivePolicy} onCreated={load} />
 
       {/* Atribuições */}
-      <AssignmentSection companyId={current?.id} policies={policies} folderOptions={folderOptions} assignments={assignments} loading={loading} onRemove={removeAssignment} onCreated={load} />
+      <AssignmentSection companyId={current?.id} policies={policies} folderOptions={folderOptions} assignments={assignments} loading={loading} onRemove={removeAssignment} onCreated={load} initialFolderId={initialFolderId} />
 
       {/* Legal Holds */}
       <HoldSection companyId={current?.id} folderOptions={folderOptions} holds={holds} loading={loading} onRelease={releaseHold} onCreated={load} />
@@ -421,14 +426,16 @@ function PolicySection({ companyId, policies, loading, onArchive, onCreated }: {
   );
 }
 
-function AssignmentSection({ companyId, policies, folderOptions, assignments, loading, onRemove, onCreated }: {
+function AssignmentSection({ companyId, policies, folderOptions, assignments, loading, onRemove, onCreated, initialFolderId }: {
   companyId: string | undefined; policies: Policy[]; folderOptions: { value: string; label: string; depth?: number }[];
-  assignments: Assignment[]; loading: boolean; onRemove: (a: Assignment) => void; onCreated: () => void;
+  assignments: Assignment[]; loading: boolean; onRemove: (a: Assignment) => void; onCreated: () => void; initialFolderId?: string;
 }) {
   const { success, error: showError } = useToast();
-  const [showForm, setShowForm] = useState(false);
+  // Fase 10.1: deep link do menu de contexto da pasta já abre o formulário
+  // com a pasta pré-selecionada, em vez de só destacar a seção.
+  const [showForm, setShowForm] = useState(!!initialFolderId);
   const [policyId, setPolicyId] = useState("");
-  const [folderId, setFolderId] = useState("");
+  const [folderId, setFolderId] = useState(initialFolderId ?? "");
   const [saving, setSaving] = useState(false);
 
   async function submit() {
