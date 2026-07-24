@@ -754,6 +754,37 @@ export default function Users() {
 
   useEffect(load, [current?.id]);
 
+  const [grantImpact, setGrantImpact] = useState<string | null>(null);
+
+  // Fase 9.4 — preview de impacto: antes de confirmar a remoção, calcula qual
+  // seria o acesso efetivo resultante (reaproveita o Explain Access da 9.3
+  // em vez de duplicar a lógica de resolução no frontend).
+  function openRemoveGrant(g: Grant) {
+    setRemovingGrant(g);
+    setGrantImpact(null);
+    if (!current) return;
+    api.get<ExplainResult>(`/companies/${current.id}/explain-access`, {
+      params: { user_id: g.user_id, folder_id: g.folder_id || undefined },
+    })
+      .then((res) => {
+        const remaining = res.data.candidates.filter((c) => !(
+          c.source === "direto" &&
+          c.permission_level === g.role &&
+          (g.folder_id ? c.folder_name === g.folder_name : c.folder_path === null)
+        ));
+        if (remaining.length === 0) {
+          setGrantImpact(`Depois de remover, ${g.full_name} perde completamente o acesso a este escopo.`);
+        } else {
+          const next = remaining[0];
+          setGrantImpact(
+            `Depois de remover, o acesso efetivo de ${g.full_name} aqui passa a ser "${ROLE_LABEL[next.permission_level] ?? next.permission_level}"` +
+            (next.source === "grupo" ? ` (via grupo ${next.group_name}).` : " (outra concessão direta).")
+          );
+        }
+      })
+      .catch(() => setGrantImpact(null));
+  }
+
   async function removeGrant(g: Grant) {
     if (!current) return;
     setBusy(true);
@@ -831,7 +862,7 @@ export default function Users() {
                           </span>
                           {canManage && (
                             <button
-                              onClick={() => setRemovingGrant(g)}
+                              onClick={() => openRemoveGrant(g)}
                               className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors duration-fast"
                               title="Remover esta concessão"
                             >
@@ -917,9 +948,7 @@ export default function Users() {
       {removingGrant && (
         <ConfirmModal
           title={`Remover concessão de ${removingGrant.full_name}?`}
-          description={removingGrant.folder_id
-            ? `A pessoa perde o acesso "${ROLE_LABEL[removingGrant.role]}" à pasta "${removingGrant.folder_name}". Outras concessões dela não são afetadas.`
-            : "A pessoa perde o acesso à empresa toda concedido por esta linha. Outras concessões dela não são afetadas."}
+          description={grantImpact ?? "Calculando impacto…"}
           confirmLabel="Remover"
           danger
           loading={busy}
