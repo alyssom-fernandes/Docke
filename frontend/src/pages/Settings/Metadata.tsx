@@ -77,6 +77,9 @@ function NewFieldModal({ companyId, onClose, onCreated }: { companyId: string; o
 
   const [label, setLabel] = useState("");
   const [type, setType] = useState<FieldType>("texto");
+  // Fase 6.4: "ilimitado" é o padrão — decimals só entra no format_config
+  // quando o admin explicitamente desmarca e escolhe um número de casas.
+  const [limitDecimals, setLimitDecimals] = useState(false);
   const [decimals, setDecimals] = useState(2);
   const [optionsText, setOptionsText] = useState("");
   const [saving, setSaving] = useState(false);
@@ -86,7 +89,7 @@ function NewFieldModal({ companyId, onClose, onCreated }: { companyId: string; o
     setSaving(true);
     try {
       const format_config: Record<string, unknown> =
-        type === "numero" ? { decimals } :
+        type === "numero" ? (limitDecimals ? { decimals } : {}) :
         type === "selecao" ? { options: optionsText.split(",").map((o) => o.trim()).filter(Boolean) } :
         {};
       await api.post("/custom-fields", { company_id: companyId, label: label.trim(), type, format_config });
@@ -129,12 +132,19 @@ function NewFieldModal({ companyId, onClose, onCreated }: { companyId: string; o
             />
           </div>
           {type === "numero" && (
-            <div>
-              <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Casas decimais</label>
-              <input
-                type="number" min={0} max={6} value={decimals} onChange={(e) => setDecimals(Number(e.target.value))}
-                className="w-24 h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
-              />
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-mac-caption text-[var(--text-secondary)]">
+                <input type="checkbox" checked={limitDecimals} onChange={(e) => setLimitDecimals(e.target.checked)} />
+                Limitar casas decimais
+              </label>
+              {limitDecimals ? (
+                <input
+                  type="number" min={0} max={6} value={decimals} onChange={(e) => setDecimals(Number(e.target.value))}
+                  className="w-24 h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+                />
+              ) : (
+                <p className="text-mac-caption2 text-[var(--text-tertiary)]">Ilimitado — o número é guardado exatamente como digitado.</p>
+              )}
             </div>
           )}
           {type === "selecao" && (
@@ -229,6 +239,7 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
   const [showNew, setShowNew] = useState(false);
   const [showCopy, setShowCopy] = useState(false);
   const [archiving, setArchiving] = useState<CustomField | null>(null);
+  const [deleting, setDeleting] = useState<CustomField | null>(null);
 
   function load() {
     setLoading(true);
@@ -250,6 +261,19 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
       showError("Erro ao arquivar campo.");
     } finally {
       setArchiving(null);
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleting) return;
+    try {
+      await api.delete(`/custom-fields/${deleting.id}`);
+      success(`"${deleting.label}" excluído.`);
+      load();
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Erro ao excluir campo.");
+    } finally {
+      setDeleting(null);
     }
   }
 
@@ -295,6 +319,13 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
               >
                 <Archive className="w-4 h-4" />
               </button>
+              <button
+                onClick={() => setDeleting(f)}
+                title="Excluir campo (só se nunca foi preenchido)"
+                className="p-1.5 rounded-[6px] text-[var(--text-tertiary)] hover:text-red-500 hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
             </li>
           ))}
         </ul>
@@ -310,6 +341,16 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
           danger
           onConfirm={confirmArchive}
           onClose={() => setArchiving(null)}
+        />
+      )}
+      {deleting && (
+        <ConfirmModal
+          title={`Excluir "${deleting.label}"?`}
+          description="Exclusão de verdade — só funciona se o campo nunca foi preenchido em nenhum documento. Se já foi usado, arquive em vez de excluir."
+          confirmLabel="Excluir"
+          danger
+          onConfirm={confirmDelete}
+          onClose={() => setDeleting(null)}
         />
       )}
     </div>

@@ -168,6 +168,29 @@ async def update_custom_field(
     return dict(row)
 
 
+@router.delete("/custom-fields/{field_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_custom_field(
+    field_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> None:
+    """Fase 6.3: exclusão de verdade — só permitida se o campo nunca foi
+    preenchido em nenhum documento. Senão, 409 orientando pra arquivar
+    (que preserva o histórico já preenchido)."""
+    existing = await CustomFieldsService.get_field(conn, field_id)
+    if existing is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campo não encontrado.")
+    role = await get_app_role(conn, claims)
+    await _require_company_admin(conn, claims["sub"], UUID(existing["company_id"]), role)
+
+    if await CustomFieldsService.field_is_in_use(conn, field_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Este campo já foi preenchido em algum documento — excluir apagaria esse histórico. Arquive o campo em vez de excluir.",
+        )
+    await CustomFieldsService.delete_field(conn, field_id)
+
+
 @router.post("/custom-fields/{field_id}/archive", status_code=status.HTTP_204_NO_CONTENT)
 async def archive_custom_field(
     field_id: UUID,
@@ -339,6 +362,10 @@ async def set_document_field_values(
         value_text = item.value.strip()
         value_date = None
         value_number = None
+        # CustomFieldsService.get_fields_bulk já decodifica format_config pra
+        # dict (Fase 6.4 — bug pré-existente de jsonb chegando como string
+        # crua do asyncpg, corrigido em _decode_field_row).
+        format_config: dict[str, Any] = field["format_config"] or {}
 
         if field["type"] == "cpf":
             digits = re.sub(r"\D", "", value_text)
@@ -367,15 +394,25 @@ async def set_document_field_values(
             value_date = d
             value_text = d.strftime("%m/%Y")
         elif field["type"] == "numero":
+            import decimal
+            normalized_number = value_text.replace(",", ".")
             try:
-                n = float(value_text.replace(",", "."))
-            except ValueError:
+                n = decimal.Decimal(normalized_number)
+            except decimal.InvalidOperation:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Número inválido em '{field['label']}'.")
-            decimals = (field["format_config"] or {}).get("decimals", 2)
-            value_number = round(n, decimals)
-            value_text = f"{value_number:.{decimals}f}"
+            # Fase 6.4: "ilimitado" é o padrão — decimals ausente (None) significa
+            # não arredondar/forçar casas nenhuma, só guardar o número como digitado.
+            # Decimal em vez de float evita artefato de representação binária
+            # (ex.: 123.456789 virando 123.45678900000000055570126... no banco).
+            decimals = format_config.get("decimals")
+            if decimals is None:
+                value_number = n
+                value_text = normalized_number
+            else:
+                value_number = round(n, decimals)
+                value_text = f"{value_number:.{decimals}f}"
         elif field["type"] == "selecao":
-            options = (field["format_config"] or {}).get("options", [])
+            options = format_config.get("options", [])
             if options and value_text not in options:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Valor fora das opções permitidas em '{field['label']}'.")
 

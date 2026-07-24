@@ -16,6 +16,23 @@ import asyncpg
 VALID_TYPES = ("texto", "cpf", "cnpj", "data", "competencia", "numero", "selecao")
 
 
+def _decode_field_row(row: asyncpg.Record) -> dict[str, Any]:
+    """asyncpg não decodifica jsonb sozinho sem um codec registrado no pool
+    (que não temos — mexer nisso agora afetaria outros services que já fazem
+    json.loads/json.dumps manual nos seus próprios jsonb, ex.: activity_log,
+    obligation_templates.rules_json). Bug real descoberto na Fase 6.4: sem
+    isso, `format_config` chega no cliente como STRING (`"{}"`), não objeto
+    — `f.format_config?.options` no frontend sempre virava `undefined`.
+    Decodificação pontual aqui, só onde este service já lida com esse campo."""
+    d = dict(row)
+    fc = d.get("format_config")
+    if isinstance(fc, str):
+        d["format_config"] = json.loads(fc) if fc else {}
+    elif fc is None:
+        d["format_config"] = {}
+    return d
+
+
 class CustomFieldsService:
     # ─── Documento ───────────────────────────────────────────────────────────
 
@@ -39,8 +56,8 @@ class CustomFieldsService:
     # ─── Catálogo (custom_field) ────────────────────────────────────────────
 
     @staticmethod
-    async def list_fields(conn: asyncpg.Connection, *, company_id: UUID, include_archived: bool) -> list[asyncpg.Record]:
-        return await conn.fetch(
+    async def list_fields(conn: asyncpg.Connection, *, company_id: UUID, include_archived: bool) -> list[dict[str, Any]]:
+        rows = await conn.fetch(
             """
             SELECT id::text, company_id::text, label, field_key, type, format_config,
                    created_by::text, created_at, archived_at
@@ -51,16 +68,18 @@ class CustomFieldsService:
             """,
             company_id, include_archived,
         )
+        return [_decode_field_row(r) for r in rows]
 
     @staticmethod
-    async def get_field(conn: asyncpg.Connection, field_id: UUID) -> asyncpg.Record | None:
-        return await conn.fetchrow(
+    async def get_field(conn: asyncpg.Connection, field_id: UUID) -> dict[str, Any] | None:
+        row = await conn.fetchrow(
             "SELECT id::text, company_id::text, label, field_key, type, format_config FROM public.custom_field WHERE id = $1",
             field_id,
         )
+        return _decode_field_row(row) if row is not None else None
 
     @staticmethod
-    async def get_fields_bulk(conn: asyncpg.Connection, field_ids: list[UUID]) -> dict[str, asyncpg.Record]:
+    async def get_fields_bulk(conn: asyncpg.Connection, field_ids: list[UUID]) -> dict[str, dict[str, Any]]:
         """Busca vários campos numa única query (evita N+1 no preenchimento em
         lote de metadados — get_field() chamado uma vez por item do body)."""
         if not field_ids:
@@ -69,14 +88,14 @@ class CustomFieldsService:
             "SELECT id::text, company_id::text, label, field_key, type, format_config FROM public.custom_field WHERE id = ANY($1::uuid[])",
             field_ids,
         )
-        return {r["id"]: r for r in rows}
+        return {r["id"]: _decode_field_row(r) for r in rows}
 
     @staticmethod
     async def create_field(
         conn: asyncpg.Connection, *, company_id: UUID, label: str, field_key: str,
         type: str, format_config: dict[str, Any], created_by: str,
-    ) -> asyncpg.Record:
-        return await conn.fetchrow(
+    ) -> dict[str, Any]:
+        row = await conn.fetchrow(
             """
             INSERT INTO public.custom_field (company_id, label, field_key, type, format_config, created_by)
             VALUES ($1, $2, $3, $4, $5::jsonb, $6)
@@ -84,12 +103,13 @@ class CustomFieldsService:
             """,
             company_id, label, field_key, type, json.dumps(format_config), created_by,
         )
+        return _decode_field_row(row)
 
     @staticmethod
     async def update_field(
         conn: asyncpg.Connection, field_id: UUID, *, label: str | None, format_config: dict[str, Any] | None,
-    ) -> asyncpg.Record | None:
-        return await conn.fetchrow(
+    ) -> dict[str, Any] | None:
+        row = await conn.fetchrow(
             """
             UPDATE public.custom_field
             SET label = COALESCE($2, label),
@@ -99,6 +119,7 @@ class CustomFieldsService:
             """,
             field_id, label, json.dumps(format_config) if format_config is not None else None,
         )
+        return _decode_field_row(row) if row is not None else None
 
     @staticmethod
     async def archive_field(conn: asyncpg.Connection, field_id: UUID) -> None:
@@ -109,16 +130,34 @@ class CustomFieldsService:
         )
 
     @staticmethod
+    async def field_is_in_use(conn: asyncpg.Connection, field_id: UUID) -> bool:
+        """Fase 6.3: um campo só pode ser excluído de verdade se nunca foi
+        preenchido em nenhum documento — senão apagaria histórico de dado
+        real. `document_field_value` tem FK só até `archive_field` rodar
+        (a linha nunca é removida por arquivar), então checar aqui direto
+        é seguro mesmo pra campo já arquivado."""
+        return bool(await conn.fetchval(
+            "SELECT EXISTS (SELECT 1 FROM public.document_field_value WHERE custom_field_id = $1)", field_id,
+        ))
+
+    @staticmethod
+    async def delete_field(conn: asyncpg.Connection, field_id: UUID) -> None:
+        """Exclusão de verdade — só chamada depois de `field_is_in_use` confirmar
+        que nunca foi preenchido. `folder_field.custom_field_id` já tem
+        ON DELETE CASCADE, então as regras de aplicação em pasta somem junto."""
+        await conn.execute("DELETE FROM public.custom_field WHERE id = $1", field_id)
+
+    @staticmethod
     async def copy_fields_from_company(
         conn: asyncpg.Connection, *, source_company_id: UUID, target_company_id: UUID, created_by: str,
-    ) -> list[asyncpg.Record]:
+    ) -> list[dict[str, Any]]:
         """
         Copia só o catálogo (não a aplicação na árvore — estruturas de pasta
         diferem entre empresas, §5.3 do ADENDO-08). field_key precisa ser
         único por empresa; ON CONFLICT ignora campos já existentes com a
         mesma key no destino (idempotente — copiar 2x não duplica).
         """
-        return await conn.fetch(
+        rows = await conn.fetch(
             """
             INSERT INTO public.custom_field (company_id, label, field_key, type, format_config, created_by)
             SELECT $2, label, field_key, type, format_config, $3
@@ -129,13 +168,18 @@ class CustomFieldsService:
             """,
             source_company_id, target_company_id, created_by,
         )
+        return [_decode_field_row(r) for r in rows]
 
     # ─── Aplicação na árvore (folder_field) ─────────────────────────────────
 
     @staticmethod
-    async def resolve_for_folder(conn: asyncpg.Connection, *, company_id: UUID, folder_path: str | None) -> list[asyncpg.Record]:
-        """Campos efetivos (após herança/override) para uma pasta — reusa a função SQL resolve_folder_fields."""
-        return await conn.fetch(
+    async def resolve_for_folder(conn: asyncpg.Connection, *, company_id: UUID, folder_path: str | None) -> list[dict[str, Any]]:
+        """Campos efetivos (após herança/override) para uma pasta — reusa a função SQL resolve_folder_fields.
+        Fase 6.4: esta é a função que alimenta o formulário de metadados por
+        documento — sem decodificar format_config aqui, o dropdown de "selecao"
+        nunca mostrava as opções configuradas (format_config chegava como
+        string crua no frontend, `.options` virava undefined)."""
+        rows = await conn.fetch(
             """
             SELECT rf.custom_field_id::text, rf.required, rf.display_order, rf.column_width,
                    cf.label, cf.field_key, cf.type, cf.format_config
@@ -146,6 +190,7 @@ class CustomFieldsService:
             """,
             company_id, folder_path,
         )
+        return [_decode_field_row(r) for r in rows]
 
     @staticmethod
     async def list_folder_field_rules(conn: asyncpg.Connection, *, company_id: UUID, folder_path: str | None) -> list[asyncpg.Record]:

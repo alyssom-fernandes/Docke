@@ -23,7 +23,11 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 
 _ALLOWED_EXT = set(settings.ALLOWED_EXTENSIONS)
 _BULK_LIMIT = 50  # máximo de arquivos por lote
-_PREVIEW_SIZE_LIMIT = 10 * 1024 * 1024  # 10MB
+# Fase 6.2: preview igualado ao limite de upload — o limite de 10MB era
+# artificial (URL é presigned direto pro R2, o navegador baixa sozinho,
+# o backend nunca vê o arquivo). Manter os dois amarrados evita a mesma
+# divergência voltar a acontecer numa mudança futura de MAX_FILE_SIZE_BYTES.
+_PREVIEW_SIZE_LIMIT = settings.MAX_FILE_SIZE_BYTES
 
 
 class BulkDownloadRequest(BaseModel):

@@ -39,7 +39,7 @@ function highlightSnippet(snippet: string): string {
   const span = document.createElement("span");
   span.textContent = snippet;
   return span.innerHTML
-    .replace(/&lt;mark&gt;/g, '<mark class="bg-teal-100 text-teal-700 dark:bg-teal-500/25 dark:text-teal-300 rounded px-0.5">')
+    .replace(/&lt;mark&gt;/g, '<mark class="bg-amber-200 text-amber-900 dark:bg-amber-400/30 dark:text-amber-200 rounded px-0.5">')
     .replace(/&lt;\/mark&gt;/g, "</mark>");
 }
 

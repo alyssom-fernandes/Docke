@@ -69,7 +69,10 @@ class SearchService:
               -- do nome do arquivo (evita ruído sem propósito quando o nome já basta).
               CASE
                 WHEN d.ocr_text IS NOT NULL
-                 AND to_tsvector('portuguese', public.immutable_unaccent(d.ocr_text)) @@ sq.tsq
+                 AND (
+                   to_tsvector('portuguese', public.immutable_unaccent(d.ocr_text)) @@ sq.tsq
+                   OR d.ocr_text ILIKE '%' || $1 || '%'
+                 )
                 THEN ts_headline(
                   'portuguese',
                   -- ADR-035 (Adendo 07): trunca o texto antes do ts_headline — gerar o
@@ -91,6 +94,10 @@ class SearchService:
               AND (
                 to_tsvector('portuguese', public.immutable_unaccent(d.name || ' ' || coalesce(d.ocr_text, ''))) @@ sq.tsq
                 OR d.name ILIKE '%' || $1 || '%'
+                -- Fase 6.1: fallback pg_trgm — contenção de substring pura,
+                -- sem stemming/tokenização, pega código/CNPJ/data que o FTS
+                -- perde por causa do parser português (idx_documents_ocr_text_trgm).
+                OR d.ocr_text ILIKE '%' || $1 || '%'
               )
               AND ($3::uuid IS NULL OR d.folder_id = $3)
               AND ($4::text  IS NULL OR d.sector    = $4)
@@ -138,10 +145,16 @@ class SearchService:
             JOIN public.folders f ON f.id = d.folder_id
             WHERE d.company_id = $2
               AND d.deleted_at IS NULL
-              AND to_tsvector('portuguese', public.immutable_unaccent(d.name || ' ' || coalesce(d.ocr_text, ''))) @@ to_tsquery('portuguese', unaccent($1))
+              AND (
+                to_tsvector('portuguese', public.immutable_unaccent(d.name || ' ' || coalesce(d.ocr_text, ''))) @@ to_tsquery('portuguese', unaccent($1))
+                -- Fase 6.1: mesmo fallback pg_trgm do /search — o command
+                -- palette não pode perder um código que o FTS tokeniza mal.
+                OR d.name ILIKE '%' || $4 || '%'
+                OR d.ocr_text ILIKE '%' || $4 || '%'
+              )
             ORDER BY rank DESC, d.name
             LIMIT $3
             """,
-            prefix_query, company_id, _QUICK_LIMIT,
+            prefix_query, company_id, _QUICK_LIMIT, normalized,
         )
         return [dict(r) for r in rows]
