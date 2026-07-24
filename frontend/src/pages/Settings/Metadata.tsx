@@ -24,6 +24,8 @@ interface CustomField {
   field_key: string;
   type: FieldType;
   format_config: Record<string, unknown>;
+  condition_field_id: string | null;
+  condition_value: string | null;
   archived_at: string | null;
 }
 
@@ -38,6 +40,7 @@ interface ResolvedField {
   required: boolean;
   display_order: number;
   column_width: number | null;
+  default_value: string | null;
   label: string;
   field_key: string;
   type: FieldType;
@@ -49,6 +52,7 @@ interface FolderFieldRule {
   mode: "apply" | "exclude";
   required: boolean;
   display_order: number;
+  default_value: string | null;
   label: string;
   field_key: string;
   type: FieldType;
@@ -70,7 +74,9 @@ function folderDepth(path: string) {
 
 // ─── Modal: novo campo ────────────────────────────────────────────────────────
 
-function NewFieldModal({ companyId, onClose, onCreated }: { companyId: string; onClose: () => void; onCreated: () => void }) {
+function NewFieldModal({ companyId, existingFields, onClose, onCreated }: {
+  companyId: string; existingFields: CustomField[]; onClose: () => void; onCreated: () => void;
+}) {
   const { success, error: showError } = useToast();
   const containerRef = useRef<HTMLDivElement>(null);
   useFocusTrap(containerRef);
@@ -82,6 +88,10 @@ function NewFieldModal({ companyId, onClose, onCreated }: { companyId: string; o
   const [limitDecimals, setLimitDecimals] = useState(false);
   const [decimals, setDecimals] = useState(2);
   const [optionsText, setOptionsText] = useState("");
+  // Fase 8.4: campos condicionais — só aparece no formulário do documento
+  // quando o campo escolhido aqui tem exatamente o valor informado.
+  const [conditionFieldId, setConditionFieldId] = useState("");
+  const [conditionValue, setConditionValue] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function create() {
@@ -92,7 +102,11 @@ function NewFieldModal({ companyId, onClose, onCreated }: { companyId: string; o
         type === "numero" ? (limitDecimals ? { decimals } : {}) :
         type === "selecao" ? { options: optionsText.split(",").map((o) => o.trim()).filter(Boolean) } :
         {};
-      await api.post("/custom-fields", { company_id: companyId, label: label.trim(), type, format_config });
+      await api.post("/custom-fields", {
+        company_id: companyId, label: label.trim(), type, format_config,
+        condition_field_id: conditionFieldId || null,
+        condition_value: conditionFieldId ? conditionValue.trim() || null : null,
+      });
       success("Campo criado.");
       onCreated();
       onClose();
@@ -155,6 +169,29 @@ function NewFieldModal({ companyId, onClose, onCreated }: { companyId: string; o
                 placeholder="Ex.: Banco do Brasil, Itaú, Bradesco"
                 className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
               />
+            </div>
+          )}
+          {existingFields.length > 0 && (
+            <div className="pt-2 border-t border-[var(--border-default)] space-y-2">
+              <label className="block text-mac-caption font-medium text-[var(--text-secondary)]">
+                Só mostrar quando (opcional)
+              </label>
+              <Dropdown
+                value={conditionFieldId}
+                placeholder="Sempre mostrar"
+                onChange={setConditionFieldId}
+                options={[
+                  { value: "", label: "Sempre mostrar" },
+                  ...existingFields.map((f) => ({ value: f.id, label: f.label })),
+                ]}
+              />
+              {conditionFieldId && (
+                <input
+                  type="text" value={conditionValue} onChange={(e) => setConditionValue(e.target.value)}
+                  placeholder="quando for igual a…"
+                  className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+                />
+              )}
             </div>
           )}
         </div>
@@ -331,7 +368,14 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
         </ul>
       )}
 
-      {showNew && <NewFieldModal companyId={companyId} onClose={() => setShowNew(false)} onCreated={load} />}
+      {showNew && (
+        <NewFieldModal
+          companyId={companyId}
+          existingFields={fields.filter((f) => !f.archived_at)}
+          onClose={() => setShowNew(false)}
+          onCreated={load}
+        />
+      )}
       {showCopy && <CopyFieldsModal companies={companies} targetCompanyId={companyId} onClose={() => setShowCopy(false)} onCopied={load} />}
       {archiving && (
         <ConfirmModal
@@ -420,10 +464,28 @@ function TreeTab({ companyId }: { companyId: string }) {
       await api.put("/folder-fields", {
         company_id: companyId, folder_id: folderId || null, custom_field_id: rule.custom_field_id,
         mode: "apply", required: !rule.required, display_order: rule.display_order,
+        default_value: rule.default_value,
       });
       load();
     } catch {
       showError("Erro ao atualizar o campo.");
+    }
+  }
+
+  // Fase 8.3: valor padrão herdado — pré-preenche o campo no formulário de
+  // documento dentro desta pasta (ou de uma sub-pasta sem regra própria).
+  async function saveDefaultValue(rule: FolderFieldRule, value: string) {
+    const trimmed = value.trim();
+    if (trimmed === (rule.default_value ?? "")) return;
+    try {
+      await api.put("/folder-fields", {
+        company_id: companyId, folder_id: folderId || null, custom_field_id: rule.custom_field_id,
+        mode: "apply", required: rule.required, display_order: rule.display_order,
+        default_value: trimmed || null,
+      });
+      load();
+    } catch {
+      showError("Erro ao salvar o valor padrão.");
     }
   }
 
@@ -496,6 +558,13 @@ function TreeTab({ companyId }: { companyId: string }) {
                     </div>
                     {isOwn && ownRule ? (
                       <>
+                        <input
+                          type="text"
+                          defaultValue={ownRule.default_value ?? ""}
+                          placeholder="Valor padrão"
+                          onBlur={(e) => saveDefaultValue(ownRule, e.target.value)}
+                          className="w-32 h-8 px-2.5 text-mac-caption bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[6px] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+                        />
                         <label className="flex items-center gap-1.5 text-mac-caption text-[var(--text-secondary)]">
                           Obrigatório
                           <Switch checked={ownRule.required} onChange={() => toggleRequired(ownRule)} label="Obrigatório" />

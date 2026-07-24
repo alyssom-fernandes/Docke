@@ -75,6 +75,10 @@ class CustomFieldCreate(BaseModel):
     label: str
     type: str
     format_config: dict[str, Any] = {}
+    # Fase 8.4: campo condicional — só aparece no formulário quando
+    # condition_field_id tem valor igual a condition_value.
+    condition_field_id: UUID | None = None
+    condition_value: str | None = None
 
     @field_validator("type")
     @classmethod
@@ -87,6 +91,9 @@ class CustomFieldCreate(BaseModel):
 class CustomFieldUpdate(BaseModel):
     label: str | None = None
     format_config: dict[str, Any] | None = None
+    condition_field_id: UUID | None = None
+    condition_value: str | None = None
+    clear_condition: bool = False
 
 
 class CustomFieldCopy(BaseModel):
@@ -102,6 +109,10 @@ class FolderFieldUpsert(BaseModel):
     required: bool = False
     display_order: int = 0
     column_width: int | None = None
+    # Fase 8.3: valor padrão herdado — pré-preenche o campo no formulário de
+    # um documento novo dentro desta pasta (ou de uma sub-pasta que não tenha
+    # sua própria regra pra este campo).
+    default_value: str | None = None
 
     @field_validator("mode")
     @classmethod
@@ -145,6 +156,7 @@ async def create_custom_field(
         row = await CustomFieldsService.create_field(
             conn, company_id=body.company_id, label=body.label, field_key=field_key,
             type=body.type, format_config=body.format_config, created_by=user_id,
+            condition_field_id=body.condition_field_id, condition_value=body.condition_value,
         )
     except asyncpg.UniqueViolationError:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Já existe um campo com esse nome nesta empresa.")
@@ -164,7 +176,11 @@ async def update_custom_field(
     role = await get_app_role(conn, claims)
     await _require_company_admin(conn, claims["sub"], UUID(existing["company_id"]), role)
 
-    row = await CustomFieldsService.update_field(conn, field_id, label=body.label, format_config=body.format_config)
+    row = await CustomFieldsService.update_field(
+        conn, field_id, label=body.label, format_config=body.format_config,
+        condition_field_id=body.condition_field_id, condition_value=body.condition_value,
+        clear_condition=body.clear_condition,
+    )
     return dict(row)
 
 
@@ -279,7 +295,7 @@ async def upsert_folder_field(
     row = await CustomFieldsService.upsert_folder_field(
         conn, company_id=body.company_id, folder_path=folder_path, custom_field_id=body.custom_field_id,
         mode=body.mode, required=body.required, display_order=body.display_order,
-        column_width=body.column_width, created_by=user_id,
+        column_width=body.column_width, created_by=user_id, default_value=body.default_value,
     )
     return dict(row)
 

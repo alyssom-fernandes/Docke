@@ -37,6 +37,7 @@ import {
   Info,
   Search,
   Copy,
+  GitBranch,
 } from "lucide-react";
 import api from "@/lib/api";
 import { useTaskCenter } from "@/lib/TaskContext";
@@ -90,6 +91,9 @@ export interface ResolvedField {
   required: boolean;
   display_order: number;
   column_width: number | null;
+  default_value: string | null;
+  condition_field_id: string | null;
+  condition_value: string | null;
   label: string;
   field_key: string;
   type: CustomFieldType;
@@ -583,6 +587,10 @@ function MetadataSection({ doc, companyId, onChanged }: { doc: Document; company
   const { error: showError } = useToast();
   const [fields, setFields] = useState<ResolvedField[]>([]);
   const [values, setValues] = useState<Record<string, string>>({});
+  // Fase 8.3: quais campos têm valor REALMENTE salvo no documento (distinto
+  // de um valor padrão herdado só exibido, nunca gravado) — usado pro ícone
+  // de "quebra de herança" quando o valor salvo diverge do padrão da pasta.
+  const [savedFieldIds, setSavedFieldIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   // Autosave por campo (Fase 1.5): cada campo tem seu próprio status —
   // idle/saving/saved/error — em vez de um botão único "Salvar metadados".
@@ -597,12 +605,25 @@ function MetadataSection({ doc, companyId, onChanged }: { doc: Document; company
       api.get<ResolvedField[]>("/folder-fields/resolved", { params: { company_id: companyId, folder_id: doc.folder_id } }),
       api.get<DocFieldValueRow[]>(`/documents/${doc.id}/field-values`),
     ]).then(([fRes, vRes]) => {
-      setFields(Array.isArray(fRes.data) ? [...fRes.data].sort((a, b) => a.display_order - b.display_order) : []);
+      const fetchedFields = Array.isArray(fRes.data) ? [...fRes.data].sort((a, b) => a.display_order - b.display_order) : [];
+      setFields(fetchedFields);
       const vmap: Record<string, string> = {};
-      for (const row of Array.isArray(vRes.data) ? vRes.data : []) vmap[row.custom_field_id] = row.value_text;
+      const saved = new Set<string>();
+      for (const row of Array.isArray(vRes.data) ? vRes.data : []) {
+        vmap[row.custom_field_id] = row.value_text;
+        saved.add(row.custom_field_id);
+      }
+      // Fase 8.3: campo sem valor salvo mas com valor padrão herdado da pasta
+      // mostra o padrão pré-preenchido — não grava sozinho, só exibe; salva
+      // de verdade só quando a pessoa confirma (blur/debounce), igual a
+      // qualquer outro campo.
+      for (const f of fetchedFields) {
+        if (!saved.has(f.custom_field_id) && f.default_value) vmap[f.custom_field_id] = f.default_value;
+      }
       setValues(vmap);
+      setSavedFieldIds(saved);
       setFieldStatus({});
-    }).catch(() => { setFields([]); setValues({}); }).finally(() => setLoading(false));
+    }).catch(() => { setFields([]); setValues({}); setSavedFieldIds(new Set()); }).finally(() => setLoading(false));
   }, [doc.id, doc.folder_id, companyId]);
 
   // Limpa todos os timers pendentes ao desmontar (troca de documento, fecha modal).
@@ -627,6 +648,7 @@ function MetadataSection({ doc, companyId, onChanged }: { doc: Document; company
         { params: { company_id: companyId } },
       );
       setFieldStatus((s) => ({ ...s, [fieldId]: "saved" }));
+      setSavedFieldIds((s) => new Set(s).add(fieldId));
       onChanged();
       // "✓ salvo" também é transitório — volta a idle depois de um tempo,
       // senão o indicador fica preso permanentemente no campo.
@@ -649,14 +671,37 @@ function MetadataSection({ doc, companyId, onChanged }: { doc: Document; company
 
   if (loading || fields.length === 0) return null;
 
+  // Fase 8.4: campos condicionais (Progressive Disclosure) — só aparece no
+  // formulário quando o campo do qual depende tem exatamente o valor exigido.
+  // Não remove do array (não altera fields/display_order), só filtra na hora
+  // de renderizar — o backend continua sendo a fonte de verdade do catálogo.
+  const visibleFields = fields.filter((f) => {
+    if (!f.condition_field_id) return true;
+    return (values[f.condition_field_id] ?? "") === (f.condition_value ?? "");
+  });
+  if (visibleFields.length === 0) return null;
+
   return (
     <div className="pt-2 border-t border-[var(--border-default)] space-y-3">
       <p className="text-mac-body font-semibold text-[var(--text-secondary)]">Metadados</p>
-      {fields.map((f) => (
+      {visibleFields.map((f) => {
+        // Fase 8.3: ícone de "quebra de herança" — o valor salvo no documento
+        // diverge do valor padrão da pasta (só faz sentido comparar quando
+        // ambos existem; sem padrão configurado não há herança pra quebrar).
+        const brokeInheritance = f.default_value != null && savedFieldIds.has(f.custom_field_id)
+          && values[f.custom_field_id] !== f.default_value;
+        return (
         <div key={f.custom_field_id}>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-mac-caption font-medium text-[var(--text-secondary)]">
+            <label className="text-mac-caption font-medium text-[var(--text-secondary)] flex items-center gap-1">
               {f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}
+              {brokeInheritance && (
+                <Tooltip label={`Diferente do padrão da pasta ("${f.default_value}")`}>
+                  <span aria-label="Valor diferente do padrão herdado" className="inline-flex text-amber-500">
+                    <GitBranch className="w-3 h-3" />
+                  </span>
+                </Tooltip>
+              )}
             </label>
             <FieldStatusIndicator status={fieldStatus[f.custom_field_id] ?? "idle"} />
           </div>
@@ -689,7 +734,8 @@ function MetadataSection({ doc, companyId, onChanged }: { doc: Document; company
             />
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

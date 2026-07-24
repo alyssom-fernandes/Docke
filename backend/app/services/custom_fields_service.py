@@ -60,6 +60,7 @@ class CustomFieldsService:
         rows = await conn.fetch(
             """
             SELECT id::text, company_id::text, label, field_key, type, format_config,
+                   condition_field_id::text, condition_value,
                    created_by::text, created_at, archived_at
             FROM public.custom_field
             WHERE company_id = $1
@@ -73,7 +74,9 @@ class CustomFieldsService:
     @staticmethod
     async def get_field(conn: asyncpg.Connection, field_id: UUID) -> dict[str, Any] | None:
         row = await conn.fetchrow(
-            "SELECT id::text, company_id::text, label, field_key, type, format_config FROM public.custom_field WHERE id = $1",
+            """SELECT id::text, company_id::text, label, field_key, type, format_config,
+                      condition_field_id::text, condition_value
+               FROM public.custom_field WHERE id = $1""",
             field_id,
         )
         return _decode_field_row(row) if row is not None else None
@@ -85,7 +88,9 @@ class CustomFieldsService:
         if not field_ids:
             return {}
         rows = await conn.fetch(
-            "SELECT id::text, company_id::text, label, field_key, type, format_config FROM public.custom_field WHERE id = ANY($1::uuid[])",
+            """SELECT id::text, company_id::text, label, field_key, type, format_config,
+                      condition_field_id::text, condition_value
+               FROM public.custom_field WHERE id = ANY($1::uuid[])""",
             field_ids,
         )
         return {r["id"]: _decode_field_row(r) for r in rows}
@@ -94,30 +99,39 @@ class CustomFieldsService:
     async def create_field(
         conn: asyncpg.Connection, *, company_id: UUID, label: str, field_key: str,
         type: str, format_config: dict[str, Any], created_by: str,
+        condition_field_id: UUID | None = None, condition_value: str | None = None,
     ) -> dict[str, Any]:
         row = await conn.fetchrow(
             """
-            INSERT INTO public.custom_field (company_id, label, field_key, type, format_config, created_by)
-            VALUES ($1, $2, $3, $4, $5::jsonb, $6)
-            RETURNING id::text, company_id::text, label, field_key, type, format_config, created_at
+            INSERT INTO public.custom_field
+              (company_id, label, field_key, type, format_config, created_by, condition_field_id, condition_value)
+            VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)
+            RETURNING id::text, company_id::text, label, field_key, type, format_config,
+                      condition_field_id::text, condition_value, created_at
             """,
             company_id, label, field_key, type, json.dumps(format_config), created_by,
+            condition_field_id, condition_value,
         )
         return _decode_field_row(row)
 
     @staticmethod
     async def update_field(
         conn: asyncpg.Connection, field_id: UUID, *, label: str | None, format_config: dict[str, Any] | None,
+        condition_field_id: UUID | None = None, condition_value: str | None = None, clear_condition: bool = False,
     ) -> dict[str, Any] | None:
         row = await conn.fetchrow(
             """
             UPDATE public.custom_field
             SET label = COALESCE($2, label),
-                format_config = COALESCE($3::jsonb, format_config)
+                format_config = COALESCE($3::jsonb, format_config),
+                condition_field_id = CASE WHEN $5 THEN NULL ELSE COALESCE($4, condition_field_id) END,
+                condition_value    = CASE WHEN $5 THEN NULL ELSE COALESCE($6, condition_value) END
             WHERE id = $1
-            RETURNING id::text, company_id::text, label, field_key, type, format_config, created_at
+            RETURNING id::text, company_id::text, label, field_key, type, format_config,
+                      condition_field_id::text, condition_value, created_at
             """,
             field_id, label, json.dumps(format_config) if format_config is not None else None,
+            condition_field_id, clear_condition, condition_value,
         )
         return _decode_field_row(row) if row is not None else None
 
@@ -181,8 +195,9 @@ class CustomFieldsService:
         string crua no frontend, `.options` virava undefined)."""
         rows = await conn.fetch(
             """
-            SELECT rf.custom_field_id::text, rf.required, rf.display_order, rf.column_width,
-                   cf.label, cf.field_key, cf.type, cf.format_config
+            SELECT rf.custom_field_id::text, rf.required, rf.display_order, rf.column_width, rf.default_value,
+                   cf.label, cf.field_key, cf.type, cf.format_config,
+                   cf.condition_field_id::text, cf.condition_value
             FROM public.resolve_folder_fields($1, $2::ltree) rf
             JOIN public.custom_field cf ON cf.id = rf.custom_field_id
             WHERE cf.archived_at IS NULL
@@ -199,7 +214,7 @@ class CustomFieldsService:
         return await conn.fetch(
             """
             SELECT ff.id::text, ff.custom_field_id::text, ff.mode, ff.required, ff.display_order, ff.column_width,
-                   cf.label, cf.field_key, cf.type
+                   ff.default_value, cf.label, cf.field_key, cf.type
             FROM public.folder_field ff
             JOIN public.custom_field cf ON cf.id = ff.custom_field_id
             WHERE ff.company_id = $1
@@ -213,16 +228,18 @@ class CustomFieldsService:
     async def upsert_folder_field(
         conn: asyncpg.Connection, *, company_id: UUID, folder_path: str | None, custom_field_id: UUID,
         mode: str, required: bool, display_order: int, column_width: int | None, created_by: str,
+        default_value: str | None = None,
     ) -> asyncpg.Record:
         return await conn.fetchrow(
             """
-            INSERT INTO public.folder_field (company_id, folder_path, custom_field_id, mode, required, display_order, column_width, created_by)
-            VALUES ($1, $2::ltree, $3, $4, $5, $6, $7, $8)
+            INSERT INTO public.folder_field
+              (company_id, folder_path, custom_field_id, mode, required, display_order, column_width, created_by, default_value)
+            VALUES ($1, $2::ltree, $3, $4, $5, $6, $7, $8, $9)
             ON CONFLICT (company_id, folder_path, custom_field_id)
-            DO UPDATE SET mode = $4, required = $5, display_order = $6, column_width = $7
-            RETURNING id::text, company_id::text, folder_path::text, custom_field_id::text, mode, required, display_order, column_width
+            DO UPDATE SET mode = $4, required = $5, display_order = $6, column_width = $7, default_value = $9
+            RETURNING id::text, company_id::text, folder_path::text, custom_field_id::text, mode, required, display_order, column_width, default_value
             """,
-            company_id, folder_path, custom_field_id, mode, required, display_order, column_width, created_by,
+            company_id, folder_path, custom_field_id, mode, required, display_order, column_width, created_by, default_value,
         )
 
     @staticmethod
