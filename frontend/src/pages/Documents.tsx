@@ -135,23 +135,26 @@ function splitExt(name: string): [string, string] {
 // Coluna "Tipo" (Kind) — todo Finder/Explorer mostra o tipo por extenso ao
 // lado do nome; nós só tínhamos o ícone colorido, que sozinho não é óbvio
 // pra quem não conhece o mapeamento de cores (ADENDO-09 §13).
+// Rótulos curtos ("PDF", "Word") em vez de "Documento PDF"/"Documento Word" —
+// o nome completo ocupava espaço desnecessário na coluna Tipo, sem agregar
+// nada que o ícone colorido ao lado já não comunique.
 const KIND_LABELS: Record<string, string> = {
-  pdf: "Documento PDF",
-  xlsx: "Planilha Excel",
-  xls: "Planilha Excel",
-  csv: "Planilha CSV",
-  docx: "Documento Word",
-  doc: "Documento Word",
-  xml: "Documento XML",
-  jpg: "Imagem JPEG",
-  jpeg: "Imagem JPEG",
-  png: "Imagem PNG",
-  gif: "Imagem GIF",
-  txt: "Documento de texto",
+  pdf: "PDF",
+  xlsx: "Excel",
+  xls: "Excel",
+  csv: "CSV",
+  docx: "Word",
+  doc: "Word",
+  xml: "XML",
+  jpg: "JPEG",
+  jpeg: "JPEG",
+  png: "PNG",
+  gif: "GIF",
+  txt: "Texto",
 };
 function kindLabel(name: string): string {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
-  return KIND_LABELS[ext] ?? (ext ? `Arquivo ${ext.toUpperCase()}` : "Documento");
+  return KIND_LABELS[ext] ?? (ext ? ext.toUpperCase() : "Documento");
 }
 
 function ocrBadge(status: Document["ocr_status"]) {
