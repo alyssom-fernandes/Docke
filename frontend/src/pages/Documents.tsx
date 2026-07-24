@@ -949,6 +949,113 @@ function Row({ label, value }: { label: string; value: string }) {
 
 const NAV_KEY = "documents";
 
+// Fase 8.2: edição de metadados em lote — abre a partir da barra de seleção
+// múltipla. Cada campo mostra "(varies)" quando os documentos selecionados
+// têm valores diferentes; deixar o campo assim (sem digitar nada) preserva
+// o valor de cada documento — só os campos que a pessoa realmente editar
+// são enviados, um PUT por documento reaproveitando o mesmo endpoint do
+// formulário individual (sem endpoint novo, sem migration).
+function BulkMetadataModal({
+  documentIds, fields, fieldValues, companyId, onClose, onSaved,
+}: {
+  documentIds: string[]; fields: ResolvedField[]; fieldValues: Record<string, Record<string, string>>;
+  companyId: string; onClose: () => void; onSaved: () => void;
+}) {
+  const { success, error: showError } = useToast();
+  const containerRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(containerRef);
+  const [edited, setEdited] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+
+  function fieldSummary(fieldId: string): { varies: boolean; common: string } {
+    const values = documentIds.map((id) => fieldValues[id]?.[fieldId] ?? "");
+    const distinct = new Set(values.filter((v) => v !== ""));
+    if (distinct.size === 0) return { varies: false, common: "" };
+    if (distinct.size === 1) return { varies: false, common: [...distinct][0] };
+    return { varies: true, common: "" };
+  }
+
+  async function save() {
+    const changedFieldIds = Object.keys(edited);
+    if (changedFieldIds.length === 0) { onClose(); return; }
+    setSaving(true);
+    const body = changedFieldIds.map((fieldId) => ({ custom_field_id: fieldId, value: edited[fieldId] }));
+    let failCount = 0;
+    for (const docId of documentIds) {
+      try {
+        await api.put(`/documents/${docId}/field-values`, body, { params: { company_id: companyId } });
+      } catch {
+        failCount++;
+      }
+    }
+    setSaving(false);
+    if (failCount === 0) {
+      success(`Metadados atualizados em ${documentIds.length} documento${documentIds.length > 1 ? "s" : ""}.`);
+    } else {
+      showError(`${failCount} de ${documentIds.length} documentos não foram atualizados — confira o formato dos valores.`);
+    }
+    onSaved();
+    onClose();
+  }
+
+  return (
+    <Portal>
+      <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[440px] max-h-[80vh] flex flex-col">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-default)] flex-shrink-0">
+            <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">
+              Editar metadados de {documentIds.length} documento{documentIds.length > 1 ? "s" : ""}
+            </h2>
+            <button onClick={onClose} className="p-1 rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="p-5 space-y-4 overflow-y-auto">
+            {fields.length === 0 ? (
+              <p className="text-mac-caption text-[var(--text-tertiary)]">Nenhum campo de metadado aplicado nesta pasta.</p>
+            ) : (
+              fields.map((f) => {
+                const { varies, common } = fieldSummary(f.custom_field_id);
+                const value = edited[f.custom_field_id] ?? "";
+                return (
+                  <div key={f.custom_field_id}>
+                    <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">{f.label}</label>
+                    {f.type === "selecao" ? (
+                      <Dropdown
+                        value={value}
+                        onChange={(v) => setEdited((e) => ({ ...e, [f.custom_field_id]: v }))}
+                        placeholder={varies ? "(varies)" : common || "—"}
+                        options={((f.format_config?.options as string[]) ?? []).map((o) => ({ value: o, label: o }))}
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        value={value}
+                        onChange={(e) => setEdited((prev) => ({ ...prev, [f.custom_field_id]: e.target.value }))}
+                        placeholder={varies ? "(varies)" : common || "—"}
+                        className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+                      />
+                    )}
+                  </div>
+                );
+              })
+            )}
+            {fields.length > 0 && (
+              <p className="text-mac-caption2 text-[var(--text-tertiary)]">
+                Campos deixados como "(varies)" ou vazios não são alterados — só os que você preencher aqui são aplicados a todos os documentos selecionados.
+              </p>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 px-5 py-4 border-t border-[var(--border-default)] flex-shrink-0">
+            <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
+            <Button size="sm" loading={saving} onClick={save} disabled={fields.length === 0}>Aplicar</Button>
+          </div>
+        </div>
+      </div>
+    </Portal>
+  );
+}
+
 export default function Documents() {
   usePageTitle("Documentos");
   const { current } = useCompany();
@@ -1047,6 +1154,7 @@ export default function Documents() {
     });
   }
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showBulkMetadata, setShowBulkMetadata] = useState(false);
   const [detailDoc, setDetailDoc] = useState<Document | null>(null);
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
   const [showUpload, setShowUpload] = useState(false);
@@ -2867,6 +2975,15 @@ export default function Documents() {
         <span className="text-mac-body text-[var(--text-primary)] mr-1.5 pl-2.5 whitespace-nowrap">
           <b className="text-[var(--teal-bright)] font-semibold">{selected.size}</b> selecionado{selected.size !== 1 ? "s" : ""}
         </span>
+        {resolvedFields.length > 0 && (
+          <button
+            onClick={() => setShowBulkMetadata(true)}
+            className="flex items-center gap-1.5 h-8 px-3.5 rounded-full text-mac-body text-[var(--text-primary)] bg-white/[0.07] hover:bg-white/[0.14] transition-colors duration-fast"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+            Editar metadados
+          </button>
+        )}
         <button
           onClick={deleteSelected}
           className="flex items-center gap-1.5 h-8 px-3.5 rounded-full text-mac-body text-red-400 bg-white/[0.07] hover:bg-red-500/[0.16] transition-colors duration-fast"
@@ -2875,6 +2992,17 @@ export default function Documents() {
           Excluir
         </button>
       </div>
+
+      {showBulkMetadata && current && (
+        <BulkMetadataModal
+          documentIds={[...selected]}
+          fields={resolvedFields}
+          fieldValues={fieldValues}
+          companyId={current.id}
+          onClose={() => setShowBulkMetadata(false)}
+          onSaved={load}
+        />
+      )}
     </div>
   );
 }
