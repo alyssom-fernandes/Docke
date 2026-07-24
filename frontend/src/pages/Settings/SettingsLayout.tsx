@@ -13,14 +13,18 @@ const LAST_PANE_KEY = "docke_settings_last_pane";
 // Ícone dentro de um "chip" colorido por categoria — padrão macOS Settings
 // (Screen Time, Family etc.): cada item tem uma cor própria, não um ícone
 // monocromático solto. Cores distintas ajudam a reconhecer a seção de relance.
+// Fase 10.4: busca com anchor — cada aba carrega uma lista de termos internos
+// (subseções, ações, conceitos) pra que digitar "grupo" ou "hold" encontre a
+// aba certa mesmo sem a palavra aparecer no rótulo — mesmo princípio de
+// busca do System Settings da Apple.
 const TABS = [
-  { to: "/settings/profile", icon: User, label: "Perfil", color: "bg-blue-500", adminOnly: false, supremoOnly: false, group: "Conta" },
-  { to: "/settings/security", icon: Lock, label: "Segurança", color: "bg-red-500", adminOnly: false, supremoOnly: false, group: "Conta" },
-  { to: "/settings/organization", icon: Building2, label: "Organização", color: "bg-slate-500", adminOnly: true, supremoOnly: false, group: "Organização" },
-  { to: "/settings/users", icon: UsersIcon, label: "Usuários & Papéis", color: "bg-indigo-500", adminOnly: true, supremoOnly: false, group: "Organização" },
-  { to: "/settings/metadata", icon: Tags, label: "Metadados", color: "bg-orange-500", adminOnly: true, supremoOnly: false, group: "Organização" },
-  { to: "/settings/retention", icon: Archive, label: "Retenção", color: "bg-amber-600", adminOnly: true, supremoOnly: false, group: "Organização" },
-  { to: "/settings/preferences", icon: Sliders, label: "Preferências", color: "bg-purple-500", adminOnly: false, supremoOnly: false, group: "Aplicativo" },
+  { to: "/settings/profile", icon: User, label: "Perfil", color: "bg-blue-500", adminOnly: false, supremoOnly: false, group: "Conta", keywords: ["nome", "avatar", "username"] },
+  { to: "/settings/security", icon: Lock, label: "Segurança", color: "bg-red-500", adminOnly: false, supremoOnly: false, group: "Conta", keywords: ["senha", "trocar senha", "password"] },
+  { to: "/settings/organization", icon: Building2, label: "Organização", color: "bg-slate-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["empresa", "cnpj", "desativar", "reativar", "perfil fiscal"] },
+  { to: "/settings/users", icon: UsersIcon, label: "Usuários & Papéis", color: "bg-indigo-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["usuário", "membro", "grupo", "grupos", "permissão", "acesso", "operador", "visualizador", "admin", "explain access"] },
+  { to: "/settings/metadata", icon: Tags, label: "Metadados", color: "bg-orange-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["campo", "campos", "cpf", "cnpj", "catálogo", "aplicação na árvore", "herança", "obrigatório"] },
+  { to: "/settings/retention", icon: Archive, label: "Retenção", color: "bg-amber-600", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["lixeira", "política", "hold", "legal hold", "descarte", "certificado", "fila", "purga"] },
+  { to: "/settings/preferences", icon: Sliders, label: "Preferências", color: "bg-purple-500", adminOnly: false, supremoOnly: false, group: "Aplicativo", keywords: ["tema", "dark mode", "modo escuro", "densidade"] },
 ];
 
 function useVisibleTabs() {
@@ -173,7 +177,10 @@ export default function SettingsLayout() {
         </div>
         <nav className="flex-1 overflow-y-auto p-1.5">
           {(() => {
-            const filtered = visibleTabs.filter((tab) => tab.label.toLowerCase().includes(sidebarQuery.trim().toLowerCase()));
+            const q = sidebarQuery.trim().toLowerCase();
+            const filtered = visibleTabs.filter((tab) =>
+              tab.label.toLowerCase().includes(q) || tab.keywords.some((k) => k.includes(q))
+            );
             const groups = Array.from(new Set(filtered.map((t) => t.group)));
             return groups.map((group, gi) => (
               <div key={group} className={gi > 0 ? "mt-3" : ""}>
@@ -200,7 +207,17 @@ export default function SettingsLayout() {
                       <span className={`w-5 h-5 rounded-[6px] flex items-center justify-center flex-shrink-0 ${tab.color}`}>
                         <tab.icon className="w-3 h-3 text-white" strokeWidth={2.25} />
                       </span>
-                      {tab.label}
+                      <span className="min-w-0 flex-1 truncate">
+                        {tab.label}
+                        {/* Fase 10.4: quando o match veio de um termo interno
+                            (não do rótulo da aba), mostra qual foi — mesma
+                            transparência do "found in" do System Settings. */}
+                        {q && !tab.label.toLowerCase().includes(q) && (
+                          <span className="block text-[10px] opacity-70 truncate font-normal">
+                            em "{tab.keywords.find((k) => k.includes(q))}"
+                          </span>
+                        )}
+                      </span>
                     </NavLink>
                   ))}
                 </div>
