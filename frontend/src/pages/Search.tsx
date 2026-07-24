@@ -19,12 +19,18 @@ interface SearchResult {
   folder_name?: string;
 }
 
+interface FacetValue {
+  value: string;
+  count: number;
+}
+
 interface SearchResponse {
   results: SearchResult[];
   items?: SearchResult[];
   total: number;
   page: number;
   page_size: number;
+  facets?: { sector: FacetValue[]; file_type: FacetValue[] };
 }
 
 const fmtDate = relativeDate;
@@ -35,12 +41,17 @@ const fmtDate = relativeDate;
 // Escapamos tudo via textContent (nunca interpretado como HTML) e só depois
 // reconstituímos os marcadores de destaque já escapados de volta em <mark>
 // reais — assim nenhum HTML/script arbitrário do OCR pode ser injetado.
-function highlightSnippet(snippet: string): string {
-  const span = document.createElement("span");
-  span.textContent = snippet;
-  return span.innerHTML
-    .replace(/&lt;mark&gt;/g, '<mark class="bg-amber-200 text-amber-900 dark:bg-amber-400/30 dark:text-amber-200 rounded px-0.5">')
-    .replace(/&lt;\/mark&gt;/g, "</mark>");
+// Fase 7.3: o backend separa múltiplos trechos de maior densidade com
+// <hr/> (FragmentDelimiter) — dividimos ANTES de escapar cada pedaço, senão
+// o delimitador em si viraria texto escapado e nunca seria reconhecido.
+function highlightSnippet(snippet: string): string[] {
+  return snippet.split("<hr/>").map((fragment) => {
+    const span = document.createElement("span");
+    span.textContent = fragment;
+    return span.innerHTML
+      .replace(/&lt;mark&gt;/g, '<mark class="bg-amber-200 text-amber-900 dark:bg-amber-400/30 dark:text-amber-200 rounded px-0.5">')
+      .replace(/&lt;\/mark&gt;/g, "</mark>");
+  });
 }
 
 export default function Search() {
@@ -53,15 +64,29 @@ export default function Search() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [facets, setFacets] = useState<{ sector: FacetValue[]; file_type: FacetValue[] }>({ sector: [], file_type: [] });
+  const [sectorFilter, setSectorFilter] = useState<string | null>(null);
+  const [fileTypeFilter, setFileTypeFilter] = useState<string | null>(null);
 
   const doSearch = useCallback(
-    (q: string) => {
+    (q: string, sector: string | null, fileType: string | null) => {
       if (!q.trim() || !current) return;
       setLoading(true);
       setSearched(true);
       api
-        .get<SearchResponse>("/search", { params: { q: q.trim(), company_id: current.id } })
-        .then((r) => { setResults(r.data.results ?? r.data.items ?? []); setTotal(r.data.total); })
+        .get<SearchResponse>("/search", {
+          params: {
+            q: q.trim(),
+            company_id: current.id,
+            ...(sector ? { sector } : {}),
+            ...(fileType ? { file_type: fileType } : {}),
+          },
+        })
+        .then((r) => {
+          setResults(r.data.results ?? r.data.items ?? []);
+          setTotal(r.data.total);
+          setFacets(r.data.facets ?? { sector: [], file_type: [] });
+        })
         .catch(() => {})
         .finally(() => setLoading(false));
     },
@@ -70,7 +95,8 @@ export default function Search() {
 
   useEffect(() => {
     const q = params.get("q");
-    if (q) { setQuery(q); doSearch(q); }
+    if (q) { setQuery(q); doSearch(q, null, null); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doSearch]);
 
   // Busca ao vivo enquanto digita, com debounce — a HIG recomenda começar a
@@ -85,12 +111,17 @@ export default function Search() {
       setSearched(false);
       setResults([]);
       setTotal(0);
+      setFacets({ sector: [], file_type: [] });
+      setSectorFilter(null);
+      setFileTypeFilter(null);
       setParams({}, { replace: true });
       return;
     }
     const handle = setTimeout(() => {
       setParams({ q: query.trim() }, { replace: true });
-      doSearch(query);
+      setSectorFilter(null);
+      setFileTypeFilter(null);
+      doSearch(query, null, null);
     }, 350);
     return () => clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -100,7 +131,9 @@ export default function Search() {
     e.preventDefault();
     if (!query.trim()) return;
     setParams({ q: query.trim() });
-    doSearch(query);
+    setSectorFilter(null);
+    setFileTypeFilter(null);
+    doSearch(query, null, null);
   }
 
   function clearQuery() {
@@ -108,7 +141,23 @@ export default function Search() {
     setSearched(false);
     setResults([]);
     setTotal(0);
+    setFacets({ sector: [], file_type: [] });
+    setSectorFilter(null);
+    setFileTypeFilter(null);
     setParams({}, { replace: true });
+  }
+
+  // Fase 7.2: clicar numa faceta filtra sem apagar a busca; clicar de novo
+  // na mesma faceta selecionada remove o filtro (toggle).
+  function toggleSector(value: string) {
+    const next = sectorFilter === value ? null : value;
+    setSectorFilter(next);
+    doSearch(query, next, fileTypeFilter);
+  }
+  function toggleFileType(value: string) {
+    const next = fileTypeFilter === value ? null : value;
+    setFileTypeFilter(next);
+    doSearch(query, sectorFilter, next);
   }
 
   return (
@@ -163,6 +212,42 @@ export default function Search() {
       ) : results.length > 0 ? (
         <>
           <p className="text-mac-body text-[var(--text-secondary)]">{total} resultado{total !== 1 ? "s" : ""} para "{params.get("q")}"</p>
+
+          {/* Fase 7.2: facetas dinâmicas — setor e tipo de arquivo entre os
+              documentos que bateram com a busca, com contagem por opção. */}
+          {(facets.sector.length > 0 || facets.file_type.length > 0) && (
+            <div className="flex flex-wrap gap-2">
+              {facets.sector.map((f) => (
+                <button
+                  key={`sector-${f.value}`}
+                  type="button"
+                  onClick={() => toggleSector(f.value)}
+                  className={`h-7 px-3 text-mac-caption font-medium rounded-full border transition-colors duration-fast ${
+                    sectorFilter === f.value
+                      ? "bg-teal-600 border-teal-600 text-white"
+                      : "bg-[var(--bg-card)] border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                  }`}
+                >
+                  {f.value} <span className="opacity-70">({f.count})</span>
+                </button>
+              ))}
+              {facets.file_type.map((f) => (
+                <button
+                  key={`filetype-${f.value}`}
+                  type="button"
+                  onClick={() => toggleFileType(f.value)}
+                  className={`h-7 px-3 text-mac-caption font-medium rounded-full border transition-colors duration-fast ${
+                    fileTypeFilter === f.value
+                      ? "bg-teal-600 border-teal-600 text-white"
+                      : "bg-[var(--bg-card)] border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                  }`}
+                >
+                  .{f.value} <span className="opacity-70">({f.count})</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Lista agrupada num único cartão com divisores — mesma convenção
               usada em Atividade/Lixeira/Compartilhados, em vez de um cartão
               flutuante por item (que destoava do resto do app no mobile). */}
@@ -189,12 +274,13 @@ export default function Search() {
                   ); })()}
                   <div className="flex-1 min-w-0">
                     <TruncatedFileName name={r.name} className="text-mac-body font-medium text-[var(--text-primary)]" />
-                    {r.snippet && (
+                    {r.snippet && highlightSnippet(r.snippet).map((fragment, i) => (
                       <p
+                        key={i}
                         className="text-mac-caption text-[var(--text-secondary)] mt-1 line-clamp-2"
-                        dangerouslySetInnerHTML={{ __html: highlightSnippet(r.snippet) }}
+                        dangerouslySetInnerHTML={{ __html: fragment }}
                       />
-                    )}
+                    ))}
                     <p className="text-mac-caption text-[var(--text-tertiary)] mt-1">
                       {r.folder_name && <>{r.folder_name} · </>}
                       {fmtDate(r.created_at)}

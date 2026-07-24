@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Search, FolderOpen, Anchor } from "lucide-react";
 import { getFileStyle } from "@/lib/fileType";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { relativeDate } from "@/lib/date";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useCommandPalette } from "@/hooks/useCommandPalette";
@@ -15,6 +16,24 @@ interface QuickResult {
   folder_id?: string | null;
 }
 
+interface DocumentPreview {
+  id: string;
+  name: string;
+  file_type: string;
+  size_bytes: number;
+  sector: string | null;
+  competencia: string | null;
+  tipo_fiscal: string | null;
+  ocr_text: string | null;
+  created_at: string;
+}
+
+function fmtSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function CommandPalette() {
   const { isOpen, close } = useCommandPalette();
   const { current } = useCompany();
@@ -24,9 +43,13 @@ export default function CommandPalette() {
   const [results, setResults] = useState<QuickResult[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [preview, setPreview] = useState<DocumentPreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewCache = useRef<Map<string, DocumentPreview>>(new Map());
 
   useFocusTrap(containerRef, isOpen);
 
@@ -36,9 +59,35 @@ export default function CommandPalette() {
       setQuery("");
       setResults([]);
       setActiveIdx(0);
+      setPreview(null);
+      previewCache.current.clear();
       setTimeout(() => inputRef.current?.focus(), 0);
     }
   }, [isOpen]);
+
+  // Fase 7.4: preview lateral — busca os detalhes do documento em foco
+  // (setinha/hover), com debounce e cache pra não disparar uma request por
+  // tecla enquanto o usuário navega rápido pela lista.
+  useEffect(() => {
+    const active = results[activeIdx];
+    if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current);
+    if (!active || active.type !== "document") { setPreview(null); return; }
+    const cached = previewCache.current.get(active.id);
+    if (cached) { setPreview(cached); return; }
+    setPreviewLoading(true);
+    previewDebounceRef.current = setTimeout(() => {
+      api
+        .get<DocumentPreview>(`/documents/${active.id}`)
+        .then((r) => {
+          previewCache.current.set(active.id, r.data);
+          setPreview(r.data);
+        })
+        .catch(() => setPreview(null))
+        .finally(() => setPreviewLoading(false));
+    }, 150);
+    return () => { if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIdx, results]);
 
   const search = useCallback(
     (q: string) => {
@@ -92,7 +141,12 @@ export default function CommandPalette() {
       className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-start justify-center pt-[15vh] z-50 px-4"
       onClick={(e) => { if (e.target === e.currentTarget) close(); }}
     >
-      <div ref={containerRef} className="modal-card glass-dialog glass-blur-strong rounded-[20px] shadow-modal w-full max-w-[560px] overflow-hidden">
+      <div
+        ref={containerRef}
+        className={`modal-card glass-dialog glass-blur-strong rounded-[20px] shadow-modal w-full overflow-hidden flex flex-col transition-[max-width] duration-normal ${
+          preview ? "max-w-[860px]" : "max-w-[560px]"
+        }`}
+      >
         {/* Search input */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border-default)]">
           <Search className="w-4 h-4 text-[var(--text-placeholder)] flex-shrink-0" />
@@ -107,8 +161,9 @@ export default function CommandPalette() {
           />
         </div>
 
+        <div className="flex min-h-0">
         {/* Results */}
-        <div className="max-h-[360px] overflow-y-auto">
+        <div className="max-h-[360px] overflow-y-auto flex-1 min-w-0">
           {loading && (
             <div className="py-3 px-4 space-y-2">
               {[0, 1, 2].map((i) => (
@@ -178,6 +233,44 @@ export default function CommandPalette() {
             </div>
           )}
         </div>
+        </div>
+
+        {/* Fase 7.4: preview lateral — mostra contexto do documento em foco
+            sem sair da paleta (setor, competência, tipo fiscal, tamanho e um
+            trecho do texto OCR). Só aparece quando há um documento em foco. */}
+        {preview && (
+          <div className="w-[300px] flex-shrink-0 border-l border-[var(--border-default)] px-4 py-3 max-h-[360px] overflow-y-auto">
+            {previewLoading ? (
+              <div className="space-y-2">
+                <div className="h-4 w-2/3 bg-[var(--bg-hover)] rounded animate-pulse" />
+                <div className="h-3 w-1/2 bg-[var(--bg-hover)] rounded animate-pulse" />
+                <div className="h-16 bg-[var(--bg-hover)] rounded animate-pulse" />
+              </div>
+            ) : (
+              <>
+                <p className="text-mac-body font-medium text-[var(--text-primary)] break-words">{preview.name}</p>
+                <dl className="mt-2 space-y-1 text-mac-caption text-[var(--text-secondary)]">
+                  {preview.sector && (
+                    <div className="flex justify-between gap-2"><dt className="text-[var(--text-tertiary)]">Setor</dt><dd>{preview.sector}</dd></div>
+                  )}
+                  {preview.tipo_fiscal && (
+                    <div className="flex justify-between gap-2"><dt className="text-[var(--text-tertiary)]">Tipo fiscal</dt><dd>{preview.tipo_fiscal}</dd></div>
+                  )}
+                  {preview.competencia && (
+                    <div className="flex justify-between gap-2"><dt className="text-[var(--text-tertiary)]">Competência</dt><dd>{preview.competencia}</dd></div>
+                  )}
+                  <div className="flex justify-between gap-2"><dt className="text-[var(--text-tertiary)]">Tamanho</dt><dd>{fmtSize(preview.size_bytes)}</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-[var(--text-tertiary)]">Enviado</dt><dd>{relativeDate(preview.created_at)}</dd></div>
+                </dl>
+                {preview.ocr_text && (
+                  <p className="mt-3 text-mac-caption text-[var(--text-secondary)] line-clamp-6">
+                    {preview.ocr_text.slice(0, 400)}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
     </Portal>

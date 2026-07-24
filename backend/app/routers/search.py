@@ -63,4 +63,4 @@ async def quick_search(
     normalized = SearchService.normalize_query(q)
     if not normalized:
         return []
-    return await SearchService.quick_search(conn, normalized=normalized, company_id=company_id)
+    return await SearchService.quick_search(conn, q=q, normalized=normalized, company_id=company_id)
