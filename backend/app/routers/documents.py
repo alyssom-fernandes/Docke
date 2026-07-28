@@ -756,16 +756,39 @@ async def get_preview_url(
             "message": f"Arquivo com {doc['size_bytes'] // 1_048_576}MB excede o limite de 10MB para preview inline. Use o download.",
         }
 
+    ext = doc["name"].rsplit(".", 1)[-1].lower() if "." in doc["name"] else ""
+    preview_key = doc["storage_path"]
+    preview_mime = doc["mime_type"]
+
+    # Fase 12.1: DOCX/XLSX/DOC/XLS não têm preview nativo no navegador — serve
+    # um PDF derivado (gerado uma vez via LibreOffice headless, cacheado no
+    # storage sob derivatives/{...}.pdf; reaproveitado em previews seguintes).
+    if ext in ("docx", "doc", "xlsx", "xls"):
+        derivative_key = storage_service.derivative_pdf_key(doc["storage_path"])
+        if storage_service.head_object(derivative_key) is None:
+            pdf_bytes = storage_service.convert_office_to_pdf(doc["storage_path"], ext)
+            if pdf_bytes is None:
+                return {
+                    "inline": False,
+                    "preview_url": None,
+                    "expires_at": None,
+                    "size_bytes": doc["size_bytes"],
+                    "message": "Não foi possível gerar a pré-visualização deste arquivo. Use o download.",
+                }
+            storage_service.put_object_bytes(derivative_key, pdf_bytes, "application/pdf")
+        preview_key = derivative_key
+        preview_mime = "application/pdf"
+
     preview_url, expires_at = storage_service.generate_preview_url(
-        key=doc["storage_path"],
-        content_type=doc["mime_type"],
+        key=preview_key,
+        content_type=preview_mime,
     )
     return {
         "inline": True,
         "preview_url": preview_url,
         "expires_at": expires_at.isoformat(),
         "size_bytes": doc["size_bytes"],
-        "mime_type": doc["mime_type"],
+        "mime_type": preview_mime,
         "name": doc["name"],
     }
 

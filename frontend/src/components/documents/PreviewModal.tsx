@@ -49,6 +49,10 @@ type PreviewType = "pdf" | "image" | "text" | "unsupported";
 function resolveType(name: string, mime: string): PreviewType {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
   if (mime === "application/pdf" || ext === "pdf") return "pdf";
+  // Fase 12.1: DOCX/XLSX/DOC/XLS não têm preview nativo — o backend gera um
+  // PDF derivado (LibreOffice headless) e devolve pelo mesmo preview-url,
+  // então do lado do frontend é só tratar como "pdf" igual a um PDF de verdade.
+  if (["docx", "doc", "xlsx", "xls"].includes(ext)) return "pdf";
   if (mime.startsWith("image/") || ["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext)) return "image";
   if (mime.startsWith("text/") || ["txt", "csv", "xml"].includes(ext)) return "text";
   return "unsupported";

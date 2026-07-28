@@ -276,6 +276,57 @@ def is_mock() -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Fase 12.1 — pipeline de derivados: DOCX/XLSX (e variantes .doc/.xls) não têm
+# preview nativo no navegador, então convertemos pra PDF uma vez (via
+# LibreOffice headless) e cacheamos o resultado no storage — conversões
+# seguintes pro mesmo documento reaproveitam o PDF já gerado.
+# ---------------------------------------------------------------------------
+
+import subprocess
+import uuid as _uuid
+
+_CONVERTIBLE_EXTENSIONS = {"docx", "doc", "xlsx", "xls"}
+
+
+def derivative_pdf_key(original_key: str) -> str:
+    """derivatives/{mesmo caminho}.pdf — 1:1 com o objeto original."""
+    return f"derivatives/{original_key}.pdf"
+
+
+def convert_office_to_pdf(source_key: str, ext: str) -> bytes | None:
+    """
+    Baixa o objeto original, converte pra PDF via `soffice --headless` (timeout
+    de 60s — documentos grandes/complexos podem ser lentos, mas isso é uma
+    conversão sob demanda numa requisição HTTP, não pode ficar pendurado pra
+    sempre) e devolve os bytes do PDF gerado. None se a conversão falhar.
+    """
+    if ext not in _CONVERTIBLE_EXTENSIONS:
+        return None
+
+    source_bytes = read_object(source_key)
+    if source_bytes is None:
+        return None
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        input_path = os.path.join(tmpdir, f"{_uuid.uuid4()}.{ext}")
+        with open(input_path, "wb") as f:
+            f.write(source_bytes)
+        try:
+            subprocess.run(
+                ["soffice", "--headless", "--norestore", "--convert-to", "pdf", "--outdir", tmpdir, input_path],
+                check=True, timeout=60, capture_output=True,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+            return None
+
+        output_path = os.path.splitext(input_path)[0] + ".pdf"
+        if not os.path.exists(output_path):
+            return None
+        with open(output_path, "rb") as f:
+            return f.read()
+
+
+# ---------------------------------------------------------------------------
 # Fase 11.1 — multipart upload real: cada parte tem sua própria URL
 # pré-assinada (S3 multipart API, suportado pelo R2 nativamente).
 # ---------------------------------------------------------------------------

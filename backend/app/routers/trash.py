@@ -173,6 +173,12 @@ async def permanent_delete(
                     "Falha ao remover objeto do storage após exclusão permanente do documento %s (key=%s) — objeto pode ter ficado órfão.",
                     item_id, doc["storage_path"],
                 )
+            # Fase 12.1: limpa também o PDF derivado (DOCX/XLSX→PDF), se existir —
+            # melhor esforço, idempotente (delete_object silencioso se não existir).
+            try:
+                storage_service.delete_object(storage_service.derivative_pdf_key(doc["storage_path"]))
+            except Exception:
+                pass
 
     else:  # folder
         folder = await TrashService.get_folder_for_permanent_delete(admin_conn, item_id)
