@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { X, Download, AlertCircle, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { X, Download, AlertCircle, Loader2, Search, ChevronUp, ChevronDown } from "lucide-react";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { getFileStyle } from "@/lib/fileType";
 import api from "@/lib/api";
@@ -11,6 +11,32 @@ interface Doc {
   name: string;
   mime_type: string;
   size_bytes: number;
+}
+
+// Fase 12.3 — busca dentro do documento usando o texto já extraído pelo OCR
+// (ocr_text), sem precisar reprocessar nada. Pra tipo "text" (txt/csv/xml) dá
+// pra destacar E rolar até a ocorrência de verdade, porque o texto renderiza
+// como DOM real (<pre>). Pra PDF/imagem o render é em <canvas> (Fase 12.2 —
+// PdfViewer não tem camada de texto selecionável), então mostra os trechos
+// batidos como lista de contexto em vez de fingir que rola até a página certa.
+function escapeRegExp(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function findMatches(text: string, query: string): { index: number; snippet: string }[] {
+  if (!query.trim()) return [];
+  const re = new RegExp(escapeRegExp(query.trim()), "gi");
+  const matches: { index: number; snippet: string }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const start = Math.max(0, m.index - 40);
+    const end = Math.min(text.length, m.index + m[0].length + 40);
+    const snippet = (start > 0 ? "…" : "") + text.slice(start, end).replace(/\s+/g, " ") + (end < text.length ? "…" : "");
+    matches.push({ index: m.index, snippet });
+    if (m.index === re.lastIndex) re.lastIndex++; // evita loop infinito em match vazio
+    if (matches.length >= 200) break; // limite de segurança
+  }
+  return matches;
 }
 
 interface PreviewModalProps {
@@ -118,6 +144,14 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
   const [showRawXml, setShowRawXml] = useState(false);
   const [watermarkLabel] = useState(getWatermarkLabel);
 
+  // Fase 12.3: busca dentro do documento (ocr_text) — search bar opcional,
+  // fechada por padrão pra não competir visualmente com o preview.
+  const [ocrText, setOcrText] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeMatch, setActiveMatch] = useState(0);
+  const previewBodyRef = useRef<HTMLDivElement>(null);
+
   const type = resolveType(doc.name, doc.mime_type);
   const isXml = doc.name.toLowerCase().endsWith(".xml") || doc.mime_type === "application/xml";
   const { icon: Icon, iconColor } = getFileStyle(doc.name);
@@ -169,6 +203,51 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
       .catch(() => setXmlFields(null));
   }, [doc.id, isXml]);
 
+  // Fase 12.3: pra PDF/imagem o texto pesquisável vem do ocr_text (não temos
+  // outro jeito de "ler" o conteúdo de um canvas); pra tipo "text" já usa o
+  // textContent que o preview normal já buscou, sem round-trip extra.
+  useEffect(() => {
+    if (type !== "pdf" && type !== "image") return;
+    api.get<{ ocr_text: string | null; ocr_status: string }>(`/documents/${doc.id}`)
+      .then(({ data }) => setOcrText(data.ocr_text ?? null))
+      .catch(() => setOcrText(null));
+  }, [doc.id, type]);
+
+  const searchableText = type === "text" ? textContent : ocrText;
+  const matches = useMemo(() => findMatches(searchableText ?? "", searchQuery), [searchableText, searchQuery]);
+
+  useEffect(() => { setActiveMatch(0); }, [searchQuery]);
+
+  useEffect(() => {
+    if (matches.length === 0 || type !== "text") return;
+    const el = previewBodyRef.current?.querySelector(`[data-match-index="${activeMatch}"]`);
+    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [activeMatch, matches.length, type]);
+
+  // Fase 12.3: monta os segmentos do <pre> com <mark> nas ocorrências — a
+  // ocorrência ativa (navegação prev/next) ganha um destaque mais forte.
+  const highlightedTextNodes = useMemo(() => {
+    if (!searchableText || matches.length === 0) return null;
+    const q = searchQuery.trim();
+    const parts: JSX.Element[] = [];
+    let cursor = 0;
+    matches.forEach((m, i) => {
+      if (m.index > cursor) parts.push(<span key={`t${i}`}>{searchableText.slice(cursor, m.index)}</span>);
+      parts.push(
+        <mark
+          key={`m${i}`}
+          data-match-index={i}
+          className={i === activeMatch ? "bg-amber-400 text-black rounded-[2px]" : "bg-amber-200/60 dark:bg-amber-500/30 rounded-[2px]"}
+        >
+          {searchableText.slice(m.index, m.index + q.length)}
+        </mark>
+      );
+      cursor = m.index + q.length;
+    });
+    if (cursor < searchableText.length) parts.push(<span key="tail">{searchableText.slice(cursor)}</span>);
+    return parts;
+  }, [searchableText, matches, activeMatch, searchQuery]);
+
   async function download() {
     try {
       const r = await api.get<{ download_url: string }>(`/documents/${doc.id}/download-url`);
@@ -201,6 +280,16 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
           >
             {doc.name}
           </span>
+          {!!searchableText && (
+            <button
+              onClick={() => setSearchOpen((v) => !v)}
+              className={`p-1.5 rounded-[6px] transition-colors duration-fast ${searchOpen ? "bg-teal-500/15 text-teal-500" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"}`}
+              aria-label="Buscar no documento"
+              title="Buscar no documento (usa o texto extraído por OCR)"
+            >
+              <Search className="w-4 h-4" />
+            </button>
+          )}
           <button
             onClick={download}
             className="flex items-center gap-1.5 h-8 px-3 text-mac-caption border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
@@ -217,6 +306,46 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Fase 12.3: barra de busca dentro do documento */}
+        {searchOpen && !!searchableText && (
+          <div className="flex items-center gap-2 px-5 py-2 border-b border-[var(--border-default)] flex-shrink-0">
+            <Search className="w-3.5 h-3.5 text-[var(--text-tertiary)] flex-shrink-0" />
+            <input
+              autoFocus
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && matches.length > 0) {
+                  setActiveMatch((i) => (e.shiftKey ? (i - 1 + matches.length) % matches.length : (i + 1) % matches.length));
+                }
+              }}
+              placeholder="Buscar no texto extraído (OCR)…"
+              className="flex-1 h-7 px-2 text-mac-caption bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[6px] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[2px] focus:ring-teal-500/70"
+            />
+            {searchQuery.trim() && (
+              <span className="text-mac-caption text-[var(--text-tertiary)] tabular-nums flex-shrink-0">
+                {matches.length === 0 ? "0 resultados" : `${activeMatch + 1} de ${matches.length}`}
+              </span>
+            )}
+            <button
+              onClick={() => setActiveMatch((i) => (i - 1 + matches.length) % matches.length)}
+              disabled={matches.length === 0}
+              className="h-6 w-6 flex items-center justify-center rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-30 disabled:pointer-events-none transition-colors duration-fast flex-shrink-0"
+              aria-label="Resultado anterior"
+            >
+              <ChevronUp className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setActiveMatch((i) => (i + 1) % matches.length)}
+              disabled={matches.length === 0}
+              className="h-6 w-6 flex items-center justify-center rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-30 disabled:pointer-events-none transition-colors duration-fast flex-shrink-0"
+              aria-label="Próximo resultado"
+            >
+              <ChevronDown className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Body */}
         <div className="flex-1 overflow-hidden relative">
@@ -271,6 +400,30 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
             </div>
           )}
 
+          {/* Fase 12.3: PDF/imagem renderizam em <canvas>/<img> (sem texto
+              selecionável), então a busca mostra os trechos batidos como
+              lista de contexto — não dá pra "pular" pra posição exata sem
+              coordenadas de OCR por página, que não guardamos hoje. */}
+          {!loading && !error && (type === "pdf" || type === "image") && searchOpen && searchQuery.trim() && (
+            <div className="absolute bottom-3 right-3 left-3 sm:left-auto sm:w-80 max-h-56 overflow-y-auto glass-panel glass-blur-strong rounded-[var(--radius-panel)] shadow-modal p-2 space-y-1 z-20">
+              {matches.length === 0 ? (
+                <p className="text-mac-caption text-[var(--text-tertiary)] px-2 py-1">Nenhuma ocorrência no texto extraído por OCR.</p>
+              ) : (
+                matches.map((m, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setActiveMatch(i)}
+                    className={`w-full text-left px-2 py-1.5 rounded-[6px] text-mac-caption transition-colors duration-fast ${
+                      i === activeMatch ? "bg-teal-500/15 text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                    }`}
+                  >
+                    {m.snippet}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+
           {!loading && !error && type === "text" && textContent !== null && isXml && xmlFields?.recognized && !showRawXml && (
             <div className="w-full h-full overflow-auto p-5">
               <div className="flex items-center justify-between mb-4">
@@ -298,7 +451,7 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
           )}
 
           {!loading && !error && type === "text" && textContent !== null && (!isXml || !xmlFields?.recognized || showRawXml) && (
-            <div className="w-full h-full overflow-auto">
+            <div ref={previewBodyRef} className="w-full h-full overflow-auto">
               {isXml && xmlFields?.recognized && (
                 <div className="sticky top-0 bg-[var(--bg-card)] border-b border-[var(--border-default)] px-5 py-2 flex justify-end">
                   <button
@@ -310,7 +463,7 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
                 </div>
               )}
               <pre className="p-5 text-mac-caption font-mono text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap break-words">
-                {textContent}
+                {highlightedTextNodes ?? textContent}
               </pre>
             </div>
           )}
