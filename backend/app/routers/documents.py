@@ -315,7 +315,9 @@ async def _finalize_confirmed_upload(
 # ---------------------------------------------------------------------------
 
 _MULTIPART_PART_SIZE = 10 * 1024 * 1024  # 10MB — mínimo aceito pelo S3/R2 multipart (exceto a última parte)
-_MULTIPART_THRESHOLD = 20 * 1024 * 1024  # abaixo disso, PUT único (/upload-url) já é simples o bastante
+# Não há threshold aqui no backend — quem decide se usa /upload-url (PUT único)
+# ou /multipart/* é o cliente (mesmo valor em Documents.tsx::MULTIPART_THRESHOLD,
+# 20MB). Os dois fluxos continuam válidos independente do tamanho declarado.
 
 
 class MultipartCreateRequest(BaseModel):
