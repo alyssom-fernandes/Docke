@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { History, Upload, Download, RotateCcw, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { History, Upload, Download, RotateCcw, Trash2, ChevronDown, ChevronUp, GitCompare, X, Loader2 } from "lucide-react";
 import api from "@/lib/api";
 import { useToast } from "@/lib/toast";
 import { useTaskCenter } from "@/lib/TaskContext";
 import { relativeDate } from "@/lib/date";
+import Portal from "@/components/ui/Portal";
 
 interface Version {
   id: string;
@@ -13,6 +14,114 @@ interface Version {
   created_at: string;
   uploaded_by_name: string | null;
   is_current: boolean;
+}
+
+// Fase 12.4 — diff textual entre versões. Só funciona pra arquivos de texto
+// puro (txt/csv/xml) — o backend lê o conteúdo direto do storage sem OCR,
+// já que o valor já É texto. PDF/imagem dependeriam de OCR por versão, que
+// nunca foi implementado (só a versão atual tem texto extraído).
+type DiffLine = { type: "same" | "add" | "remove"; text: string };
+
+// Diff linha-a-linha por LCS (subsequência comum mais longa) — O(n*m), mas
+// documentos de texto puro aqui são pequenos o bastante (relatórios, SPED,
+// XML) pra isso nunca ser um problema real de performance.
+function diffLines(oldText: string, newText: string): DiffLine[] {
+  const a = oldText.split("\n");
+  const b = newText.split("\n");
+  const n = a.length, m = b.length;
+  const lcs: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      lcs[i][j] = a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+    }
+  }
+  const result: DiffLine[] = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { result.push({ type: "same", text: a[i] }); i++; j++; }
+    else if (lcs[i + 1][j] >= lcs[i][j + 1]) { result.push({ type: "remove", text: a[i] }); i++; }
+    else { result.push({ type: "add", text: b[j] }); j++; }
+  }
+  while (i < n) { result.push({ type: "remove", text: a[i] }); i++; }
+  while (j < m) { result.push({ type: "add", text: b[j] }); j++; }
+  return result;
+}
+
+function DiffModal({ documentId, versionA, versionB, onClose }: {
+  documentId: string; versionA: Version; versionB: Version; onClose: () => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [diff, setDiff] = useState<DiffLine[] | null>(null);
+  const [unavailableReason, setUnavailableReason] = useState<string | null>(null);
+
+  // Sempre compara na ordem cronológica (mais antiga → mais nova), independente
+  // da ordem de seleção — "remove"/"add" só faz sentido cronologicamente.
+  const [older, newer] = versionA.version_number < versionB.version_number ? [versionA, versionB] : [versionB, versionA];
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      api.get<{ available: boolean; text: string | null; reason: string | null }>(`/documents/${documentId}/versions/${older.id}/content`),
+      api.get<{ available: boolean; text: string | null; reason: string | null }>(`/documents/${documentId}/versions/${newer.id}/content`),
+    ])
+      .then(([a, b]) => {
+        if (!a.data.available || !b.data.available) {
+          setUnavailableReason(a.data.reason ?? b.data.reason ?? "Comparação não disponível.");
+          return;
+        }
+        setDiff(diffLines(a.data.text ?? "", b.data.text ?? ""));
+      })
+      .catch(() => setUnavailableReason("Não foi possível carregar o conteúdo das versões."))
+      .finally(() => setLoading(false));
+  }, [documentId, older.id, newer.id]);
+
+  return (
+    <Portal>
+      <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        <div className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-2xl flex flex-col" style={{ height: "min(80vh, 640px)" }}>
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)] flex-shrink-0">
+            <h2 className="text-mac-body font-semibold text-[var(--text-primary)] flex items-center gap-2">
+              <GitCompare className="w-4 h-4 text-teal-500" />
+              v{older.version_number} → v{newer.version_number}
+            </h2>
+            <button onClick={onClose} className="p-1 rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-auto">
+            {loading ? (
+              <div className="h-full flex items-center justify-center">
+                <Loader2 className="w-6 h-6 text-[var(--text-placeholder)] animate-spin" />
+              </div>
+            ) : unavailableReason ? (
+              <div className="h-full flex items-center justify-center px-8 text-center">
+                <p className="text-mac-body text-[var(--text-secondary)]">{unavailableReason}</p>
+              </div>
+            ) : diff && diff.every((l) => l.type === "same") ? (
+              <div className="h-full flex items-center justify-center px-8 text-center">
+                <p className="text-mac-body text-[var(--text-secondary)]">Nenhuma diferença de texto entre estas duas versões.</p>
+              </div>
+            ) : (
+              <pre className="p-4 text-mac-caption font-mono leading-relaxed">
+                {diff?.map((line, i) => (
+                  <div
+                    key={i}
+                    className={
+                      line.type === "add" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" :
+                      line.type === "remove" ? "bg-red-500/15 text-red-700 dark:text-red-400 line-through decoration-1" :
+                      "text-[var(--text-secondary)]"
+                    }
+                  >
+                    {line.type === "add" ? "+ " : line.type === "remove" ? "- " : "  "}{line.text}
+                  </div>
+                ))}
+              </pre>
+            )}
+          </div>
+        </div>
+      </div>
+    </Portal>
+  );
 }
 
 function fmtSize(bytes: number) {
@@ -30,6 +139,17 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
   const [uploading, setUploading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Fase 12.4: até 2 versões selecionadas por vez pra comparar.
+  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [diffPair, setDiffPair] = useState<[Version, Version] | null>(null);
+
+  function toggleCompare(id: string) {
+    setCompareIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= 2) return [prev[1], id];
+      return [...prev, id];
+    });
+  }
 
   function load() {
     setLoading(true);
@@ -144,6 +264,20 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
           ) : versions.length === 0 ? (
             <p className="text-mac-caption text-[var(--text-tertiary)] text-center py-2">Nenhum histórico ainda.</p>
           ) : (
+            <>
+              {/* Fase 12.4: aparece só quando exatamente 2 versões marcadas */}
+              {versions.length > 1 && compareIds.length === 2 && (
+                <button
+                  onClick={() => {
+                    const [a, b] = compareIds.map((id) => versions.find((v) => v.id === id)!);
+                    setDiffPair([a, b]);
+                  }}
+                  className="w-full h-8 flex items-center justify-center gap-1.5 text-mac-caption bg-teal-600 text-white rounded-[var(--radius-control)] hover:bg-teal-500 transition-colors duration-fast"
+                >
+                  <GitCompare className="w-3.5 h-3.5" />
+                  Comparar versões selecionadas
+                </button>
+              )}
             <ul className="space-y-1.5">
               {versions.map((v) => (
                 <li
@@ -152,6 +286,15 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
                     v.is_current ? "bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-900/40" : "bg-[var(--bg-page)]"
                   }`}
                 >
+                  {versions.length > 1 && (
+                    <input
+                      type="checkbox"
+                      checked={compareIds.includes(v.id)}
+                      onChange={() => toggleCompare(v.id)}
+                      title="Selecionar para comparar"
+                      className="flex-shrink-0 accent-teal-500"
+                    />
+                  )}
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-[var(--text-primary)]">
                       v{v.version_number} {v.is_current && <span className="text-teal-500">· atual</span>}
@@ -186,9 +329,14 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
                 </li>
               ))}
             </ul>
+            </>
           )}
           <p className="text-[10px] text-[var(--text-tertiary)] text-center">Limite de 10 versões por documento.</p>
         </div>
+      )}
+
+      {diffPair && (
+        <DiffModal documentId={documentId} versionA={diffPair[0]} versionB={diffPair[1]} onClose={() => setDiffPair(null)} />
       )}
     </div>
   );

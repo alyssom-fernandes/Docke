@@ -270,6 +270,50 @@ async def get_version_download_url(
 
 
 # ---------------------------------------------------------------------------
+# GET /documents/:id/versions/:version_id/content — Fase 12.4: conteúdo
+# textual de uma versão, pra diff entre duas versões no frontend.
+# ---------------------------------------------------------------------------
+
+_TEXT_MIME_TYPES = {"text/plain", "text/csv", "application/xml", "text/xml"}
+
+
+@router.get("/{document_id}/versions/{version_id}/content")
+async def get_version_content(
+    document_id: UUID,
+    version_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Só disponível pra arquivos de texto puro (txt/csv/xml) — o conteúdo é lido
+    direto do storage, sem precisar de OCR (o valor já é texto). PDF/imagem
+    dependeriam de OCR por versão, que a Fase 3.2 nunca implementou (só a
+    versão ATUAL tem texto extraído — document_versions.ocr_text existe no
+    schema desde a Fase v2, mas nunca foi populado por nenhum worker).
+    """
+    doc = await VersionsService.get_document_for_download(conn, document_id)
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+
+    version = await VersionsService.get_version_for_download(conn, version_id, document_id)
+    if version is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Versão não encontrada.")
+
+    if version["mime_type"] not in _TEXT_MIME_TYPES:
+        return {"available": False, "text": None, "reason": "Comparação de texto disponível só para arquivos .txt, .csv ou .xml."}
+
+    raw = storage_service.read_object(version["storage_key"])
+    if raw is None:
+        return {"available": False, "text": None, "reason": "Arquivo não encontrado no storage."}
+
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        text = raw.decode("latin-1", errors="replace")
+
+    return {"available": True, "text": text[:200_000], "reason": None}
+
+
+# ---------------------------------------------------------------------------
 # DELETE /documents/:id/versions/:version_id — exclui versão antiga manualmente
 # ---------------------------------------------------------------------------
 
