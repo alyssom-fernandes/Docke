@@ -394,6 +394,60 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
     return parentId;
   }
 
+  // Fase 11.1: acima disso, upload em partes (multipart) em vez de um PUT
+  // único — mesmo threshold do backend (documents.py::_MULTIPART_THRESHOLD).
+  const MULTIPART_THRESHOLD = 20 * 1024 * 1024;
+
+  async function uploadFileMultipart(
+    file: File, targetFolderId: string, onProgress: (label: string) => void,
+  ): Promise<string> {
+    const { data: created } = await api.post("/documents/multipart/create", {
+      folder_id: targetFolderId,
+      company_id: companyId,
+      name: file.name,
+      size_bytes: file.size,
+      content_type: file.type || "application/octet-stream",
+    });
+    const { document_id: documentId, upload_id: uploadId, part_size: partSize, total_parts: totalParts } = created;
+
+    try {
+      const parts: { part_number: number; etag: string }[] = [];
+      for (let partNumber = 1; partNumber <= totalParts; partNumber++) {
+        onProgress(`${file.name} · parte ${partNumber}/${totalParts}`);
+        const start = (partNumber - 1) * partSize;
+        const chunk = file.slice(start, start + partSize);
+
+        const { data: partUrlData } = await api.post(`/documents/multipart/${documentId}/part-url`, {
+          upload_id: uploadId,
+          part_number: partNumber,
+        });
+
+        const putResp = await fetch(partUrlData.upload_url, { method: "PUT", body: chunk });
+        if (!putResp.ok) throw new Error(`Falha ao enviar a parte ${partNumber}/${totalParts} (HTTP ${putResp.status}).`);
+
+        // R2/S3 exige o ETag de cada parte no complete — precisa que o bucket
+        // exponha esse header via CORS (Access-Control-Expose-Headers: ETag),
+        // senão o navegador nunca consegue ler o valor (fica null aqui).
+        const etag = putResp.headers.get("ETag");
+        if (!etag) {
+          throw new Error(
+            "O storage não devolveu o ETag da parte — confirme se o bucket R2 expõe o header ETag no CORS " +
+            "(Access-Control-Expose-Headers deve incluir \"ETag\")."
+          );
+        }
+        parts.push({ part_number: partNumber, etag });
+      }
+
+      await api.post(`/documents/multipart/${documentId}/complete`, { upload_id: uploadId, parts });
+      return documentId;
+    } catch (err) {
+      // Melhor esforço: aborta o multipart no storage e limpa o registro
+      // pendente, em vez de deixar lixo órfão pra sempre.
+      try { await api.post(`/documents/multipart/${documentId}/abort`, { upload_id: uploadId }); } catch { /* ignore */ }
+      throw err;
+    }
+  }
+
   async function upload() {
     if (!pending.length) return;
     if (!folderId) {
@@ -411,27 +465,34 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
         try {
           const targetFolderId = await resolveFolderId(relativePath, folderCache);
 
-          // Etapa 1: solicitar URL de upload pré-assinada
-          const { data } = await api.post("/documents/upload-url", {
-            folder_id: targetFolderId,
-            company_id: companyId,
-            name: file.name,
-            size_bytes: file.size,
-            content_type: file.type || "application/octet-stream",
-          });
+          let documentId: string;
+          if (file.size >= MULTIPART_THRESHOLD) {
+            documentId = await uploadFileMultipart(file, targetFolderId, (label) => updateTask(taskId, { label }));
+          } else {
+            // Etapa 1: solicitar URL de upload pré-assinada
+            const { data } = await api.post("/documents/upload-url", {
+              folder_id: targetFolderId,
+              company_id: companyId,
+              name: file.name,
+              size_bytes: file.size,
+              content_type: file.type || "application/octet-stream",
+            });
 
-          // Etapa 2: fazer PUT direto no storage (R2 ou mock)
-          const putResp = await fetch(data.upload_url, {
-            method: "PUT",
-            body: file,
-            headers: { "Content-Type": file.type || "application/octet-stream" },
-          });
-          if (!putResp.ok) throw new Error(`Storage PUT falhou: ${putResp.status}`);
+            // Etapa 2: fazer PUT direto no storage (R2 ou mock)
+            const putResp = await fetch(data.upload_url, {
+              method: "PUT",
+              body: file,
+              headers: { "Content-Type": file.type || "application/octet-stream" },
+            });
+            if (!putResp.ok) throw new Error(`Storage PUT falhou: ${putResp.status}`);
 
-          // Etapa 3: confirmar upload e disparar OCR
-          await api.post(`/documents/${data.document_id}/confirm`);
+            // Etapa 3: confirmar upload e disparar OCR
+            await api.post(`/documents/${data.document_id}/confirm`);
+            documentId = data.document_id;
+          }
+
           updateTask(taskId, { label: `${displayName} · extraindo texto…` });
-          uploaded.push({ documentId: data.document_id, taskId, fileName: displayName });
+          uploaded.push({ documentId, taskId, fileName: displayName });
         } catch (fileErr: any) {
           updateTask(taskId, { status: "failed", error: fileErr?.response?.data?.detail ?? fileErr?.message ?? "Falha no upload." });
           throw fileErr;
@@ -472,7 +533,7 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
                 ? `${pending.length} arquivo${pending.length > 1 ? "s" : ""} selecionado${pending.length > 1 ? "s" : ""}`
                 : "Clique para selecionar ou arraste arquivos ou pastas aqui"}
             </p>
-            <p className="text-mac-caption text-[var(--text-tertiary)] mt-1">PDF, DOCX, XLSX, JPG, PNG — máx. 50 MB cada. Arrastar uma pasta recria a estrutura de subpastas.</p>
+            <p className="text-mac-caption text-[var(--text-tertiary)] mt-1">PDF, DOCX, XLSX, JPG, PNG — máx. 200 MB cada. Arrastar uma pasta recria a estrutura de subpastas.</p>
             <input
               type="file"
               multiple

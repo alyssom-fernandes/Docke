@@ -157,6 +157,24 @@ async def mock_upload(safe_key: str, request: Request) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# PUT /documents/mock-upload-part/{key}/{part_number} — parte individual do
+# upload multipart em mock mode (dev sem R2 configurado)
+# ---------------------------------------------------------------------------
+
+@router.put("/mock-upload-part/{safe_key:path}/{part_number}", include_in_schema=False)
+async def mock_upload_part(safe_key: str, part_number: int, request: Request) -> Response:
+    if not storage_service.is_mock():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Body vazio.")
+    part_path = storage_service.MOCK_DIR / f"{safe_key}.part{part_number}"
+    part_path.write_bytes(data)
+    # ETag simulado — o mock não valida, só precisa devolver algo estável.
+    return Response(status_code=200, headers={"ETag": f'"mock-{part_number}"'})
+
+
+# ---------------------------------------------------------------------------
 # POST /documents/:id/confirm — confirma upload e dispara OCR
 # DEVE vir antes de /{document_id} para FastAPI não confundir ":id/confirm"
 # ---------------------------------------------------------------------------
@@ -185,6 +203,18 @@ async def confirm_upload(
     if doc["content_hash"] is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Upload já confirmado.")
 
+    return await _finalize_confirmed_upload(admin_conn, doc, document_id, claims["sub"])
+
+
+async def _finalize_confirmed_upload(
+    admin_conn: asyncpg.Connection, doc: asyncpg.Record, document_id: UUID, user_id: str,
+) -> dict[str, Any]:
+    """
+    Fase 11.1: extraído de confirm_upload pra ser reaproveitado também pelo
+    fluxo multipart (POST /documents/multipart/{id}/complete) — o objeto já
+    existe completo no storage nos dois casos (PUT único ou multipart
+    completado), o resto (HEAD, hash, dedup, transação) é idêntico.
+    """
     key = doc["storage_path"]
 
     meta = storage_service.head_object(key)
@@ -236,12 +266,12 @@ async def confirm_upload(
         )
 
     row = await DocumentsService.confirm_upload_transaction(
-        admin_conn, document_id=document_id, content_hash=content_hash, user_id=claims["sub"],
+        admin_conn, document_id=document_id, content_hash=content_hash, user_id=user_id,
         real_size_bytes=real_size_bytes,
     )
     if row["folder_id"] is not None:
         await notify_folder_favoriters(
-            admin_conn, row["folder_id"], row["company_id"], claims["sub"],
+            admin_conn, row["folder_id"], row["company_id"], user_id,
             f'Novo documento "{row["name"]}" foi enviado a uma pasta que você ancorou.',
         )
 
@@ -250,7 +280,8 @@ async def confirm_upload(
     # sozinho no confirm, em vez de exigir que alguém abra o XML manualmente
     # depois pra descobrir que era uma nota fiscal. Documento acabou de ser
     # criado (tipo_fiscal/competencia sempre NULL aqui), então não há risco
-    # de sobrescrever algo que a pessoa já preencheu à mão.
+    # de sobrescrever algo que a pessoa já preencheu à mão. Fase 11.1: também
+    # se aplica ao fluxo multipart agora que este bloco é compartilhado.
     result = dict(row)
     ext = row["name"].rsplit(".", 1)[-1].lower() if "." in row["name"] else ""
     if ext == "xml" or row["mime_type"] == "application/xml":
@@ -274,6 +305,178 @@ async def confirm_upload(
                     result["competencia"] = updated["competencia"]
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Fase 11.1 — multipart upload real pro R2: sobe o limite de fato pra arquivos
+# grandes (200MB+) em partes de tamanho fixo, cada uma com sua própria URL
+# pré-assinada — em vez de um único PUT gigante (mais frágil em rede
+# instável e sujeito a timeout do lado do storage).
+# ---------------------------------------------------------------------------
+
+_MULTIPART_PART_SIZE = 10 * 1024 * 1024  # 10MB — mínimo aceito pelo S3/R2 multipart (exceto a última parte)
+_MULTIPART_THRESHOLD = 20 * 1024 * 1024  # abaixo disso, PUT único (/upload-url) já é simples o bastante
+
+
+class MultipartCreateRequest(BaseModel):
+    folder_id: UUID
+    company_id: UUID
+    name: str
+    size_bytes: int
+    content_type: str
+
+
+@router.post("/multipart/create", status_code=status.HTTP_201_CREATED)
+async def create_multipart_upload(
+    body: MultipartCreateRequest,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Etapa 1 do upload em partes — mesma validação de /upload-url (tamanho,
+    extensão, path traversal, permissão de pasta, conflito de nome), só que
+    abre um multipart upload no storage em vez de gerar uma única URL de PUT."""
+    if body.size_bytes > settings.MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Arquivo excede o limite de {settings.MAX_FILE_SIZE_BYTES // 1_048_576}MB.",
+        )
+    if body.size_bytes <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="size_bytes deve ser positivo.")
+
+    raw_name = body.name
+    dot_idx = raw_name.rfind(".")
+    if dot_idx == -1:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nome do arquivo sem extensão.")
+    ext = raw_name[dot_idx + 1:].lower()
+    if not ext.isalnum():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Extensão inválida.")
+    if ext not in _ALLOWED_EXT:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Extensão .{ext} não permitida. Permitidas: {', '.join(sorted(_ALLOWED_EXT))}",
+        )
+
+    folder = await DocumentsService.find_folder_for_upload(conn, body.folder_id, body.company_id)
+    if folder is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada.")
+    if folder["permission"] not in ("admin", "operador"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para fazer upload nesta pasta.")
+
+    final_name = await DocumentsService.resolve_unique_name(conn, body.folder_id, raw_name)
+
+    document_id = uuid4()
+    key = storage_service.storage_key(str(body.company_id), str(document_id), ext)
+    user_id = claims["sub"]
+    content_type = _MIME_MAP.get(ext, body.content_type)
+
+    await DocumentsService.insert_pending_document(
+        admin_conn,
+        document_id=document_id, folder_id=body.folder_id, company_id=body.company_id,
+        name=final_name, mime_type=content_type, file_type=ext,
+        size_bytes=body.size_bytes, storage_path=key, uploaded_by=user_id,
+    )
+
+    upload_id = storage_service.create_multipart_upload(key, content_type)
+    total_parts = (body.size_bytes + _MULTIPART_PART_SIZE - 1) // _MULTIPART_PART_SIZE
+
+    return {
+        "document_id": str(document_id),
+        "upload_id": upload_id,
+        "storage_key": key,
+        "part_size": _MULTIPART_PART_SIZE,
+        "total_parts": total_parts,
+        "mock_mode": storage_service.is_mock(),
+    }
+
+
+class PartUrlRequest(BaseModel):
+    upload_id: str
+    part_number: int
+
+
+@router.post("/multipart/{document_id}/part-url")
+async def get_multipart_part_url(
+    document_id: UUID,
+    body: PartUrlRequest,
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    doc = await DocumentsService.get_document_for_confirm(admin_conn, document_id, claims["sub"])
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+    if doc["permission"] not in ("admin", "operador"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para este upload.")
+    if doc["content_hash"] is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Upload já confirmado.")
+
+    url = storage_service.generate_part_upload_url(doc["storage_path"], body.upload_id, body.part_number)
+    return {"upload_url": url, "part_number": body.part_number}
+
+
+class PartInfo(BaseModel):
+    part_number: int
+    etag: str
+
+
+class MultipartCompleteRequest(BaseModel):
+    upload_id: str
+    parts: list[PartInfo]
+
+
+@router.post("/multipart/{document_id}/complete")
+async def complete_multipart_upload(
+    document_id: UUID,
+    body: MultipartCompleteRequest,
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    doc = await DocumentsService.get_document_for_confirm(admin_conn, document_id, claims["sub"])
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+    if doc["permission"] not in ("admin", "operador"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para confirmar este upload.")
+    if doc["content_hash"] is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Upload já confirmado.")
+
+    try:
+        storage_service.complete_multipart_upload(
+            doc["storage_path"], body.upload_id,
+            [{"PartNumber": p.part_number, "ETag": p.etag} for p in body.parts],
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_424_FAILED_DEPENDENCY,
+            detail="Não foi possível completar o upload em partes — alguma parte pode estar faltando ou corrompida.",
+        )
+
+    return await _finalize_confirmed_upload(admin_conn, doc, document_id, claims["sub"])
+
+
+class MultipartAbortRequest(BaseModel):
+    upload_id: str
+
+
+@router.post("/multipart/{document_id}/abort", status_code=status.HTTP_204_NO_CONTENT)
+async def abort_multipart_upload(
+    document_id: UUID,
+    body: MultipartAbortRequest,
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> None:
+    """Cancela um upload em partes abandonado (ex: usuário fechou a aba no meio) —
+    limpa tanto o multipart upload no storage quanto o registro pendente."""
+    doc = await DocumentsService.get_document_for_confirm(admin_conn, document_id, claims["sub"])
+    if doc is None:
+        return  # já não existe — idempotente
+    if doc["permission"] not in ("admin", "operador"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para este upload.")
+
+    try:
+        storage_service.abort_multipart_upload(doc["storage_path"], body.upload_id)
+    except Exception:
+        pass
+    await DocumentsService.delete_pending_document(admin_conn, document_id)
 
 
 # ---------------------------------------------------------------------------

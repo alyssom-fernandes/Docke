@@ -18,7 +18,11 @@ class Settings(BaseSettings):
 
     ENABLE_OCR_WORKER: bool = True
 
-    MAX_FILE_SIZE_BYTES: int = 52_428_800  # 50MB
+    # Fase 11.1: sobe de 50MB pra 200MB — o limite de 50MB era o teto real
+    # ANTES do multipart upload existir (um único PUT gigante era frágil em
+    # rede instável). Com upload em partes de 10MB, 200MB deixou de ser
+    # arriscado — resolve o pedido original de 200MB+ do backlog.
+    MAX_FILE_SIZE_BYTES: int = 209_715_200  # 200MB
 
     ALLOWED_EXTENSIONS: list[str] = [
         "pdf", "xlsx", "xls", "csv", "docx", "doc",

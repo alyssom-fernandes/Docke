@@ -273,3 +273,62 @@ def delete_object(key: str) -> None:
 
 def is_mock() -> bool:
     return not _r2_configured
+
+
+# ---------------------------------------------------------------------------
+# Fase 11.1 — multipart upload real: cada parte tem sua própria URL
+# pré-assinada (S3 multipart API, suportado pelo R2 nativamente).
+# ---------------------------------------------------------------------------
+
+def create_multipart_upload(key: str, content_type: str) -> str:
+    """Abre um multipart upload no storage e devolve o upload_id."""
+    if _r2_configured:
+        resp = _s3.create_multipart_upload(Bucket=settings.R2_BUCKET_NAME, Key=key, ContentType=content_type)
+        return resp["UploadId"]
+    # Mock: não precisa de upload_id real — as partes ficam em arquivos
+    # separados no filesystem (key.part1, key.part2...) até o complete.
+    return "mock-upload"
+
+
+def generate_part_upload_url(key: str, upload_id: str, part_number: int, expires_in: int = 3600) -> str:
+    """URL pré-assinada de PUT pra uma parte específica (1-indexed, como no S3)."""
+    if _r2_configured:
+        return _s3.generate_presigned_url(
+            "upload_part",
+            Params={"Bucket": settings.R2_BUCKET_NAME, "Key": key, "UploadId": upload_id, "PartNumber": part_number},
+            ExpiresIn=expires_in,
+        )
+    safe_key = key.replace("/", "__")
+    return f"http://localhost:8000/api/v1/documents/mock-upload-part/{safe_key}/{part_number}"
+
+
+def complete_multipart_upload(key: str, upload_id: str, parts: list[dict]) -> None:
+    """parts: [{"PartNumber": int, "ETag": str}, ...] — ordem não importa aqui,
+    é reordenado por PartNumber antes de enviar (S3 exige ordem crescente)."""
+    ordered = sorted(parts, key=lambda p: p["PartNumber"])
+    if _r2_configured:
+        _s3.complete_multipart_upload(
+            Bucket=settings.R2_BUCKET_NAME, Key=key, UploadId=upload_id,
+            MultipartUpload={"Parts": ordered},
+        )
+        return
+    # Mock: concatena os arquivos de parte na ordem certa e limpa os temporários.
+    safe_key = key.replace("/", "__")
+    out_path = MOCK_DIR / safe_key
+    with open(out_path, "wb") as out:
+        for p in ordered:
+            part_path = MOCK_DIR / f"{safe_key}.part{p['PartNumber']}"
+            if part_path.exists():
+                out.write(part_path.read_bytes())
+                part_path.unlink()
+
+
+def abort_multipart_upload(key: str, upload_id: str) -> None:
+    """Cancela um multipart upload abandonado — sempre melhor esforço (mesmo
+    padrão de delete_object), nunca deve travar o fluxo de cancelamento."""
+    if _r2_configured:
+        _s3.abort_multipart_upload(Bucket=settings.R2_BUCKET_NAME, Key=key, UploadId=upload_id)
+        return
+    safe_key = key.replace("/", "__")
+    for part_path in MOCK_DIR.glob(f"{safe_key}.part*"):
+        part_path.unlink(missing_ok=True)
