@@ -121,6 +121,84 @@ function PreviewWatermark({ label }: { label: string }) {
   );
 }
 
+// Fase 12.5 — DANFE (Documento Auxiliar da Nota Fiscal Eletrônica) a partir
+// do XML já parseado. Não é o layout oficial pixel-a-pixel da SEFAZ (isso
+// exigiria o gerador de código de barras Code-128 exato + posicionamento
+// milimétrico exigido em manual técnico próprio) — é uma representação
+// visual fiel o bastante pra conferência rápida (chave de acesso completa,
+// emitente/destinatário, totais), com layout reconhecível de nota fiscal
+// impressa em vez de uma lista de campos genérica.
+function chunkChaveAcesso(chave: string | null | undefined): string {
+  if (!chave) return "—";
+  return chave.match(/.{1,4}/g)?.join(" ") ?? chave;
+}
+
+function Danfe({ fields, docName }: { fields: XmlFields; docName: string }) {
+  function handlePrint() {
+    window.print();
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-end mb-3 print:hidden gap-2">
+        <button
+          onClick={handlePrint}
+          className="px-3 py-1.5 rounded-full text-mac-caption bg-teal-600 text-white hover:bg-teal-500 transition-colors duration-fast"
+        >
+          Imprimir / Salvar PDF
+        </button>
+      </div>
+      <div id="danfe-print-area" className="max-w-[720px] mx-auto bg-white text-black rounded-[4px] shadow-[0_2px_16px_rgba(0,0,0,0.15)] p-6 font-sans text-[12px] leading-snug">
+        <div className="flex items-start justify-between border-b-2 border-black pb-3 mb-3">
+          <div>
+            <p className="font-bold text-[14px]">DANFE</p>
+            <p className="text-[10px]">Documento Auxiliar da Nota Fiscal Eletrônica</p>
+            <p className="text-[10px] mt-1">{fields.natureza_operacao ?? "—"}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px]">Nº {fields.numero ?? "—"} · Série {fields.serie ?? "—"}</p>
+            <p className="text-[10px]">Emissão: {fmtXmlDate(fields.data_emissao)}</p>
+          </div>
+        </div>
+
+        <div className="border border-black rounded-[2px] p-2 mb-3">
+          <p className="text-[9px] uppercase tracking-wide">Chave de acesso</p>
+          <p className="font-mono text-[13px] tracking-wider my-1">{chunkChaveAcesso(fields.chave_acesso)}</p>
+          {/* Barras estilizadas — representação visual de código de barras,
+              não um Code-128 real/escaneável (fora do escopo desta fase). */}
+          <div className="flex items-end gap-[1px] h-8 mt-1" aria-hidden="true">
+            {Array.from({ length: 90 }).map((_, i) => (
+              <div key={i} className="bg-black" style={{ width: (i * 7) % 3 === 0 ? 2 : 1, height: `${40 + ((i * 37) % 60)}%` }} />
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="border border-black rounded-[2px] p-2">
+            <p className="text-[9px] uppercase tracking-wide mb-1">Emitente</p>
+            <p className="font-medium">{fields.emitente_nome ?? "—"}</p>
+            <p>CNPJ: {fmtCnpj(fields.emitente_cnpj)}</p>
+          </div>
+          <div className="border border-black rounded-[2px] p-2">
+            <p className="text-[9px] uppercase tracking-wide mb-1">Destinatário</p>
+            <p className="font-medium">{fields.destinatario_nome ?? "—"}</p>
+            <p>CNPJ/CPF: {fmtCnpj(fields.destinatario_cnpj)}</p>
+          </div>
+        </div>
+
+        <div className="border border-black rounded-[2px] p-2 flex justify-between items-center">
+          <p className="text-[9px] uppercase tracking-wide">Valor total da nota</p>
+          <p className="font-bold text-[15px]">{fmtCurrency(fields.valor_total)}</p>
+        </div>
+
+        <p className="text-[9px] text-center mt-3 text-gray-500">
+          Representação gerada pelo Docke a partir do XML — {docName}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function XmlField({ label, value, mono, span }: { label: string; value: string; mono?: boolean; span?: boolean }) {
   return (
     <div className={span ? "col-span-2" : undefined}>
@@ -142,6 +220,8 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
   const [error, setError] = useState<string | null>(null);
   const [xmlFields, setXmlFields] = useState<XmlFields | null>(null);
   const [showRawXml, setShowRawXml] = useState(false);
+  // Fase 12.5: alterna entre DANFE (padrão) e a grade simples de campos.
+  const [showDanfeFields, setShowDanfeFields] = useState(false);
   const [watermarkLabel] = useState(getWatermarkLabel);
 
   // Fase 12.3: busca dentro do documento (ocr_text) — search bar opcional,
@@ -426,27 +506,39 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
 
           {!loading && !error && type === "text" && textContent !== null && isXml && xmlFields?.recognized && !showRawXml && (
             <div className="w-full h-full overflow-auto p-5">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-4 print:hidden">
                 <p className="text-mac-body font-medium text-[var(--text-primary)]">Nota fiscal eletrônica</p>
-                <button
-                  onClick={() => setShowRawXml(true)}
-                  className="px-2.5 py-1 rounded-full text-mac-caption text-teal-500 hover:bg-[var(--bg-hover)] transition-colors duration-fast"
-                >
-                  Ver XML bruto
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setShowDanfeFields((v) => !v)}
+                    className="px-2.5 py-1 rounded-full text-mac-caption text-teal-500 hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+                  >
+                    {showDanfeFields ? "Ver DANFE" : "Ver campos"}
+                  </button>
+                  <button
+                    onClick={() => setShowRawXml(true)}
+                    className="px-2.5 py-1 rounded-full text-mac-caption text-teal-500 hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+                  >
+                    Ver XML bruto
+                  </button>
+                </div>
               </div>
-              <dl className="grid grid-cols-2 gap-x-6 gap-y-4">
-                <XmlField label="Número" value={xmlFields.numero ?? "—"} />
-                <XmlField label="Série" value={xmlFields.serie ?? "—"} />
-                <XmlField label="Data de emissão" value={fmtXmlDate(xmlFields.data_emissao)} />
-                <XmlField label="Valor total" value={fmtCurrency(xmlFields.valor_total)} />
-                <XmlField label="Natureza da operação" value={xmlFields.natureza_operacao ?? "—"} span />
-                <XmlField label="Emitente" value={xmlFields.emitente_nome ?? "—"} span />
-                <XmlField label="CNPJ emitente" value={fmtCnpj(xmlFields.emitente_cnpj)} />
-                <XmlField label="Destinatário" value={xmlFields.destinatario_nome ?? "—"} span />
-                <XmlField label="CNPJ/CPF destinatário" value={fmtCnpj(xmlFields.destinatario_cnpj)} />
-                <XmlField label="Chave de acesso" value={xmlFields.chave_acesso ?? "—"} mono span />
-              </dl>
+              {showDanfeFields ? (
+                <dl className="grid grid-cols-2 gap-x-6 gap-y-4">
+                  <XmlField label="Número" value={xmlFields.numero ?? "—"} />
+                  <XmlField label="Série" value={xmlFields.serie ?? "—"} />
+                  <XmlField label="Data de emissão" value={fmtXmlDate(xmlFields.data_emissao)} />
+                  <XmlField label="Valor total" value={fmtCurrency(xmlFields.valor_total)} />
+                  <XmlField label="Natureza da operação" value={xmlFields.natureza_operacao ?? "—"} span />
+                  <XmlField label="Emitente" value={xmlFields.emitente_nome ?? "—"} span />
+                  <XmlField label="CNPJ emitente" value={fmtCnpj(xmlFields.emitente_cnpj)} />
+                  <XmlField label="Destinatário" value={xmlFields.destinatario_nome ?? "—"} span />
+                  <XmlField label="CNPJ/CPF destinatário" value={fmtCnpj(xmlFields.destinatario_cnpj)} />
+                  <XmlField label="Chave de acesso" value={xmlFields.chave_acesso ?? "—"} mono span />
+                </dl>
+              ) : (
+                <Danfe fields={xmlFields} docName={doc.name} />
+              )}
             </div>
           )}
 
