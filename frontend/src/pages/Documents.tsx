@@ -351,7 +351,7 @@ function pollOcrStatus(items: { documentId: string; taskId: string; fileName: st
 
 function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: string | null; companyId: string; onClose: () => void; onDone: () => void }) {
   const { success, error: showError } = useToast();
-  const { addTask, updateTask } = useTaskCenter();
+  const { addTask, updateTask, registerRetry } = useTaskCenter();
   const [pending, setPending] = useState<PendingFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
@@ -399,7 +399,7 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
   const MULTIPART_THRESHOLD = 20 * 1024 * 1024;
 
   async function uploadFileMultipart(
-    file: File, targetFolderId: string, onProgress: (label: string) => void,
+    file: File, targetFolderId: string, onProgress: (label: string, progress: number) => void,
   ): Promise<string> {
     const { data: created } = await api.post("/documents/multipart/create", {
       folder_id: targetFolderId,
@@ -413,7 +413,7 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
     try {
       const parts: { part_number: number; etag: string }[] = [];
       for (let partNumber = 1; partNumber <= totalParts; partNumber++) {
-        onProgress(`${file.name} · parte ${partNumber}/${totalParts}`);
+        onProgress(`${file.name} · parte ${partNumber}/${totalParts}`, Math.round(((partNumber - 1) / totalParts) * 100));
         const start = (partNumber - 1) * partSize;
         const chunk = file.slice(start, start + partSize);
 
@@ -448,6 +448,53 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
     }
   }
 
+  // Fase 11.3: extraído do loop principal pra ser reaproveitado tanto no
+  // primeiro envio quanto no "Tentar novamente" de um item que falhou
+  // sozinho — sem isso, retry precisaria duplicar as 3 etapas do upload.
+  async function attemptUploadOne(
+    file: File, relativePath: string, targetFolderId: string, taskId: string, displayName: string,
+  ): Promise<{ ok: true; documentId: string; taskId: string; fileName: string } | { ok: false; reason: string }> {
+    updateTask(taskId, { status: "running", phase: "uploading", error: undefined, progress: undefined, label: displayName });
+    try {
+      let documentId: string;
+      if (file.size >= MULTIPART_THRESHOLD) {
+        documentId = await uploadFileMultipart(file, targetFolderId, (label, progress) => updateTask(taskId, { label, progress }));
+      } else {
+        const { data } = await api.post("/documents/upload-url", {
+          folder_id: targetFolderId,
+          company_id: companyId,
+          name: file.name,
+          size_bytes: file.size,
+          content_type: file.type || "application/octet-stream",
+        });
+
+        const putResp = await fetch(data.upload_url, {
+          method: "PUT",
+          body: file,
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+        });
+        if (!putResp.ok) throw new Error(`Storage PUT falhou: ${putResp.status}`);
+
+        await api.post(`/documents/${data.document_id}/confirm`);
+        documentId = data.document_id;
+      }
+
+      // Fase 11.2: transição de estado explícita — upload terminou, agora
+      // é processamento (OCR), fora do controle do cliente. progress
+      // volta a indeterminado (não temos como saber % do OCR no worker).
+      updateTask(taskId, { label: `${displayName} · extraindo texto…`, phase: "processing", progress: undefined });
+      pollOcrStatus([{ documentId, taskId, fileName: displayName }], updateTask);
+      return { ok: true, documentId, taskId, fileName: displayName };
+    } catch (fileErr: any) {
+      const reason = fileErr?.response?.data?.detail ?? fileErr?.message ?? "Falha no upload.";
+      updateTask(taskId, { status: "failed", error: reason });
+      // Fase 11.3: registra como refazer JÁ COM O MESMO ARQUIVO — o Task
+      // Center não tem (nem deveria ter) acesso ao File original.
+      registerRetry(taskId, () => { attemptUploadOne(file, relativePath, targetFolderId, taskId, displayName); });
+      return { ok: false, reason };
+    }
+  }
+
   async function upload() {
     if (!pending.length) return;
     if (!folderId) {
@@ -457,53 +504,37 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
     setUploading(true);
     setProgress({ done: 0, total: pending.length });
     const folderCache = new Map<string, string>([["", folderId]]);
-    const uploaded: { documentId: string; taskId: string; fileName: string }[] = [];
+    // Fase 11.3: relatório de erros — um arquivo falhar NUNCA deve abortar
+    // os demais do lote (bug real: antes, o `throw` dentro do loop parava
+    // todo o resto do lote assim que o primeiro item falhava).
+    const failures: { name: string; reason: string }[] = [];
+    let okCount = 0;
     try {
       for (const { file, relativePath } of pending) {
         const displayName = relativePath ? `${relativePath}/${file.name}` : file.name;
-        const taskId = addTask({ kind: "upload", label: displayName, status: "running" });
-        try {
-          const targetFolderId = await resolveFolderId(relativePath, folderCache);
-
-          let documentId: string;
-          if (file.size >= MULTIPART_THRESHOLD) {
-            documentId = await uploadFileMultipart(file, targetFolderId, (label) => updateTask(taskId, { label }));
-          } else {
-            // Etapa 1: solicitar URL de upload pré-assinada
-            const { data } = await api.post("/documents/upload-url", {
-              folder_id: targetFolderId,
-              company_id: companyId,
-              name: file.name,
-              size_bytes: file.size,
-              content_type: file.type || "application/octet-stream",
-            });
-
-            // Etapa 2: fazer PUT direto no storage (R2 ou mock)
-            const putResp = await fetch(data.upload_url, {
-              method: "PUT",
-              body: file,
-              headers: { "Content-Type": file.type || "application/octet-stream" },
-            });
-            if (!putResp.ok) throw new Error(`Storage PUT falhou: ${putResp.status}`);
-
-            // Etapa 3: confirmar upload e disparar OCR
-            await api.post(`/documents/${data.document_id}/confirm`);
-            documentId = data.document_id;
-          }
-
-          updateTask(taskId, { label: `${displayName} · extraindo texto…` });
-          uploaded.push({ documentId, taskId, fileName: displayName });
-        } catch (fileErr: any) {
-          updateTask(taskId, { status: "failed", error: fileErr?.response?.data?.detail ?? fileErr?.message ?? "Falha no upload." });
-          throw fileErr;
+        const taskId = addTask({ kind: "upload", label: displayName, status: "running", phase: "uploading" });
+        const targetFolderId = await resolveFolderId(relativePath, folderCache);
+        const result = await attemptUploadOne(file, relativePath, targetFolderId, taskId, displayName);
+        if (result.ok) {
+          okCount++;
+        } else {
+          failures.push({ name: displayName, reason: result.reason });
         }
-
         setProgress((p) => ({ ...p, done: p.done + 1 }));
       }
-      if (uploaded.length) pollOcrStatus(uploaded, updateTask);
-      success(`${pending.length} arquivo${pending.length > 1 ? "s" : ""} enviado${pending.length > 1 ? "s" : ""}.`);
+
+      if (okCount > 0) {
+        success(`${okCount} de ${pending.length} arquivo${pending.length > 1 ? "s" : ""} enviado${okCount > 1 ? "s" : ""}.`);
+      }
+      if (failures.length > 0) {
+        showError(
+          `${failures.length} arquivo${failures.length > 1 ? "s" : ""} falhou ao enviar: ` +
+          failures.map((f) => f.name).join(", ") +
+          " — veja a Central de Tarefas pra tentar de novo."
+        );
+      }
       onDone();
-      onClose();
+      if (failures.length === 0) onClose();
     } catch (e: any) {
       showError(e?.response?.data?.detail ?? e?.message ?? "Erro ao fazer upload.");
     } finally {

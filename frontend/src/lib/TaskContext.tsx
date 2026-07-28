@@ -2,12 +2,18 @@ import { createContext, useContext, useState, useCallback, useRef, type ReactNod
 
 export type TaskStatus = "running" | "done" | "failed";
 export type TaskKind = "upload" | "ocr" | "zip" | "export";
+// Fase 11.2: estados separados na fila — upload (subindo bytes, com % real
+// quando multipart) é uma etapa distinta de processing (OCR rodando no
+// worker, fora do controle do cliente). Antes as duas ficavam disfarçadas
+// sob o mesmo status "running" com só o texto do label mudando.
+export type TaskPhase = "uploading" | "processing";
 
 export interface Task {
   id: string;
   kind: TaskKind;
   label: string;
   status: TaskStatus;
+  phase?: TaskPhase;
   progress?: number; // 0-100, undefined = indeterminate
   error?: string;
   createdAt: number;
@@ -19,6 +25,12 @@ interface TaskCtx {
   updateTask: (id: string, patch: Partial<Omit<Task, "id" | "createdAt">>) => void;
   removeTask: (id: string) => void;
   clearDone: () => void;
+  // Fase 11.3: retry por tarefa — quem cria a tarefa (ex: upload de um
+  // arquivo) registra como refazer só AQUELE item; o Task Center (que não
+  // tem acesso ao File original) só precisa saber que existe um retry pra
+  // aquele id e chamar. Nunca serializado (função, não vai pro sessionStorage).
+  registerRetry: (id: string, fn: () => void) => void;
+  retry: (id: string) => void;
 }
 
 const Ctx = createContext<TaskCtx>({
@@ -27,6 +39,8 @@ const Ctx = createContext<TaskCtx>({
   updateTask: () => {},
   removeTask: () => {},
   clearDone: () => {},
+  registerRetry: () => {},
+  retry: () => {},
 });
 
 let _seq = 0;
@@ -52,6 +66,7 @@ function loadPersisted(): Task[] {
 export function TaskProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>(loadPersisted);
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const retryHandlers = useRef<Map<string, () => void>>(new Map());
 
   const persist = useCallback((next: Task[]) => {
     try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* quota/privado — ignora */ }
@@ -105,8 +120,16 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     });
   }, [persist]);
 
+  const registerRetry = useCallback((id: string, fn: () => void) => {
+    retryHandlers.current.set(id, fn);
+  }, []);
+
+  const retry = useCallback((id: string) => {
+    retryHandlers.current.get(id)?.();
+  }, []);
+
   return (
-    <Ctx.Provider value={{ tasks, addTask, updateTask, removeTask, clearDone }}>
+    <Ctx.Provider value={{ tasks, addTask, updateTask, removeTask, clearDone, registerRetry, retry }}>
       {children}
     </Ctx.Provider>
   );

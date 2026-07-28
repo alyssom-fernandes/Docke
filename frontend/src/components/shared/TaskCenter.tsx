@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, type ElementType } from "react";
-import { Bell, Upload, FileSearch, Archive, Download, X, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { Bell, Upload, FileSearch, Archive, Download, X, CheckCircle2, AlertCircle, Loader2, RotateCcw } from "lucide-react";
 import { useTaskCenter, type Task, type TaskKind } from "@/lib/TaskContext";
 import api from "@/lib/api";
 import { relativeDate } from "@/lib/date";
@@ -19,8 +19,11 @@ interface Notification {
   created_at: string;
 }
 
-function TaskRow({ task, onRemove }: { task: Task; onRemove: () => void }) {
-  const Icon = KIND_ICON[task.kind];
+function TaskRow({ task, onRemove, onRetry }: { task: Task; onRemove: () => void; onRetry: () => void }) {
+  // Fase 11.2: estados separados na fila — o ícone reflete a fase real
+  // (subindo bytes vs. processando OCR), não só um spinner genérico igual
+  // pras duas etapas.
+  const Icon = task.kind === "upload" && task.phase === "processing" ? FileSearch : KIND_ICON[task.kind];
   return (
     <li className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--bg-hover)] transition-colors duration-fast group">
       <div className="flex-shrink-0">
@@ -52,6 +55,17 @@ function TaskRow({ task, onRemove }: { task: Task; onRemove: () => void }) {
         )}
       </div>
       <div className="flex items-center gap-1 flex-shrink-0">
+        {/* Fase 11.3: retry por item — só faz sentido pra upload que falhou
+            (é o único fluxo que sabe refazer com o File original). */}
+        {task.status === "failed" && task.kind === "upload" && (
+          <button
+            onClick={onRetry}
+            title="Tentar novamente"
+            className="p-1 rounded-full text-[var(--text-tertiary)] hover:text-teal-500 hover:bg-teal-500/10 transition-colors duration-fast"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
+        )}
         <Icon className="w-3.5 h-3.5 text-[var(--text-tertiary)]" />
         <button
           onClick={onRemove}
@@ -68,7 +82,7 @@ const SEEN_KEY = "docke_task_center_seen";
 const POLL_INTERVAL_MS = 30_000;
 
 export default function TaskCenter() {
-  const { tasks, removeTask, clearDone } = useTaskCenter();
+  const { tasks, removeTask, clearDone, retry } = useTaskCenter();
   const [open, setOpen] = useState(false);
   const [everSeen, setEverSeen] = useState(() => localStorage.getItem(SEEN_KEY) === "true");
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -156,7 +170,7 @@ export default function TaskCenter() {
               </div>
               <ul className="max-h-[200px] overflow-y-auto divide-y divide-[var(--border-default)] flex-shrink-0">
                 {tasks.map((task) => (
-                  <TaskRow key={task.id} task={task} onRemove={() => removeTask(task.id)} />
+                  <TaskRow key={task.id} task={task} onRemove={() => removeTask(task.id)} onRetry={() => retry(task.id)} />
                 ))}
               </ul>
             </>
