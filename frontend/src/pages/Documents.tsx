@@ -42,6 +42,8 @@ import {
   Shield,
   Tags,
   Archive,
+  Lock,
+  Check,
 } from "lucide-react";
 import api from "@/lib/api";
 import { useTaskCenter } from "@/lib/TaskContext";
@@ -839,6 +841,95 @@ function MetadataSection({ doc, companyId, onChanged }: { doc: Document; company
   );
 }
 
+// Fase 14.1 — "ver cálculo": mostra a retenção efetiva do documento + todas
+// as políticas candidatas consideradas (mesmo padrão do Explain Access da
+// Fase 9.3, aplicado à retenção em vez de permissões).
+interface RetentionCandidate {
+  policy_id: string; policy_name: string; locked: boolean; is_indeterminate: boolean;
+  expires_at: string | null; company_wide: boolean; eligible: boolean; is_winner: boolean;
+}
+
+function DocumentRetentionSection({ docId }: { docId: string }) {
+  const [open, setOpen] = useState(false);
+  const [showCalc, setShowCalc] = useState(false);
+  const [info, setInfo] = useState<{ policy_name: string | null; expires_at: string | null; is_indeterminate: boolean | null; locked: boolean; under_hold: boolean } | null>(null);
+  const [candidates, setCandidates] = useState<RetentionCandidate[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    api.get(`/documents/${docId}/retention`)
+      .then((r) => setInfo(r.data))
+      .catch(() => setInfo(null))
+      .finally(() => setLoading(false));
+  }, [open, docId]);
+
+  useEffect(() => {
+    if (!showCalc) return;
+    api.get<{ candidates: RetentionCandidate[] }>(`/documents/${docId}/retention/explain`)
+      .then((r) => setCandidates(r.data.candidates))
+      .catch(() => setCandidates([]));
+  }, [showCalc, docId]);
+
+  return (
+    <div className="border-t border-[var(--border-default)] pt-3">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between text-mac-body text-[var(--text-primary)] hover:text-teal-500 transition-colors duration-fast"
+      >
+        <span className="flex items-center gap-2">
+          <Archive className="w-4 h-4" />
+          Retenção
+        </span>
+        {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+      </button>
+      {open && (
+        <div className="mt-3 space-y-2">
+          {loading ? (
+            <div className="h-10 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />
+          ) : !info?.policy_name ? (
+            <p className="text-mac-caption text-[var(--text-tertiary)]">Nenhuma política de retenção se aplica a este documento.</p>
+          ) : (
+            <div className="text-mac-caption text-[var(--text-secondary)] space-y-1">
+              <p>
+                Política: <span className="font-medium text-[var(--text-primary)]">{info.policy_name}</span>
+                {info.locked && <Lock className="w-3 h-3 inline ml-1 text-amber-500" />}
+              </p>
+              <p>{info.is_indeterminate ? "Prazo indeterminado" : `Expira em ${info.expires_at}`}</p>
+              {info.under_hold && <p className="text-amber-500">Sob legal hold — descarte bloqueado.</p>}
+              <button
+                onClick={() => setShowCalc((v) => !v)}
+                className="text-teal-500 hover:text-teal-600 transition-colors duration-fast"
+              >
+                {showCalc ? "Ocultar cálculo" : "Ver cálculo"}
+              </button>
+              {showCalc && (
+                <ul className="space-y-1 pt-1">
+                  {candidates === null ? (
+                    <li className="h-8 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />
+                  ) : candidates.length === 0 ? (
+                    <li className="text-[var(--text-tertiary)]">Nenhuma política atribuída (empresa ou pasta) encontrada.</li>
+                  ) : (
+                    candidates.map((c) => (
+                      <li key={c.policy_id} className={`flex items-start gap-1.5 ${c.is_winner ? "text-[var(--text-primary)]" : "text-[var(--text-tertiary)] line-through decoration-[var(--border-default)]"}`}>
+                        {c.is_winner ? <Check className="w-3 h-3 text-teal-500 flex-shrink-0 mt-0.5" /> : <span className="w-3 h-3 flex-shrink-0" />}
+                        <span>
+                          {c.policy_name} {c.locked && "(trava)"} — {c.is_indeterminate ? "indeterminado" : c.expires_at} · {c.company_wide ? "empresa toda" : "por pasta"}
+                        </span>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Fase 2.6: mesmo componente ActivityFeed do painel de administração
 // (Activity.tsx), só trocando o filtro inicial (item_id = este documento) —
 // colapsado por padrão, carrega só quando aberto (padrão igual ao de Versões).
@@ -1015,6 +1106,8 @@ function DetailDrawer({ doc, companyId, variant = "modal", onClose, onFavorite, 
       <MetadataSection doc={doc} companyId={companyId} onChanged={onChanged} />
 
       <VersionsPanel documentId={doc.id} documentName={doc.name} onChanged={onChanged} />
+
+      <DocumentRetentionSection docId={doc.id} />
 
       <DocumentActivitySection docId={doc.id} companyId={companyId} />
     </div>

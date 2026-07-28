@@ -281,6 +281,15 @@ async def get_document_retention(
     return dict(info) | {"under_hold": held}
 
 
+@router.get("/documents/{document_id}/retention/explain")
+async def explain_document_retention(
+    document_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Fase 14.1 — "ver cálculo": todas as políticas candidatas e por que uma venceu."""
+    return await RetentionService.explain_retention(conn, document_id)
+
+
 # ---------------------------------------------------------------------------
 # Fila de revisão
 # ---------------------------------------------------------------------------

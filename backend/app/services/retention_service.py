@@ -132,6 +132,68 @@ class RetentionService:
     async def get_document_retention_info(conn: asyncpg.Connection, document_id: UUID) -> asyncpg.Record | None:
         return await conn.fetchrow("SELECT * FROM public.document_retention_info($1)", document_id)
 
+    @staticmethod
+    async def explain_retention(conn: asyncpg.Connection, document_id: UUID) -> dict[str, Any]:
+        """
+        Fase 14.1 — mesma resolução de public.document_retention_info(), mas
+        devolve TODOS os candidatos (não só o vencedor via LIMIT 1), cada um
+        marcado com is_winner — espelha o padrão do Explain Access (9.3)
+        aplicado à retenção: "por que essa política venceu, não aquela outra".
+        """
+        rows = await conn.fetch(
+            """
+            WITH doc AS (
+              SELECT d.id, d.company_id, d.created_at, f.path AS folder_path, f.name AS folder_name
+              FROM public.documents d
+              JOIN public.folders f ON f.id = d.folder_id
+              WHERE d.id = $1
+            ),
+            candidates AS (
+              SELECT
+                rp.id AS policy_id, rp.name AS policy_name, rp.locked, rp.duration_months,
+                rpa.folder_path AS assignment_folder_path,
+                CASE rp.trigger_type
+                  WHEN 'upload_date' THEN doc.created_at::date
+                  WHEN 'custom_field' THEN (
+                    SELECT dfv.value_date FROM public.document_field_value dfv
+                    WHERE dfv.document_id = doc.id AND dfv.custom_field_id = rp.trigger_custom_field_id
+                  )
+                END AS start_date
+              FROM public.retention_policy_assignments rpa
+              JOIN public.retention_policies rp ON rp.id = rpa.policy_id
+              CROSS JOIN doc
+              WHERE rpa.company_id = doc.company_id
+                AND rp.active AND rp.archived_at IS NULL
+                AND (rpa.folder_path IS NULL OR rpa.folder_path @> doc.folder_path)
+            ),
+            resolved AS (
+              SELECT
+                policy_id, policy_name, locked, assignment_folder_path,
+                duration_months IS NULL AS is_indeterminate,
+                CASE WHEN duration_months IS NULL OR start_date IS NULL THEN NULL
+                     ELSE (start_date + (duration_months || ' months')::interval)::date END AS expires_at
+              FROM candidates
+              WHERE start_date IS NOT NULL OR duration_months IS NULL
+            ),
+            ranked AS (
+              SELECT *, EXISTS (SELECT 1 FROM resolved r2 WHERE r2.locked) AS any_locked
+              FROM resolved
+            )
+            SELECT
+              r.policy_id, r.policy_name, r.locked, r.is_indeterminate, r.expires_at,
+              (r.assignment_folder_path IS NULL) AS company_wide,
+              (r.any_locked AND r.locked) OR (NOT r.any_locked) AS eligible
+            FROM ranked r
+            ORDER BY r.is_indeterminate DESC NULLS LAST, r.expires_at DESC NULLS FIRST
+            """,
+            document_id,
+        )
+        candidates = [dict(r) for r in rows]
+        winner = next((c for c in candidates if c["eligible"]), None)
+        for c in candidates:
+            c["is_winner"] = c is winner
+        return {"winner": winner, "candidates": candidates}
+
     # -------------------------------------------------------------------
     # Fila de revisão (5.5 — só registro + decisão humana, sem executar exclusão)
     # -------------------------------------------------------------------
