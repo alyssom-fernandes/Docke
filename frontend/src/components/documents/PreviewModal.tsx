@@ -4,8 +4,7 @@ import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { getFileStyle } from "@/lib/fileType";
 import api from "@/lib/api";
 import Portal from "@/components/ui/Portal";
-// PdfViewer existe em ./PdfViewer.tsx, pronto pra uso assim que o CORS do R2
-// for configurado — ver comentário perto do <iframe> abaixo.
+import PdfViewer from "./PdfViewer";
 
 interface Doc {
   id: string;
@@ -252,15 +251,14 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
 
           {!loading && !error && type !== "unsupported" && <PreviewWatermark label={watermarkLabel} />}
 
+          {/* Fase 12.2: PdfViewer real (canvas próprio, sem toolbar nativa do
+              navegador) — o bucket R2 já libera CORS o bastante pro fetch()
+              do pdf.js funcionar (confirmado ao vivo), então o <iframe> (que
+              caía no visualizador nativo cinza do Chrome/Edge, a coisa mais
+              "isso não parece um site de verdade" do app inteiro) não é
+              mais necessário. */}
           {!loading && !error && type === "pdf" && url && (
-            // PdfViewer (canvas próprio, sem toolbar nativa do navegador) está
-            // pronto em ./PdfViewer.tsx mas ainda não pode ser usado: o pdf.js
-            // busca o arquivo via fetch(), e o bucket R2 não libera CORS pra
-            // esse fetch (Failed to fetch), diferente de um <iframe src>, que
-            // é navegação e não passa por preflight CORS. Precisa configurar
-            // a política CORS do bucket R2 no Cloudflare antes de trocar isto
-            // por <PdfViewer url={url} /> — ver instruções passadas ao usuário.
-            <iframe src={url} className="w-full h-full border-0" title={doc.name} />
+            <PdfViewer url={url} />
           )}
 
           {!loading && !error && type === "image" && url && (
