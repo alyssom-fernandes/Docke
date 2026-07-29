@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, ScrollText, Lock, Unlock, Inbox, Trash2, Plus, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ScrollText, Lock, Unlock, Inbox, Trash2, Plus, ShieldCheck, ChevronDown } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
@@ -246,6 +246,9 @@ export default function Retention() {
 
       {/* Atribuições */}
       <AssignmentSection companyId={current?.id} policies={policies} folderOptions={folderOptions} assignments={assignments} loading={loading} onRemove={removeAssignment} onCreated={load} initialFolderId={initialFolderId} />
+
+      {/* Fase 14.3: diagnóstico de governança */}
+      <HealthCheckSection companyId={current?.id} />
 
       {/* Legal Holds */}
       <HoldSection companyId={current?.id} folderOptions={folderOptions} holds={holds} loading={loading} onRelease={releaseHold} onCreated={load} />
@@ -566,6 +569,76 @@ function AssignmentSection({ companyId, policies, folderOptions, assignments, lo
             </li>
           ))}
         </ul>
+      )}
+    </div>
+  );
+}
+
+// Fase 14.3 — diagnóstico de governança: políticas ativas nunca atribuídas a
+// nada (esquecidas na criação) + documentos sem nenhuma política aplicável
+// (gap de cobertura). Colapsado por padrão, carrega só quando aberto (mesmo
+// padrão de Versões/Atividade).
+function HealthCheckSection({ companyId }: { companyId: string | undefined }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{
+    policies_without_assignments: { id: string; name: string }[];
+    documents_without_policy_sample: { id: string; name: string; folder_name: string }[];
+    documents_without_policy_has_more: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!open || !companyId) return;
+    setLoading(true);
+    api.get(`/companies/${companyId}/retention/health-check`)
+      .then((r) => setResult(r.data))
+      .catch(() => setResult(null))
+      .finally(() => setLoading(false));
+  }, [open, companyId]);
+
+  const clean = result && result.policies_without_assignments.length === 0 && result.documents_without_policy_sample.length === 0;
+
+  return (
+    <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6">
+      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between text-mac-body font-semibold text-[var(--text-primary)]">
+        <span className="flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-teal-500" />Diagnóstico de governança</span>
+        <ChevronDown className={`w-4 h-4 text-[var(--text-tertiary)] transition-transform duration-fast ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="mt-4 space-y-4">
+          {loading ? (
+            <div className="h-16 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />
+          ) : !result ? (
+            <p className="text-mac-caption text-[var(--text-tertiary)]">Não foi possível carregar o diagnóstico.</p>
+          ) : clean ? (
+            <p className="text-mac-body text-emerald-600 dark:text-emerald-400">Nenhum problema encontrado — todas as políticas estão em uso e todos os documentos têm cobertura.</p>
+          ) : (
+            <>
+              <div>
+                <p className="text-mac-body font-medium text-[var(--text-primary)] mb-1">Políticas sem nenhuma atribuição ({result.policies_without_assignments.length})</p>
+                {result.policies_without_assignments.length === 0 ? (
+                  <p className="text-mac-caption text-[var(--text-tertiary)]">Nenhuma — todas as políticas ativas protegem algum escopo.</p>
+                ) : (
+                  <ul className="text-mac-caption text-[var(--text-secondary)] space-y-0.5">
+                    {result.policies_without_assignments.map((p) => <li key={p.id}>{p.name}</li>)}
+                  </ul>
+                )}
+              </div>
+              <div>
+                <p className="text-mac-body font-medium text-[var(--text-primary)] mb-1">
+                  Documentos sem política aplicável {result.documents_without_policy_has_more ? "(50+)" : `(${result.documents_without_policy_sample.length})`}
+                </p>
+                {result.documents_without_policy_sample.length === 0 ? (
+                  <p className="text-mac-caption text-[var(--text-tertiary)]">Nenhum — todo documento tem ao menos uma política cobrindo ele.</p>
+                ) : (
+                  <ul className="text-mac-caption text-[var(--text-secondary)] space-y-0.5 max-h-48 overflow-y-auto">
+                    {result.documents_without_policy_sample.map((d) => <li key={d.id}>{d.name} <span className="text-[var(--text-tertiary)]">— {d.folder_name}</span></li>)}
+                  </ul>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       )}
     </div>
   );

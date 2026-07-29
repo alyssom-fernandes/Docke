@@ -116,6 +116,19 @@ class QueueDecision(BaseModel):
 # Políticas
 # ---------------------------------------------------------------------------
 
+@router.get("/companies/{company_id}/retention/health-check")
+async def retention_health_check(
+    company_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Fase 14.3 — políticas sem nenhuma atribuição + documentos sem nenhuma política aplicável."""
+    user_id = claims["sub"]
+    role = await get_app_role(conn, claims)
+    await _require_admin(conn, user_id, company_id, role)
+    return await RetentionService.health_check(conn, company_id)
+
+
 @router.get("/companies/{company_id}/retention/policies")
 async def list_policies(
     company_id: UUID,

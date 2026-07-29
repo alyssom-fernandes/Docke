@@ -242,6 +242,50 @@ class RetentionService:
         }
 
     @staticmethod
+    async def health_check(conn: asyncpg.Connection, company_id: UUID) -> dict[str, Any]:
+        """
+        Fase 14.3 — dois achados de governança, sem precisar abrir cada
+        documento um por um: (1) políticas ativas nunca atribuídas a nada
+        (existem, mas não protegem nenhum documento — provavelmente esquecidas
+        na criação); (2) documentos sem NENHUMA política aplicável (nem
+        empresa toda, nem pasta ancestral) — o oposto do "Ver cálculo" da
+        14.1, que resolve o vencedor quando HÁ candidatos.
+        """
+        policies_without_assignments = await conn.fetch(
+            """
+            SELECT rp.id, rp.name
+            FROM public.retention_policies rp
+            WHERE rp.company_id = $1 AND rp.active AND rp.archived_at IS NULL
+              AND NOT EXISTS (SELECT 1 FROM public.retention_policy_assignments rpa WHERE rpa.policy_id = rp.id)
+            ORDER BY rp.name
+            """,
+            company_id,
+        )
+        docs_without_policy = await conn.fetch(
+            """
+            SELECT d.id, d.name, f.name AS folder_name
+            FROM public.documents d
+            JOIN public.folders f ON f.id = d.folder_id
+            WHERE d.company_id = $1 AND d.deleted_at IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM public.retention_policy_assignments rpa
+                JOIN public.retention_policies rp ON rp.id = rpa.policy_id
+                WHERE rpa.company_id = d.company_id AND rp.active AND rp.archived_at IS NULL
+                  AND (rpa.folder_path IS NULL OR rpa.folder_path @> f.path)
+              )
+            ORDER BY d.created_at DESC
+            LIMIT 51
+            """,
+            company_id,
+        )
+        docs_list = [dict(r) for r in docs_without_policy[:50]]
+        return {
+            "policies_without_assignments": [dict(r) for r in policies_without_assignments],
+            "documents_without_policy_sample": docs_list,
+            "documents_without_policy_has_more": len(docs_without_policy) > 50,
+        }
+
+    @staticmethod
     async def explain_retention(conn: asyncpg.Connection, document_id: UUID) -> dict[str, Any]:
         """
         Fase 14.1 — mesma resolução de public.document_retention_info(), mas

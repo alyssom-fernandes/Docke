@@ -74,6 +74,7 @@ async def _run_once() -> None:
         await _notify_trash_expiring_soon(conn)
         await _purge_expired_trash(conn)
         await _notify_obligation_alerts(conn)
+        await _notify_retention_expiring_soon(conn)
         await _scan_retention_expirations(conn)
         await _reset_demo_data_if_due(conn)
 
@@ -103,6 +104,61 @@ async def _scan_retention_expirations(conn) -> None:
         ON CONFLICT (document_id) WHERE status IN ('pending', 'deferred') DO NOTHING
         """
     )
+
+
+_RETENTION_WARNING_DAYS = (90, 30, 7)
+
+
+async def _notify_retention_expiring_soon(conn) -> None:
+    """
+    Fase 14.5: avisa admin/operador com acesso não-escopado à empresa quando o
+    prazo de retenção de um documento (calculado por `document_retention_info`,
+    mesma fonte de verdade do `_scan_retention_expirations`) está a 90/30/7 dias
+    de vencer. Documentos sob legal hold não entram (o prazo não vai "vencer"
+    de fato enquanto o hold existir). Idempotente por (type, resource_id) —
+    cada janela tem seu próprio `type`, então um documento recebe no máximo um
+    aviso por janela conforme o tempo passa (90 dias antes, depois 30, depois 7),
+    nunca duas vezes a mesma janela.
+    """
+    for days in _RETENTION_WARNING_DAYS:
+        notif_type = f"retention_expiring_{days}"
+        rows = await conn.fetch(
+            """
+            SELECT d.id, d.name, d.company_id, info.expires_at
+            FROM public.documents d
+            CROSS JOIN LATERAL public.document_retention_info(d.id) info
+            WHERE d.deleted_at IS NULL
+              AND info.expires_at IS NOT NULL
+              AND info.expires_at >= CURRENT_DATE
+              AND info.expires_at <= CURRENT_DATE + ($1::int * interval '1 day')
+              AND NOT public.document_is_under_hold(d.id)
+              AND NOT EXISTS (
+                SELECT 1 FROM public.notifications n
+                WHERE n.type = $2 AND n.resource_id = d.id
+              )
+            """,
+            days, notif_type,
+        )
+        for row in rows:
+            recipients = await conn.fetch(
+                """
+                SELECT DISTINCT user_id FROM public.user_company_access
+                WHERE company_id = $1 AND folder_path IS NULL AND permission_level IN ('admin', 'operador')
+                """,
+                row["company_id"],
+            )
+            message = (
+                f'"{row["name"]}" vence a retenção em {days} dia(s) '
+                f'({row["expires_at"].strftime("%d/%m/%Y")}).'
+            )
+            for r in recipients:
+                await conn.execute(
+                    """
+                    INSERT INTO public.notifications (user_id, company_id, type, resource_type, resource_id, message)
+                    VALUES ($1, $2, $3, 'document', $4, $5)
+                    """,
+                    r["user_id"], row["company_id"], notif_type, row["id"], message,
+                )
 
 
 _OBLIGATION_ALERT_STATUSES = ("overdue", "at_risk", "blocked", "expired")
