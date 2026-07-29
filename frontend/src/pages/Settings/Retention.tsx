@@ -457,6 +457,27 @@ function AssignmentSection({ companyId, policies, folderOptions, assignments, lo
   const [policyId, setPolicyId] = useState("");
   const [folderId, setFolderId] = useState(initialFolderId ?? "");
   const [saving, setSaving] = useState(false);
+  // Fase 14.2: prévia de impacto — calculada sob demanda (não a cada troca de
+  // campo, pra não martelar o backend), some sozinha se política/pasta mudam
+  // depois de já ter sido calculada (o resultado ficaria desatualizado).
+  const [impact, setImpact] = useState<{ total_documents_in_scope: number; changed_count: number; unchanged_count: number; sample: { document_name: string; before_policy: string | null; after_policy: string | null }[] } | null>(null);
+  const [simulating, setSimulating] = useState(false);
+
+  async function simulate() {
+    if (!companyId || !policyId) return;
+    setSimulating(true);
+    setImpact(null);
+    try {
+      const { data } = await api.get(`/companies/${companyId}/retention/assignments/simulate`, {
+        params: { policy_id: policyId, folder_id: folderId || undefined },
+      });
+      setImpact(data);
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível calcular o impacto.");
+    } finally {
+      setSimulating(false);
+    }
+  }
 
   async function submit() {
     if (!companyId || !policyId) return;
@@ -488,12 +509,39 @@ function AssignmentSection({ companyId, policies, folderOptions, assignments, lo
         <div className="border border-[var(--border-default)] rounded-[var(--radius-control)] p-4 space-y-3">
           <div>
             <label className={labelClass}>Política</label>
-            <Dropdown value={policyId} onChange={setPolicyId} placeholder="Escolha a política" options={policies.map((p) => ({ value: p.id, label: p.name }))} />
+            <Dropdown value={policyId} onChange={(v) => { setPolicyId(v); setImpact(null); }} placeholder="Escolha a política" options={policies.map((p) => ({ value: p.id, label: p.name }))} />
           </div>
           <div>
             <label className={labelClass}>Pasta</label>
-            <Dropdown value={folderId} onChange={setFolderId} placeholder="Empresa toda (raiz)" options={folderOptions} />
+            <Dropdown value={folderId} onChange={(v) => { setFolderId(v); setImpact(null); }} placeholder="Empresa toda (raiz)" options={folderOptions} />
           </div>
+
+          {policyId && (
+            <div>
+              <Button variant="secondary" size="sm" onClick={simulate} loading={simulating}>Ver impacto antes de atribuir</Button>
+              {impact && (
+                <div className="mt-2 p-3 rounded-[var(--radius-control)] bg-[var(--bg-page)] border border-[var(--border-default)] space-y-1.5">
+                  <p className="text-mac-body text-[var(--text-primary)]">
+                    {impact.total_documents_in_scope} documento{impact.total_documents_in_scope !== 1 ? "s" : ""} no escopo —{" "}
+                    <strong>{impact.changed_count}</strong> {impact.changed_count === 1 ? "teria" : "teriam"} a política efetiva mudada, {impact.unchanged_count} sem mudança.
+                  </p>
+                  {impact.sample.length > 0 && (
+                    <ul className="text-mac-caption text-[var(--text-secondary)] space-y-0.5">
+                      {impact.sample.map((s, i) => (
+                        <li key={i}>
+                          {s.document_name}: {s.before_policy ?? "sem política"} → {s.after_policy ?? "sem política"}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {impact.changed_count > impact.sample.length && (
+                    <p className="text-mac-caption text-[var(--text-tertiary)]">…e mais {impact.changed_count - impact.sample.length}.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" size="sm" onClick={() => setShowForm(false)}>Cancelar</Button>
             <Button variant="primary" size="sm" onClick={submit} disabled={saving || !policyId}>{saving ? "Atribuindo…" : "Atribuir"}</Button>

@@ -133,6 +133,115 @@ class RetentionService:
         return await conn.fetchrow("SELECT * FROM public.document_retention_info($1)", document_id)
 
     @staticmethod
+    async def simulate_assignment_impact(
+        conn: asyncpg.Connection, *, company_id: UUID, policy_id: UUID, folder_path: str | None,
+    ) -> dict[str, Any]:
+        """
+        Fase 14.2 — antes de criar de verdade a atribuição (POST .../assignments),
+        mostra o impacto: quantos documentos no escopo (pasta + descendentes, ou
+        empresa toda) teriam a política EFETIVA mudada, comparando o vencedor
+        atual (só atribuições reais) contra o vencedor simulado (atribuições reais
+        + esta nova, hipotética). Documentos onde já vence outra política
+        travada, ou onde a nova política perderia mesmo assim, aparecem como
+        "sem mudança" — a simulação é sobre o resultado final, não só "está no escopo".
+
+        Simplificação conhecida: a regra "travada sempre vence não-travada"
+        (1º desempate de document_retention_info) não é replicada aqui — a
+        simulação usa só o 2º desempate (indeterminado > prazo finito > mais
+        tarde vence). Em cenários com política travada envolvida, o resultado
+        real após criar a atribuição pode divergir da prévia; útil como
+        estimativa, não como garantia — o Explain Access da 14.1, feito no
+        documento de verdade depois, sempre mostra o resultado exato.
+        """
+        rows = await conn.fetch(
+            """
+            WITH scope_docs AS (
+              SELECT d.id, d.name, d.created_at, f.path AS folder_path
+              FROM public.documents d
+              JOIN public.folders f ON f.id = d.folder_id
+              WHERE d.company_id = $1 AND d.deleted_at IS NULL
+                AND ($3::ltree IS NULL OR f.path <@ $3::ltree)
+            ),
+            new_policy AS (
+              SELECT id, name, locked, duration_months, trigger_type, trigger_custom_field_id
+              FROM public.retention_policies WHERE id = $2
+            ),
+            current_winner AS (
+              SELECT sd.id AS document_id, w.policy_id, w.policy_name, w.expires_at, w.is_indeterminate
+              FROM scope_docs sd
+              CROSS JOIN LATERAL (
+                SELECT r.policy_id, r.policy_name, r.expires_at, r.is_indeterminate
+                FROM (
+                  SELECT
+                    rp.id AS policy_id, rp.name AS policy_name, rp.locked,
+                    rp.duration_months IS NULL AS is_indeterminate,
+                    CASE WHEN rp.duration_months IS NULL THEN NULL ELSE (
+                      (CASE rp.trigger_type WHEN 'upload_date' THEN sd.created_at::date
+                        WHEN 'custom_field' THEN (SELECT dfv.value_date FROM public.document_field_value dfv WHERE dfv.document_id = sd.id AND dfv.custom_field_id = rp.trigger_custom_field_id) END)
+                      + (rp.duration_months || ' months')::interval)::date END AS expires_at
+                  FROM public.retention_policy_assignments rpa
+                  JOIN public.retention_policies rp ON rp.id = rpa.policy_id
+                  WHERE rpa.company_id = $1 AND rp.active AND rp.archived_at IS NULL
+                    AND (rpa.folder_path IS NULL OR rpa.folder_path @> sd.folder_path)
+                ) r
+                WHERE r.expires_at IS NOT NULL OR r.is_indeterminate
+                ORDER BY r.is_indeterminate DESC NULLS LAST, r.expires_at DESC NULLS FIRST
+                LIMIT 1
+              ) w
+            ),
+            simulated_winner AS (
+              SELECT sd.id AS document_id, w.policy_id, w.policy_name, w.expires_at, w.is_indeterminate
+              FROM scope_docs sd
+              CROSS JOIN LATERAL (
+                SELECT r.policy_id, r.policy_name, r.expires_at, r.is_indeterminate
+                FROM (
+                  SELECT
+                    rp.id AS policy_id, rp.name AS policy_name, rp.locked,
+                    rp.duration_months IS NULL AS is_indeterminate,
+                    CASE WHEN rp.duration_months IS NULL THEN NULL ELSE (
+                      (CASE rp.trigger_type WHEN 'upload_date' THEN sd.created_at::date
+                        WHEN 'custom_field' THEN (SELECT dfv.value_date FROM public.document_field_value dfv WHERE dfv.document_id = sd.id AND dfv.custom_field_id = rp.trigger_custom_field_id) END)
+                      + (rp.duration_months || ' months')::interval)::date END AS expires_at
+                  FROM public.retention_policy_assignments rpa
+                  JOIN public.retention_policies rp ON rp.id = rpa.policy_id
+                  WHERE rpa.company_id = $1 AND rp.active AND rp.archived_at IS NULL
+                    AND (rpa.folder_path IS NULL OR rpa.folder_path @> sd.folder_path)
+                  UNION ALL
+                  SELECT
+                    np.id, np.name, np.locked,
+                    np.duration_months IS NULL,
+                    CASE WHEN np.duration_months IS NULL THEN NULL ELSE (
+                      (CASE np.trigger_type WHEN 'upload_date' THEN sd.created_at::date
+                        WHEN 'custom_field' THEN (SELECT dfv.value_date FROM public.document_field_value dfv WHERE dfv.document_id = sd.id AND dfv.custom_field_id = np.trigger_custom_field_id) END)
+                      + (np.duration_months || ' months')::interval)::date END
+                  FROM new_policy np
+                ) r
+                WHERE r.expires_at IS NOT NULL OR r.is_indeterminate
+                ORDER BY r.is_indeterminate DESC NULLS LAST, r.expires_at DESC NULLS FIRST
+                LIMIT 1
+              ) w
+            )
+            SELECT
+              sd.id AS document_id, sd.name AS document_name,
+              cw.policy_name AS before_policy, cw.expires_at AS before_expires_at, cw.is_indeterminate AS before_indeterminate,
+              sw.policy_name AS after_policy, sw.expires_at AS after_expires_at, sw.is_indeterminate AS after_indeterminate,
+              (cw.policy_id IS DISTINCT FROM sw.policy_id) AS changed
+            FROM scope_docs sd
+            LEFT JOIN current_winner cw ON cw.document_id = sd.id
+            LEFT JOIN simulated_winner sw ON sw.document_id = sd.id
+            """,
+            company_id, policy_id, folder_path,
+        )
+        results = [dict(r) for r in rows]
+        changed = [r for r in results if r["changed"]]
+        return {
+            "total_documents_in_scope": len(results),
+            "changed_count": len(changed),
+            "unchanged_count": len(results) - len(changed),
+            "sample": changed[:10],
+        }
+
+    @staticmethod
     async def explain_retention(conn: asyncpg.Connection, document_id: UUID) -> dict[str, Any]:
         """
         Fase 14.1 — mesma resolução de public.document_retention_info(), mas

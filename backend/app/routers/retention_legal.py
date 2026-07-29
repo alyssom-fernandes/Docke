@@ -174,6 +174,32 @@ async def list_assignments(
     return [dict(r) for r in rows]
 
 
+@router.get("/companies/{company_id}/retention/assignments/simulate")
+async def simulate_assignment(
+    company_id: UUID,
+    policy_id: UUID = Query(...),
+    folder_id: UUID | None = Query(None),
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Fase 14.2 — prévia de impacto ANTES de criar a atribuição de verdade."""
+    user_id = claims["sub"]
+    role = await get_app_role(conn, claims)
+    await _require_admin(conn, user_id, company_id, role)
+
+    folder_path = await CustomFieldsService.get_folder_path(conn, folder_id) if folder_id else None
+    if folder_id and folder_path is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada.")
+
+    policy = await RetentionService.get_policy(conn, policy_id)
+    if policy is None or UUID(str(policy["company_id"])) != company_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Política de retenção não encontrada nesta empresa.")
+
+    return await RetentionService.simulate_assignment_impact(
+        conn, company_id=company_id, policy_id=policy_id, folder_path=folder_path,
+    )
+
+
 @router.post("/companies/{company_id}/retention/assignments", status_code=status.HTTP_201_CREATED)
 async def create_assignment(
     company_id: UUID,
