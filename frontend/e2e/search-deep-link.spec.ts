@@ -11,7 +11,7 @@ import { loginAsDemo } from "./helpers";
 test("Ctrl+K a partir da própria tela de Documentos navega para o documento certo", async ({ page }) => {
   await loginAsDemo(page);
 
-  await page.getByRole("link", { name: "Documentos" }).click();
+  await page.getByRole("link", { name: "Docs", exact: true }).click();
   await expect(page).toHaveURL(/\/documents/);
 
   // Abre o Command Palette (botão "Buscar documentos..." no TopBar, não o

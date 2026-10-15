@@ -1,13 +1,13 @@
 import { Page, expect } from "@playwright/test";
 
 /**
- * Loga via "Acessar modo demo" e espera a Dashboard carregar de verdade
+ * Loga via "Explorar a demonstração" e espera a Dashboard carregar de verdade
  * (não só a navegação — espera o nome da empresa aparecer no seletor,
  * que só acontece depois do CompanyContext resolver /companies).
  */
 export async function loginAsDemo(page: Page) {
   await page.goto("/login");
-  await page.getByRole("button", { name: "Acessar modo demo" }).click();
+  await page.getByRole("button", { name: "Explorar a demonstração" }).click();
   await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
   // Botão do seletor de empresa no TopBar — só aparece com nome quando
   // companies.length > 0 (ver TopBar.tsx). Confirma que a empresa não

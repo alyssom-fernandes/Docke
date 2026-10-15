@@ -18,7 +18,7 @@ test("trocar para o modo demo com uma empresa antiga em cache não deixa a UI pr
 
   // E a tela de Documentos precisa mostrar conteúdo real, não "Pasta vazia"
   // (o que aconteceria se a empresa errada continuasse selecionada).
-  await page.getByRole("link", { name: "Documentos" }).click();
+  await page.getByRole("link", { name: "Docs", exact: true }).click();
   await expect(page).toHaveURL(/\/documents/);
   await expect(page.getByText("Pasta vazia")).not.toBeVisible({ timeout: 5_000 });
 });

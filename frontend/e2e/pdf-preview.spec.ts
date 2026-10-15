@@ -14,7 +14,7 @@ import { loginAsDemo } from "./helpers";
 // HTTP em si, então checamos a resposta direto via page.request.
 test("Visualizar um PDF usa preview-url com Content-Disposition: inline", async ({ page }) => {
   await loginAsDemo(page);
-  await page.getByRole("link", { name: "Documentos" }).click();
+  await page.getByRole("link", { name: "Docs", exact: true }).click();
   await expect(page).toHaveURL(/\/documents/);
 
   // O seed (backend/app/seed/demo_data.py) distribui pelo menos um PDF em
