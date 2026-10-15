@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuthContext } from "@/lib/AuthContext";
 import { CompanyProvider, useCompany } from "@/lib/CompanyContext";
 import AppShell from "@/components/layout/AppShell";
@@ -24,6 +24,15 @@ import AdminHome from "@/pages/Settings/AdminHome";
 import Onboarding, { isOnboardingComplete } from "@/components/shared/Onboarding";
 import SessionExpiredOverlay from "@/components/shared/SessionExpiredOverlay";
 import PublicShare from "@/pages/PublicShare";
+import NotFound from "@/pages/NotFound";
+
+// Rotas do app que exigem sessão — sem sessão, essas levam ao login; qualquer
+// outro endereço mostra a página de inexistente em vez de redirecionar em silêncio.
+const APP_ROUTES = ["/dashboard", "/documents", "/search", "/trash", "/activity", "/favorites", "/shares", "/obligations", "/settings"];
+
+function isAppRoute(pathname: string) {
+  return pathname === "/" || APP_ROUTES.some((r) => pathname === r || pathname.startsWith(r + "/"));
+}
 
 function OnboardingGate({ children }: { children: React.ReactNode }) {
   const { companies, loading } = useCompany();
@@ -44,6 +53,7 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
 
 function ProtectedRoutes() {
   const { user, isLoading } = useAuthContext();
+  const { pathname } = useLocation();
 
   if (isLoading) {
     return (
@@ -54,7 +64,7 @@ function ProtectedRoutes() {
     );
   }
 
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return isAppRoute(pathname) ? <Navigate to="/login" replace /> : <NotFound standalone />;
 
   return (
     <CompanyProvider enabled={!!user}>
@@ -84,7 +94,8 @@ function ProtectedRoutes() {
               <Route path="companies" element={<Navigate to="/settings/organization" replace />} />
               <Route path="permissions" element={<Navigate to="/settings/users" replace />} />
             </Route>
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </AppShell>
       </OnboardingGate>

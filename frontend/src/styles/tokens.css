@@ -4,7 +4,6 @@
 
 /* ═══════════════════════════════════════════════════════════════════════════
    macOS 27 Golden Gate — Design System Tokens
-   Ref: design/MACOS27-REFERENCE.md, docs/MacOS 27/
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* Sobrescreve o preflight do Tailwind diretamente — o pipeline dev do Vite
@@ -100,7 +99,9 @@ html, body {
   --text-secondary: rgba(255,255,255,0.55);
   --text-tertiary: rgba(255,255,255,0.48);
   --text-placeholder: rgba(255,255,255,0.18);
-  --afn-brand: #c44a5a;
+  /* #c44a5a (guia AFN) dava 3,56:1 sobre #1E1E1E — abaixo do AA em texto
+     pequeno. Tom mais claro da mesma família: ~5,8:1. */
+  --afn-brand: #e07a88;
   --afn-brand-stroke: rgba(196,74,90,0.4);
   --afn-muted: rgba(255,255,255,0.28);
 
@@ -467,4 +468,31 @@ input[type="number"] {
   .anchor-drop {
     animation: none !important;
   }
+}
+
+/* ─── Login: trilha de auditoria de exemplo ───
+   Único movimento automático da tela: o trilho desce e os elos acendem em
+   sequência, uma vez, no carregamento. */
+.login-chain::before {
+  content: "";
+  position: absolute; left: 5px; top: 10px; bottom: 28px; width: 1px;
+  background: linear-gradient(#15A18E, rgba(21,161,142,0.25));
+  transform-origin: top;
+  animation: login-rail 900ms cubic-bezier(0, 0, 0.2, 1) both;
+}
+.login-chain > li { animation: login-node 380ms cubic-bezier(0, 0, 0.2, 1) both; }
+.login-chain > li:nth-child(1) { animation-delay: 120ms; }
+.login-chain > li:nth-child(2) { animation-delay: 320ms; }
+.login-chain > li:nth-child(3) { animation-delay: 520ms; }
+.login-chain > li:nth-child(4) { animation-delay: 720ms; }
+.login-chain > li::before {
+  content: "";
+  position: absolute; left: 0; top: 5px; width: 11px; height: 11px; border-radius: 9999px;
+  background: var(--bg-page); border: 1.5px solid #15A18E;
+}
+.login-chain > li:last-child::before { background: #15A18E; box-shadow: 0 0 0 4px rgba(21,161,142,0.18); }
+@keyframes login-rail { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes login-node { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .login-chain::before, .login-chain > li { animation: none !important; }
 }

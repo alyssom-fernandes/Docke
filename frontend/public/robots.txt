@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /login
+Disallow: /s/
+Disallow: /dashboard
+Disallow: /documents
+Disallow: /settings

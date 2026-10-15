@@ -18,6 +18,9 @@ interface AuthState {
   updateProfile: (fullName: string) => Promise<void>;
 }
 
+const LOGIN_TIMEOUT_MS = 20_000;
+const DEMO_LOGIN_TIMEOUT_MS = 45_000;
+
 export function useAuth(): AuthState {
   const [user, setUser] = useState<AuthUser | null>(() => {
     try {
@@ -73,15 +76,19 @@ export function useAuth(): AuthState {
     localStorage.setItem("docke_user", JSON.stringify(u));
   }
 
+  // Tempo limite só nas chamadas de login — um limite global no axios
+  // cortaria operações legitimamente longas (confirmar upload de 200MB,
+  // conversão DOCX→PDF). A demo tem folga maior: a API na Fly desliga
+  // quando ociosa (auto_stop) e a primeira requisição espera a máquina ligar.
   async function login(email: string, password: string) {
-    const res = await api.post("/auth/login", { email, password });
+    const res = await api.post("/auth/login", { email, password }, { timeout: LOGIN_TIMEOUT_MS });
     await applySession(res.data.access_token);
   }
 
   // Modo demo: a senha nunca fica no frontend — o backend guarda como
   // segredo (Fly secret) e faz o login por trás via /auth/demo-login.
   async function loginDemo() {
-    const res = await api.post("/auth/demo-login");
+    const res = await api.post("/auth/demo-login", undefined, { timeout: DEMO_LOGIN_TIMEOUT_MS });
     await applySession(res.data.access_token);
   }
 
