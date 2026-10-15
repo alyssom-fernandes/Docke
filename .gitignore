@@ -36,5 +36,3 @@ Thumbs.db
 # docs/ é só material de referência e planejamento local — nunca deve ir pro repositório
 docs/
 
-# Configuração local de ferramentas de desenvolvimento
-.claude/
