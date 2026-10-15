@@ -11,6 +11,7 @@ Invariante: nenhuma rota de usuário chama boto3 diretamente — só via este se
 
 import hashlib
 import os
+import re
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -31,6 +32,23 @@ def _content_disposition(disposition_type: str, filename: str) -> str:
 # Diretório do mock — usa TMPDIR do sistema para não poluir o projeto
 MOCK_DIR = Path(tempfile.gettempdir()) / "docke_mock_storage"
 MOCK_DIR.mkdir(parents=True, exist_ok=True)
+
+# Chaves do mock viram nome de arquivo dentro de MOCK_DIR. Só letras, números,
+# ponto, hífen e sublinhado — sem isso, uma chave com ".." ou "\\" (separador
+# no Windows) escaparia de MOCK_DIR pelas rotas mock, que não pedem token.
+_MOCK_KEY_RE = re.compile(r"^[A-Za-z0-9._-]{1,255}$")
+
+
+def is_valid_mock_key(safe_key: str) -> bool:
+    return bool(_MOCK_KEY_RE.match(safe_key)) and ".." not in safe_key
+
+
+def _mock_key(key: str) -> str:
+    safe_key = key.replace("/", "__")
+    if not is_valid_mock_key(safe_key):
+        raise ValueError("Chave inválida para o mock storage.")
+    return safe_key
+
 
 _r2_configured = all([
     settings.R2_ENDPOINT_URL,
@@ -91,7 +109,7 @@ def generate_upload_url(
         return url, expires_at
 
     # Mock: aponta para endpoint interno do backend (PUT /api/v1/documents/mock-upload/:key)
-    safe_key = key.replace("/", "__")
+    safe_key = _mock_key(key)
     url = f"http://localhost:8000/api/v1/documents/mock-upload/{safe_key}"
     return url, expires_at
 
@@ -108,7 +126,7 @@ def head_object(key: str) -> dict | None:
             return None
 
     # Mock: verifica no filesystem
-    safe_key = key.replace("/", "__")
+    safe_key = _mock_key(key)
     path = MOCK_DIR / safe_key
     if path.exists():
         stat = path.stat()
@@ -134,7 +152,7 @@ def compute_sha256(key: str) -> str | None:
             return None
 
     # Mock: lê arquivo local
-    safe_key = key.replace("/", "__")
+    safe_key = _mock_key(key)
     path = MOCK_DIR / safe_key
     if not path.exists():
         return None
@@ -147,7 +165,7 @@ def compute_sha256(key: str) -> str | None:
 
 def mock_save(key: str, data: bytes) -> None:
     """Salva dados no mock storage (chamado pelo endpoint interno de upload)."""
-    safe_key = key.replace("/", "__")
+    safe_key = _mock_key(key)
     path = MOCK_DIR / safe_key
     path.write_bytes(data)
 
@@ -178,7 +196,7 @@ def generate_download_url(
         )
         return url, expires_at
 
-    safe_key = key.replace("/", "__")
+    safe_key = _mock_key(key)
     safe_filename = filename.replace('"', "").replace("/", "_")
     url = f"http://localhost:8000/api/v1/documents/mock-download/{safe_key}?filename={safe_filename}"
     return url, expires_at
@@ -210,7 +228,7 @@ def generate_preview_url(
         return url, expires_at
 
     # Mock: aponta para endpoint interno de preview
-    safe_key = key.replace("/", "__")
+    safe_key = _mock_key(key)
     url = f"http://localhost:8000/api/v1/documents/mock-preview/{safe_key}"
     return url, expires_at
 
@@ -233,7 +251,7 @@ def read_object(key: str) -> bytes | None:
 
 def mock_read(key: str) -> bytes | None:
     """Lê arquivo do mock storage. Retorna None se não existir."""
-    safe_key = key.replace("/", "__")
+    safe_key = _mock_key(key)
     path = MOCK_DIR / safe_key
     if not path.exists():
         return None
@@ -267,7 +285,7 @@ def delete_object(key: str) -> None:
     if _r2_configured:
         _s3.delete_object(Bucket=settings.R2_BUCKET_NAME, Key=key)
         return
-    safe_key = key.replace("/", "__")
+    safe_key = _mock_key(key)
     (MOCK_DIR / safe_key).unlink(missing_ok=True)
 
 
@@ -349,7 +367,7 @@ def generate_part_upload_url(key: str, upload_id: str, part_number: int, expires
             Params={"Bucket": settings.R2_BUCKET_NAME, "Key": key, "UploadId": upload_id, "PartNumber": part_number},
             ExpiresIn=expires_in,
         )
-    safe_key = key.replace("/", "__")
+    safe_key = _mock_key(key)
     return f"http://localhost:8000/api/v1/documents/mock-upload-part/{safe_key}/{part_number}"
 
 
@@ -364,7 +382,7 @@ def complete_multipart_upload(key: str, upload_id: str, parts: list[dict]) -> No
         )
         return
     # Mock: concatena os arquivos de parte na ordem certa e limpa os temporários.
-    safe_key = key.replace("/", "__")
+    safe_key = _mock_key(key)
     out_path = MOCK_DIR / safe_key
     with open(out_path, "wb") as out:
         for p in ordered:
@@ -380,6 +398,6 @@ def abort_multipart_upload(key: str, upload_id: str) -> None:
     if _r2_configured:
         _s3.abort_multipart_upload(Bucket=settings.R2_BUCKET_NAME, Key=key, UploadId=upload_id)
         return
-    safe_key = key.replace("/", "__")
+    safe_key = _mock_key(key)
     for part_path in MOCK_DIR.glob(f"{safe_key}.part*"):
         part_path.unlink(missing_ok=True)

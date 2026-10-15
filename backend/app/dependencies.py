@@ -134,10 +134,12 @@ def _decode_jwt(token: str) -> dict[str, Any]:
             algorithms=["HS256"],
             options={"verify_aud": False},
         )
-    except JWTError as exc:
+    except JWTError:
+        # Sem repassar o motivo da biblioteca ao cliente (assinatura, algoritmo
+        # etc.) — isso só ajuda quem está tentando forjar um token.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Token inválido: {exc}",
+            detail="Sessão inválida ou expirada.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

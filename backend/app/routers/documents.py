@@ -149,6 +149,8 @@ async def mock_upload(safe_key: str, request: Request) -> dict[str, Any]:
     """
     if not storage_service.is_mock():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    if not storage_service.is_valid_mock_key(safe_key):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Chave inválida.")
     data = await request.body()
     if not data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Body vazio.")
@@ -165,6 +167,8 @@ async def mock_upload(safe_key: str, request: Request) -> dict[str, Any]:
 async def mock_upload_part(safe_key: str, part_number: int, request: Request) -> Response:
     if not storage_service.is_mock():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    if not storage_service.is_valid_mock_key(safe_key):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Chave inválida.")
     data = await request.body()
     if not data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Body vazio.")
@@ -490,6 +494,8 @@ async def mock_download_file(safe_key: str, filename: str = "") -> Response:
     """Serve o arquivo com Content-Disposition: attachment. Apenas em mock mode."""
     if not storage_service.is_mock():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    if not storage_service.is_valid_mock_key(safe_key):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Chave inválida.")
     data = storage_service.mock_read(safe_key)
     if data is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Arquivo não encontrado no mock storage.")
@@ -715,6 +721,8 @@ async def mock_preview(safe_key: str) -> Response:
     """
     if not storage_service.is_mock():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    if not storage_service.is_valid_mock_key(safe_key):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Chave inválida.")
     data = storage_service.mock_read(safe_key)
     if data is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Arquivo não encontrado no mock storage.")

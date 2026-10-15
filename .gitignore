@@ -9,6 +9,8 @@ backend/*.egg-info/
 
 # Env
 .env
+.env.local
+.env.*.local
 backend/.env
 frontend/.env
 
@@ -25,6 +27,7 @@ frontend/blob-report/
 # Supabase
 supabase/.branches/
 supabase/.temp/
+supabase/snippets/
 
 # OS
 .DS_Store
@@ -32,3 +35,6 @@ Thumbs.db
 
 # docs/ é só material de referência e planejamento local — nunca deve ir pro repositório
 docs/
+
+# Configuração local de ferramentas de desenvolvimento
+.claude/

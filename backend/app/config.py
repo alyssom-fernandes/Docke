@@ -1,6 +1,12 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+# Segredo de JWT que o `supabase start` usa localmente. É público (está na
+# documentação do Supabase): em produção, aceitar tokens HS256 assinados com
+# ele permitiria a qualquer pessoa forjar o token de qualquer usuário.
+PUBLIC_DEV_JWT_SECRET = "super-secret-jwt-token-with-at-least-32-characters-long"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
@@ -29,7 +35,7 @@ class Settings(BaseSettings):
         "xml", "jpg", "jpeg", "png", "gif", "txt",
     ]
 
-    JWT_SECRET: str = "super-secret-jwt-token-with-at-least-32-characters-long"
+    JWT_SECRET: str = PUBLIC_DEV_JWT_SECRET
 
     CORS_ORIGINS: str = "http://localhost:5173"
 
@@ -43,6 +49,18 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
+
+    @property
+    def is_local(self) -> bool:
+        return any(h in self.SUPABASE_URL for h in ("localhost", "127.0.0.1"))
+
+    def assert_safe_for_production(self) -> None:
+        """Recusa subir fora do ambiente local com o segredo de JWT público."""
+        if not self.is_local and self.JWT_SECRET == PUBLIC_DEV_JWT_SECRET:
+            raise RuntimeError(
+                "JWT_SECRET está com o valor público de desenvolvimento. "
+                "Defina o segredo real (fly secrets set JWT_SECRET=...) antes de subir."
+            )
 
     @property
     def asyncpg_url(self) -> str:

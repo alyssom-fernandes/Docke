@@ -27,6 +27,7 @@ from app.routers import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.dependencies import init_db_pool, close_db_pool, jwks_refresh_loop
+    settings.assert_safe_for_production()
     await init_db_pool()
     asyncio.create_task(jwks_refresh_loop())
     if settings.ENABLE_OCR_WORKER:
