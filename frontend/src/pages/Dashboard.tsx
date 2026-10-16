@@ -213,7 +213,10 @@ export default function Dashboard() {
   const [period, setPeriod] = useState<Period>(14);
   const [folderPath, setFolderPath] = useState<FolderCrumb[]>([{ id: null, name: "Todas as pastas" }]);
 
-  const emptyStats: Stats = { total_documents: 0, total_folders: 0, total_favorites: 0, recent_uploads: 0, documents_today: 0, refreshed_at: null };
+  // Falha em /stats vira aviso, não zeros: "0 documentos" é indistinguível de
+  // uma empresa vazia e escondia o erro (foi assim que o E2E recebia 0).
+  const [statsError, setStatsError] = useState(false);
+  const [statsReload, setStatsReload] = useState(0);
 
   useEffect(() => {
     if (!current) return;
@@ -226,19 +229,20 @@ export default function Dashboard() {
     setLoading(true);
 
     Promise.all([
-      api.get(`/companies/${current.id}/stats`).catch(() => ({ data: emptyStats })),
+      api.get(`/companies/${current.id}/stats`).catch(() => ({ data: null })),
       api.get("/documents/recent", { params: { company_id: current.id, limit: 5 } }).catch(() => ({ data: [] })),
       api.get("/favorites").catch(() => ({ data: [] })),
       api.get("/activity", { params: { company_id: current.id, page_size: 8 } }).catch(() => ({ data: { results: [] } })),
       api.get(`/companies/${current.id}/obligations/instances`).catch(() => ({ data: [] })),
     ]).then(([statsRes, recentRes, favsRes, actRes, oblRes]) => {
       setStats(statsRes.data);
+      setStatsError(statsRes.data === null);
       setRecent(Array.isArray(recentRes.data) ? recentRes.data : []);
       setFavorites(Array.isArray(favsRes.data) ? favsRes.data : []);
       setActivity(Array.isArray(actRes.data) ? actRes.data : (actRes.data.results ?? []));
       setObligations(Array.isArray(oblRes.data) ? oblRes.data : []);
     }).finally(() => setLoading(false));
-  }, [current?.id]);
+  }, [current?.id, statsReload]);
 
   // Gráficos ficam num efeito à parte: trocar o período ou descer uma
   // pasta no widget não deve refazer a chamada de stats/recentes/atividade
@@ -354,6 +358,19 @@ export default function Dashboard() {
           {[0, 1, 2, 3].map((i) => (
             <div key={i} className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-panel)] p-5 h-[84px] animate-pulse" />
           ))}
+        </div>
+      ) : statsError ? (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-panel)] px-5 py-4">
+          <p className="text-mac-body text-[var(--text-secondary)]">
+            Não foi possível carregar os números da empresa agora. Tente novamente em alguns segundos.
+          </p>
+          <button
+            onClick={() => setStatsReload((n) => n + 1)}
+            className="flex items-center gap-1 text-mac-body text-teal-600 dark:text-teal-400 hover:text-teal-500"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Tentar de novo
+          </button>
         </div>
       ) : stats && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">

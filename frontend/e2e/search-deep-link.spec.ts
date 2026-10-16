@@ -33,6 +33,8 @@ test("Ctrl+K a partir da própria tela de Documentos navega para o documento cer
   await expect(page.getByRole("heading", { name: "Detalhes" })).toBeVisible({ timeout: 10_000 });
   if (resultText) {
     const fileName = resultText.replace(/(Documento|Pasta)$/, "").trim();
-    await expect(page.locator("aside", { hasText: "Detalhes" })).toContainText(fileName);
+    // Painel de detalhes = o bloco que contém o título "Detalhes" (cabeçalho + corpo).
+    const details = page.getByRole("heading", { name: "Detalhes" }).locator("xpath=../..");
+    await expect(details).toContainText(fileName);
   }
 });

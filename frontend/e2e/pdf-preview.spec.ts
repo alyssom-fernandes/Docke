@@ -20,7 +20,8 @@ test("Visualizar um PDF usa preview-url com Content-Disposition: inline", async 
   // O seed (backend/app/seed/demo_data.py) distribui pelo menos um PDF em
   // cada uma das 4 pastas raiz (Fiscal/RH/Bancário/Contratos, sempre criadas
   // com esses nomes fixos) — RH sempre tem Holerite_*.pdf/Admissão_*.pdf dentro.
-  await page.getByRole("button", { name: "RH" }).click();
+  // A pasta aparece duas vezes (árvore lateral e linha da tabela) — usa a árvore.
+  await page.locator("aside", { hasText: "Pastas" }).getByRole("button", { name: "RH", exact: true }).click();
 
   const pdfRow = page.locator("table tbody tr", { hasText: ".pdf" }).first();
   await expect(pdfRow).toBeVisible({ timeout: 10_000 });

@@ -86,6 +86,10 @@ jobs:
           CI: "true"
         run: npx playwright test
 
+      - name: Mostrar log do backend (em caso de falha)
+        if: failure()
+        run: tail -n 300 backend/backend.log || true
+
       - name: Publicar relatório do Playwright (em caso de falha)
         if: failure()
         uses: actions/upload-artifact@v4

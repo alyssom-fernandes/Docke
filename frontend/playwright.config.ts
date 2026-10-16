@@ -12,7 +12,9 @@ export default defineConfig({
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,
   workers: 1,
-  reporter: process.env.CI ? "github" : "list",
+  // Em CI, além das anotações no GitHub, gera o relatório HTML (com capturas
+  // e traces) que o workflow anexa ao run quando algo falha.
+  reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:4173",
     trace: "retain-on-failure",
