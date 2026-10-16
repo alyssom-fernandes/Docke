@@ -175,7 +175,10 @@ async def company_stats(
     if await CompaniesService.has_unscoped_access(conn, claims["sub"], company_id):
         row = await CompaniesService.get_stats(conn, company_id)
         if row is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empresa não encontrada.")
+            # Empresa ainda fora da materialized view (criada depois do último
+            # refresh): calcula ao vivo em vez de devolver 404 — o membro já
+            # foi confirmado acima, então a empresa existe.
+            row = await CompaniesService.get_stats_live(conn, company_id)
     else:
         # Fase 3.8: concessão restrita a pasta não pode ver o agregado da
         # empresa inteira que a materialized view carrega — cai pro cálculo
@@ -203,6 +206,8 @@ async def refresh_company_stats(
     await CompaniesService.refresh_stats(conn)
     if await CompaniesService.has_unscoped_access(conn, claims["sub"], company_id):
         row = await CompaniesService.get_stats(conn, company_id)
+        if row is None:
+            row = await CompaniesService.get_stats_live(conn, company_id)
     else:
         row = await CompaniesService.get_stats_live(conn, company_id)
     return dict(row)

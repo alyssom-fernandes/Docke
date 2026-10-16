@@ -28,14 +28,15 @@ test("Visualizar um PDF usa preview-url com Content-Disposition: inline", async 
   await pdfRow.click();
 
   await expect(page.getByRole("heading", { name: "Detalhes" })).toBeVisible();
-  await page.getByRole("button", { name: "Visualizar" }).click();
 
-  const iframe = page.locator("iframe");
-  await expect(iframe).toBeVisible({ timeout: 10_000 });
-  const src = await iframe.getAttribute("src");
+  // Desde a Fase 12.3 o PDF é desenhado com pdf.js num <canvas> (não há mais
+  // <iframe>): o que importa é a URL que o preview pede ao backend.
+  const previewResp = page.waitForResponse((r) => /\/documents\/[^/]+\/preview-url/.test(r.url()) && r.request().method() === "GET");
+  await page.getByRole("button", { name: "Visualizar" }).click();
+  const { preview_url: src } = await (await previewResp).json();
   expect(src).toBeTruthy();
 
-  const response = await page.request.get(src!);
+  const response = await page.request.get(src);
   expect(response.ok()).toBeTruthy();
   const disposition = response.headers()["content-disposition"] ?? "";
   expect(disposition).toContain("inline");
