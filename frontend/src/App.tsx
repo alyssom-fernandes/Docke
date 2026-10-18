@@ -1,29 +1,33 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuthContext } from "@/lib/AuthContext";
 import { CompanyProvider, useCompany } from "@/lib/CompanyContext";
 import AppShell from "@/components/layout/AppShell";
 import Login from "@/pages/Login";
-import Dashboard from "@/pages/Dashboard";
-import Documents from "@/pages/Documents";
-import Search from "@/pages/Search";
-import Trash from "@/pages/Trash";
-import Activity from "@/pages/Activity";
-import Favorites from "@/pages/Favorites";
-import Shares from "@/pages/Shares";
-import Obligations from "@/pages/Obligations";
-import SettingsLayout, { SettingsIndex } from "@/pages/Settings/SettingsLayout";
-import Profile from "@/pages/Settings/Profile";
-import Organization from "@/pages/Settings/Organization";
-import Users from "@/pages/Settings/Users";
-import Metadata from "@/pages/Settings/Metadata";
-import Security from "@/pages/Settings/Security";
-import Preferences from "@/pages/Settings/Preferences";
-import Retention from "@/pages/Settings/Retention";
-import AdminHome from "@/pages/Settings/AdminHome";
+// Code splitting por rota: só o login entra no bundle inicial. Cada página
+// interna vira um chunk próprio, baixado quando a rota é visitada — antes era
+// um JS único com o app inteiro (pdf.js incluso) mesmo pra quem só via o login.
+const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const Documents = lazy(() => import("@/pages/Documents"));
+const Search = lazy(() => import("@/pages/Search"));
+const Trash = lazy(() => import("@/pages/Trash"));
+const Activity = lazy(() => import("@/pages/Activity"));
+const Favorites = lazy(() => import("@/pages/Favorites"));
+const Shares = lazy(() => import("@/pages/Shares"));
+const Obligations = lazy(() => import("@/pages/Obligations"));
+const SettingsLayout = lazy(() => import("@/pages/Settings/SettingsLayout"));
+const SettingsIndex = lazy(() => import("@/pages/Settings/SettingsLayout").then((m) => ({ default: m.SettingsIndex })));
+const Profile = lazy(() => import("@/pages/Settings/Profile"));
+const Organization = lazy(() => import("@/pages/Settings/Organization"));
+const Users = lazy(() => import("@/pages/Settings/Users"));
+const Metadata = lazy(() => import("@/pages/Settings/Metadata"));
+const Security = lazy(() => import("@/pages/Settings/Security"));
+const Preferences = lazy(() => import("@/pages/Settings/Preferences"));
+const Retention = lazy(() => import("@/pages/Settings/Retention"));
+const AdminHome = lazy(() => import("@/pages/Settings/AdminHome"));
 import Onboarding, { isOnboardingComplete } from "@/components/shared/Onboarding";
 import SessionExpiredOverlay from "@/components/shared/SessionExpiredOverlay";
-import PublicShare from "@/pages/PublicShare";
+const PublicShare = lazy(() => import("@/pages/PublicShare"));
 import NotFound from "@/pages/NotFound";
 
 // Rotas do app que exigem sessão — sem sessão, essas levam ao login; qualquer
@@ -32,6 +36,14 @@ const APP_ROUTES = ["/dashboard", "/documents", "/search", "/trash", "/activity"
 
 function isAppRoute(pathname: string) {
   return pathname === "/" || APP_ROUTES.some((r) => pathname === r || pathname.startsWith(r + "/"));
+}
+
+function PageFallback() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center" role="status" aria-label="Carregando">
+      <div className="w-5 h-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
 }
 
 function OnboardingGate({ children }: { children: React.ReactNode }) {
@@ -71,6 +83,7 @@ function ProtectedRoutes() {
       <SessionExpiredOverlay />
       <OnboardingGate>
         <AppShell>
+          <Suspense fallback={<PageFallback />}>
           <Routes>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/documents" element={<Documents />} />
@@ -97,6 +110,7 @@ function ProtectedRoutes() {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </Suspense>
         </AppShell>
       </OnboardingGate>
     </CompanyProvider>
@@ -105,10 +119,10 @@ function ProtectedRoutes() {
 
 export default function App() {
   return (
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/s/:token" element={<PublicShare />} />
+        <Route path="/s/:token" element={<Suspense fallback={<PageFallback />}><PublicShare /></Suspense>} />
         <Route path="/*" element={<ProtectedRoutes />} />
       </Routes>
     </BrowserRouter>

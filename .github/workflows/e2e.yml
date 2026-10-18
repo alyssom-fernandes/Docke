@@ -76,8 +76,6 @@ jobs:
         working-directory: frontend
         env:
           VITE_API_URL: http://localhost:8000
-          VITE_SUPABASE_URL: ${{ env.SUPABASE_API_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ env.SUPABASE_ANON_KEY }}
         run: npm run build
 
       - name: Rodar testes E2E (Playwright)

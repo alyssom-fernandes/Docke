@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { X, Download, AlertCircle, Loader2, Search, ChevronUp, ChevronDown } from "lucide-react";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { getFileStyle } from "@/lib/fileType";
 import api from "@/lib/api";
 import Portal from "@/components/ui/Portal";
-import PdfViewer from "./PdfViewer";
+// pdf.js (~400 KB) só é baixado quando alguém abre um PDF.
+const PdfViewer = lazy(() => import("./PdfViewer"));
 
 interface Doc {
   id: string;
@@ -471,7 +472,9 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
               "isso não parece um site de verdade" do app inteiro) não é
               mais necessário. */}
           {!loading && !error && type === "pdf" && url && (
-            <PdfViewer url={url} />
+            <Suspense fallback={<div className="flex flex-1 items-center justify-center"><Loader2 className="w-5 h-5 animate-spin text-[var(--text-tertiary)]" /></div>}>
+              <PdfViewer url={url} />
+            </Suspense>
           )}
 
           {!loading && !error && type === "image" && url && (
