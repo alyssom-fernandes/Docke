@@ -1,6 +1,6 @@
 # Versões fixas = as que o CI instalou e testou (run verde de 16/10/2026).
 # Atualizações chegam pelo Dependabot (.github/dependabot.yml), uma por PR.
-fastapi==0.143.3
+fastapi==0.156.0
 email-validator==2.3.0
 uvicorn[standard]==0.54.0
 pydantic-settings==2.16.0
