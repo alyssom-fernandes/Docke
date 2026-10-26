@@ -176,8 +176,10 @@ function actionIcon(action: string) {
 // explicar se é muito, pouco, ou o de sempre.
 function StatCard({ label, value, icon: Icon, color, context }: { label: string; value: number; icon: ElementType; color: string; context?: string }) {
   return (
-    <div className="glass-panel glass-blur-card glass-highlight-line glass-interactive relative rounded-(--radius-panel) p-5 flex items-center gap-3.5">
-      <Icon className={`w-5 h-5 shrink-0 ${color}`} strokeWidth={1.5} />
+    // items-start: com items-center, os cards que têm linha de contexto
+    // ("+1 hoje") subiam o número e a fileira ficava desalinhada.
+    <div className="glass-panel glass-blur-card glass-highlight-line glass-interactive relative rounded-(--radius-panel) p-5 flex items-start gap-3.5">
+      <Icon className={`w-5 h-5 shrink-0 mt-1 ${color}`} strokeWidth={1.5} />
       <div>
         <p className="text-mac-title1 font-semibold text-(--text-primary)">{value.toLocaleString("pt-BR")}</p>
         <p className="text-mac-caption text-(--text-secondary) mt-0.5">{label}</p>
@@ -336,8 +338,10 @@ export default function Dashboard() {
       {/* Fase 3.3: "atualizado há X" — o número vem de uma materialized view
           recalculada a cada 15min pelo worker; sem isso fica ambíguo se o
           usuário está vendo dado em tempo real ou não. */}
+      <div className="flex items-end justify-between gap-3">
+        <h1 className="text-mac-title2 font-semibold text-(--text-primary)">Início</h1>
       {!loading && stats && (
-        <div className="flex items-center justify-end gap-2 -mb-2">
+        <div className="flex items-center gap-2">
           <span className="text-mac-caption text-(--text-tertiary)">
             {stats.refreshed_at ? `Atualizado ${relativeDate(stats.refreshed_at)}` : "Atualizando…"}
           </span>
@@ -351,6 +355,7 @@ export default function Dashboard() {
           </button>
         </div>
       )}
+      </div>
 
       {/* Stats */}
       {loading ? (
