@@ -31,6 +31,7 @@ import secrets
 import uuid
 import zipfile
 from datetime import datetime, timedelta, timezone
+from xml.sax.saxutils import escape as _xml_escape
 
 import asyncpg
 import httpx
@@ -138,13 +139,15 @@ def _generate_minimal_pdf(text: str) -> bytes:
     wrapped = [safe_text[i:i + 80] for i in range(0, len(safe_text), 80)] or [""]
     content_ops = " ".join(f"({line}) Tj 0 -14 Td" for line in wrapped)
     stream = f"BT /F1 11 Tf 50 720 Td {content_ops} ET"
-    stream_bytes = stream.encode("latin-1", errors="replace")
+    # cp1252 + /Encoding/WinAnsiEncoding na fonte: sem a declaração, o leitor
+    # usa a StandardEncoding e os acentos saem trocados ("Admiss³o").
+    stream_bytes = stream.encode("cp1252", errors="replace")
 
     objects = [
         b"<</Type/Catalog/Pages 2 0 R>>",
         b"<</Type/Pages/Kids[3 0 R]/Count 1>>",
         b"<</Type/Page/Parent 2 0 R/Resources<</Font<</F1 4 0 R>>>>/MediaBox[0 0 612 792]/Contents 5 0 R>>",
-        b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>",
+        b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica/Encoding/WinAnsiEncoding>>",
         f"<</Length {len(stream_bytes)}>>stream\n".encode() + stream_bytes + b"\nendstream",
     ]
 
@@ -227,11 +230,54 @@ def _generate_minimal_xml(title: str, text: str) -> bytes:
     ).encode("utf-8")
 
 
-def generate_file_content(ext: str, title: str, text: str) -> bytes:
+# Fornecedor fictício que emite as NF-e da demo. O CNPJ tem dígitos
+# verificadores inválidos de propósito, como os das 3 empresas.
+_NFE_EMITENTE = ("Distribuidora Exemplo de Suprimentos Ltda", "45678901000123")
+
+
+def _generate_nfe_xml(title: str, dest_name: str, dest_cnpj: str, issued_at: datetime) -> bytes:
+    """
+    NF-e fictícia no layout 4.00 (namespace do portal fiscal), o bastante
+    para o preview reconhecer e montar o DANFE (extract_nfe_fields). A chave
+    de acesso tem o formato de 44 dígitos, sem DV válido — não é uma nota real.
+    """
+    digits = "".join(ch for ch in title if ch.isdigit()) or "1"
+    numero = int(digits)
+    emit_name, emit_cnpj = _NFE_EMITENTE
+    valor = 1250 + numero * 137.5
+    chave = f"29{issued_at:%y%m}{emit_cnpj}55001{numero:09d}1{numero:08d}0"
+    e = _xml_escape
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
+  <NFe>
+    <infNFe Id="NFe{chave}" versao="4.00">
+      <ide>
+        <cUF>29</cUF><natOp>Venda de mercadoria</natOp><mod>55</mod><serie>1</serie>
+        <nNF>{numero}</nNF><dhEmi>{issued_at:%Y-%m-%dT%H:%M:%S}-03:00</dhEmi><tpNF>1</tpNF><tpAmb>2</tpAmb>
+      </ide>
+      <emit><CNPJ>{emit_cnpj}</CNPJ><xNome>{e(emit_name)}</xNome></emit>
+      <dest><CNPJ>{dest_cnpj}</CNPJ><xNome>{e(dest_name)}</xNome></dest>
+      <det nItem="1">
+        <prod><cProd>{numero:04d}</cProd><xProd>Material de escritório (exemplo)</xProd><NCM>48201000</NCM>
+        <CFOP>5102</CFOP><uCom>UN</uCom><qCom>1.0000</qCom><vProd>{valor:.2f}</vProd></prod>
+      </det>
+      <total><ICMSTot><vProd>{valor:.2f}</vProd><vNF>{valor:.2f}</vNF></ICMSTot></total>
+      <infAdic><infCpl>Nota fiscal fictícia gerada para a demonstração do Docke. Sem valor fiscal.</infCpl></infAdic>
+    </infNFe>
+  </NFe>
+</nfeProc>
+""".encode("utf-8")
+
+
+def generate_file_content(
+    ext: str, title: str, text: str, *, company: tuple[str, str] | None = None, issued_at: datetime | None = None,
+) -> bytes:
     """Gera bytes de um arquivo real e abrível para o tipo dado (modo demo)."""
     if ext == "txt":
         return f"{title}\n\n{text}".encode("utf-8")
     if ext == "xml":
+        if company and title.startswith("NF-e"):
+            return _generate_nfe_xml(title, company[0], company[1], issued_at or datetime.now(timezone.utc))
         return _generate_minimal_xml(title, text)
     if ext == "pdf":
         return _generate_minimal_pdf(f"{title}\n\n{text}")
@@ -379,7 +425,8 @@ async def _build_demo_data(
         )
     print(f"✔ {len(EXTRA_USERS)} usuários de equipe extras criados.")
 
-    for company_name, _ in COMPANIES:
+    for company_name, company_cnpj_label in COMPANIES:
+        company_cnpj = "".join(ch for ch in company_cnpj_label if ch.isdigit())
         # ---------------------------------------------------------------
         # 2. Criar empresa
         # ---------------------------------------------------------------
@@ -482,7 +529,10 @@ async def _build_demo_data(
             # Conteúdo real (não só o registro no banco) — sem isso o
             # arquivo nunca existiu no R2 e não pode ser aberto/baixado.
             storage_key = f"documents/{company_id}/{doc_id}.{ext}"
-            file_bytes = generate_file_content(ext, doc_name, ocr_text or "Documento de exemplo do modo demo.")
+            file_bytes = generate_file_content(
+                ext, doc_name, ocr_text or "Documento de exemplo do modo demo.",
+                company=(company_name, company_cnpj), issued_at=created_at,
+            )
             storage_service.put_object_bytes(storage_key, file_bytes, mime_type)
             size = len(file_bytes)
             content_hash = hashlib.sha256(file_bytes).hexdigest()
