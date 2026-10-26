@@ -2,7 +2,7 @@ const monoBold = { fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 } 
 
 export default function Footer() {
   return (
-    <footer className="mt-6 pt-5 border-t border-[var(--border-default)] flex items-baseline justify-center gap-2.5">
+    <footer className="mt-6 pt-5 border-t border-(--border-default) flex items-baseline justify-center gap-2.5">
       <div className="flex items-baseline">
         <span
           style={{ ...monoBold, letterSpacing: "2px", fontSize: "10px", color: "var(--afn-brand)", WebkitTextStroke: "0.3px var(--afn-brand-stroke)" }}

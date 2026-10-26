@@ -56,11 +56,11 @@ export default function Preferences() {
 
   return (
     <div>
-      <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6 space-y-6">
+      <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-6 space-y-6">
         <div>
           <div className="flex items-center gap-2 mb-3">
             <Sliders className="w-4 h-4 text-teal-500" />
-            <h3 className="text-mac-body font-medium text-[var(--text-primary)]">Tema</h3>
+            <h3 className="text-mac-body font-medium text-(--text-primary)">Tema</h3>
           </div>
           {/* Miniaturas visuais + radio embaixo — igual ao seletor de
               Appearance do System Settings real, em vez de só ícone+label. */}
@@ -72,8 +72,8 @@ export default function Preferences() {
                 className="flex flex-col items-center gap-2 group"
               >
                 <span
-                  className={`w-full aspect-[4/3] rounded-[10px] border-2 overflow-hidden flex items-center justify-center transition-colors duration-fast ${
-                    theme === opt.value ? "border-teal-500" : "border-transparent group-hover:border-[var(--border-default)]"
+                  className={`w-full aspect-4/3 rounded-[10px] border-2 overflow-hidden flex items-center justify-center transition-colors duration-fast ${
+                    theme === opt.value ? "border-teal-500" : "border-transparent group-hover:border-(--border-default)"
                   }`}
                   style={{
                     background:
@@ -84,8 +84,8 @@ export default function Preferences() {
                 >
                   <opt.icon className={`w-5 h-5 ${opt.value === "light" ? "text-amber-500" : opt.value === "dark" ? "text-slate-300" : "text-teal-400"}`} />
                 </span>
-                <span className="flex items-center gap-1.5 text-mac-caption text-[var(--text-secondary)]">
-                  <span className={`w-3 h-3 rounded-full border flex items-center justify-center flex-shrink-0 ${theme === opt.value ? "border-teal-500" : "border-[var(--border-default)]"}`}>
+                <span className="flex items-center gap-1.5 text-mac-caption text-(--text-secondary)">
+                  <span className={`w-3 h-3 rounded-full border flex items-center justify-center shrink-0 ${theme === opt.value ? "border-teal-500" : "border-(--border-default)"}`}>
                     {theme === opt.value && <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />}
                   </span>
                   {opt.label}
@@ -95,20 +95,20 @@ export default function Preferences() {
           </div>
         </div>
 
-        <div className="pt-6 border-t border-[var(--border-default)]">
+        <div className="pt-6 border-t border-(--border-default)">
           <div className="flex items-center gap-2 mb-3">
             <Rows3 className="w-4 h-4 text-teal-500" />
-            <h3 className="text-mac-body font-medium text-[var(--text-primary)]">Densidade da tabela</h3>
+            <h3 className="text-mac-body font-medium text-(--text-primary)">Densidade da tabela</h3>
           </div>
           <div className="grid grid-cols-2 gap-2 max-w-[280px]">
             {DENSITY_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 onClick={() => chooseDensity(opt.value)}
-                className={`flex flex-col items-center gap-1.5 py-3 rounded-[var(--radius-control)] border text-mac-body transition-colors duration-fast ${
+                className={`flex flex-col items-center gap-1.5 py-3 rounded-(--radius-control) border text-mac-body transition-colors duration-fast ${
                   density === opt.value
                     ? "border-teal-500 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400"
-                    : "border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                    : "border-(--border-default) text-(--text-secondary) hover:bg-(--bg-hover)"
                 }`}
               >
                 <opt.icon className="w-4 h-4" />
@@ -116,7 +116,7 @@ export default function Preferences() {
               </button>
             ))}
           </div>
-          <p className="text-mac-caption text-[var(--text-tertiary)] mt-2">
+          <p className="text-mac-caption text-(--text-tertiary) mt-2">
             Aplica-se à listagem de documentos.
           </p>
         </div>
@@ -125,19 +125,19 @@ export default function Preferences() {
             24h (ver app/workers/maintenance_worker.py), este botão é só pra
             quem quiser uma demonstração limpa na hora, sem esperar o ciclo. */}
         {user?.username === "demo" && (
-          <div className="pt-6 border-t border-[var(--border-default)]">
+          <div className="pt-6 border-t border-(--border-default)">
             <div className="flex items-center gap-2 mb-3">
               <RotateCcw className="w-4 h-4 text-teal-500" />
-              <h3 className="text-mac-body font-medium text-[var(--text-primary)]">Dados demo</h3>
+              <h3 className="text-mac-body font-medium text-(--text-primary)">Dados demo</h3>
             </div>
-            <p className="text-mac-caption text-[var(--text-secondary)] mb-3 max-w-[420px]">
+            <p className="text-mac-caption text-(--text-secondary) mb-3 max-w-[420px]">
               Restaura as 3 empresas de exemplo ao estado padrão, apagando qualquer
               documento, pasta, usuário ou link criado durante o uso. Roda sozinho
               a cada 24h — use este botão se quiser uma demonstração limpa agora.
             </p>
             <button
               onClick={() => setConfirmingReset(true)}
-              className="flex items-center gap-1.5 h-8 px-3.5 text-mac-body text-[var(--text-secondary)] border border-[var(--border-default)] rounded-full hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+              className="flex items-center gap-1.5 h-8 px-3.5 text-mac-body text-(--text-secondary) border border-(--border-default) rounded-full hover:bg-(--bg-hover) transition-colors duration-fast"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               Resetar dados demo

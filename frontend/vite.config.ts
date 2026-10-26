@@ -1,11 +1,12 @@
 import path from "path";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  plugins: [react()],
-  // Tailwind e autoprefixer vêm do postcss.config.js, que lê o
-  // tailwind.config.cjs — fonte única do tema.
+  // Tailwind 4: tema em src/styles/tokens.css (@theme); prefixos de navegador
+  // ficam por conta do próprio Tailwind (Lightning CSS), sem autoprefixer.
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

@@ -81,8 +81,8 @@ export default function SettingsLayout() {
       const initials = (user?.full_name ?? user?.username ?? "?").split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase();
       return (
         <div className="flex flex-col h-[calc(100%+3rem)] -mt-6 py-2">
-          <div className="px-1 pb-3 flex-shrink-0">
-            <h1 className="text-mac-title-2 font-bold text-[var(--text-primary)]">Configurações</h1>
+          <div className="px-1 pb-3 shrink-0">
+            <h1 className="text-mac-title-2 font-bold text-(--text-primary)">Configurações</h1>
           </div>
           {/* No iOS real o conteúdo fica sempre no topo, mesmo quando é
               curto — o fundo simplesmente continua vazio até o fim da tela,
@@ -95,30 +95,30 @@ export default function SettingsLayout() {
                 separado da lista abaixo). */}
             <NavLink
               to="/settings/profile"
-              className="glass-panel glass-highlight-line rounded-[var(--radius-panel)] glass-shadow flex items-center gap-3.5 px-4 py-3.5 active:bg-[var(--bg-hover)] transition-colors duration-fast"
+              className="glass-panel glass-highlight-line rounded-(--radius-panel) glass-shadow flex items-center gap-3.5 px-4 py-3.5 active:bg-(--bg-hover) transition-colors duration-fast"
             >
-              <div className="w-14 h-14 rounded-full bg-teal-600 flex items-center justify-center text-white text-mac-title3 font-semibold flex-shrink-0">
+              <div className="w-14 h-14 rounded-full bg-teal-600 flex items-center justify-center text-white text-mac-title3 font-semibold shrink-0">
                 {initials}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-mac-callout font-semibold text-[var(--text-primary)] truncate">{user?.full_name}</p>
-                <p className="text-mac-caption text-[var(--text-tertiary)] truncate">@{user?.username}{user?.role ? ` · ${user.role}` : ""}</p>
+                <p className="text-mac-callout font-semibold text-(--text-primary) truncate">{user?.full_name}</p>
+                <p className="text-mac-caption text-(--text-tertiary) truncate">@{user?.username}{user?.role ? ` · ${user.role}` : ""}</p>
               </div>
-              <ChevronRight className="w-4 h-4 text-[var(--text-tertiary)] flex-shrink-0" />
+              <ChevronRight className="w-4 h-4 text-(--text-tertiary) shrink-0" />
             </NavLink>
 
-            <nav className="glass-panel glass-highlight-line rounded-[var(--radius-panel)] glass-shadow overflow-hidden divide-y divide-[var(--border-default)] flex-shrink-0">
+            <nav className="glass-panel glass-highlight-line rounded-(--radius-panel) glass-shadow overflow-hidden divide-y divide-(--border-default) shrink-0">
               {listTabs.map((tab) => (
                 <NavLink
                   key={tab.to}
                   to={tab.to}
-                  className="flex items-center gap-3 h-14 px-3.5 text-mac-body text-[var(--text-primary)] active:bg-[var(--bg-hover)] transition-colors duration-fast"
+                  className="flex items-center gap-3 h-14 px-3.5 text-mac-body text-(--text-primary) active:bg-(--bg-hover) transition-colors duration-fast"
                 >
-                  <span className={`w-9 h-9 rounded-[10px] flex items-center justify-center flex-shrink-0 ${tab.color}`}>
+                  <span className={`w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0 ${tab.color}`}>
                     <tab.icon className="w-5 h-5 text-white" strokeWidth={2.25} />
                   </span>
                   <span className="flex-1 min-w-0 truncate">{tab.label}</span>
-                  <ChevronRight className="w-4 h-4 text-[var(--text-tertiary)] flex-shrink-0" />
+                  <ChevronRight className="w-4 h-4 text-(--text-tertiary) shrink-0" />
                 </NavLink>
               ))}
             </nav>
@@ -135,7 +135,7 @@ export default function SettingsLayout() {
         <button
           onClick={() => navigate("/settings")}
           aria-label="Voltar para Configurações"
-          className="flex items-center justify-center w-9 h-9 -ml-1 mb-2 rounded-full bg-[var(--bg-hover)] text-[var(--text-primary)] flex-shrink-0 self-start"
+          className="flex items-center justify-center w-9 h-9 -ml-1 mb-2 rounded-full bg-(--bg-hover) text-(--text-primary) shrink-0 self-start"
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
@@ -143,7 +143,7 @@ export default function SettingsLayout() {
             (evita duplicar "Perfil"/"Segurança" tanto no header quanto no
             corpo). Conteúdo fica no topo (como no iOS real) — não centraliza. */}
         {activeTab && (
-          <h2 className="px-1 pb-3 text-mac-title-2 font-bold text-[var(--text-primary)] flex-shrink-0">{activeTab.label}</h2>
+          <h2 className="px-1 pb-3 text-mac-title-2 font-bold text-(--text-primary) shrink-0">{activeTab.label}</h2>
         )}
         <div className="flex-1 min-h-0 overflow-y-auto">
           <Outlet />
@@ -159,20 +159,20 @@ export default function SettingsLayout() {
     // glass-panel flutuantes lado a lado com gap-4, o que lia como "duas
     // caixas" em vez de uma janela coesa. calc(100%+3rem)/-mt-6 é o mesmo
     // ajuste de Documents.tsx pra cancelar o padding vertical do AppShell.
-    <div className="flex h-[calc(100%+3rem)] -mt-6 py-2 glass-panel glass-highlight-line rounded-[var(--radius-panel)] glass-shadow overflow-hidden">
-      <aside className="flex flex-col w-[240px] flex-shrink-0 border-r border-[var(--border-default)]">
-        <div className="px-4 py-3 border-b border-[var(--border-default)] flex-shrink-0 space-y-2">
-          <h1 className="text-mac-body font-semibold text-[var(--text-secondary)]">Configurações</h1>
+    <div className="flex h-[calc(100%+3rem)] -mt-6 py-2 glass-panel glass-highlight-line rounded-(--radius-panel) glass-shadow overflow-hidden">
+      <aside className="flex flex-col w-[240px] shrink-0 border-r border-(--border-default)">
+        <div className="px-4 py-3 border-b border-(--border-default) shrink-0 space-y-2">
+          <h1 className="text-mac-body font-semibold text-(--text-secondary)">Configurações</h1>
           {/* Campo de busca no topo da sidebar — presente em toda referência
               real de System Settings, ausente até agora no Docke. */}
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-placeholder)] pointer-events-none" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-(--text-placeholder) pointer-events-none" />
             <input
               type="search"
               value={sidebarQuery}
               onChange={(e) => setSidebarQuery(e.target.value)}
               placeholder="Buscar"
-              className="w-full h-7 pl-8 pr-2 text-mac-caption bg-[var(--bg-hover)] rounded-[6px] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[2px] focus:ring-teal-500/70"
+              className="w-full h-7 pl-8 pr-2 text-mac-caption bg-(--bg-hover) rounded-[6px] text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-2 focus:ring-teal-500/70"
             />
           </div>
         </div>
@@ -189,7 +189,7 @@ export default function SettingsLayout() {
                     nos agrupamentos da sidebar de pastas (Ancorados/Locais em
                     Documents.tsx), só que sem disclosure: System Settings
                     real não recolhe grupos, só separa visualmente. */}
-                <p className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">{group}</p>
+                <p className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-(--text-tertiary)">{group}</p>
                 <div className="space-y-0.5">
                   {filtered.filter((t) => t.group === group).map((tab) => (
                     <NavLink
@@ -198,14 +198,14 @@ export default function SettingsLayout() {
                       className={({ isActive }) =>
                         // Preenchimento sólido no item selecionado (não um tint sutil)
                         // — igual ao destaque de seleção real do System Settings.
-                        `flex items-center gap-2.5 h-9 px-2.5 rounded-[8px] text-mac-body whitespace-nowrap transition-colors duration-fast ${
+                        `flex items-center gap-2.5 h-9 px-2.5 rounded-sm text-mac-body whitespace-nowrap transition-colors duration-fast ${
                           isActive
                             ? "bg-teal-500 text-white font-medium"
-                            : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                            : "text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)"
                         }`
                       }
                     >
-                      <span className={`w-5 h-5 rounded-[6px] flex items-center justify-center flex-shrink-0 ${tab.color}`}>
+                      <span className={`w-5 h-5 rounded-[6px] flex items-center justify-center shrink-0 ${tab.color}`}>
                         <tab.icon className="w-3 h-3 text-white" strokeWidth={2.25} />
                       </span>
                       <span className="min-w-0 flex-1 truncate">
@@ -233,7 +233,7 @@ export default function SettingsLayout() {
             System Settings nunca estica formulários/group boxes pra ocupar
             uma janela larga inteira, mantém foco e legibilidade. */}
         <div className="max-w-[720px] space-y-6">
-          {activeTab && <h2 className="text-mac-title3 font-semibold text-[var(--text-primary)]">{activeTab.label}</h2>}
+          {activeTab && <h2 className="text-mac-title3 font-semibold text-(--text-primary)">{activeTab.label}</h2>}
           <Outlet />
         </div>
       </div>

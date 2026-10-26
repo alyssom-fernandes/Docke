@@ -58,13 +58,13 @@ export default function ConfirmModal({
   return (
     <Portal>
       <div
-        className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4"
+        className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4"
         onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       >
-        <div ref={containerRef} className="modal-card glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal w-full max-w-[360px]">
+        <div ref={containerRef} className="modal-card glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal w-full max-w-[360px]">
           <div className="p-5 pb-3">
-            <h2 className="text-mac-title3 text-[var(--text-primary)]">{title}</h2>
-            <p className="text-mac-body text-[var(--text-secondary)] mt-1.5">{description}</p>
+            <h2 className="text-mac-title3 text-(--text-primary)">{title}</h2>
+            <p className="text-mac-body text-(--text-secondary) mt-1.5">{description}</p>
           </div>
           {requireTypedConfirmation && (
             <div className="px-5 pb-3">
@@ -73,7 +73,7 @@ export default function ConfirmModal({
                 value={typedValue}
                 onChange={(e) => setTypedValue(e.target.value)}
                 placeholder={`Digite ${typedConfirmationValue}`}
-                className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+                className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
               />
             </div>
           )}

@@ -58,12 +58,12 @@ export default function Favorites() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-mac-title2 font-semibold text-[var(--text-primary)]">Ancorados</h1>
+      <h1 className="text-mac-title2 font-semibold text-(--text-primary)">Ancorados</h1>
 
       {loading ? (
         <div className="space-y-2">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-12 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] animate-pulse" />
+            <div key={i} className="h-12 bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) animate-pulse" />
           ))}
         </div>
       ) : favorites.length === 0 ? (
@@ -81,7 +81,7 @@ export default function Favorites() {
           }
         />
       ) : (
-        <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
+        <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
           <ul>
             {favorites.map((fav) => (
               <li
@@ -95,24 +95,24 @@ export default function Favorites() {
                     openFavorite(fav);
                   }
                 }}
-                className="flex items-center gap-3 px-5 py-3 hover:bg-[var(--bg-hover)] transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 group cursor-pointer"
+                className="flex items-center gap-3 px-5 py-3 hover:bg-(--bg-hover) transition-colors duration-fast border-b border-(--border-default) last:border-0 group cursor-pointer"
               >
                 {fav.item_type === "folder" ? (
-                  <FolderOpen className="w-4 h-4 text-teal-500 flex-shrink-0" />
+                  <FolderOpen className="w-4 h-4 text-teal-500 shrink-0" />
                 ) : (
                   (() => { const s = getFileStyle(fav.item_name); const Icon = s.icon; return (
-                    <div className={`w-6 h-6 rounded-[4px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
+                    <div className={`w-6 h-6 rounded-badge flex items-center justify-center shrink-0 ${s.bgColor}`}>
                       <Icon className={`w-3.5 h-3.5 ${s.iconColor} ${s.fillColor}`} />
                     </div>
                   ); })()
                 )}
-                <span className="flex-1 min-w-0 text-mac-body text-[var(--text-primary)] truncate">{fav.item_name}</span>
-                <span className="hidden md:inline text-mac-caption text-[var(--text-tertiary)] mr-2">
+                <span className="flex-1 min-w-0 text-mac-body text-(--text-primary) truncate">{fav.item_name}</span>
+                <span className="hidden md:inline text-mac-caption text-(--text-tertiary) mr-2">
                   {fav.item_type === "folder" ? "Pasta" : "Documento"}
                 </span>
                 <button
                   onClick={(e) => { e.stopPropagation(); removeFavorite(fav); }}
-                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-full text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-all duration-fast flex-shrink-0"
+                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-full text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--bg-hover) transition-all duration-fast shrink-0"
                   title="Remover ancoragem"
                 >
                   <Trash2 className="w-3.5 h-3.5" />

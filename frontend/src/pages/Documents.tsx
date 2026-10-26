@@ -176,11 +176,11 @@ function ocrBadge(status: Document["ocr_status"]) {
 
 function OcrIcon({ status }: { status: Document["ocr_status"] }) {
   const map: Record<Document["ocr_status"], { Icon: ElementType; className: string; label: string }> = {
-    pending: { Icon: Clock, className: "text-[var(--text-tertiary)]", label: "Aguardando OCR" },
+    pending: { Icon: Clock, className: "text-(--text-tertiary)", label: "Aguardando OCR" },
     processing: { Icon: Loader2, className: "text-amber-500 animate-spin", label: "Processando OCR" },
     done: { Icon: CheckCircle2, className: "text-emerald-500", label: "OCR concluído" },
     failed: { Icon: AlertCircle, className: "text-red-500", label: "OCR falhou" },
-    skipped: { Icon: MinusCircle, className: "text-[var(--text-tertiary)]", label: "OCR ignorado" },
+    skipped: { Icon: MinusCircle, className: "text-(--text-tertiary)", label: "OCR ignorado" },
   };
   const { Icon, className, label } = map[status] ?? map.pending;
   return (
@@ -248,21 +248,21 @@ function SortableHeader({ label, sortKey, sort, onSort, className = "", align = 
 }) {
   const active = sort.key === sortKey;
   return (
-    <th className={`relative px-3 py-2 text-mac-caption font-normal text-[var(--text-secondary)] text-left ${className}`}>
+    <th className={`relative px-3 py-2 text-mac-caption font-normal text-(--text-secondary) text-left ${className}`}>
       <button
         onClick={() => onSort(sortKey)}
-        className={`group/sort flex items-center gap-1 w-full hover:text-[var(--text-primary)] transition-colors duration-fast ${active ? "text-[var(--text-primary)] font-medium" : ""} ${align === "right" ? "justify-end" : "justify-between"}`}
+        className={`group/sort flex items-center gap-1 w-full hover:text-(--text-primary) transition-colors duration-fast ${active ? "text-(--text-primary) font-medium" : ""} ${align === "right" ? "justify-end" : "justify-between"}`}
       >
         {align === "right" && (active ? (
-          sort.dir === "asc" ? <ChevronUp className="w-3 h-3 flex-shrink-0" /> : <ChevronDown className="w-3 h-3 flex-shrink-0" />
+          sort.dir === "asc" ? <ChevronUp className="w-3 h-3 shrink-0" /> : <ChevronDown className="w-3 h-3 shrink-0" />
         ) : (
-          <ChevronsUpDown className="w-3 h-3 flex-shrink-0 opacity-0 group-hover/sort:opacity-40 transition-opacity duration-fast" />
+          <ChevronsUpDown className="w-3 h-3 shrink-0 opacity-0 group-hover/sort:opacity-40 transition-opacity duration-fast" />
         ))}
         <span className="truncate">{label}</span>
         {align === "left" && (active ? (
-          sort.dir === "asc" ? <ChevronUp className="w-3 h-3 flex-shrink-0" /> : <ChevronDown className="w-3 h-3 flex-shrink-0" />
+          sort.dir === "asc" ? <ChevronUp className="w-3 h-3 shrink-0" /> : <ChevronDown className="w-3 h-3 shrink-0" />
         ) : (
-          <ChevronsUpDown className="w-3 h-3 flex-shrink-0 opacity-0 group-hover/sort:opacity-40 transition-opacity duration-fast" />
+          <ChevronsUpDown className="w-3 h-3 shrink-0 opacity-0 group-hover/sort:opacity-40 transition-opacity duration-fast" />
         ))}
       </button>
       {onResizeStart && (
@@ -546,27 +546,27 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
 
   return (
     <Portal>
-    <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={uploadContainerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[480px]">
-        <div className="px-5 py-4 border-b border-[var(--border-default)]">
-          <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Upload de documentos</h2>
+    <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={uploadContainerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[480px]">
+        <div className="px-5 py-4 border-b border-(--border-default)">
+          <h2 className="text-mac-body font-semibold text-(--text-primary)">Upload de documentos</h2>
         </div>
         <div className="p-5 space-y-4">
           <label
             onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
             onDrop={handleDrop}
-            className={`block border-2 border-dashed rounded-[var(--radius-control)] p-8 text-center cursor-pointer transition-colors duration-fast ${
-              dragOver ? "border-teal-400 bg-teal-500/5" : "border-[var(--border-default)] hover:border-teal-400"
+            className={`block border-2 border-dashed rounded-(--radius-control) p-8 text-center cursor-pointer transition-colors duration-fast ${
+              dragOver ? "border-teal-400 bg-teal-500/5" : "border-(--border-default) hover:border-teal-400"
             }`}
           >
-            <Upload className="w-8 h-8 mx-auto mb-2 text-[var(--text-placeholder)]" />
-            <p className="text-mac-body text-[var(--text-secondary)]">
+            <Upload className="w-8 h-8 mx-auto mb-2 text-(--text-placeholder)" />
+            <p className="text-mac-body text-(--text-secondary)">
               {pending.length > 0
                 ? `${pending.length} arquivo${pending.length > 1 ? "s" : ""} selecionado${pending.length > 1 ? "s" : ""}`
                 : "Clique para selecionar ou arraste arquivos ou pastas aqui"}
             </p>
-            <p className="text-mac-caption text-[var(--text-tertiary)] mt-1">PDF, DOCX, XLSX, JPG, PNG — máx. 200 MB cada. Arrastar uma pasta recria a estrutura de subpastas.</p>
+            <p className="text-mac-caption text-(--text-tertiary) mt-1">PDF, DOCX, XLSX, JPG, PNG — máx. 200 MB cada. Arrastar uma pasta recria a estrutura de subpastas.</p>
             <input
               type="file"
               multiple
@@ -578,8 +578,8 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
           {pending.length > 0 && (
             <ul className="max-h-32 overflow-y-auto space-y-1">
               {pending.map((p, i) => (
-                <li key={i} className="flex items-center gap-2 text-mac-caption text-[var(--text-secondary)]">
-                  <FileText className="w-3.5 h-3.5 flex-shrink-0" />
+                <li key={i} className="flex items-center gap-2 text-mac-caption text-(--text-secondary)">
+                  <FileText className="w-3.5 h-3.5 shrink-0" />
                   <span className="flex-1 truncate">{p.relativePath ? `${p.relativePath}/${p.file.name}` : p.file.name}</span>
                   <span>{fmtSize(p.file.size)}</span>
                 </li>
@@ -588,16 +588,16 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
           )}
         </div>
         {!folderId && (
-          <div className="mx-5 mb-1 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-[var(--radius-control)] text-mac-caption text-amber-800 dark:text-amber-300">
+          <div className="mx-5 mb-1 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-(--radius-control) text-mac-caption text-amber-800 dark:text-amber-300">
             Abra uma pasta primeiro para habilitar o upload.
           </div>
         )}
         {uploading && progress.total > 1 && (
-          <div className="mx-5 mb-1 text-mac-caption text-[var(--text-secondary)]">
+          <div className="mx-5 mb-1 text-mac-caption text-(--text-secondary)">
             Enviando {progress.done + 1} de {progress.total}…
           </div>
         )}
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-[var(--border-default)]">
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default)">
           <Button variant="secondary" size="sm" onClick={onClose} disabled={uploading}>Cancelar</Button>
           <Button size="sm" loading={uploading} onClick={upload} disabled={!pending.length || !folderId}>
             Enviar
@@ -635,11 +635,11 @@ function CreateFolderModal({ parentId, companyId, onClose, onDone }: { parentId:
 
   return (
     <Portal>
-    <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={folderContainerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[360px]">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
-          <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Nova pasta</h2>
-          <button onClick={onClose} className="p-1 rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
+    <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={folderContainerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[360px]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-(--border-default)">
+          <h2 className="text-mac-body font-semibold text-(--text-primary)">Nova pasta</h2>
+          <button onClick={onClose} className="p-1 rounded-full text-(--text-secondary) hover:bg-(--bg-hover)">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -651,10 +651,10 @@ function CreateFolderModal({ parentId, companyId, onClose, onDone }: { parentId:
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") create(); if (e.key === "Escape") onClose(); }}
             placeholder="Nome da pasta"
-            className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+            className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
           />
         </div>
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-[var(--border-default)]">
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default)">
           <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
           <Button size="sm" loading={saving} onClick={create} disabled={!name.trim()}>
             Criar
@@ -676,7 +676,7 @@ type FieldSaveStatus = "idle" | "saving" | "saved" | "error";
 function FieldStatusIndicator({ status }: { status: FieldSaveStatus }) {
   if (status === "idle") return null;
   if (status === "saving") {
-    return <span className="text-mac-caption2 text-[var(--text-tertiary)] flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full border-2 border-current border-t-transparent animate-spin" />salvando…</span>;
+    return <span className="text-mac-caption2 text-(--text-tertiary) flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full border-2 border-current border-t-transparent animate-spin" />salvando…</span>;
   }
   if (status === "error") {
     return <span className="text-mac-caption2 text-red-500">não foi possível salvar</span>;
@@ -783,8 +783,8 @@ function MetadataSection({ doc, companyId, onChanged }: { doc: Document; company
   if (visibleFields.length === 0) return null;
 
   return (
-    <div className="pt-2 border-t border-[var(--border-default)] space-y-3">
-      <p className="text-mac-body font-semibold text-[var(--text-secondary)]">Metadados</p>
+    <div className="pt-2 border-t border-(--border-default) space-y-3">
+      <p className="text-mac-body font-semibold text-(--text-secondary)">Metadados</p>
       {visibleFields.map((f) => {
         // Fase 8.3: ícone de "quebra de herança" — o valor salvo no documento
         // diverge do valor padrão da pasta (só faz sentido comparar quando
@@ -794,7 +794,7 @@ function MetadataSection({ doc, companyId, onChanged }: { doc: Document; company
         return (
         <div key={f.custom_field_id}>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-mac-caption font-medium text-[var(--text-secondary)] flex items-center gap-1">
+            <label className="text-mac-caption font-medium text-(--text-secondary) flex items-center gap-1">
               {f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}
               {brokeInheritance && (
                 <Tooltip label={`Diferente do padrão da pasta ("${f.default_value}")`}>
@@ -831,7 +831,7 @@ function MetadataSection({ doc, companyId, onChanged }: { doc: Document; company
                 f.type === "competencia" ? "mm/aaaa" :
                 f.type === "numero" ? "0" : ""
               }
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
             />
           )}
         </div>
@@ -873,10 +873,10 @@ function DocumentRetentionSection({ docId }: { docId: string }) {
   }, [showCalc, docId]);
 
   return (
-    <div className="border-t border-[var(--border-default)] pt-3">
+    <div className="border-t border-(--border-default) pt-3">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between text-mac-body text-[var(--text-primary)] hover:text-teal-500 transition-colors duration-fast"
+        className="w-full flex items-center justify-between text-mac-body text-(--text-primary) hover:text-teal-500 transition-colors duration-fast"
       >
         <span className="flex items-center gap-2">
           <Archive className="w-4 h-4" />
@@ -887,13 +887,13 @@ function DocumentRetentionSection({ docId }: { docId: string }) {
       {open && (
         <div className="mt-3 space-y-2">
           {loading ? (
-            <div className="h-10 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />
+            <div className="h-10 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />
           ) : !info?.policy_name ? (
-            <p className="text-mac-caption text-[var(--text-tertiary)]">Nenhuma política de retenção se aplica a este documento.</p>
+            <p className="text-mac-caption text-(--text-tertiary)">Nenhuma política de retenção se aplica a este documento.</p>
           ) : (
-            <div className="text-mac-caption text-[var(--text-secondary)] space-y-1">
+            <div className="text-mac-caption text-(--text-secondary) space-y-1">
               <p>
-                Política: <span className="font-medium text-[var(--text-primary)]">{info.policy_name}</span>
+                Política: <span className="font-medium text-(--text-primary)">{info.policy_name}</span>
                 {info.locked && <Lock className="w-3 h-3 inline ml-1 text-amber-500" />}
               </p>
               <p>{info.is_indeterminate ? "Prazo indeterminado" : `Expira em ${info.expires_at}`}</p>
@@ -907,13 +907,13 @@ function DocumentRetentionSection({ docId }: { docId: string }) {
               {showCalc && (
                 <ul className="space-y-1 pt-1">
                   {candidates === null ? (
-                    <li className="h-8 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />
+                    <li className="h-8 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />
                   ) : candidates.length === 0 ? (
-                    <li className="text-[var(--text-tertiary)]">Nenhuma política atribuída (empresa ou pasta) encontrada.</li>
+                    <li className="text-(--text-tertiary)">Nenhuma política atribuída (empresa ou pasta) encontrada.</li>
                   ) : (
                     candidates.map((c) => (
-                      <li key={c.policy_id} className={`flex items-start gap-1.5 ${c.is_winner ? "text-[var(--text-primary)]" : "text-[var(--text-tertiary)] line-through decoration-[var(--border-default)]"}`}>
-                        {c.is_winner ? <Check className="w-3 h-3 text-teal-500 flex-shrink-0 mt-0.5" /> : <span className="w-3 h-3 flex-shrink-0" />}
+                      <li key={c.policy_id} className={`flex items-start gap-1.5 ${c.is_winner ? "text-(--text-primary)" : "text-(--text-tertiary) line-through decoration-(--border-default)"}`}>
+                        {c.is_winner ? <Check className="w-3 h-3 text-teal-500 shrink-0 mt-0.5" /> : <span className="w-3 h-3 shrink-0" />}
                         <span>
                           {c.policy_name} {c.locked && "(trava)"} — {c.is_indeterminate ? "indeterminado" : c.expires_at} · {c.company_wide ? "empresa toda" : "por pasta"}
                         </span>
@@ -936,10 +936,10 @@ function DocumentRetentionSection({ docId }: { docId: string }) {
 function DocumentActivitySection({ docId, companyId }: { docId: string; companyId: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="border-t border-[var(--border-default)] pt-3">
+    <div className="border-t border-(--border-default) pt-3">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between text-mac-body text-[var(--text-primary)] hover:text-teal-500 transition-colors duration-fast"
+        className="w-full flex items-center justify-between text-mac-body text-(--text-primary) hover:text-teal-500 transition-colors duration-fast"
       >
         <span className="flex items-center gap-2">
           <Clock className="w-4 h-4" />
@@ -1037,13 +1037,13 @@ function DetailDrawer({ doc, companyId, variant = "modal", onClose, onFavorite, 
     <div className="space-y-5">
       <div className="flex items-start gap-3">
         {(() => { const s = getFileStyle(doc.name); const Icon = s.icon; return (
-          <div className={`w-10 h-10 rounded-[var(--radius-control)] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
+          <div className={`w-10 h-10 rounded-(--radius-control) flex items-center justify-center shrink-0 ${s.bgColor}`}>
             <Icon className={`w-5 h-5 ${s.iconColor} ${s.fillColor}`} />
           </div>
         ); })()}
         <div className="flex-1 min-w-0">
-          <p className="text-mac-body font-medium text-[var(--text-primary)] break-words">{doc.name}</p>
-          <p className="text-mac-caption text-[var(--text-secondary)] mt-0.5">{fmtSize(doc.size_bytes)}</p>
+          <p className="text-mac-body font-medium text-(--text-primary) wrap-break-word">{doc.name}</p>
+          <p className="text-mac-caption text-(--text-secondary) mt-0.5">{fmtSize(doc.size_bytes)}</p>
         </div>
       </div>
 
@@ -1052,12 +1052,12 @@ function DetailDrawer({ doc, companyId, variant = "modal", onClose, onFavorite, 
         <Row label="Tamanho" value={fmtSize(doc.size_bytes)} />
         <Row label="Criado em" value={fmtDateFull(doc.created_at)} />
         <div className="flex justify-between py-1">
-          <span className="text-mac-caption text-[var(--text-secondary)]">OCR</span>
+          <span className="text-mac-caption text-(--text-secondary)">OCR</span>
           {ocrBadge(doc.ocr_status)}
         </div>
       </div>
 
-      <div className="flex flex-col gap-2 pt-2 border-t border-[var(--border-default)]">
+      <div className="flex flex-col gap-2 pt-2 border-t border-(--border-default)">
         <button
           onClick={onPreview}
           className="w-full h-9 flex items-center justify-center gap-2 text-mac-body bg-teal-600 text-white rounded-full hover:bg-teal-500 transition-colors duration-fast"
@@ -1067,7 +1067,7 @@ function DetailDrawer({ doc, companyId, variant = "modal", onClose, onFavorite, 
         </button>
         <button
           onClick={download}
-          className="w-full h-9 flex items-center justify-center gap-2 text-mac-body border border-[var(--border-default)] rounded-full text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+          className="w-full h-9 flex items-center justify-center gap-2 text-mac-body border border-(--border-default) rounded-full text-(--text-primary) hover:bg-(--bg-hover) transition-colors duration-fast"
         >
           <Download className="w-4 h-4" />
           Baixar
@@ -1077,7 +1077,7 @@ function DetailDrawer({ doc, companyId, variant = "modal", onClose, onFavorite, 
           className={`w-full h-9 flex items-center justify-center gap-2 text-mac-body border rounded-full transition-colors duration-fast ${
             favorited
               ? "border-teal-200 dark:border-teal-900/40 text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20"
-              : "border-[var(--border-default)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+              : "border-(--border-default) text-(--text-primary) hover:bg-(--bg-hover)"
           }`}
         >
           <Anchor className={`w-4 h-4 ${favorited ? "fill-current" : ""}`} />
@@ -1088,7 +1088,7 @@ function DetailDrawer({ doc, companyId, variant = "modal", onClose, onFavorite, 
           className={`w-full h-9 flex items-center justify-center gap-2 text-mac-body border rounded-full transition-colors duration-fast ${
             shareCount > 0
               ? "border-teal-200 dark:border-teal-900/40 text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20"
-              : "border-[var(--border-default)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+              : "border-(--border-default) text-(--text-primary) hover:bg-(--bg-hover)"
           }`}
         >
           <Share2 className="w-4 h-4" />
@@ -1130,10 +1130,10 @@ function DetailDrawer({ doc, companyId, variant = "modal", onClose, onFavorite, 
     // sobrando pra split view, então o modal centralizado continua sendo o
     // único jeito de ver detalhes.
     return (
-      <div className="hidden lg:flex flex-col w-[340px] flex-shrink-0 border-l border-[var(--border-default)] overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)] flex-shrink-0">
-          <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Detalhes</h2>
-          <button onClick={onClose} className="p-1 rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
+      <div className="hidden lg:flex flex-col w-[340px] shrink-0 border-l border-(--border-default) overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-(--border-default) shrink-0">
+          <h2 className="text-mac-body font-semibold text-(--text-primary)">Detalhes</h2>
+          <button onClick={onClose} className="p-1 rounded-full text-(--text-secondary) hover:bg-(--bg-hover)">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -1148,13 +1148,13 @@ function DetailDrawer({ doc, companyId, variant = "modal", onClose, onFavorite, 
   return (
     <Portal>
     <div
-      className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4 lg:hidden"
+      className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4 lg:hidden"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[420px] max-h-[85vh] overflow-y-auto">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
-        <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Detalhes</h2>
-        <button onClick={onClose} className="p-1 rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
+      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[420px] max-h-[85vh] overflow-y-auto">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-(--border-default)">
+        <h2 className="text-mac-body font-semibold text-(--text-primary)">Detalhes</h2>
+        <button onClick={onClose} className="p-1 rounded-full text-(--text-secondary) hover:bg-(--bg-hover)">
           <X className="w-4 h-4" />
         </button>
       </div>
@@ -1171,8 +1171,8 @@ function DetailDrawer({ doc, companyId, variant = "modal", onClose, onFavorite, 
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between py-1">
-      <span className="text-mac-caption text-[var(--text-secondary)]">{label}</span>
-      <span className="text-mac-caption text-[var(--text-primary)] truncate max-w-[180px] text-right">{value}</span>
+      <span className="text-mac-caption text-(--text-secondary)">{label}</span>
+      <span className="text-mac-caption text-(--text-primary) truncate max-w-[180px] text-right">{value}</span>
     </div>
   );
 }
@@ -1232,26 +1232,26 @@ function BulkMetadataModal({
 
   return (
     <Portal>
-      <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-        <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[440px] max-h-[80vh] flex flex-col">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-default)] flex-shrink-0">
-            <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">
+      <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[440px] max-h-[80vh] flex flex-col">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-(--border-default) shrink-0">
+            <h2 className="text-mac-body font-semibold text-(--text-primary)">
               Editar metadados de {documentIds.length} documento{documentIds.length > 1 ? "s" : ""}
             </h2>
-            <button onClick={onClose} className="p-1 rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
+            <button onClick={onClose} className="p-1 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover)">
               <X className="w-4 h-4" />
             </button>
           </div>
           <div className="p-5 space-y-4 overflow-y-auto">
             {fields.length === 0 ? (
-              <p className="text-mac-caption text-[var(--text-tertiary)]">Nenhum campo de metadado aplicado nesta pasta.</p>
+              <p className="text-mac-caption text-(--text-tertiary)">Nenhum campo de metadado aplicado nesta pasta.</p>
             ) : (
               fields.map((f) => {
                 const { varies, common } = fieldSummary(f.custom_field_id);
                 const value = edited[f.custom_field_id] ?? "";
                 return (
                   <div key={f.custom_field_id}>
-                    <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">{f.label}</label>
+                    <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">{f.label}</label>
                     {f.type === "selecao" ? (
                       <Dropdown
                         value={value}
@@ -1265,7 +1265,7 @@ function BulkMetadataModal({
                         value={value}
                         onChange={(e) => setEdited((prev) => ({ ...prev, [f.custom_field_id]: e.target.value }))}
                         placeholder={varies ? "(varies)" : common || "—"}
-                        className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+                        className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
                       />
                     )}
                   </div>
@@ -1273,12 +1273,12 @@ function BulkMetadataModal({
               })
             )}
             {fields.length > 0 && (
-              <p className="text-mac-caption2 text-[var(--text-tertiary)]">
+              <p className="text-mac-caption2 text-(--text-tertiary)">
                 Campos deixados como "(varies)" ou vazios não são alterados — só os que você preencher aqui são aplicados a todos os documentos selecionados.
               </p>
             )}
           </div>
-          <div className="flex justify-end gap-2 px-5 py-4 border-t border-[var(--border-default)] flex-shrink-0">
+          <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default) shrink-0">
             <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
             <Button size="sm" loading={saving} onClick={save} disabled={fields.length === 0}>Aplicar</Button>
           </div>
@@ -1434,7 +1434,7 @@ export default function Documents() {
       document.removeEventListener("mousedown", close);
       document.removeEventListener("scroll", close, true);
       document.removeEventListener("keydown", closeOnEscape);
-      window.removeEventListener("blur", close);
+      window.removeEventListener("blur-sm", close);
     };
   }, [contextMenu]);
   // ADR-026: densidade de tabela — compacto reduz padding vertical das linhas
@@ -2187,14 +2187,14 @@ export default function Documents() {
     // gap-4, lendo como "duas caixas" em vez de uma janela coesa (mesmo
     // ajuste feito em Settings/SettingsLayout.tsx).
     <div
-      className={`flex h-[calc(100%+3rem)] -mt-6 py-2 glass-panel glass-highlight-line rounded-[var(--radius-panel)] glass-shadow overflow-hidden ${
+      className={`flex h-[calc(100%+3rem)] -mt-6 py-2 glass-panel glass-highlight-line rounded-(--radius-panel) glass-shadow overflow-hidden ${
         tableScrolling ? "glass-scroll-active" : ""
       } glass-blur-table`}
     >
       {/* Sidebar de pastas — desktop only (lg+) */}
-      <aside className="hidden lg:flex flex-col w-[220px] flex-shrink-0 border-r border-[var(--border-default)]">
-        <div className="px-3 py-3 border-b border-[var(--border-default)] flex-shrink-0">
-          <h2 className="text-mac-body font-semibold text-[var(--text-secondary)]">Pastas</h2>
+      <aside className="hidden lg:flex flex-col w-[220px] shrink-0 border-r border-(--border-default)">
+        <div className="px-3 py-3 border-b border-(--border-default) shrink-0">
+          <h2 className="text-mac-body font-semibold text-(--text-secondary)">Pastas</h2>
         </div>
         <div className="flex-1 overflow-y-auto p-1.5">
           {/* Seção "Ancorados" — mesmo agrupamento por rótulo em caixa alta que
@@ -2204,9 +2204,9 @@ export default function Documents() {
             <>
               <button
                 onClick={() => toggleSidebarSection("ancorados")}
-                className="w-full flex items-center gap-1 px-2.5 pt-1.5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors duration-fast"
+                className="w-full flex items-center gap-1 px-2.5 pt-1.5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-(--text-tertiary) hover:text-(--text-secondary) transition-colors duration-fast"
               >
-                <ChevronDown className={`w-2.5 h-2.5 flex-shrink-0 transition-transform duration-fast ${collapsedSidebarSections.has("ancorados") ? "-rotate-90" : ""}`} />
+                <ChevronDown className={`w-2.5 h-2.5 shrink-0 transition-transform duration-fast ${collapsedSidebarSections.has("ancorados") ? "-rotate-90" : ""}`} />
                 Ancorados
               </button>
               {!collapsedSidebarSections.has("ancorados") &&
@@ -2214,12 +2214,12 @@ export default function Documents() {
                   <button
                     key={fav.id}
                     onClick={() => openSidebarFavorite(fav)}
-                    className="w-full flex items-center gap-1.5 h-8 pl-3 pr-2 text-mac-body rounded-[6px] transition-colors duration-fast text-left text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                    className="w-full flex items-center gap-1.5 h-8 pl-3 pr-2 text-mac-body rounded-[6px] transition-colors duration-fast text-left text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)"
                   >
                     {fav.item_type === "folder" ? (
-                      <Folder className="w-4 h-4 text-teal-500 flex-shrink-0" />
+                      <Folder className="w-4 h-4 text-teal-500 shrink-0" />
                     ) : (
-                      (() => { const s = getFileStyle(fav.item_name); const Icon = s.icon; return <Icon className={`w-4 h-4 flex-shrink-0 ${s.iconColor} ${s.fillColor}`} />; })()
+                      (() => { const s = getFileStyle(fav.item_name); const Icon = s.icon; return <Icon className={`w-4 h-4 shrink-0 ${s.iconColor} ${s.fillColor}`} />; })()
                     )}
                     <span className="truncate">{fav.item_name}</span>
                   </button>
@@ -2233,9 +2233,9 @@ export default function Documents() {
               referência real do Finder (docs/pdf/figma_extracted/Sidebars.pdf). */}
           <button
             onClick={() => toggleSidebarSection("locais")}
-            className={`w-full flex items-center gap-1 px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors duration-fast ${sidebarFavorites.length > 0 ? "pt-3" : "pt-1.5"}`}
+            className={`w-full flex items-center gap-1 px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-(--text-tertiary) hover:text-(--text-secondary) transition-colors duration-fast ${sidebarFavorites.length > 0 ? "pt-3" : "pt-1.5"}`}
           >
-            <ChevronDown className={`w-2.5 h-2.5 flex-shrink-0 transition-transform duration-fast ${collapsedSidebarSections.has("locais") ? "-rotate-90" : ""}`} />
+            <ChevronDown className={`w-2.5 h-2.5 shrink-0 transition-transform duration-fast ${collapsedSidebarSections.has("locais") ? "-rotate-90" : ""}`} />
             Locais
           </button>
           {!collapsedSidebarSections.has("locais") && (
@@ -2245,10 +2245,10 @@ export default function Documents() {
                 className={`w-full flex items-center gap-1.5 h-8 pl-3 pr-2 text-mac-body rounded-[6px] transition-colors duration-fast text-left ${
                   currentFolderId === null
                     ? "bg-teal-500/10 text-teal-500 font-medium"
-                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                    : "text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)"
                 }`}
               >
-                <Home className="w-4 h-4 flex-shrink-0" />
+                <Home className="w-4 h-4 shrink-0" />
                 Início
               </button>
               {current && (
@@ -2281,17 +2281,17 @@ export default function Documents() {
           agora vive no wrapper externo, compartilhado com a sidebar. */}
       <div ref={tableWrapRef} className="relative flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Toolbar */}
-        <div className="flex items-center gap-3 px-4 sm:px-6 py-3 border-b border-[var(--border-default)] flex-shrink-0">
+        <div className="flex items-center gap-3 px-4 sm:px-6 py-3 border-b border-(--border-default) shrink-0">
           {/* Voltar/avançar — todo navegador de arquivos de verdade (Finder,
               Explorer) tem esse par de botões na ponta esquerda da barra de
               ferramentas; histórico independente do breadcrumb (que só
               reflete o caminho atual). */}
-          <div className="hidden sm:flex items-center gap-0.5 flex-shrink-0">
+          <div className="hidden sm:flex items-center gap-0.5 shrink-0">
             <Tooltip label="Voltar">
               <button
                 onClick={goBack}
                 disabled={!canGoBack}
-                className="h-7 w-7 flex items-center justify-center rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors duration-fast disabled:opacity-30 disabled:pointer-events-none"
+                className="h-7 w-7 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) transition-colors duration-fast disabled:opacity-30 disabled:pointer-events-none"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
@@ -2300,7 +2300,7 @@ export default function Documents() {
               <button
                 onClick={goForward}
                 disabled={!canGoForward}
-                className="h-7 w-7 flex items-center justify-center rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors duration-fast disabled:opacity-30 disabled:pointer-events-none"
+                className="h-7 w-7 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) transition-colors duration-fast disabled:opacity-30 disabled:pointer-events-none"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -2312,35 +2312,35 @@ export default function Documents() {
               in the window body, not the window frame", HIG). A trilha
               navegável completa mora na barra de caminho no rodapé, abaixo. */}
           <div className="hidden sm:flex items-center flex-1 min-w-0">
-            <span className="text-mac-body font-semibold text-[var(--text-primary)] truncate">
+            <span className="text-mac-body font-semibold text-(--text-primary) truncate">
               {breadcrumbs[breadcrumbs.length - 1].name}
             </span>
           </div>
 
           {/* Breadcrumbs — versão truncada (mobile): Início, "…" (seletor com as pastas ocultas, em ordem) e a pasta atual */}
           <nav className="flex sm:hidden items-center gap-1 flex-1 min-w-0">
-            <button onClick={() => navigateBreadcrumb(0)} className="flex-shrink-0 text-[var(--text-secondary)] hover:text-teal-500 transition-colors duration-fast">
+            <button onClick={() => navigateBreadcrumb(0)} className="shrink-0 text-(--text-secondary) hover:text-teal-500 transition-colors duration-fast">
               <Home className="w-4 h-4" />
             </button>
             {breadcrumbs.length > 2 && (
               <>
-                <ChevronRight className="w-3.5 h-3.5 text-[var(--text-tertiary)] flex-shrink-0" />
+                <ChevronRight className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0" />
                 <div className="relative" ref={crumbMenuRef}>
                   <button
                     onClick={() => setCrumbMenuOpen((v) => !v)}
-                    className="flex-shrink-0 text-mac-body text-[var(--text-secondary)] hover:text-teal-500 transition-colors duration-fast"
+                    className="shrink-0 text-mac-body text-(--text-secondary) hover:text-teal-500 transition-colors duration-fast"
                   >
                     …
                   </button>
                   {crumbMenuOpen && (
-                    <div className="popover-tail-left absolute top-full left-0 mt-1 w-56 glass-panel glass-blur-strong rounded-[var(--radius-popover)] shadow-dropdown py-1 z-50">
+                    <div className="popover-tail-left absolute top-full left-0 mt-1 w-56 glass-panel glass-blur-strong rounded-(--radius-popover) shadow-dropdown py-1 z-50">
                       {breadcrumbs.slice(1, -1).map((crumb, i) => (
                         <button
                           key={crumb.id}
                           onClick={() => { navigateBreadcrumb(i + 1); setCrumbMenuOpen(false); }}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-left text-[var(--text-primary)] hover:bg-teal-500 hover:text-white [&:hover_svg]:text-white transition-colors duration-fast"
+                          className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-left text-(--text-primary) hover:bg-teal-500 hover:text-white [&:hover_svg]:text-white transition-colors duration-fast"
                         >
-                          <FolderOpen className="w-3.5 h-3.5 text-teal-500 flex-shrink-0" />
+                          <FolderOpen className="w-3.5 h-3.5 text-teal-500 shrink-0" />
                           <span className="truncate">{crumb.name}</span>
                         </button>
                       ))}
@@ -2351,8 +2351,8 @@ export default function Documents() {
             )}
             {breadcrumbs.length > 1 && (
               <>
-                <ChevronRight className="w-3.5 h-3.5 text-[var(--text-tertiary)] flex-shrink-0" />
-                <span className="text-mac-body font-medium text-[var(--text-primary)] truncate">
+                <ChevronRight className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0" />
+                <span className="text-mac-body font-medium text-(--text-primary) truncate">
                   {breadcrumbs[breadcrumbs.length - 1].name}
                 </span>
               </>
@@ -2360,27 +2360,27 @@ export default function Documents() {
           </nav>
 
           {/* Actions */}
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             {/* Filtro rápido — Finder/Explorer sempre têm um campo de busca na
                 própria toolbar, distinto da busca global do app (ADENDO-09 §13). */}
             <div className="hidden md:flex items-center relative">
-              <Search className="absolute left-2.5 w-3.5 h-3.5 text-[var(--text-placeholder)] pointer-events-none" />
+              <Search className="absolute left-2.5 w-3.5 h-3.5 text-(--text-placeholder) pointer-events-none" />
               <input
                 type="text"
                 value={filterQuery}
                 onChange={(e) => setFilterQuery(e.target.value)}
                 placeholder="Filtrar nesta pasta"
-                className="h-7 w-[150px] focus:w-[210px] pl-7 pr-2 text-mac-caption bg-black/[0.03] dark:bg-white/[0.04] border border-transparent rounded-full text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:bg-[var(--bg-card)] focus:border-teal-500/50 transition-all duration-fast"
+                className="h-7 w-[150px] focus:w-[210px] pl-7 pr-2 text-mac-caption bg-black/3 dark:bg-white/4 border border-transparent rounded-full text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:bg-(--bg-card) focus:border-teal-500/50 transition-all duration-fast"
               />
             </div>
             {/* Controle segmentado — mesmo padrão do agrupador de visualização no
                 Finder (um único "pill" com divisórias), em vez de 3 ícones soltos. */}
-            <div className="hidden sm:flex items-center gap-0.5 p-0.5 rounded-full bg-black/[0.03] dark:bg-white/[0.04]">
+            <div className="hidden sm:flex items-center gap-0.5 p-0.5 rounded-full bg-black/3 dark:bg-white/4">
               <button
                 onClick={() => setSelectionMode((v) => !v)}
                 title={selectionMode ? "Sair do modo de seleção" : "Selecionar vários"}
                 className={`h-7 w-7 flex items-center justify-center rounded-full transition-colors duration-fast ${
-                  selectionMode ? "bg-[var(--bg-card)] text-teal-500 shadow-sm" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  selectionMode ? "bg-(--bg-card) text-teal-500 shadow-xs" : "text-(--text-secondary) hover:text-(--text-primary)"
                 }`}
               >
                 <ListChecks className="w-4 h-4" />
@@ -2388,14 +2388,14 @@ export default function Documents() {
               <button
                 onClick={toggleDensity}
                 title={density === "comfortable" ? "Densidade compacta" : "Densidade confortável"}
-                className="h-7 w-7 flex items-center justify-center rounded-full text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors duration-fast"
+                className="h-7 w-7 flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-primary) transition-colors duration-fast"
               >
                 {density === "comfortable" ? <Rows3 className="w-4 h-4" /> : <Rows4 className="w-4 h-4" />}
               </button>
               <button
                 onClick={() => setView(viewMode === "list" ? "grid" : "list")}
                 title={viewMode === "list" ? "Ver em grade" : "Ver em lista"}
-                className="h-7 w-7 flex items-center justify-center rounded-full text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors duration-fast"
+                className="h-7 w-7 flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-primary) transition-colors duration-fast"
               >
                 {viewMode === "list" ? <LayoutGrid className="w-4 h-4" /> : <List className="w-4 h-4" />}
               </button>
@@ -2411,36 +2411,36 @@ export default function Documents() {
                 onClick={() => setToolbarMenuOpen((v) => !v)}
                 title="Mais ações"
                 aria-label="Mais ações"
-                className="h-8 w-8 flex items-center justify-center rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+                className="h-8 w-8 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) transition-colors duration-fast"
               >
                 <MoreHorizontal className="w-4 h-4" />
               </button>
               {toolbarMenuOpen && (
-                <div className="popover-tail-right absolute top-full right-0 mt-1 w-52 glass-panel glass-blur-strong rounded-[var(--radius-popover)] shadow-dropdown py-1 z-50">
+                <div className="popover-tail-right absolute top-full right-0 mt-1 w-52 glass-panel glass-blur-strong rounded-(--radius-popover) shadow-dropdown py-1 z-50">
                   <button
                     onClick={() => { setToolbarMenuOpen(false); setSelectionMode((v) => !v); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white transition-colors duration-fast"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white transition-colors duration-fast"
                   >
                     <ListChecks className="w-4 h-4" />
                     {selectionMode ? "Sair da seleção" : "Selecionar vários"}
                   </button>
                   <button
                     onClick={() => { setToolbarMenuOpen(false); setShowNewFolder(true); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white transition-colors duration-fast"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white transition-colors duration-fast"
                   >
                     <FolderPlus className="w-4 h-4" />
                     Nova pasta
                   </button>
                   <button
                     onClick={() => { setToolbarMenuOpen(false); toggleDensity(); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white transition-colors duration-fast"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white transition-colors duration-fast"
                   >
                     {density === "comfortable" ? <Rows3 className="w-4 h-4" /> : <Rows4 className="w-4 h-4" />}
                     {density === "comfortable" ? "Densidade compacta" : "Densidade confortável"}
                   </button>
                   <button
                     onClick={() => { setToolbarMenuOpen(false); setView(viewMode === "list" ? "grid" : "list"); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white transition-colors duration-fast"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white transition-colors duration-fast"
                   >
                     {viewMode === "list" ? <LayoutGrid className="w-4 h-4" /> : <List className="w-4 h-4" />}
                     {viewMode === "list" ? "Ver em grade" : "Ver em lista"}
@@ -2474,7 +2474,7 @@ export default function Documents() {
                   {Array.from({ length: 12 }).map((_, i) => <SkeletonGridItem key={i} />)}
                 </div>
               ) : (
-                <table className={`w-full table-auto sm:table-fixed select-none ${density === "compact" ? "[&_td]:!py-1" : "[&_td]:!py-1.5"}`}>
+                <table className={`w-full table-auto sm:table-fixed select-none ${density === "compact" ? "[&_td]:py-1!" : "[&_td]:py-1.5!"}`}>
                   <tbody>
                     {Array.from({ length: 8 }).map((_, i) => (
                       <SkeletonTableRow
@@ -2519,8 +2519,8 @@ export default function Documents() {
                   return (
                     <div
                       key={`folder-${f.id}`}
-                      className={`group relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-[var(--radius-control)] cursor-pointer transition-colors duration-fast hover:bg-[var(--bg-hover)] ${
-                        isDropTarget ? "bg-teal-500/10 outline outline-2 outline-teal-400 -outline-offset-2" : ""
+                      className={`group relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-(--radius-control) cursor-pointer transition-colors duration-fast hover:bg-(--bg-hover) ${
+                        isDropTarget ? "bg-teal-500/10 outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""
                       }`}
                       onClick={() => setFocusedId(f.id)}
                       onDoubleClick={() => openFolder(f)}
@@ -2554,20 +2554,20 @@ export default function Documents() {
                       <div className="absolute top-1 right-1 flex sm:hidden sm:group-hover:flex items-center gap-0.5 z-10">
                         <button
                           onClick={(e) => { e.stopPropagation(); setSharingFolder(f); }}
-                          className="p-1 rounded-full text-[var(--text-tertiary)] hover:text-teal-500 hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+                          className="p-1 rounded-full text-(--text-tertiary) hover:text-teal-500 hover:bg-(--bg-hover) transition-colors duration-fast"
                           title="Compartilhar pasta"
                         >
                           <Share2 className="w-3 h-3" />
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); setConfirmDeleteFolder(f); }}
-                          className="p-1 rounded-full text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+                          className="p-1 rounded-full text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--bg-hover) transition-colors duration-fast"
                           title="Excluir pasta"
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
-                      <Folder className="w-10 h-10 text-teal-500 fill-teal-500/20 flex-shrink-0" />
+                      <Folder className="w-10 h-10 text-teal-500 fill-teal-500/20 shrink-0" />
                       {renaming?.kind === "folder" && renaming.id === f.id ? (
                         <input
                           ref={renameInputRef}
@@ -2580,10 +2580,10 @@ export default function Documents() {
                           }}
                           onClick={(e) => e.stopPropagation()}
                           onBlur={confirmRename}
-                          className="w-full h-6 px-1 text-mac-caption text-center bg-[var(--bg-page)] border border-teal-500 rounded-[4px] text-[var(--text-primary)] focus:outline-none"
+                          className="w-full h-6 px-1 text-mac-caption text-center bg-(--bg-page) border border-teal-500 rounded-badge text-(--text-primary) focus:outline-hidden"
                         />
                       ) : (
-                        <span className="text-mac-caption text-[var(--text-primary)] text-center leading-tight w-full line-clamp-2">{f.name}</span>
+                        <span className="text-mac-caption text-(--text-primary) text-center leading-tight w-full line-clamp-2">{f.name}</span>
                       )}
                     </div>
                   );
@@ -2599,8 +2599,8 @@ export default function Documents() {
                   <div
                     key={`doc-${d.id}`}
                     ref={(el) => { if (el) rowRefs.current.set(d.id, el); else rowRefs.current.delete(d.id); }}
-                    className={`group relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-[var(--radius-control)] cursor-pointer transition-colors duration-fast ${
-                      isSelected ? "bg-teal-500" : "hover:bg-[var(--bg-hover)]"
+                    className={`group relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-(--radius-control) cursor-pointer transition-colors duration-fast ${
+                      isSelected ? "bg-teal-500" : "hover:bg-(--bg-hover)"
                     } ${isDragging ? "opacity-40" : ""}`}
                     onClick={(e) => selectDocClick(e, d.id)}
                     onDoubleClick={() => setDetailDoc(d)}
@@ -2635,11 +2635,11 @@ export default function Documents() {
                     )}
                     <button
                       onClick={(e) => { e.stopPropagation(); setDetailDoc(d); }}
-                      className="absolute top-1 right-1 flex sm:hidden sm:group-hover:flex p-1 rounded-full text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast z-10"
+                      className="absolute top-1 right-1 flex sm:hidden sm:group-hover:flex p-1 rounded-full text-(--text-tertiary) hover:bg-(--bg-hover) transition-colors duration-fast z-10"
                     >
                       <MoreHorizontal className="w-3 h-3" />
                     </button>
-                    <div className={`w-10 h-10 rounded-[6px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
+                    <div className={`w-10 h-10 rounded-[6px] flex items-center justify-center shrink-0 ${s.bgColor}`}>
                       <Icon className={`w-5 h-5 ${s.iconColor} ${s.fillColor}`} />
                     </div>
                     {isRenamingDoc ? (
@@ -2654,12 +2654,12 @@ export default function Documents() {
                             if (e.key === "Escape") setRenaming(null);
                           }}
                           onBlur={confirmRename}
-                          className="w-full min-w-0 h-6 px-1 text-mac-caption text-center bg-[var(--bg-page)] border border-teal-500 rounded-[4px] text-[var(--text-primary)] focus:outline-none"
+                          className="w-full min-w-0 h-6 px-1 text-mac-caption text-center bg-(--bg-page) border border-teal-500 rounded-badge text-(--text-primary) focus:outline-hidden"
                         />
-                        <span className="text-mac-caption text-[var(--text-tertiary)] flex-shrink-0">{splitExt(d.name)[1]}</span>
+                        <span className="text-mac-caption text-(--text-tertiary) shrink-0">{splitExt(d.name)[1]}</span>
                       </div>
                     ) : (
-                      <span className={`text-mac-caption text-center leading-tight w-full line-clamp-2 ${isSelected ? "text-white" : "text-[var(--text-primary)]"}`}>{d.name}</span>
+                      <span className={`text-mac-caption text-center leading-tight w-full line-clamp-2 ${isSelected ? "text-white" : "text-(--text-primary)"}`}>{d.name}</span>
                     )}
                   </div>
                 );
@@ -2669,7 +2669,7 @@ export default function Documents() {
             // overflow-x-auto: com colunas redimensionáveis (table-fixed) a soma das
             // larguras pode passar do viewport no mobile — rola em vez de cortar/quebrar.
             <div className="overflow-x-auto">
-            <table className={`w-full table-auto sm:table-fixed select-none ${density === "compact" ? "[&_td]:!py-1" : "[&_td]:!py-1.5"}`}>
+            <table className={`w-full table-auto sm:table-fixed select-none ${density === "compact" ? "[&_td]:py-1!" : "[&_td]:py-1.5!"}`}>
               <colgroup>
                 {selectionMode && <col style={{ width: 40 }} />}
                 <col style={{ width: colWidths.name }} />
@@ -2688,7 +2688,7 @@ export default function Documents() {
                     mesmo sobrando espaço lateral. */}
                 <col style={{ width: 76 }} />
               </colgroup>
-              <thead className="sticky top-0 bg-[var(--glass-panel-bg)] backdrop-blur-xl border-b border-[var(--border-default)]">
+              <thead className="sticky top-0 bg-(--glass-panel-bg) backdrop-blur-xl border-b border-(--border-default)">
                 <tr>
                   {selectionMode && (
                     <th className="w-10 px-4 py-2 text-left">
@@ -2719,7 +2719,7 @@ export default function Documents() {
                     onResizeStart={(e) => startColResize("size", e)}
                     onResizeReset={() => resetColWidth("size")}
                   />
-                  <th className="relative px-3 py-2 text-mac-caption font-normal text-[var(--text-secondary)] text-left hidden md:table-cell">
+                  <th className="relative px-3 py-2 text-mac-caption font-normal text-(--text-secondary) text-left hidden md:table-cell">
                     Tipo
                     <div
                       onMouseDown={(e) => startColResize("kind", e)}
@@ -2727,7 +2727,7 @@ export default function Documents() {
                       className="absolute top-0 right-0 h-full w-2 cursor-col-resize select-none hover:bg-teal-400/40 active:bg-teal-400/60"
                     />
                   </th>
-                  <th className="relative px-3 py-2 text-mac-caption font-normal text-[var(--text-secondary)] text-left hidden sm:table-cell">
+                  <th className="relative px-3 py-2 text-mac-caption font-normal text-(--text-secondary) text-left hidden sm:table-cell">
                     OCR
                     <div
                       onMouseDown={(e) => startColResize("ocr", e)}
@@ -2736,7 +2736,7 @@ export default function Documents() {
                     />
                   </th>
                   {resolvedFields.map((f) => (
-                    <th key={f.custom_field_id} className="px-3 py-2 text-mac-caption font-normal text-[var(--text-secondary)] text-left truncate hidden sm:table-cell">
+                    <th key={f.custom_field_id} className="px-3 py-2 text-mac-caption font-normal text-(--text-secondary) text-left truncate hidden sm:table-cell">
                       {f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}
                     </th>
                   ))}
@@ -2753,8 +2753,8 @@ export default function Documents() {
                     return (
                       <Fragment key={`folder-${f.id}`}>
                       <tr
-                        className={`border-b border-[var(--border-default)] odd:bg-black/[0.04] dark:odd:bg-white/[0.035] hover:bg-[var(--bg-hover)] transition-colors duration-fast group ${
-                          isDropTarget ? "bg-teal-500/10 outline outline-2 outline-teal-400 -outline-offset-2" : ""
+                        className={`border-b border-(--border-default) odd:bg-black/4 dark:odd:bg-white/[0.035] hover:bg-(--bg-hover) transition-colors duration-fast group ${
+                          isDropTarget ? "bg-teal-500/10 outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""
                         }`}
                         onClick={() => setFocusedId(f.id)}
                         onDoubleClick={() => openFolder(f)}
@@ -2802,7 +2802,7 @@ export default function Documents() {
                               }}
                               onClick={(e) => e.stopPropagation()}
                               onBlur={confirmRename}
-                              className="w-full max-w-[280px] h-7 px-2 text-mac-body bg-[var(--bg-page)] border border-teal-500 rounded-[6px] text-[var(--text-primary)] focus:outline-none"
+                              className="w-full max-w-[280px] h-7 px-2 text-mac-body bg-(--bg-page) border border-teal-500 rounded-[6px] text-(--text-primary) focus:outline-hidden"
                             />
                           ) : (
                             <div className="flex items-center gap-1">
@@ -2810,39 +2810,39 @@ export default function Documents() {
                                   navegar pra dentro dela, igual Finder/Explorer em lista. */}
                               <button
                                 onClick={(e) => toggleExpandFolder(e, f.id)}
-                                className="p-0.5 -ml-1 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] flex-shrink-0"
+                                className="p-0.5 -ml-1 rounded text-(--text-tertiary) hover:text-(--text-primary) shrink-0"
                                 title={expanded ? "Recolher" : "Expandir"}
                               >
                                 <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-fast ${expanded ? "rotate-90" : ""}`} />
                               </button>
                               <button
                                 onClick={() => openFolder(f)}
-                                className="flex items-center gap-2 text-mac-body text-[var(--text-primary)] hover:text-teal-500 transition-colors duration-fast min-w-0"
+                                className="flex items-center gap-2 text-mac-body text-(--text-primary) hover:text-teal-500 transition-colors duration-fast min-w-0"
                               >
-                                <Folder className="w-4 h-4 text-teal-500 fill-teal-500/20 flex-shrink-0" />
+                                <Folder className="w-4 h-4 text-teal-500 fill-teal-500/20 shrink-0" />
                                 <span className="truncate">{f.name}</span>
                               </button>
                             </div>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-mac-caption text-[var(--text-tertiary)] hidden sm:table-cell">—</td>
-                        <td className="px-3 py-2 text-mac-caption text-[var(--text-tertiary)] text-right hidden sm:table-cell">—</td>
+                        <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden sm:table-cell">—</td>
+                        <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) text-right hidden sm:table-cell">—</td>
                         <td className="px-3 py-2 hidden sm:table-cell" />
-                        <td className="px-3 py-2 text-mac-caption text-[var(--text-tertiary)] hidden md:table-cell">Pasta</td>
+                        <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden md:table-cell">Pasta</td>
                         {resolvedFields.map((rf) => (
-                          <td key={rf.custom_field_id} className="px-3 py-2 text-mac-caption text-[var(--text-tertiary)] hidden sm:table-cell">—</td>
+                          <td key={rf.custom_field_id} className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden sm:table-cell">—</td>
                         ))}
                         <td className="px-2 py-2 flex items-center gap-1">
                           <button
                             onClick={(e) => { e.stopPropagation(); setSharingFolder(f); }}
-                            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-full text-[var(--text-tertiary)] hover:text-teal-500 hover:bg-[var(--bg-hover)] transition-all duration-fast"
+                            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-full text-(--text-tertiary) hover:text-teal-500 hover:bg-(--bg-hover) transition-all duration-fast"
                             title="Compartilhar pasta"
                           >
                             <Share2 className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); setConfirmDeleteFolder(f); }}
-                            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-full text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-all duration-fast"
+                            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-full text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--bg-hover) transition-all duration-fast"
                             title="Excluir pasta"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -2850,31 +2850,31 @@ export default function Documents() {
                         </td>
                       </tr>
                       {expanded === "loading" && (
-                        <tr className="border-b border-[var(--border-default)]">
-                          <td colSpan={nestedColSpan} className="px-3 py-2 pl-10 text-mac-caption text-[var(--text-tertiary)]">Carregando…</td>
+                        <tr className="border-b border-(--border-default)">
+                          <td colSpan={nestedColSpan} className="px-3 py-2 pl-10 text-mac-caption text-(--text-tertiary)">Carregando…</td>
                         </tr>
                       )}
                       {expanded && expanded !== "loading" && expanded.folders.length === 0 && expanded.documents.length === 0 && (
-                        <tr className="border-b border-[var(--border-default)]">
-                          <td colSpan={nestedColSpan} className="px-3 py-2 pl-10 text-mac-caption text-[var(--text-placeholder)] italic">Pasta vazia</td>
+                        <tr className="border-b border-(--border-default)">
+                          <td colSpan={nestedColSpan} className="px-3 py-2 pl-10 text-mac-caption text-(--text-placeholder) italic">Pasta vazia</td>
                         </tr>
                       )}
                       {expanded && expanded !== "loading" && expanded.folders.map((nf) => (
                         <tr
                           key={`nested-folder-${nf.id}`}
-                          className="border-b border-[var(--border-default)] odd:bg-black/[0.04] dark:odd:bg-white/[0.035] hover:bg-[var(--bg-hover)] transition-colors duration-fast cursor-pointer"
+                          className="border-b border-(--border-default) odd:bg-black/4 dark:odd:bg-white/[0.035] hover:bg-(--bg-hover) transition-colors duration-fast cursor-pointer"
                           onClick={() => openFolder(nf)}
                         >
                           {selectionMode && <td className="px-4 py-2" />}
                           <td className="px-3 py-2 pl-10">
-                            <div className="flex items-center gap-2 text-mac-body text-[var(--text-secondary)]">
-                              <Folder className="w-3.5 h-3.5 text-teal-500/70 fill-teal-500/15 flex-shrink-0" />
+                            <div className="flex items-center gap-2 text-mac-body text-(--text-secondary)">
+                              <Folder className="w-3.5 h-3.5 text-teal-500/70 fill-teal-500/15 shrink-0" />
                               <span className="truncate">{nf.name}</span>
                             </div>
                           </td>
-                          <td className="px-3 py-2 text-mac-caption text-[var(--text-tertiary)] hidden sm:table-cell">—</td>
-                          <td className="px-3 py-2 text-mac-caption text-[var(--text-tertiary)] text-right hidden sm:table-cell">—</td>
-                          <td className="px-3 py-2 text-mac-caption text-[var(--text-tertiary)] hidden md:table-cell">Pasta</td>
+                          <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden sm:table-cell">—</td>
+                          <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) text-right hidden sm:table-cell">—</td>
+                          <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden md:table-cell">Pasta</td>
                           <td className="px-3 py-2 hidden sm:table-cell" />
                           {resolvedFields.map((rf) => <td key={rf.custom_field_id} className="hidden sm:table-cell" />)}
                           <td />
@@ -2886,19 +2886,19 @@ export default function Documents() {
                         return (
                           <tr
                             key={`nested-doc-${nd.id}`}
-                            className="border-b border-[var(--border-default)] odd:bg-black/[0.04] dark:odd:bg-white/[0.035] hover:bg-[var(--bg-hover)] transition-colors duration-fast cursor-pointer"
+                            className="border-b border-(--border-default) odd:bg-black/4 dark:odd:bg-white/[0.035] hover:bg-(--bg-hover) transition-colors duration-fast cursor-pointer"
                             onClick={() => setDetailDoc(nd)}
                           >
                             {selectionMode && <td className="px-4 py-2" />}
                             <td className="px-3 py-2 pl-10">
-                              <div className="flex items-center gap-2 text-mac-body text-[var(--text-secondary)] min-w-0">
-                                <NIcon className={`w-3.5 h-3.5 flex-shrink-0 ${ns.iconColor} ${ns.fillColor} opacity-70`} />
+                              <div className="flex items-center gap-2 text-mac-body text-(--text-secondary) min-w-0">
+                                <NIcon className={`w-3.5 h-3.5 shrink-0 ${ns.iconColor} ${ns.fillColor} opacity-70`} />
                                 <span className="truncate">{nd.name}</span>
                               </div>
                             </td>
-                            <td className="px-3 py-2 text-mac-caption text-[var(--text-tertiary)] hidden sm:table-cell">{fmtDate(nd.created_at)}</td>
-                            <td className="px-3 py-2 text-mac-caption text-[var(--text-tertiary)] text-right hidden sm:table-cell">{fmtSize(nd.size_bytes)}</td>
-                            <td className="px-3 py-2 text-mac-caption text-[var(--text-tertiary)] hidden md:table-cell">{kindLabel(nd.name)}</td>
+                            <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden sm:table-cell">{fmtDate(nd.created_at)}</td>
+                            <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) text-right hidden sm:table-cell">{fmtSize(nd.size_bytes)}</td>
+                            <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden md:table-cell">{kindLabel(nd.name)}</td>
                             <td className="px-3 py-2 hidden sm:table-cell"><OcrIcon status={nd.ocr_status} /></td>
                             {resolvedFields.map((rf) => <td key={rf.custom_field_id} className="hidden sm:table-cell" />)}
                             <td />
@@ -2917,8 +2917,8 @@ export default function Documents() {
                     <tr
                       key={`doc-${d.id}`}
                       ref={(el) => { if (el) rowRefs.current.set(d.id, el); else rowRefs.current.delete(d.id); }}
-                      className={`border-b border-[var(--border-default)] transition-colors duration-fast group cursor-pointer ${
-                        isSelected ? "bg-teal-500" : "odd:bg-black/[0.04] dark:odd:bg-white/[0.035] hover:bg-[var(--bg-hover)]"
+                      className={`border-b border-(--border-default) transition-colors duration-fast group cursor-pointer ${
+                        isSelected ? "bg-teal-500" : "odd:bg-black/4 dark:odd:bg-white/[0.035] hover:bg-(--bg-hover)"
                       } ${isDragging ? "opacity-40" : ""}`}
                       onClick={(e) => selectDocClick(e, d.id)}
                       onDoubleClick={() => setDetailDoc(d)}
@@ -2956,7 +2956,7 @@ export default function Documents() {
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-2">
                           {(() => { const s = getFileStyle(d.name); const Icon = s.icon; return (
-                            <div className={`w-6 h-6 rounded-[4px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
+                            <div className={`w-6 h-6 rounded-badge flex items-center justify-center shrink-0 ${s.bgColor}`}>
                               <Icon className={`w-3.5 h-3.5 ${s.iconColor} ${s.fillColor}`} />
                             </div>
                           ); })()}
@@ -2972,33 +2972,33 @@ export default function Documents() {
                                   if (e.key === "Escape") setRenaming(null);
                                 }}
                                 onBlur={confirmRename}
-                                className="h-7 px-2 text-mac-body bg-[var(--bg-card)] border border-teal-500 rounded-[6px] text-[var(--text-primary)] focus:outline-none flex-1 min-w-0"
+                                className="h-7 px-2 text-mac-body bg-(--bg-card) border border-teal-500 rounded-[6px] text-(--text-primary) focus:outline-hidden flex-1 min-w-0"
                               />
-                              <span className="text-mac-body text-[var(--text-tertiary)] flex-shrink-0">{splitExt(d.name)[1]}</span>
+                              <span className="text-mac-body text-(--text-tertiary) shrink-0">{splitExt(d.name)[1]}</span>
                             </div>
                           ) : (
                             <TruncatedFileName
                               name={d.name}
-                              className={`text-mac-body ${isSelected ? "text-white" : "text-[var(--text-primary)]"}`}
+                              className={`text-mac-body ${isSelected ? "text-white" : "text-(--text-primary)"}`}
                               inverted={isSelected}
                             />
                           )}
                         </div>
                       </td>
-                      <td className={`px-3 py-2 text-mac-caption hidden sm:table-cell ${isSelected ? "text-white/80" : "text-[var(--text-tertiary)]"}`}>{fmtDate(d.created_at)}</td>
-                      <td className={`px-3 py-2 text-mac-caption text-right hidden sm:table-cell ${isSelected ? "text-white/80" : "text-[var(--text-tertiary)]"}`}>{fmtSize(d.size_bytes)}</td>
-                      <td className={`px-3 py-2 text-mac-caption hidden md:table-cell ${isSelected ? "text-white/80" : "text-[var(--text-tertiary)]"}`}>{kindLabel(d.name)}</td>
+                      <td className={`px-3 py-2 text-mac-caption hidden sm:table-cell ${isSelected ? "text-white/80" : "text-(--text-tertiary)"}`}>{fmtDate(d.created_at)}</td>
+                      <td className={`px-3 py-2 text-mac-caption text-right hidden sm:table-cell ${isSelected ? "text-white/80" : "text-(--text-tertiary)"}`}>{fmtSize(d.size_bytes)}</td>
+                      <td className={`px-3 py-2 text-mac-caption hidden md:table-cell ${isSelected ? "text-white/80" : "text-(--text-tertiary)"}`}>{kindLabel(d.name)}</td>
                       <td className="px-3 py-2 hidden sm:table-cell"><OcrIcon status={d.ocr_status} /></td>
                       {resolvedFields.map((rf) => {
                         const value = fieldValues[d.id]?.[rf.custom_field_id];
                         return (
                           <td key={rf.custom_field_id} className="px-3 py-2 text-mac-caption truncate hidden sm:table-cell">
                             {value ? (
-                              <span className={isSelected ? "text-white/90" : "text-[var(--text-secondary)]"}>{value}</span>
+                              <span className={isSelected ? "text-white/90" : "text-(--text-secondary)"}>{value}</span>
                             ) : rf.required ? (
                               <span className={isSelected ? "text-white" : "text-amber-600 dark:text-amber-400"} title="Campo obrigatório sem preenchimento">Pendente</span>
                             ) : (
-                              <span className={isSelected ? "text-white/60" : "text-[var(--text-placeholder)]"}>—</span>
+                              <span className={isSelected ? "text-white/60" : "text-(--text-placeholder)"}>—</span>
                             )}
                           </td>
                         );
@@ -3007,7 +3007,7 @@ export default function Documents() {
                         <button
                           onClick={(e) => { e.stopPropagation(); setDetailDoc(d); }}
                           className={`opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-full transition-all duration-fast ${
-                            isSelected ? "text-white hover:bg-white/20" : "text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)]"
+                            isSelected ? "text-white hover:bg-white/20" : "text-(--text-tertiary) hover:bg-(--bg-hover)"
                           }`}
                         >
                           <MoreHorizontal className="w-3.5 h-3.5" />
@@ -3039,17 +3039,17 @@ export default function Documents() {
             Duas faixas empilhadas (caminho e status separados) ficavam
             redundantes, principalmente na raiz onde o caminho é só o ícone
             de Início sozinho em cima da contagem. */}
-        <div className="hidden sm:flex items-center justify-between gap-3 px-4 sm:px-6 h-8 border-t border-[var(--border-default)] flex-shrink-0 text-mac-caption text-[var(--text-tertiary)]">
+        <div className="hidden sm:flex items-center justify-between gap-3 px-4 sm:px-6 h-8 border-t border-(--border-default) shrink-0 text-mac-caption text-(--text-tertiary)">
           <nav className="flex items-center gap-1 min-w-0 overflow-x-auto">
             {breadcrumbs.map((crumb, idx) => (
-              <span key={idx} className="flex items-center gap-1 flex-shrink-0">
-                {idx > 0 && <ChevronRight className="w-3.5 h-3.5 text-[var(--text-tertiary)]" />}
+              <span key={idx} className="flex items-center gap-1 shrink-0">
+                {idx > 0 && <ChevronRight className="w-3.5 h-3.5 text-(--text-tertiary)" />}
                 <button
                   onClick={() => navigateBreadcrumb(idx)}
                   className={`text-mac-caption hover:text-teal-500 transition-colors duration-fast ${
                     idx === breadcrumbs.length - 1
-                      ? "text-[var(--text-primary)] font-medium"
-                      : "text-[var(--text-secondary)]"
+                      ? "text-(--text-primary) font-medium"
+                      : "text-(--text-secondary)"
                   }`}
                 >
                   {idx === 0 ? <Home className="w-3.5 h-3.5" /> : crumb.name}
@@ -3057,7 +3057,7 @@ export default function Documents() {
               </span>
             ))}
           </nav>
-          <span className="flex-shrink-0">
+          <span className="shrink-0">
             {selected.size > 0 ? (
               <span className="text-teal-500 font-medium">{selected.size} selecionado{selected.size !== 1 ? "s" : ""}</span>
             ) : sortedFolders.length === 0 && sortedDocuments.length === 0 ? (
@@ -3147,7 +3147,7 @@ export default function Documents() {
         <Portal>
           <div
             ref={contextMenuRef}
-            className="glass-panel glass-blur-strong fixed rounded-[var(--radius-popover)] shadow-dropdown py-1 z-50 w-[200px]"
+            className="glass-panel glass-blur-strong fixed rounded-(--radius-popover) shadow-dropdown py-1 z-50 w-[200px]"
             style={{ top: contextMenu.y, left: contextMenu.x }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -3155,23 +3155,23 @@ export default function Documents() {
               <>
                 <button
                   onClick={() => { setPreviewDoc(contextMenu.data); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white hover:[&_svg]:text-white transition-colors duration-fast text-left"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white [&_svg]:hover:text-white transition-colors duration-fast text-left"
                 >
-                  <Eye className="w-4 h-4 text-[var(--text-tertiary)]" /> Abrir
+                  <Eye className="w-4 h-4 text-(--text-tertiary)" /> Abrir
                 </button>
                 <button
                   onClick={() => { setDetailDoc(contextMenu.data); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white hover:[&_svg]:text-white transition-colors duration-fast text-left"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white [&_svg]:hover:text-white transition-colors duration-fast text-left"
                 >
-                  <Info className="w-4 h-4 text-[var(--text-tertiary)]" /> Ver detalhes
+                  <Info className="w-4 h-4 text-(--text-tertiary)" /> Ver detalhes
                 </button>
                 <button
                   onClick={() => { startRename("document", contextMenu.data.id, contextMenu.data.name); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white hover:[&_svg]:text-white transition-colors duration-fast text-left"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white [&_svg]:hover:text-white transition-colors duration-fast text-left"
                 >
-                  <Pencil className="w-4 h-4 text-[var(--text-tertiary)]" /> Renomear
+                  <Pencil className="w-4 h-4 text-(--text-tertiary)" /> Renomear
                 </button>
-                <div className="my-1 border-t border-[var(--border-default)]" />
+                <div className="my-1 border-t border-(--border-default)" />
                 <button
                   onClick={() => { deleteDocuments([contextMenu.data.id]); setContextMenu(null); }}
                   className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors duration-fast text-left"
@@ -3183,48 +3183,48 @@ export default function Documents() {
               <>
                 <button
                   onClick={() => { openFolder(contextMenu.data); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white hover:[&_svg]:text-white transition-colors duration-fast text-left"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white [&_svg]:hover:text-white transition-colors duration-fast text-left"
                 >
-                  <FolderOpen className="w-4 h-4 text-[var(--text-tertiary)]" /> Abrir
+                  <FolderOpen className="w-4 h-4 text-(--text-tertiary)" /> Abrir
                 </button>
                 <button
                   onClick={() => { startRename("folder", contextMenu.data.id, contextMenu.data.name); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white hover:[&_svg]:text-white transition-colors duration-fast text-left"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white [&_svg]:hover:text-white transition-colors duration-fast text-left"
                 >
-                  <Pencil className="w-4 h-4 text-[var(--text-tertiary)]" /> Renomear
+                  <Pencil className="w-4 h-4 text-(--text-tertiary)" /> Renomear
                 </button>
                 <button
                   onClick={() => { setSharingFolder(contextMenu.data); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white hover:[&_svg]:text-white transition-colors duration-fast text-left"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white [&_svg]:hover:text-white transition-colors duration-fast text-left"
                 >
-                  <Share2 className="w-4 h-4 text-[var(--text-tertiary)]" /> Compartilhar
+                  <Share2 className="w-4 h-4 text-(--text-tertiary)" /> Compartilhar
                 </button>
                 <button
                   onClick={() => { setCopyingFolder(contextMenu.data); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white hover:[&_svg]:text-white transition-colors duration-fast text-left"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white [&_svg]:hover:text-white transition-colors duration-fast text-left"
                 >
-                  <Copy className="w-4 h-4 text-[var(--text-tertiary)]" /> Copiar estrutura para...
+                  <Copy className="w-4 h-4 text-(--text-tertiary)" /> Copiar estrutura para...
                 </button>
-                <div className="my-1 border-t border-[var(--border-default)]" />
+                <div className="my-1 border-t border-(--border-default)" />
                 <button
                   onClick={() => { navigate(`/settings/users?folder=${contextMenu.data.id}`); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white hover:[&_svg]:text-white transition-colors duration-fast text-left"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white [&_svg]:hover:text-white transition-colors duration-fast text-left"
                 >
-                  <Shield className="w-4 h-4 text-[var(--text-tertiary)]" /> Permissões desta pasta
+                  <Shield className="w-4 h-4 text-(--text-tertiary)" /> Permissões desta pasta
                 </button>
                 <button
                   onClick={() => { navigate(`/settings/metadata?tab=tree&folder=${contextMenu.data.id}`); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white hover:[&_svg]:text-white transition-colors duration-fast text-left"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white [&_svg]:hover:text-white transition-colors duration-fast text-left"
                 >
-                  <Tags className="w-4 h-4 text-[var(--text-tertiary)]" /> Metadados desta pasta
+                  <Tags className="w-4 h-4 text-(--text-tertiary)" /> Metadados desta pasta
                 </button>
                 <button
                   onClick={() => { navigate(`/settings/retention?folder=${contextMenu.data.id}`); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white hover:[&_svg]:text-white transition-colors duration-fast text-left"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white [&_svg]:hover:text-white transition-colors duration-fast text-left"
                 >
-                  <Archive className="w-4 h-4 text-[var(--text-tertiary)]" /> Retenção desta pasta
+                  <Archive className="w-4 h-4 text-(--text-tertiary)" /> Retenção desta pasta
                 </button>
-                <div className="my-1 border-t border-[var(--border-default)]" />
+                <div className="my-1 border-t border-(--border-default)" />
                 <button
                   onClick={() => { setConfirmDeleteFolder(contextMenu.data); setContextMenu(null); }}
                   className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors duration-fast text-left"
@@ -3244,13 +3244,13 @@ export default function Documents() {
         }`}
         style={{ transform: selected.size > 0 ? "translateX(-50%)" : "translateX(-50%) translateY(12px)" }}
       >
-        <span className="text-mac-body text-[var(--text-primary)] mr-1.5 pl-2.5 whitespace-nowrap">
-          <b className="text-[var(--teal-bright)] font-semibold">{selected.size}</b> selecionado{selected.size !== 1 ? "s" : ""}
+        <span className="text-mac-body text-(--text-primary) mr-1.5 pl-2.5 whitespace-nowrap">
+          <b className="text-(--teal-bright) font-semibold">{selected.size}</b> selecionado{selected.size !== 1 ? "s" : ""}
         </span>
         {resolvedFields.length > 0 && (
           <button
             onClick={() => setShowBulkMetadata(true)}
-            className="flex items-center gap-1.5 h-8 px-3.5 rounded-full text-mac-body text-[var(--text-primary)] bg-white/[0.07] hover:bg-white/[0.14] transition-colors duration-fast"
+            className="flex items-center gap-1.5 h-8 px-3.5 rounded-full text-mac-body text-(--text-primary) bg-white/[0.07] hover:bg-white/[0.14] transition-colors duration-fast"
           >
             <Pencil className="w-3.5 h-3.5" />
             Editar metadados
@@ -3258,7 +3258,7 @@ export default function Documents() {
         )}
         <button
           onClick={deleteSelected}
-          className="flex items-center gap-1.5 h-8 px-3.5 rounded-full text-mac-body text-red-400 bg-white/[0.07] hover:bg-red-500/[0.16] transition-colors duration-fast"
+          className="flex items-center gap-1.5 h-8 px-3.5 rounded-full text-mac-body text-red-400 bg-white/[0.07] hover:bg-red-500/16 transition-colors duration-fast"
         >
           <Trash2 className="w-3.5 h-3.5" />
           Excluir

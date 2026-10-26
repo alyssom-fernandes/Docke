@@ -116,18 +116,18 @@ export default function CopyStructureModal({
 
   return (
     <Portal>
-      <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-        <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[440px] max-h-[85vh] overflow-y-auto">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
-            <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Copiar estrutura de "{sourceFolderName}"</h2>
-            <button onClick={onClose} className="p-1 rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
+      <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[440px] max-h-[85vh] overflow-y-auto">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-(--border-default)">
+            <h2 className="text-mac-body font-semibold text-(--text-primary)">Copiar estrutura de "{sourceFolderName}"</h2>
+            <button onClick={onClose} className="p-1 rounded-full text-(--text-secondary) hover:bg-(--bg-hover)">
               <X className="w-4 h-4" />
             </button>
           </div>
 
           <div className="p-5 space-y-4">
             <div>
-              <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1">Empresa de destino</label>
+              <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Empresa de destino</label>
               <Dropdown
                 value={targetCompanyId}
                 onChange={setTargetCompanyId}
@@ -137,21 +137,21 @@ export default function CopyStructureModal({
             </div>
 
             <div>
-              <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1">Pasta de destino</label>
-              <div className="border border-[var(--border-default)] rounded-[var(--radius-control)] max-h-[220px] overflow-y-auto bg-[var(--bg-card)]">
+              <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Pasta de destino</label>
+              <div className="border border-(--border-default) rounded-(--radius-control) max-h-[220px] overflow-y-auto bg-(--bg-card)">
                 {loadingFolders ? (
                   <div className="flex items-center justify-center py-6">
-                    <Loader2 className="w-4 h-4 animate-spin text-[var(--text-placeholder)]" />
+                    <Loader2 className="w-4 h-4 animate-spin text-(--text-placeholder)" />
                   </div>
                 ) : (
                   <>
                     <button
                       onClick={() => setTargetParentId(null)}
                       className={`w-full flex items-center gap-2 h-8 px-3 text-mac-body text-left transition-colors duration-fast ${
-                        targetParentId === null ? "bg-teal-500/10 text-teal-500 font-medium" : "text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                        targetParentId === null ? "bg-teal-500/10 text-teal-500 font-medium" : "text-(--text-primary) hover:bg-(--bg-hover)"
                       }`}
                     >
-                      <Home className="w-3.5 h-3.5 flex-shrink-0" />
+                      <Home className="w-3.5 h-3.5 shrink-0" />
                       Raiz da empresa
                     </button>
                     {folderOptions.map((f) => {
@@ -165,13 +165,13 @@ export default function CopyStructureModal({
                           title={disabled ? "Não é possível copiar para dentro da própria pasta" : undefined}
                           className={`w-full flex items-center gap-2 h-8 pr-3 text-mac-body text-left transition-colors duration-fast ${
                             disabled
-                              ? "text-[var(--text-placeholder)] cursor-not-allowed"
+                              ? "text-(--text-placeholder) cursor-not-allowed"
                               : targetParentId === f.id
                               ? "bg-teal-500/10 text-teal-500 font-medium"
-                              : "text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                              : "text-(--text-primary) hover:bg-(--bg-hover)"
                           }`}
                         >
-                          <Folder className={`w-3.5 h-3.5 flex-shrink-0 ${disabled ? "" : "text-teal-500"}`} />
+                          <Folder className={`w-3.5 h-3.5 shrink-0 ${disabled ? "" : "text-teal-500"}`} />
                           <span className="truncate">{f.name}</span>
                         </button>
                       );
@@ -182,18 +182,18 @@ export default function CopyStructureModal({
             </div>
 
             <div className="space-y-2 pt-1">
-              <label className="flex items-center gap-2 text-mac-body text-[var(--text-primary)] cursor-pointer">
+              <label className="flex items-center gap-2 text-mac-body text-(--text-primary) cursor-pointer">
                 <Checkbox checked={includeMetadata} onChange={(e) => setIncludeMetadata(e.target.checked)} />
                 Incluir campos de metadados configurados
               </label>
-              <label className="flex items-center gap-2 text-mac-body text-[var(--text-primary)] cursor-pointer">
+              <label className="flex items-center gap-2 text-mac-body text-(--text-primary) cursor-pointer">
                 <Checkbox checked={includeDocuments} onChange={(e) => setIncludeDocuments(e.target.checked)} />
                 Incluir documentos (pode demorar mais)
               </label>
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 px-5 py-4 border-t border-[var(--border-default)]">
+          <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default)">
             <Button variant="secondary" size="sm" onClick={onClose} disabled={submitting}>Cancelar</Button>
             <Button size="sm" loading={submitting} onClick={submit} disabled={!targetCompanyId}>
               Copiar

@@ -142,65 +142,65 @@ function CreateMemberModal({ companyId, folders, onClose, onDone }: { companyId:
 
   return (
     <Portal>
-    <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[440px]">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
-          <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Novo usuário</h2>
-          <button onClick={onClose} className="p-1 rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
+    <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[440px]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-(--border-default)">
+          <h2 className="text-mac-body font-semibold text-(--text-primary)">Novo usuário</h2>
+          <button onClick={onClose} className="p-1 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover)">
             <X className="w-4 h-4" />
           </button>
         </div>
         <div className="p-5 space-y-4">
           <div>
-            <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Nome completo</label>
+            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Nome completo</label>
             <input
               autoFocus
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="Maria Silva"
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
             />
           </div>
           <div>
-            <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Username</label>
+            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Username</label>
             <input
               value={username}
               onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/\s+/g, "."))}
               placeholder="maria.silva"
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
             />
           </div>
           <div>
-            <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">E-mail (credencial de login)</label>
+            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">E-mail (credencial de login)</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="maria@empresa.com"
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
             />
           </div>
           <div>
-            <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Senha inicial</label>
+            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Senha inicial</label>
             <div className="flex gap-2">
               <input
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="flex-1 h-9 px-3 text-mac-body font-mono bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+                className="flex-1 h-9 px-3 text-mac-body font-mono bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
               />
               <button
                 type="button"
                 onClick={() => setPassword(generatePassword())}
                 title="Gerar outra senha"
-                className="h-9 w-9 flex items-center justify-center rounded-full border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+                className="h-9 w-9 flex items-center justify-center rounded-full border border-(--border-default) text-(--text-secondary) hover:bg-(--bg-hover) transition-colors duration-fast"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
               </button>
             </div>
-            <p className="text-mac-caption text-[var(--text-tertiary)] mt-1">Repasse essa senha por um canal seguro — a pessoa pode trocá-la depois em Configurações → Segurança.</p>
+            <p className="text-mac-caption text-(--text-tertiary) mt-1">Repasse essa senha por um canal seguro — a pessoa pode trocá-la depois em Configurações → Segurança.</p>
           </div>
           <div>
-            <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Papel</label>
+            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Papel</label>
             <Dropdown
               value={role}
               placeholder="Selecione…"
@@ -214,13 +214,13 @@ function CreateMemberModal({ companyId, folders, onClose, onDone }: { companyId:
           </div>
           {role !== "admin" && (
             <div>
-              <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Escopo (pasta)</label>
+              <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Escopo (pasta)</label>
               <FolderSelect folders={folders} value={folderId} onChange={setFolderId} />
-              <p className="text-mac-caption text-[var(--text-tertiary)] mt-1">Restrinja o acesso a uma pasta específica (ex: só o RH), ou deixe "Empresa toda" para acesso amplo.</p>
+              <p className="text-mac-caption text-(--text-tertiary) mt-1">Restrinja o acesso a uma pasta específica (ex: só o RH), ou deixe "Empresa toda" para acesso amplo.</p>
             </div>
           )}
         </div>
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-[var(--border-default)]">
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default)">
           <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
           <Button size="sm" loading={saving} onClick={create} disabled={!email.trim() || !username.trim() || !fullName.trim()}>
             Criar usuário
@@ -261,17 +261,17 @@ function AddGrantModal({ companyId, memberId, memberName, folders, onClose, onDo
 
   return (
     <Portal>
-    <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[400px]">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
-          <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Nova concessão — {memberName}</h2>
-          <button onClick={onClose} className="p-1 rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
+    <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[400px]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-(--border-default)">
+          <h2 className="text-mac-body font-semibold text-(--text-primary)">Nova concessão — {memberName}</h2>
+          <button onClick={onClose} className="p-1 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover)">
             <X className="w-4 h-4" />
           </button>
         </div>
         <div className="p-5 space-y-4">
           <div>
-            <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Papel</label>
+            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Papel</label>
             <Dropdown
               value={role}
               placeholder="Selecione…"
@@ -284,11 +284,11 @@ function AddGrantModal({ companyId, memberId, memberName, folders, onClose, onDo
             />
           </div>
           <div>
-            <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Escopo (pasta)</label>
+            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Escopo (pasta)</label>
             <FolderSelect folders={folders} value={folderId} onChange={setFolderId} />
           </div>
         </div>
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-[var(--border-default)]">
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default)">
           <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
           <Button size="sm" loading={saving} onClick={save}>Adicionar</Button>
         </div>
@@ -320,50 +320,50 @@ function ExplainAccessModal({ companyId, userId, userName, folders, onClose }: {
 
   return (
     <Portal>
-      <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-        <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[480px]">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)]">
-            <h2 className="text-mac-body font-semibold text-[var(--text-primary)] flex items-center gap-2">
+      <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[480px]">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-(--border-default)">
+            <h2 className="text-mac-body font-semibold text-(--text-primary) flex items-center gap-2">
               <HelpCircle className="w-4 h-4 text-teal-500" />
               Por que {userName} tem esse acesso?
             </h2>
-            <button onClick={onClose} className="p-1 rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
+            <button onClick={onClose} className="p-1 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover)">
               <X className="w-4 h-4" />
             </button>
           </div>
           <div className="p-5 space-y-4">
             <div>
-              <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Escopo a verificar</label>
+              <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Escopo a verificar</label>
               <FolderSelect folders={folders} value={folderId} onChange={setFolderId} />
             </div>
 
             {loading ? (
               <div className="space-y-2">
-                {[0, 1].map((i) => <div key={i} className="h-8 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />)}
+                {[0, 1].map((i) => <div key={i} className="h-8 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />)}
               </div>
             ) : !result || result.candidates.length === 0 ? (
               <div className="space-y-2">
-                <p className="text-mac-body text-[var(--text-primary)]">{userName} NÃO possui acesso a este escopo porque:</p>
+                <p className="text-mac-body text-(--text-primary)">{userName} NÃO possui acesso a este escopo porque:</p>
                 <ul className="space-y-1.5">
-                  <li className="flex items-center gap-2 text-mac-body text-[var(--text-secondary)]">
-                    <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" /> Não possui concessão direta que cubra este escopo
+                  <li className="flex items-center gap-2 text-mac-body text-(--text-secondary)">
+                    <XCircle className="w-4 h-4 text-red-500 shrink-0" /> Não possui concessão direta que cubra este escopo
                   </li>
-                  <li className="flex items-center gap-2 text-mac-body text-[var(--text-secondary)]">
-                    <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" /> Não pertence a nenhum grupo com acesso a este escopo
+                  <li className="flex items-center gap-2 text-mac-body text-(--text-secondary)">
+                    <XCircle className="w-4 h-4 text-red-500 shrink-0" /> Não pertence a nenhum grupo com acesso a este escopo
                   </li>
                 </ul>
-                <div className="pt-2 border-t border-[var(--border-default)] flex items-center justify-between">
-                  <span className="text-mac-caption text-[var(--text-tertiary)]">Resultado</span>
+                <div className="pt-2 border-t border-(--border-default) flex items-center justify-between">
+                  <span className="text-mac-caption text-(--text-tertiary)">Resultado</span>
                   <Badge variant="default">Sem acesso</Badge>
                 </div>
               </div>
             ) : (
               <div className="space-y-2">
-                <p className="text-mac-body text-[var(--text-primary)]">{userName} possui acesso porque:</p>
+                <p className="text-mac-body text-(--text-primary)">{userName} possui acesso porque:</p>
                 <ul className="space-y-1.5">
                   {result.candidates.map((c, i) => (
-                    <li key={i} className={`flex items-start gap-2 text-mac-body ${c.is_winner ? "text-[var(--text-primary)]" : "text-[var(--text-tertiary)] line-through decoration-[var(--border-default)]"}`}>
-                      {c.is_winner ? <Check className="w-4 h-4 text-teal-500 flex-shrink-0 mt-0.5" /> : <span className="w-4 h-4 flex-shrink-0" />}
+                    <li key={i} className={`flex items-start gap-2 text-mac-body ${c.is_winner ? "text-(--text-primary)" : "text-(--text-tertiary) line-through decoration-(--border-default)"}`}>
+                      {c.is_winner ? <Check className="w-4 h-4 text-teal-500 shrink-0 mt-0.5" /> : <span className="w-4 h-4 shrink-0" />}
                       <span>
                         {c.source === "grupo" ? <>Está no grupo <strong>{c.group_name}</strong>, que tem</> : "Tem concessão direta de"}{" "}
                         <Badge variant={ROLE_VARIANT[c.permission_level] ?? "default"}>{ROLE_LABEL[c.permission_level] ?? c.permission_level}</Badge>{" "}
@@ -373,14 +373,14 @@ function ExplainAccessModal({ companyId, userId, userName, folders, onClose }: {
                     </li>
                   ))}
                 </ul>
-                <div className="pt-2 border-t border-[var(--border-default)] flex items-center justify-between">
-                  <span className="text-mac-caption text-[var(--text-tertiary)]">Resultado</span>
+                <div className="pt-2 border-t border-(--border-default) flex items-center justify-between">
+                  <span className="text-mac-caption text-(--text-tertiary)">Resultado</span>
                   <Badge variant={ROLE_VARIANT[result.resolved ?? ""] ?? "default"}>{ROLE_LABEL[result.resolved ?? ""] ?? result.resolved}</Badge>
                 </div>
               </div>
             )}
           </div>
-          <div className="flex justify-end gap-2 px-5 py-4 border-t border-[var(--border-default)]">
+          <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default)">
             <Button variant="secondary" size="sm" onClick={onClose}>Fechar</Button>
           </div>
         </div>
@@ -477,14 +477,14 @@ function GroupDetailPanel({ companyId, group, members, folders, canManage, onClo
   }
 
   return (
-    <li className="border-b border-[var(--border-default)] last:border-0 bg-[var(--bg-page)]/40">
+    <li className="border-b border-(--border-default) last:border-0 bg-(--bg-page)/40">
       <div className="px-5 py-3">
         {loading || !detail ? (
-          <div className="h-6 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse w-1/3" />
+          <div className="h-6 bg-(--bg-hover) rounded-(--radius-control) animate-pulse w-1/3" />
         ) : (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <p className="text-mac-caption font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Membros</p>
+              <p className="text-mac-caption font-semibold uppercase tracking-wide text-(--text-tertiary)">Membros</p>
               {canManage && !addingMember && (
                 <button onClick={() => setAddingMember(true)} className="inline-flex items-center gap-1 text-mac-caption text-teal-500 hover:text-teal-600">
                   <Plus className="w-3 h-3" /> Adicionar
@@ -492,12 +492,12 @@ function GroupDetailPanel({ companyId, group, members, folders, canManage, onClo
               )}
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {detail.members.length === 0 && <span className="text-mac-caption text-[var(--text-tertiary)]">Nenhum membro ainda.</span>}
+              {detail.members.length === 0 && <span className="text-mac-caption text-(--text-tertiary)">Nenhum membro ainda.</span>}
               {detail.members.map((m) => (
-                <span key={m.user_id} className="inline-flex items-center gap-1.5 pl-2 pr-1.5 py-0.5 rounded-full bg-[var(--bg-card)] border border-[var(--border-default)] text-mac-caption text-[var(--text-primary)]">
+                <span key={m.user_id} className="inline-flex items-center gap-1.5 pl-2 pr-1.5 py-0.5 rounded-full bg-(--bg-card) border border-(--border-default) text-mac-caption text-(--text-primary)">
                   {m.full_name}
                   {canManage && (
-                    <button onClick={() => removeMember(m.user_id)} disabled={busy} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">
+                    <button onClick={() => removeMember(m.user_id)} disabled={busy} className="text-(--text-tertiary) hover:text-(--text-primary)">
                       <X className="w-3 h-3" />
                     </button>
                   )}
@@ -519,8 +519,8 @@ function GroupDetailPanel({ companyId, group, members, folders, canManage, onClo
               </div>
             )}
 
-            <div className="flex items-center justify-between pt-2 border-t border-[var(--border-default)]">
-              <p className="text-mac-caption font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Acesso concedido ao grupo</p>
+            <div className="flex items-center justify-between pt-2 border-t border-(--border-default)">
+              <p className="text-mac-caption font-semibold uppercase tracking-wide text-(--text-tertiary)">Acesso concedido ao grupo</p>
               {canManage && !addingGrant && (
                 <button onClick={() => setAddingGrant(true)} className="inline-flex items-center gap-1 text-mac-caption text-teal-500 hover:text-teal-600">
                   <Plus className="w-3 h-3" /> Conceder
@@ -528,15 +528,15 @@ function GroupDetailPanel({ companyId, group, members, folders, canManage, onClo
               )}
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {detail.grants.length === 0 && <span className="text-mac-caption text-[var(--text-tertiary)]">Nenhuma concessão ainda — o grupo não dá acesso a nada.</span>}
+              {detail.grants.length === 0 && <span className="text-mac-caption text-(--text-tertiary)">Nenhuma concessão ainda — o grupo não dá acesso a nada.</span>}
               {detail.grants.map((g) => (
-                <span key={g.access_id} className="inline-flex items-center gap-1.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-[var(--bg-page)] border border-[var(--border-default)]">
+                <span key={g.access_id} className="inline-flex items-center gap-1.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-(--bg-page) border border-(--border-default)">
                   <Badge variant={ROLE_VARIANT[g.role] ?? "default"}>{ROLE_LABEL[g.role] ?? g.role}</Badge>
-                  <span className="text-mac-caption text-[var(--text-secondary)] flex items-center gap-1">
+                  <span className="text-mac-caption text-(--text-secondary) flex items-center gap-1">
                     {g.folder_id ? (<><Folder className="w-3 h-3" />{g.folder_name ?? "Pasta"}</>) : "Empresa toda"}
                   </span>
                   {canManage && (
-                    <button onClick={() => removeGrant(g.access_id)} disabled={busy} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">
+                    <button onClick={() => removeGrant(g.access_id)} disabled={busy} className="text-(--text-tertiary) hover:text-(--text-primary)">
                       <X className="w-3 h-3" />
                     </button>
                   )}
@@ -546,7 +546,7 @@ function GroupDetailPanel({ companyId, group, members, folders, canManage, onClo
             {addingGrant && (
               <div className="flex items-end gap-2 flex-wrap">
                 <div className="w-[160px]">
-                  <label className="block text-mac-caption text-[var(--text-tertiary)] mb-1">Papel</label>
+                  <label className="block text-mac-caption text-(--text-tertiary) mb-1">Papel</label>
                   <Dropdown value={grantRole} placeholder="Selecione…" onChange={setGrantRole} options={[
                     { value: "visualizador", label: "Visualizador" },
                     { value: "operador", label: "Operador" },
@@ -554,7 +554,7 @@ function GroupDetailPanel({ companyId, group, members, folders, canManage, onClo
                   ]} />
                 </div>
                 <div className="flex-1 min-w-[180px]">
-                  <label className="block text-mac-caption text-[var(--text-tertiary)] mb-1">Escopo</label>
+                  <label className="block text-mac-caption text-(--text-tertiary) mb-1">Escopo</label>
                   <FolderSelect folders={folders} value={grantFolder} onChange={setGrantFolder} />
                 </div>
                 <Button size="sm" onClick={addGrant} loading={busy}>Conceder</Button>
@@ -564,7 +564,7 @@ function GroupDetailPanel({ companyId, group, members, folders, canManage, onClo
           </div>
         )}
       </div>
-      <button onClick={onClose} className="w-full px-5 py-1.5 border-t border-[var(--border-default)] text-mac-caption text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast">
+      <button onClick={onClose} className="w-full px-5 py-1.5 border-t border-(--border-default) text-mac-caption text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--bg-hover) transition-colors duration-fast">
         Recolher
       </button>
     </li>
@@ -626,11 +626,11 @@ function GroupsSection({ companyId, members, folders, canManage }: {
   }
 
   return (
-    <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-default)]">
+    <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-(--border-default)">
         <div className="flex items-center gap-2">
           <UsersRound className="w-4 h-4 text-teal-500" />
-          <h3 className="text-mac-body font-medium text-[var(--text-primary)]">Grupos</h3>
+          <h3 className="text-mac-body font-medium text-(--text-primary)">Grupos</h3>
         </div>
         {canManage && !creating && (
           <Button size="sm" variant="secondary" onClick={() => setCreating(true)}>
@@ -640,14 +640,14 @@ function GroupsSection({ companyId, members, folders, canManage }: {
       </div>
 
       {creating && (
-        <div className="flex items-center gap-2 px-5 py-3 border-b border-[var(--border-default)]">
+        <div className="flex items-center gap-2 px-5 py-3 border-b border-(--border-default)">
           <input
             autoFocus
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") createGroup(); if (e.key === "Escape") setCreating(false); }}
             placeholder="Nome do grupo (ex: Grupo Financeiro)"
-            className="flex-1 h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+            className="flex-1 h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
           />
           <Button size="sm" onClick={createGroup} loading={saving} disabled={!newName.trim()}>Criar</Button>
           <Button size="sm" variant="secondary" onClick={() => { setCreating(false); setNewName(""); }}>Cancelar</Button>
@@ -656,10 +656,10 @@ function GroupsSection({ companyId, members, folders, canManage }: {
 
       {loading ? (
         <div className="p-5 space-y-2">
-          {[0, 1].map((i) => <div key={i} className="h-10 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />)}
+          {[0, 1].map((i) => <div key={i} className="h-10 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />)}
         </div>
       ) : groups.length === 0 ? (
-        <div className="py-6 px-5 text-mac-caption text-[var(--text-tertiary)]">
+        <div className="py-6 px-5 text-mac-caption text-(--text-tertiary)">
           Nenhum grupo ainda. Grupos permitem conceder acesso a vários usuários de uma vez — o acesso de um usuário via grupo é resolvido junto com as concessões diretas dele, com a mesma regra de especificidade (a mais próxima da pasta vence).
         </div>
       ) : (
@@ -667,23 +667,23 @@ function GroupsSection({ companyId, members, folders, canManage }: {
           {groups.map((g) => (
             <div key={g.id}>
               <li
-                className="flex items-center gap-3 px-5 py-3 hover:bg-[var(--bg-hover)] border-b border-[var(--border-default)] cursor-pointer group"
+                className="flex items-center gap-3 px-5 py-3 hover:bg-(--bg-hover) border-b border-(--border-default) cursor-pointer group"
                 onClick={() => setExpanded(expanded === g.id ? null : g.id)}
               >
-                <div className="w-8 h-8 rounded-full bg-indigo-500/15 flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 rounded-full bg-indigo-500/15 flex items-center justify-center shrink-0">
                   <UsersRound className="w-4 h-4 text-indigo-500" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-mac-body font-medium text-[var(--text-primary)] truncate">{g.name}</p>
-                  <p className="text-mac-caption text-[var(--text-tertiary)]">
+                  <p className="text-mac-body font-medium text-(--text-primary) truncate">{g.name}</p>
+                  <p className="text-mac-caption text-(--text-tertiary)">
                     {g.member_count} {g.member_count === 1 ? "membro" : "membros"} · {g.grant_count} {g.grant_count === 1 ? "concessão" : "concessões"}
                   </p>
                 </div>
-                <ChevronDown className={`w-3.5 h-3.5 text-[var(--text-tertiary)] transition-transform duration-fast ${expanded === g.id ? "rotate-180" : ""}`} />
+                <ChevronDown className={`w-3.5 h-3.5 text-(--text-tertiary) transition-transform duration-fast ${expanded === g.id ? "rotate-180" : ""}`} />
                 {canManage && (
                   <button
                     onClick={(e) => { e.stopPropagation(); setRemoving(g); }}
-                    className="opacity-0 group-hover:opacity-100 p-1.5 rounded-[6px] text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-500/10 transition-all duration-fast"
+                    className="opacity-0 group-hover:opacity-100 p-1.5 rounded-[6px] text-(--text-tertiary) hover:text-red-500 hover:bg-red-500/10 transition-all duration-fast"
                     title="Excluir grupo"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -822,10 +822,10 @@ export default function Users() {
   return (
     <div className="space-y-4">
       {folderFilter && (
-        <div className="flex items-center gap-2 px-4 py-2.5 rounded-[var(--radius-control)] bg-teal-500/10 border border-teal-500/30 text-mac-body text-[var(--text-primary)]">
-          <Filter className="w-4 h-4 text-teal-500 flex-shrink-0" />
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-(--radius-control) bg-teal-500/10 border border-teal-500/30 text-mac-body text-(--text-primary)">
+          <Filter className="w-4 h-4 text-teal-500 shrink-0" />
           <span className="flex-1">Mostrando só concessões diretas da pasta <strong>{filteredFolderName ?? "selecionada"}</strong>.</span>
-          <button onClick={() => setSearchParams({})} className="text-mac-caption text-teal-500 hover:text-teal-600 font-medium flex-shrink-0">
+          <button onClick={() => setSearchParams({})} className="text-mac-caption text-teal-500 hover:text-teal-600 font-medium shrink-0">
             Ver todos
           </button>
         </div>
@@ -845,10 +845,10 @@ export default function Users() {
           ajuste de unificação feito em Settings/Documents) — a segunda seção
           fica separada só por um border-t, igual ao padrão de Preferences.tsx
           (Tema/Densidade dentro do mesmo cartão). */}
-      <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
+      <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
         {loading ? (
           <div className="p-5 space-y-2">
-            {[0, 1, 2].map((i) => <div key={i} className="h-14 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />)}
+            {[0, 1, 2].map((i) => <div key={i} className="h-14 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />)}
           </div>
         ) : Object.keys(byUser).length === 0 ? (
           <div className="py-8">
@@ -859,33 +859,33 @@ export default function Users() {
             {Object.values(byUser).map((userGrants) => {
               const first = userGrants[0];
               return (
-                <li key={first.user_id} className="flex items-start gap-3 px-5 py-3 hover:bg-[var(--bg-hover)] border-b border-[var(--border-default)] last:border-0 group">
+                <li key={first.user_id} className="flex items-start gap-3 px-5 py-3 hover:bg-(--bg-hover) border-b border-(--border-default) last:border-0 group">
                   <Avatar name={first.full_name} size="sm" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <p className="text-mac-body font-medium text-[var(--text-primary)] truncate">{first.full_name}</p>
+                      <p className="text-mac-body font-medium text-(--text-primary) truncate">{first.full_name}</p>
                       {canManage && (
                         <button
                           onClick={() => setExplaining({ id: first.user_id, name: first.full_name })}
                           title="Explicar este acesso"
-                          className="text-[var(--text-tertiary)] hover:text-teal-500 transition-colors duration-fast flex-shrink-0"
+                          className="text-(--text-tertiary) hover:text-teal-500 transition-colors duration-fast shrink-0"
                         >
                           <HelpCircle className="w-3.5 h-3.5" />
                         </button>
                       )}
                     </div>
-                    <p className="text-mac-caption text-[var(--text-secondary)] truncate mb-1.5">@{first.username}</p>
+                    <p className="text-mac-caption text-(--text-secondary) truncate mb-1.5">@{first.username}</p>
                     <div className="flex flex-wrap gap-1.5">
                       {userGrants.map((g) => (
-                        <span key={g.access_id} className="inline-flex items-center gap-1.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-[var(--bg-page)] border border-[var(--border-default)]">
+                        <span key={g.access_id} className="inline-flex items-center gap-1.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-(--bg-page) border border-(--border-default)">
                           <Badge variant={ROLE_VARIANT[g.role] ?? "default"}>{ROLE_LABEL[g.role] ?? g.role}</Badge>
-                          <span className="text-mac-caption text-[var(--text-secondary)] flex items-center gap-1">
+                          <span className="text-mac-caption text-(--text-secondary) flex items-center gap-1">
                             {g.folder_id ? (<><Folder className="w-3 h-3" />{g.folder_name ?? "Pasta"}</>) : "Empresa toda"}
                           </span>
                           {canManage && (
                             <button
                               onClick={() => openRemoveGrant(g)}
-                              className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors duration-fast"
+                              className="text-(--text-tertiary) hover:text-(--text-primary) transition-colors duration-fast"
                               title="Remover esta concessão"
                             >
                               <X className="w-3 h-3" />
@@ -896,7 +896,7 @@ export default function Users() {
                       {canManage && (
                         <button
                           onClick={() => setAddingGrantFor({ id: first.user_id, name: first.full_name })}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-dashed border-[var(--border-default)] text-mac-caption text-[var(--text-tertiary)] hover:text-teal-500 hover:border-teal-400 transition-colors duration-fast"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-dashed border-(--border-default) text-mac-caption text-(--text-tertiary) hover:text-teal-500 hover:border-teal-400 transition-colors duration-fast"
                         >
                           <Plus className="w-3 h-3" />
                           Adicionar
@@ -915,18 +915,18 @@ export default function Users() {
             (a razão do pane existir). Fechado por padrão. */}
         <button
           onClick={() => setRolesOpen((v) => !v)}
-          className="w-full px-5 py-3 border-t border-[var(--border-default)] flex items-center gap-2 text-left hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+          className="w-full px-5 py-3 border-t border-(--border-default) flex items-center gap-2 text-left hover:bg-(--bg-hover) transition-colors duration-fast"
         >
           <Shield className="w-4 h-4 text-teal-500" />
-          <h3 className="text-mac-body font-medium text-[var(--text-primary)] flex-1">Sobre os níveis de acesso</h3>
-          <ChevronDown className={`w-3.5 h-3.5 text-[var(--text-tertiary)] transition-transform duration-fast ${rolesOpen ? "rotate-180" : ""}`} />
+          <h3 className="text-mac-body font-medium text-(--text-primary) flex-1">Sobre os níveis de acesso</h3>
+          <ChevronDown className={`w-3.5 h-3.5 text-(--text-tertiary) transition-transform duration-fast ${rolesOpen ? "rotate-180" : ""}`} />
         </button>
         {rolesOpen && (
-          <ul className="border-t border-[var(--border-default)]">
+          <ul className="border-t border-(--border-default)">
             {ROLES.map((r) => (
-              <li key={r.role} className="flex items-start gap-4 px-5 py-4 border-b border-[var(--border-default)] last:border-0">
+              <li key={r.role} className="flex items-start gap-4 px-5 py-4 border-b border-(--border-default) last:border-0">
                 <Badge variant={ROLE_VARIANT[r.role] ?? "default"}>{r.label}</Badge>
-                <p className="text-mac-body text-[var(--text-secondary)]">{r.description}</p>
+                <p className="text-mac-body text-(--text-secondary)">{r.description}</p>
               </li>
             ))}
           </ul>

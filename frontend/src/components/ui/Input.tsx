@@ -15,7 +15,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="flex flex-col gap-1">
         {label && (
-          <label htmlFor={inputId} className="text-mac-body font-medium text-[var(--text-secondary)]">
+          <label htmlFor={inputId} className="text-mac-body font-medium text-(--text-secondary)">
             {label}
           </label>
         )}
@@ -24,10 +24,10 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
           id={inputId}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? errorId : undefined}
-          className={`h-9 w-full rounded-[var(--radius-control)] border px-3 text-mac-body
-            bg-[var(--bg-card)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)]
-            border-[var(--border-default)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70 focus:border-transparent
-            disabled:bg-[var(--bg-hover)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed disabled:select-none
+          className={`h-9 w-full rounded-(--radius-control) border px-3 text-mac-body
+            bg-(--bg-card) text-(--text-primary) placeholder:text-(--text-placeholder)
+            border-(--border-default) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70 focus:border-transparent
+            disabled:bg-(--bg-hover) disabled:text-(--text-tertiary) disabled:cursor-not-allowed disabled:select-none
             transition-all duration-fast
             ${error ? "border-red-500 focus:ring-red-400" : ""}
             ${className}`}

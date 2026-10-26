@@ -9,15 +9,15 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const base =
-  "inline-flex items-center justify-center font-medium rounded-full transition-all duration-fast select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400 disabled:opacity-50 disabled:pointer-events-none active:scale-[0.97]";
+  "inline-flex items-center justify-center font-medium rounded-full transition-all duration-fast select-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-teal-400 disabled:opacity-50 disabled:pointer-events-none active:scale-[0.97]";
 
 const variants: Record<string, string> = {
   primary: "bg-teal-600 text-white hover:bg-teal-500",
   secondary:
-    "bg-transparent text-[var(--text-primary)] border border-[var(--border-default)] hover:bg-[var(--bg-hover)]",
-  ghost: "bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]",
+    "bg-transparent text-(--text-primary) border border-(--border-default) hover:bg-(--bg-hover)",
+  ghost: "bg-transparent text-(--text-secondary) hover:bg-(--bg-hover)",
   danger: "bg-red-600 text-white hover:bg-red-500",
-  icon: "bg-transparent text-[var(--text-placeholder)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]",
+  icon: "bg-transparent text-(--text-placeholder) hover:bg-(--bg-hover) hover:text-(--text-secondary)",
 };
 
 const sizes: Record<string, string> = {

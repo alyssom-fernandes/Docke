@@ -120,25 +120,25 @@ function NewFieldModal({ companyId, existingFields, onClose, onCreated }: {
 
   return (
     <Portal>
-    <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[420px]">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-default)]">
-          <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Novo campo</h2>
-          <button onClick={onClose} className="p-1 rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
+    <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[420px]">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-(--border-default)">
+          <h2 className="text-mac-body font-semibold text-(--text-primary)">Novo campo</h2>
+          <button onClick={onClose} className="p-1 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover)">
             <X className="w-4 h-4" />
           </button>
         </div>
         <div className="p-5 space-y-4">
           <div>
-            <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Nome do campo</label>
+            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Nome do campo</label>
             <input
               type="text" autoFocus value={label} onChange={(e) => setLabel(e.target.value)}
               placeholder="Ex.: Instituição financeira"
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
             />
           </div>
           <div>
-            <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Tipo de resposta</label>
+            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Tipo de resposta</label>
             <Dropdown
               value={type}
               placeholder="Selecione…"
@@ -148,33 +148,33 @@ function NewFieldModal({ companyId, existingFields, onClose, onCreated }: {
           </div>
           {type === "numero" && (
             <div className="space-y-2">
-              <label className="flex items-center gap-2 text-mac-caption text-[var(--text-secondary)]">
+              <label className="flex items-center gap-2 text-mac-caption text-(--text-secondary)">
                 <input type="checkbox" checked={limitDecimals} onChange={(e) => setLimitDecimals(e.target.checked)} />
                 Limitar casas decimais
               </label>
               {limitDecimals ? (
                 <input
                   type="number" min={0} max={6} value={decimals} onChange={(e) => setDecimals(Number(e.target.value))}
-                  className="w-24 h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+                  className="w-24 h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
                 />
               ) : (
-                <p className="text-mac-caption2 text-[var(--text-tertiary)]">Ilimitado — o número é guardado exatamente como digitado.</p>
+                <p className="text-mac-caption2 text-(--text-tertiary)">Ilimitado — o número é guardado exatamente como digitado.</p>
               )}
             </div>
           )}
           {type === "selecao" && (
             <div>
-              <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Opções (separadas por vírgula)</label>
+              <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Opções (separadas por vírgula)</label>
               <input
                 type="text" value={optionsText} onChange={(e) => setOptionsText(e.target.value)}
                 placeholder="Ex.: Banco do Brasil, Itaú, Bradesco"
-                className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+                className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
               />
             </div>
           )}
           {existingFields.length > 0 && (
-            <div className="pt-2 border-t border-[var(--border-default)] space-y-2">
-              <label className="block text-mac-caption font-medium text-[var(--text-secondary)]">
+            <div className="pt-2 border-t border-(--border-default) space-y-2">
+              <label className="block text-mac-caption font-medium text-(--text-secondary)">
                 Só mostrar quando (opcional)
               </label>
               <Dropdown
@@ -190,13 +190,13 @@ function NewFieldModal({ companyId, existingFields, onClose, onCreated }: {
                 <input
                   type="text" value={conditionValue} onChange={(e) => setConditionValue(e.target.value)}
                   placeholder="quando for igual a…"
-                  className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+                  className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
                 />
               )}
             </div>
           )}
         </div>
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-[var(--border-default)]">
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default)">
           <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
           <Button size="sm" loading={saving} onClick={create} disabled={!label.trim()}>Criar campo</Button>
         </div>
@@ -235,21 +235,21 @@ function CopyFieldsModal({ companies, targetCompanyId, onClose, onCopied }: {
 
   return (
     <Portal>
-    <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[400px]">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-default)]">
-          <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Copiar campos de outra empresa</h2>
-          <button onClick={onClose} className="p-1 rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
+    <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[400px]">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-(--border-default)">
+          <h2 className="text-mac-body font-semibold text-(--text-primary)">Copiar campos de outra empresa</h2>
+          <button onClick={onClose} className="p-1 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover)">
             <X className="w-4 h-4" />
           </button>
         </div>
         <div className="p-5 space-y-4">
-          <p className="text-mac-caption text-[var(--text-tertiary)]">
+          <p className="text-mac-caption text-(--text-tertiary)">
             Copia só o catálogo (nome, tipo, formato). Campos com o mesmo nome já existentes aqui não são duplicados.
             A aplicação nas pastas não é copiada — as estruturas de pasta são diferentes entre empresas.
           </p>
           <div>
-            <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Empresa de origem</label>
+            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Empresa de origem</label>
             <Dropdown
               value={sourceId}
               placeholder="Selecione…"
@@ -258,7 +258,7 @@ function CopyFieldsModal({ companies, targetCompanyId, onClose, onCopied }: {
             />
           </div>
         </div>
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-[var(--border-default)]">
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default)">
           <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
           <Button size="sm" loading={saving} onClick={copy} disabled={!sourceId}>Copiar</Button>
         </div>
@@ -318,14 +318,14 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
   return (
     <div>
       {/* flex-col no mobile — em linha única (row) os dois botões com
-          flex-shrink-0 nunca cediam espaço, empurrando o parágrafo pra uma
+          shrink-0 nunca cediam espaço, empurrando o parágrafo pra uma
           coluna estreitíssima e o botão "Novo campo" pra fora da tela
           (overflow horizontal real, com scrollbar lateral). */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-        <p className="text-mac-caption text-[var(--text-tertiary)]">
+        <p className="text-mac-caption text-(--text-tertiary)">
           Campos personalizados disponíveis para aplicar nas pastas (aba "Aplicação na árvore").
         </p>
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-shrink-0">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
           <Button variant="secondary" size="sm" onClick={() => setShowCopy(true)}>
             <Copy className="w-3.5 h-3.5" /> Copiar de outra empresa
           </Button>
@@ -337,30 +337,30 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
 
       {loading ? (
         <div className="space-y-2">
-          {[0, 1, 2].map((i) => <div key={i} className="h-12 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />)}
+          {[0, 1, 2].map((i) => <div key={i} className="h-12 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />)}
         </div>
       ) : fields.length === 0 ? (
         <EmptyState title="Nenhum campo personalizado ainda" description="Crie campos como CPF, competência ou instituição financeira." icon={<Tags className="w-6 h-6" />} />
       ) : (
-        <ul className="border border-[var(--border-default)] rounded-[var(--radius-control)] divide-y divide-[var(--border-default)] overflow-hidden">
+        <ul className="border border-(--border-default) rounded-(--radius-control) divide-y divide-(--border-default) overflow-hidden">
           {fields.map((f) => (
             <li key={f.id} className="flex items-center gap-3 px-4 py-3">
               <div className="flex-1 min-w-0">
-                <p className="text-mac-body text-[var(--text-primary)]">{f.label}</p>
-                <p className="text-mac-caption text-[var(--text-tertiary)]">{f.field_key}</p>
+                <p className="text-mac-body text-(--text-primary)">{f.label}</p>
+                <p className="text-mac-caption text-(--text-tertiary)">{f.field_key}</p>
               </div>
               <Badge variant="default">{TYPE_LABEL[f.type]}</Badge>
               <button
                 onClick={() => setArchiving(f)}
                 title="Arquivar campo"
-                className="p-1.5 rounded-[6px] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+                className="p-1.5 rounded-[6px] text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--bg-hover) transition-colors duration-fast"
               >
                 <Archive className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setDeleting(f)}
                 title="Excluir campo (só se nunca foi preenchido)"
-                className="p-1.5 rounded-[6px] text-[var(--text-tertiary)] hover:text-red-500 hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+                className="p-1.5 rounded-[6px] text-(--text-tertiary) hover:text-red-500 hover:bg-(--bg-hover) transition-colors duration-fast"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -520,7 +520,7 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
   return (
     <div>
       <div className="mb-4">
-        <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Pasta</label>
+        <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Pasta</label>
         <Dropdown
           className="max-w-[400px]"
           value={folderId}
@@ -531,30 +531,30 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
             ...folders.map((f) => ({ value: f.id, label: f.name, depth: Math.max(0, folderDepth(f.path) - 1) })),
           ]}
         />
-        <p className="text-mac-caption text-[var(--text-tertiary)] mt-1.5">
+        <p className="text-mac-caption text-(--text-tertiary) mt-1.5">
           Campos aplicados aqui valem para esta pasta e todas as subpastas, a não ser que uma subpasta tenha sua própria regra.
         </p>
       </div>
 
       {loading ? (
         <div className="space-y-2">
-          {[0, 1].map((i) => <div key={i} className="h-12 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />)}
+          {[0, 1].map((i) => <div key={i} className="h-12 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />)}
         </div>
       ) : (
         <>
           {resolved.length === 0 ? (
-            <p className="text-mac-caption text-[var(--text-tertiary)] py-4">Nenhum campo aplicado nesta pasta ainda.</p>
+            <p className="text-mac-caption text-(--text-tertiary) py-4">Nenhum campo aplicado nesta pasta ainda.</p>
           ) : (
-            <ul className="border border-[var(--border-default)] rounded-[var(--radius-control)] divide-y divide-[var(--border-default)] overflow-hidden mb-4">
+            <ul className="border border-(--border-default) rounded-(--radius-control) divide-y divide-(--border-default) overflow-hidden mb-4">
               {resolved.map((f) => {
                 const isOwn = ownFieldIds.has(f.custom_field_id);
                 const ownRule = rules.find((r) => r.custom_field_id === f.custom_field_id && r.mode === "apply");
                 return (
                   <li key={f.custom_field_id} className="flex items-center gap-3 px-4 py-3">
-                    <GripVertical className="w-4 h-4 text-[var(--text-placeholder)] flex-shrink-0" />
+                    <GripVertical className="w-4 h-4 text-(--text-placeholder) shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-mac-body text-[var(--text-primary)]">{f.label}</p>
-                      <p className="text-mac-caption text-[var(--text-tertiary)]">
+                      <p className="text-mac-body text-(--text-primary)">{f.label}</p>
+                      <p className="text-mac-caption text-(--text-tertiary)">
                         {TYPE_LABEL[f.type]}{!isOwn && " · herdado"}
                       </p>
                     </div>
@@ -565,16 +565,16 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
                           defaultValue={ownRule.default_value ?? ""}
                           placeholder="Valor padrão"
                           onBlur={(e) => saveDefaultValue(ownRule, e.target.value)}
-                          className="w-32 h-8 px-2.5 text-mac-caption bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[6px] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+                          className="w-32 h-8 px-2.5 text-mac-caption bg-(--bg-card) border border-(--border-default) rounded-[6px] text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
                         />
-                        <label className="flex items-center gap-1.5 text-mac-caption text-[var(--text-secondary)]">
+                        <label className="flex items-center gap-1.5 text-mac-caption text-(--text-secondary)">
                           Obrigatório
                           <Switch checked={ownRule.required} onChange={() => toggleRequired(ownRule)} label="Obrigatório" />
                         </label>
                         <button
                           onClick={() => setRemoving(ownRule)}
                           title="Remover desta pasta"
-                          className="p-1.5 rounded-[6px] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+                          className="p-1.5 rounded-[6px] text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--bg-hover) transition-colors duration-fast"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -582,7 +582,7 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
                     ) : (
                       <button
                         onClick={() => excludeInherited(f.custom_field_id)}
-                        className="text-mac-caption text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors duration-fast"
+                        className="text-mac-caption text-(--text-tertiary) hover:text-(--text-primary) transition-colors duration-fast"
                       >
                         Não herdar aqui
                       </button>
@@ -640,17 +640,17 @@ export default function Metadata() {
 
   return (
     <div>
-      <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6">
+      <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-6">
         {/* Controle segmentado (cápsula com o segmento ativo em destaque) —
             a Apple nunca usa abas sublinhadas de texto dentro de um painel
             de Settings, o padrão nativo é esse pill de segmentos. */}
-        <div className="inline-flex items-center gap-0.5 p-1 mb-6 rounded-full bg-[var(--bg-hover)]">
+        <div className="inline-flex items-center gap-0.5 p-1 mb-6 rounded-full bg-(--bg-hover)">
           <button
             onClick={() => setTab("catalog")}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-mac-body transition-colors duration-fast ${
               tab === "catalog"
-                ? "bg-[var(--bg-card)] text-[var(--text-primary)] font-medium shadow-sm"
-                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                ? "bg-(--bg-card) text-(--text-primary) font-medium shadow-xs"
+                : "text-(--text-secondary) hover:text-(--text-primary)"
             }`}
           >
             <Tags className="w-4 h-4" /> Catálogo
@@ -659,8 +659,8 @@ export default function Metadata() {
             onClick={() => setTab("tree")}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-mac-body transition-colors duration-fast ${
               tab === "tree"
-                ? "bg-[var(--bg-card)] text-[var(--text-primary)] font-medium shadow-sm"
-                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                ? "bg-(--bg-card) text-(--text-primary) font-medium shadow-xs"
+                : "text-(--text-secondary) hover:text-(--text-primary)"
             }`}
           >
             <FolderTree className="w-4 h-4" /> Aplicação na árvore

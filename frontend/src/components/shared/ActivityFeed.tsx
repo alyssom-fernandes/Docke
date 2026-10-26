@@ -86,17 +86,17 @@ function EventDetail({ ev }: { ev: ActivityEvent }) {
   // fallback genérico abaixo.
   if (ev.action === "update_metadata" && ev.metadata?.field_label) {
     return (
-      <p className="text-mac-caption text-[var(--text-secondary)] mt-1 pl-9">
+      <p className="text-mac-caption text-(--text-secondary) mt-1 pl-9">
         <span className="font-medium">{ev.metadata.field_label}:</span>{" "}
-        <span className="line-through text-[var(--text-tertiary)]">{ev.metadata.old_value || "vazio"}</span>
+        <span className="line-through text-(--text-tertiary)">{ev.metadata.old_value || "vazio"}</span>
         {" → "}
-        <span className="text-[var(--text-primary)]">{ev.metadata.new_value}</span>
+        <span className="text-(--text-primary)">{ev.metadata.new_value}</span>
       </p>
     );
   }
   if (ev.metadata && Object.keys(ev.metadata).length > 0) {
     return (
-      <p className="text-mac-caption text-[var(--text-tertiary)] mt-1 pl-9 truncate">
+      <p className="text-mac-caption text-(--text-tertiary) mt-1 pl-9 truncate">
         {Object.entries(ev.metadata).map(([k, v]) => `${k}: ${v}`).join(" · ")}
       </p>
     );
@@ -110,29 +110,29 @@ function EventRow({ ev, onNavigate }: { ev: ActivityEvent; onNavigate: (target: 
   const hasDetail = !!(ev.metadata && Object.keys(ev.metadata).length > 0);
 
   return (
-    <li className="px-5 py-3 border-b border-[var(--border-default)] last:border-0">
+    <li className="px-5 py-3 border-b border-(--border-default) last:border-0">
       <div className="flex items-center gap-3">
         <Avatar name={ev.user_name} size="sm" />
         <div
           className={`flex-1 min-w-0 ${target ? "cursor-pointer" : ""}`}
           onClick={target ? () => onNavigate(target) : undefined}
         >
-          <p className="text-mac-body text-[var(--text-primary)] line-clamp-2">
+          <p className="text-mac-body text-(--text-primary) line-clamp-2">
             <span className="font-medium">{ev.user_name}</span>{" "}
             {ACTION_LABELS[ev.action] ?? ev.action}{" "}
-            <span className="text-[var(--text-secondary)]">{ev.item_name_snapshot}</span>
+            <span className="text-(--text-secondary)">{ev.item_name_snapshot}</span>
           </p>
         </div>
         {hasDetail && (
           <button
             onClick={() => setExpanded((v) => !v)}
-            className="p-1 rounded-full text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast flex-shrink-0"
+            className="p-1 rounded-full text-(--text-tertiary) hover:bg-(--bg-hover) transition-colors duration-fast shrink-0"
             aria-label={expanded ? "Ocultar detalhes" : "Ver detalhes"}
           >
             {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
           </button>
         )}
-        <span className="text-mac-caption text-[var(--text-tertiary)] flex-shrink-0" title={fullDate(ev.created_at)}>
+        <span className="text-mac-caption text-(--text-tertiary) shrink-0" title={fullDate(ev.created_at)}>
           {new Date(ev.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
         </span>
       </div>
@@ -148,24 +148,24 @@ function ClusterRow({ cluster, onNavigate }: { cluster: Cluster; onNavigate: (ta
   if (cluster.events.length === 1) return <EventRow ev={latest} onNavigate={onNavigate} />;
 
   return (
-    <li className="border-b border-[var(--border-default)] last:border-0">
+    <li className="border-b border-(--border-default) last:border-0">
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+        className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-(--bg-hover) transition-colors duration-fast"
       >
         <Avatar name={cluster.userName} size="sm" />
         <div className="flex-1 min-w-0">
-          <p className="text-mac-body text-[var(--text-primary)]">
+          <p className="text-mac-body text-(--text-primary)">
             <span className="font-medium">{cluster.userName}</span> fez {cluster.events.length} alterações
           </p>
         </div>
-        {expanded ? <ChevronDown className="w-3.5 h-3.5 text-[var(--text-tertiary)]" /> : <ChevronRight className="w-3.5 h-3.5 text-[var(--text-tertiary)]" />}
-        <span className="text-mac-caption text-[var(--text-tertiary)] flex-shrink-0" title={fullDate(latest.created_at)}>
+        {expanded ? <ChevronDown className="w-3.5 h-3.5 text-(--text-tertiary)" /> : <ChevronRight className="w-3.5 h-3.5 text-(--text-tertiary)" />}
+        <span className="text-mac-caption text-(--text-tertiary) shrink-0" title={fullDate(latest.created_at)}>
           {new Date(latest.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
         </span>
       </button>
       {expanded && (
-        <ul className="bg-[var(--bg-hover)]/40">
+        <ul className="bg-(--bg-hover)/40">
           {cluster.events.map((ev) => <EventRow key={ev.id} ev={ev} onNavigate={onNavigate} />)}
         </ul>
       )}
@@ -213,7 +213,7 @@ export default function ActivityFeed({
     return (
       <div className="space-y-2">
         {[0, 1, 2].map((i) => (
-          <div key={i} className="h-14 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] animate-pulse" />
+          <div key={i} className="h-14 bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) animate-pulse" />
         ))}
       </div>
     );
@@ -241,11 +241,11 @@ export default function ActivityFeed({
       {groups.map((group) => (
         <div key={group.label || "all"}>
           {group.label && (
-            <h2 className="px-1 pb-1.5 text-mac-caption font-semibold text-[var(--text-tertiary)] uppercase tracking-wide">
+            <h2 className="px-1 pb-1.5 text-mac-caption font-semibold text-(--text-tertiary) uppercase tracking-wide">
               {group.label}
             </h2>
           )}
-          <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
+          <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
             <ul>
               {clusterEvents(group.items).map((c) => (
                 <ClusterRow key={c.key} cluster={c} onNavigate={navigate} />

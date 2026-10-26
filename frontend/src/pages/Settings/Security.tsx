@@ -39,24 +39,24 @@ function IntegritySection() {
   if (!current || (current.permission_level !== "admin" && current.permission_level !== "supremo")) return null;
 
   return (
-    <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6 mt-6">
-      <h2 className="text-mac-body font-semibold text-[var(--text-primary)] mb-1">Integridade da trilha de auditoria</h2>
-      <p className="text-mac-caption text-[var(--text-secondary)] mb-4">
+    <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-6 mt-6">
+      <h2 className="text-mac-body font-semibold text-(--text-primary) mb-1">Integridade da trilha de auditoria</h2>
+      <p className="text-mac-caption text-(--text-secondary) mb-4">
         Cada evento registrado em Atividade carrega um hash encadeado ao anterior — qualquer alteração feita fora do fluxo normal do sistema quebra a cadeia a partir daquele ponto. Verifique a qualquer momento se a trilha continua íntegra.
       </p>
       <Button size="sm" variant="secondary" onClick={verify} loading={checking}>
         Verificar agora
       </Button>
       {result && (
-        <div className={`mt-4 flex items-start gap-2 p-3 rounded-[var(--radius-control)] ${result.intact ? "bg-emerald-500/10" : "bg-red-500/10"}`}>
+        <div className={`mt-4 flex items-start gap-2 p-3 rounded-(--radius-control) ${result.intact ? "bg-emerald-500/10" : "bg-red-500/10"}`}>
           {result.intact ? (
-            <ShieldCheck className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+            <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
           ) : (
-            <ShieldAlert className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+            <ShieldAlert className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
           )}
           <div className="text-mac-caption">
             {result.intact ? (
-              <p className="text-[var(--text-primary)]">Cadeia íntegra — {result.total_events} eventos verificados, nenhuma quebra encontrada.</p>
+              <p className="text-(--text-primary)">Cadeia íntegra — {result.total_events} eventos verificados, nenhuma quebra encontrada.</p>
             ) : (
               <p className="text-red-600 dark:text-red-400">
                 Quebra detectada em {result.broken_count} evento{result.broken_count > 1 ? "s" : ""}. O primeiro ponto adulterado foi registrado originalmente em{" "}
@@ -107,7 +107,7 @@ export default function Security() {
 
   return (
     <div>
-      <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6">
+      <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-6">
         <form onSubmit={handleSubmit} className="space-y-4 max-w-[400px]">
           <Input
             label="Senha atual"

@@ -112,16 +112,16 @@ export default function Trash() {
   return (
     <div className="space-y-6 pb-16">
       <div className="flex items-center justify-between">
-        <h1 className="text-mac-title2 font-semibold text-[var(--text-primary)]">Lixeira</h1>
+        <h1 className="text-mac-title2 font-semibold text-(--text-primary)">Lixeira</h1>
         {items.length > 0 && (
-          <p className="text-mac-body text-[var(--text-secondary)]">{items.length} ite{items.length !== 1 ? "ns" : "m"}</p>
+          <p className="text-mac-body text-(--text-secondary)">{items.length} ite{items.length !== 1 ? "ns" : "m"}</p>
         )}
       </div>
 
       {loading ? (
         <div className="space-y-2">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-12 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] animate-pulse" />
+            <div key={i} className="h-12 bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) animate-pulse" />
           ))}
         </div>
       ) : items.length === 0 ? (
@@ -131,12 +131,12 @@ export default function Trash() {
           icon={<Trash2 className="w-6 h-6" />}
         />
       ) : (
-        <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
+        <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
           <ul>
             {items.map((item) => (
               <li
                 key={item.id}
-                className="flex items-center gap-3 px-5 py-3 hover:bg-[var(--bg-hover)] transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 group"
+                className="flex items-center gap-3 px-5 py-3 hover:bg-(--bg-hover) transition-colors duration-fast border-b border-(--border-default) last:border-0 group"
               >
                 <Checkbox
                   checked={selected.has(item.id)}
@@ -144,21 +144,21 @@ export default function Trash() {
                   aria-label={`Selecionar ${item.name}`}
                 />
                 {item.item_type === "folder" ? (
-                  <FolderOpen className="w-4 h-4 text-teal-500 flex-shrink-0" />
+                  <FolderOpen className="w-4 h-4 text-teal-500 shrink-0" />
                 ) : (
                   (() => { const s = getFileStyle(item.name); const Icon = s.icon; return (
-                    <div className={`w-6 h-6 rounded-[4px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
+                    <div className={`w-6 h-6 rounded-badge flex items-center justify-center shrink-0 ${s.bgColor}`}>
                       <Icon className={`w-3.5 h-3.5 ${s.iconColor} ${s.fillColor}`} />
                     </div>
                   ); })()
                 )}
-                <span className="flex-1 min-w-0 text-mac-body text-[var(--text-primary)] truncate">{item.name}</span>
-                <span className="hidden md:inline text-mac-caption text-[var(--text-tertiary)] mr-2" title={fullDate(item.deleted_at)}>
+                <span className="flex-1 min-w-0 text-mac-body text-(--text-primary) truncate">{item.name}</span>
+                <span className="hidden md:inline text-mac-caption text-(--text-tertiary) mr-2" title={fullDate(item.deleted_at)}>
                   Excluído {fmtDate(item.deleted_at)}
                 </span>
                 <button
                   onClick={() => restore(item)}
-                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 flex items-center justify-center gap-1 p-2.5 sm:px-2.5 sm:py-1 rounded-full text-mac-caption text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-all duration-fast flex-shrink-0"
+                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 flex items-center justify-center gap-1 p-2.5 sm:px-2.5 sm:py-1 rounded-full text-mac-caption text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-all duration-fast shrink-0"
                   title="Restaurar"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
@@ -166,7 +166,7 @@ export default function Trash() {
                 </button>
                 <button
                   onClick={() => setConfirmSingle(item)}
-                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 flex items-center justify-center gap-1 p-2.5 sm:px-2.5 sm:py-1 rounded-full text-mac-caption text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-all duration-fast flex-shrink-0"
+                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 flex items-center justify-center gap-1 p-2.5 sm:px-2.5 sm:py-1 rounded-full text-mac-caption text-(--text-secondary) hover:bg-(--bg-hover) transition-all duration-fast shrink-0"
                   title="Excluir permanentemente"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -181,7 +181,7 @@ export default function Trash() {
       {/* Barra de ações em lote */}
       {selected.size > 0 && (
         <div className="glass-panel glass-blur-pill fixed bottom-[76px] md:bottom-7 lg:bottom-[100px] left-1/2 -translate-x-1/2 flex items-center gap-3 rounded-[50px] pl-[18px] pr-1.5 py-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.55)] z-40">
-          <span className="text-mac-body text-[var(--text-primary)]">{selected.size} selecionado{selected.size !== 1 ? "s" : ""}</span>
+          <span className="text-mac-body text-(--text-primary)">{selected.size} selecionado{selected.size !== 1 ? "s" : ""}</span>
           <button
             onClick={() => setConfirmBulk(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-mac-body text-white bg-red-600 hover:bg-red-500 transition-colors duration-fast"

@@ -6,7 +6,7 @@ type Variant = "default" | "success" | "error" | "warning" | "info" | "teal";
 // (status-badge, definido em tokens.css) — reprovado em WCAG AA (~3.2:1) no
 // valor original. Demais variantes seguem a paleta semântica padrão.
 const variants: Record<Variant, string> = {
-  default: "bg-[var(--bg-hover)] text-[var(--text-secondary)]",
+  default: "bg-(--bg-hover) text-(--text-secondary)",
   teal: "status-badge",
   success: "status-badge",
   error: "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400",

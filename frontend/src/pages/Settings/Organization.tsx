@@ -62,40 +62,40 @@ function OrgModal({ org, onClose, onDone }: { org: Org | null; onClose: () => vo
 
   return (
     <Portal>
-    <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[560px]">
-        <div className="px-5 py-4 border-b border-[var(--border-default)]">
-          <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">{org ? "Editar empresa" : "Nova empresa"}</h2>
+    <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[560px]">
+        <div className="px-5 py-4 border-b border-(--border-default)">
+          <h2 className="text-mac-body font-semibold text-(--text-primary)">{org ? "Editar empresa" : "Nova empresa"}</h2>
         </div>
         <div className="p-5 space-y-4">
           <div>
-            <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Nome</label>
+            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Nome</label>
             <input
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Ex: Minha Empresa Ltda."
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
             />
           </div>
           <div>
-            <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">CNPJ</label>
+            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">CNPJ</label>
             <input
               value={cnpj}
               onChange={(e) => setCnpj(formatCnpj(e.target.value))}
               placeholder="00.000.000/0000-00"
               maxLength={18}
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
             />
           </div>
           {org && (
-            <p className="text-mac-caption text-[var(--text-tertiary)] flex items-center gap-1.5">
+            <p className="text-mac-caption text-(--text-tertiary) flex items-center gap-1.5">
               <ImageIcon className="w-3.5 h-3.5" />
               Upload de logo em breve — envie por aqui assim que disponível.
             </p>
           )}
         </div>
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-[var(--border-default)]">
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default)">
           <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
           <Button size="sm" loading={saving} onClick={save} disabled={!name.trim()}>
             {org ? "Salvar" : "Criar"}
@@ -164,23 +164,23 @@ function FiscalProfileSection({ companyId, companyName, isAdmin }: { companyId: 
   }
 
   if (loading || !profile) {
-    return <div className="h-32 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-panel)] animate-pulse" />;
+    return <div className="h-32 bg-(--bg-card) border border-(--border-default) rounded-(--radius-panel) animate-pulse" />;
   }
 
   return (
-    <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-5 space-y-4 border border-teal-500/20">
+    <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-5 space-y-4 border border-teal-500/20">
       <div className="flex items-center gap-2">
-        <ScrollText className="w-4 h-4 text-teal-500 flex-shrink-0" />
-        <h2 className="text-mac-body font-semibold text-[var(--text-primary)] truncate">
-          Perfil fiscal <span className="text-[var(--text-tertiary)] font-normal">de</span> {companyName}
+        <ScrollText className="w-4 h-4 text-teal-500 shrink-0" />
+        <h2 className="text-mac-body font-semibold text-(--text-primary) truncate">
+          Perfil fiscal <span className="text-(--text-tertiary) font-normal">de</span> {companyName}
         </h2>
       </div>
-      <p className="text-mac-caption text-[var(--text-secondary)]">
+      <p className="text-mac-caption text-(--text-secondary)">
         Específico desta empresa — cada empresa da organização tem o próprio perfil. Para editar outra, troque a empresa selecionada no topo da tela. Usado pelas regras condicionais de obrigações (ex.: empresas do Simples Nacional não precisam de ECD). Deixe em branco o que não souber agora — nenhuma obrigação fica escondida por falta de preenchimento.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Regime tributário</label>
+          <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Regime tributário</label>
           <Dropdown
             value={profile.regime_tributario ?? ""}
             onChange={(v) => update("regime_tributario", v)}
@@ -190,7 +190,7 @@ function FiscalProfileSection({ companyId, companyName, isAdmin }: { companyId: 
           />
         </div>
         <div>
-          <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Quantidade de funcionários</label>
+          <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Quantidade de funcionários</label>
           <Dropdown
             value={profile.faixa_funcionarios ?? ""}
             onChange={(v) => update("faixa_funcionarios", v)}
@@ -200,7 +200,7 @@ function FiscalProfileSection({ companyId, companyName, isAdmin }: { companyId: 
           />
         </div>
         <div>
-          <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">UF</label>
+          <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">UF</label>
           <Dropdown
             value={profile.uf ?? ""}
             onChange={(v) => update("uf", v)}
@@ -210,7 +210,7 @@ function FiscalProfileSection({ companyId, companyName, isAdmin }: { companyId: 
           />
         </div>
         <div>
-          <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Tipo jurídico</label>
+          <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Tipo jurídico</label>
           <Dropdown
             value={profile.tipo_juridico ?? ""}
             onChange={(v) => update("tipo_juridico", v)}
@@ -268,7 +268,7 @@ export default function Organization() {
       {current && <FiscalProfileSection companyId={current.id} companyName={current.name} isAdmin={isCurrentAdmin} />}
 
       <div className="flex items-center justify-between gap-3 pt-1">
-        <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Todas as empresas da organização</h2>
+        <h2 className="text-mac-body font-semibold text-(--text-primary)">Todas as empresas da organização</h2>
         {isSupremo && (
           <Button size="sm" onClick={() => setEditing("new")}>
             <Plus className="w-3.5 h-3.5" />
@@ -279,24 +279,24 @@ export default function Organization() {
 
       {loading ? (
         <div className="space-y-2">
-          {[0, 1].map((i) => <div key={i} className="h-14 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] animate-pulse" />)}
+          {[0, 1].map((i) => <div key={i} className="h-14 bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) animate-pulse" />)}
         </div>
       ) : orgs.length === 0 ? (
         <EmptyState title="Nenhuma empresa cadastrada" icon={<Building2 className="w-6 h-6" />} />
       ) : (
-        <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
+        <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
           <ul>
             {orgs.map((org) => (
-              <li key={org.id} className="flex items-center gap-3 px-5 py-4 border-b border-[var(--border-default)] last:border-0">
-                <div className="w-9 h-9 rounded-[var(--radius-control)] bg-teal-500/10 flex items-center justify-center flex-shrink-0">
+              <li key={org.id} className="flex items-center gap-3 px-5 py-4 border-b border-(--border-default) last:border-0">
+                <div className="w-9 h-9 rounded-(--radius-control) bg-teal-500/10 flex items-center justify-center shrink-0">
                   <Building2 className="w-4 h-4 text-teal-500" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-mac-body font-medium text-[var(--text-primary)] flex items-center gap-2 min-w-0">
+                  <p className="text-mac-body font-medium text-(--text-primary) flex items-center gap-2 min-w-0">
                     <span className="truncate">{org.name}</span>
                     {current?.id === org.id && <Badge variant="teal">Atual</Badge>}
                   </p>
-                  <p className="text-mac-caption text-[var(--text-secondary)]">
+                  <p className="text-mac-caption text-(--text-secondary)">
                     {org.cnpj ? formatCnpj(org.cnpj) : "CNPJ não informado"} · {org.document_count} documentos · {org.user_count} usuários
                   </p>
                 </div>
@@ -304,7 +304,7 @@ export default function Organization() {
                 {isSupremo && (
                   <button
                     onClick={() => setDeactivating(org)}
-                    className="px-2.5 py-1 rounded-full text-mac-caption text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors duration-fast"
+                    className="px-2.5 py-1 rounded-full text-mac-caption text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) transition-colors duration-fast"
                   >
                     {org.is_active ? "Desativar" : "Reativar"}
                   </button>
@@ -315,7 +315,7 @@ export default function Organization() {
                 <button
                   onClick={() => setEditing(org)}
                   aria-label={`Editar ${org.name}`}
-                  className="p-1.5 -mr-1.5 rounded-full text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors duration-fast flex-shrink-0"
+                  className="p-1.5 -mr-1.5 rounded-full text-(--text-tertiary) hover:bg-(--bg-hover) hover:text-(--text-primary) transition-colors duration-fast shrink-0"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>

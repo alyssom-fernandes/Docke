@@ -1,6 +1,75 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* source(): pasta onde o Tailwind procura classes, fixa em frontend/ — o dev
+   server às vezes roda a partir da raiz do repositório (.claude/launch.json). */
+@import 'tailwindcss' source("../..");
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-teal-50: #e6f5f2;
+  --color-teal-100: #b3e5d8;
+  --color-teal-200: #7dd4c0;
+  --color-teal-400: #3fbfa8;
+  --color-teal-500: #15a18e;
+  --color-teal-600: #0b8578;
+  --color-teal-700: #086b61;
+  --color-teal-800: #054f48;
+  --color-teal-900: #033530;
+
+  --color-bg-page: var(--bg-page);
+  --color-bg-card: var(--bg-card);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-hover: var(--bg-hover);
+
+  --color-border-default: var(--border-default);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-text-placeholder: var(--text-placeholder);
+
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: JetBrains Mono, Consolas, monospace;
+
+  --radius-badge: 4px;
+  --radius-sm: 8px;
+  --radius-card: 12px;
+  --radius-stat: 16px;
+
+  --transition-duration-fast: 100ms;
+  --transition-duration-normal: 150ms;
+  --transition-duration-slow: 220ms;
+
+  --default-transition-timing-function: cubic-bezier(0, 0, 0.2, 1);
+
+  --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.1);
+  --shadow-modal: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-drag: 0 12px 36px rgba(0, 0, 0, 0.16);
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+/* Todo o CSS próprio fica em @layer utilities, DEPOIS dos utilitários gerados
+   pelo Tailwind: é a mesma ordem do Tailwind 3 (tokens.css vinha depois de
+   @tailwind utilities). Fora de layer, no v4 essas regras venceriam qualquer
+   utilitário — ex.: "* { transition-property }" anularia transition-all. */
+@layer utilities {
 
 /* ═══════════════════════════════════════════════════════════════════════════
    macOS 27 Golden Gate — Design System Tokens
@@ -496,3 +565,5 @@ input[type="number"] {
 @media (prefers-reduced-motion: reduce) {
   .login-chain::before, .login-chain > li { animation: none !important; }
 }
+
+} /* fim de @layer utilities */

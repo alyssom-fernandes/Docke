@@ -13,8 +13,8 @@ export default function SaveBar({ visible, saving, onSave, onDiscard }: {
 }) {
   if (!visible) return null;
   return (
-    <div className="sticky bottom-0 -mx-6 -mb-6 mt-2 px-6 py-3 border-t border-[var(--border-default)] bg-[var(--bg-card)]/95 backdrop-blur-sm flex items-center justify-between gap-3 rounded-b-[var(--radius-panel)] page-enter">
-      <span className="text-mac-caption text-[var(--text-secondary)]">Você tem alterações não salvas.</span>
+    <div className="sticky bottom-0 -mx-6 -mb-6 mt-2 px-6 py-3 border-t border-(--border-default) bg-(--bg-card)/95 backdrop-blur-xs flex items-center justify-between gap-3 rounded-b-(--radius-panel) page-enter">
+      <span className="text-mac-caption text-(--text-secondary)">Você tem alterações não salvas.</span>
       <div className="flex items-center gap-2">
         <Button variant="secondary" size="sm" onClick={onDiscard} disabled={saving}>Descartar</Button>
         <Button size="sm" onClick={onSave} loading={saving}>Salvar</Button>

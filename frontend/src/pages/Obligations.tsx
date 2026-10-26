@@ -195,8 +195,8 @@ export default function Obligations() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-mac-title2 font-semibold text-[var(--text-primary)]">Obrigações</h1>
-          <p className="text-mac-caption text-[var(--text-secondary)] mt-1">
+          <h1 className="text-mac-title2 font-semibold text-(--text-primary)">Obrigações</h1>
+          <p className="text-mac-caption text-(--text-secondary) mt-1">
             Cada obrigação pode ser satisfeita por documentos diferentes — o que importa é comprovar, não um arquivo específico.
           </p>
         </div>
@@ -217,18 +217,18 @@ export default function Obligations() {
 
       {/* Modelos */}
       <section className="space-y-2">
-        <h2 className="text-mac-callout font-semibold text-[var(--text-primary)]">Modelos</h2>
+        <h2 className="text-mac-callout font-semibold text-(--text-primary)">Modelos</h2>
         {templates.length === 0 ? (
-          <p className="text-mac-caption text-[var(--text-tertiary)]">Nenhum modelo de obrigação cadastrado ainda.</p>
+          <p className="text-mac-caption text-(--text-tertiary)">Nenhum modelo de obrigação cadastrado ainda.</p>
         ) : (
-          <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
+          <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
             <ul>
               {templates.map((t) => (
-                <li key={t.id} className="flex items-center gap-3 px-5 py-3 border-b border-[var(--border-default)] last:border-0">
-                  <ShieldQuestion className="w-4 h-4 text-teal-500 flex-shrink-0" />
+                <li key={t.id} className="flex items-center gap-3 px-5 py-3 border-b border-(--border-default) last:border-0">
+                  <ShieldQuestion className="w-4 h-4 text-teal-500 shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <div className="text-mac-body text-[var(--text-primary)] truncate">{t.name}</div>
-                    <div className="text-mac-caption text-[var(--text-tertiary)]">
+                    <div className="text-mac-body text-(--text-primary) truncate">{t.name}</div>
+                    <div className="text-mac-caption text-(--text-tertiary)">
                       {FREQ_LABEL[t.frequency] ?? t.frequency}
                       {t.department ? ` · ${t.department}` : ""}
                       {t.sla_days > 0 ? ` · alerta ${t.sla_days}d antes do prazo` : ""}
@@ -249,7 +249,7 @@ export default function Obligations() {
       {templates.length >= 2 && (
         <section className="space-y-2">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <h2 className="text-mac-callout font-semibold text-[var(--text-primary)]">Dependências</h2>
+            <h2 className="text-mac-callout font-semibold text-(--text-primary)">Dependências</h2>
             {isAdmin && (
               <Button variant="ghost" size="sm" onClick={() => setShowDependencyModal(true)}>
                 <GitBranch className="w-3.5 h-3.5" /> Nova dependência
@@ -257,20 +257,20 @@ export default function Obligations() {
             )}
           </div>
           {dependencies.length === 0 ? (
-            <p className="text-mac-caption text-[var(--text-tertiary)]">
+            <p className="text-mac-caption text-(--text-tertiary)">
               Nenhuma dependência cadastrada — nenhum modelo está condicionado à conclusão de outro.
             </p>
           ) : (
             <ul className="space-y-1.5">
               {dependencies.map((d) => (
-                <li key={d.id} className="flex items-center gap-2 text-mac-caption text-[var(--text-secondary)]">
-                  <GitBranch className="w-3.5 h-3.5 text-teal-500 flex-shrink-0" />
+                <li key={d.id} className="flex items-center gap-2 text-mac-caption text-(--text-secondary)">
+                  <GitBranch className="w-3.5 h-3.5 text-teal-500 shrink-0" />
                   <span>
-                    <strong className="text-[var(--text-primary)]">{d.template_name}</strong> só fica ativa depois de{" "}
-                    <strong className="text-[var(--text-primary)]">{d.depends_on_name}</strong> ser aprovada no mesmo período
+                    <strong className="text-(--text-primary)">{d.template_name}</strong> só fica ativa depois de{" "}
+                    <strong className="text-(--text-primary)">{d.depends_on_name}</strong> ser aprovada no mesmo período
                   </span>
                   {isAdmin && (
-                    <button onClick={() => removeDependency(d)} className="p-1 rounded-[6px] text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]" title="Remover dependência">
+                    <button onClick={() => removeDependency(d)} className="p-1 rounded-[6px] text-(--text-tertiary) hover:bg-(--bg-hover) hover:text-(--text-primary)" title="Remover dependência">
                       <Trash2 className="w-3 h-3" />
                     </button>
                   )}
@@ -284,19 +284,19 @@ export default function Obligations() {
       {/* Instâncias */}
       <section className="space-y-2">
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <h2 className="text-mac-callout font-semibold text-[var(--text-primary)]">Instâncias</h2>
+          <h2 className="text-mac-callout font-semibold text-(--text-primary)">Instâncias</h2>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-0.5 p-0.5 bg-[var(--bg-hover)] rounded-[var(--radius-control)]">
+            <div className="flex items-center gap-0.5 p-0.5 bg-(--bg-hover) rounded-(--radius-control)">
               <button
                 onClick={() => setView("list")}
-                className={`p-1.5 rounded-[6px] transition-colors duration-fast ${view === "list" ? "bg-[var(--bg-card)] text-teal-500" : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"}`}
+                className={`p-1.5 rounded-[6px] transition-colors duration-fast ${view === "list" ? "bg-(--bg-card) text-teal-500" : "text-(--text-tertiary) hover:text-(--text-primary)"}`}
                 title="Lista"
               >
                 <List className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => setView("matrix")}
-                className={`p-1.5 rounded-[6px] transition-colors duration-fast ${view === "matrix" ? "bg-[var(--bg-card)] text-teal-500" : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"}`}
+                className={`p-1.5 rounded-[6px] transition-colors duration-fast ${view === "matrix" ? "bg-(--bg-card) text-teal-500" : "text-(--text-tertiary) hover:text-(--text-primary)"}`}
                 title="Matriz de completude"
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
@@ -321,7 +321,7 @@ export default function Obligations() {
         {loading ? (
           <div className="space-y-2">
             {[0, 1, 2].map((i) => (
-              <div key={i} className="h-14 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] animate-pulse" />
+              <div key={i} className="h-14 bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) animate-pulse" />
             ))}
           </div>
         ) : allInstances.length === 0 ? (
@@ -338,15 +338,15 @@ export default function Obligations() {
             onEmptyCellClick={(template, period) => setMatrixInstanceModal({ template, period })}
           />
         ) : filteredInstances.length === 0 ? (
-          <p className="text-mac-caption text-[var(--text-tertiary)] px-1">Nenhuma instância com esse status.</p>
+          <p className="text-mac-caption text-(--text-tertiary) px-1">Nenhuma instância com esse status.</p>
         ) : (
-          <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
+          <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
             <ul>
               {filteredInstances.map((inst) => (
-                <li key={inst.id} className="flex items-center gap-3 px-5 py-3 border-b border-[var(--border-default)] last:border-0">
+                <li key={inst.id} className="flex items-center gap-3 px-5 py-3 border-b border-(--border-default) last:border-0">
                   <div className="flex-1 min-w-0">
-                    <div className="text-mac-body text-[var(--text-primary)] truncate">{inst.template_name} · {inst.period}</div>
-                    <div className="text-mac-caption text-[var(--text-tertiary)]">
+                    <div className="text-mac-body text-(--text-primary) truncate">{inst.template_name} · {inst.period}</div>
+                    <div className="text-mac-caption text-(--text-tertiary)">
                       {inst.effective_status === "not_applicable" ? (
                         <span>Não se aplica a esta empresa, de acordo com o perfil fiscal cadastrado.</span>
                       ) : inst.effective_status === "blocked" ? (
@@ -419,10 +419,10 @@ const MATRIX_PILL: Record<string, string> = {
   overdue: "bg-red-500",
   blocked: "bg-blue-400",
   reviewing: "bg-blue-400",
-  pending: "bg-[var(--bg-hover)] border border-[var(--border-default)]",
-  dispensado: "bg-[var(--bg-hover)] border border-[var(--border-default)]",
-  cancelado: "bg-[var(--bg-hover)] border border-[var(--border-default)]",
-  not_applicable: "bg-[var(--bg-hover)] border border-dotted border-[var(--text-tertiary)]",
+  pending: "bg-(--bg-hover) border border-(--border-default)",
+  dispensado: "bg-(--bg-hover) border border-(--border-default)",
+  cancelado: "bg-(--bg-hover) border border-(--border-default)",
+  not_applicable: "bg-(--bg-hover) border border-dotted border-(--text-tertiary)",
 };
 
 function CompletionMatrix({
@@ -440,25 +440,25 @@ function CompletionMatrix({
   }, [instances]);
 
   if (periods.length === 0 || activeTemplates.length === 0) {
-    return <p className="text-mac-caption text-[var(--text-tertiary)]">Sem dados suficientes para montar a matriz ainda.</p>;
+    return <p className="text-mac-caption text-(--text-tertiary)">Sem dados suficientes para montar a matriz ainda.</p>;
   }
 
   return (
     <div className="space-y-3">
-      <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-x-auto">
+      <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              <th className="text-left px-4 py-2.5 text-mac-caption font-medium text-[var(--text-secondary)] sticky left-0 bg-[var(--bg-card)] whitespace-nowrap">Período</th>
+              <th className="text-left px-4 py-2.5 text-mac-caption font-medium text-(--text-secondary) sticky left-0 bg-(--bg-card) whitespace-nowrap">Período</th>
               {activeTemplates.map((t) => (
-                <th key={t.id} className="px-3 py-2.5 text-mac-caption font-medium text-[var(--text-secondary)] whitespace-nowrap text-center">{t.name}</th>
+                <th key={t.id} className="px-3 py-2.5 text-mac-caption font-medium text-(--text-secondary) whitespace-nowrap text-center">{t.name}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {periods.map((period) => (
-              <tr key={period} className="border-t border-[var(--border-default)]">
-                <td className="px-4 py-2.5 text-mac-caption text-[var(--text-primary)] font-medium sticky left-0 bg-[var(--bg-card)] whitespace-nowrap">{period}</td>
+              <tr key={period} className="border-t border-(--border-default)">
+                <td className="px-4 py-2.5 text-mac-caption text-(--text-primary) font-medium sticky left-0 bg-(--bg-card) whitespace-nowrap">{period}</td>
                 {activeTemplates.map((t) => {
                   const inst = byKey.get(`${t.id}|${period}`);
                   return (
@@ -467,13 +467,13 @@ function CompletionMatrix({
                         <button
                           onClick={() => onCellClick(inst)}
                           title={`${t.name} · ${period} — ${STATUS_LABEL[inst.effective_status] ?? inst.effective_status}`}
-                          className={`w-4 h-4 rounded-full inline-block hover:ring-2 hover:ring-teal-400/50 transition-all duration-fast ${MATRIX_PILL[inst.effective_status] ?? "bg-[var(--bg-hover)]"}`}
+                          className={`w-4 h-4 rounded-full inline-block hover:ring-2 hover:ring-teal-400/50 transition-all duration-fast ${MATRIX_PILL[inst.effective_status] ?? "bg-(--bg-hover)"}`}
                         />
                       ) : (
                         <button
                           onClick={() => onEmptyCellClick(t, period)}
                           title={`Gerar instância de ${t.name} para ${period}`}
-                          className="w-4 h-4 rounded-full inline-block border border-dashed border-[var(--border-default)] hover:border-teal-400 transition-colors duration-fast"
+                          className="w-4 h-4 rounded-full inline-block border border-dashed border-(--border-default) hover:border-teal-400 transition-colors duration-fast"
                         />
                       )}
                     </td>
@@ -484,13 +484,13 @@ function CompletionMatrix({
           </tbody>
         </table>
       </div>
-      <div className="flex items-center gap-4 flex-wrap text-mac-caption text-[var(--text-tertiary)]">
+      <div className="flex items-center gap-4 flex-wrap text-mac-caption text-(--text-tertiary)">
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" /> Aprovada</span>
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" /> Vencendo/Expirada</span>
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" /> Atrasada</span>
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-400 inline-block" /> Bloqueada/Em revisão</span>
-        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[var(--bg-hover)] border border-[var(--border-default)] inline-block" /> Pendente/Dispensada</span>
-        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full border border-dashed border-[var(--border-default)] inline-block" /> Sem instância</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-(--bg-hover) border border-(--border-default) inline-block" /> Pendente/Dispensada</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full border border-dashed border-(--border-default) inline-block" /> Sem instância</span>
       </div>
     </div>
   );
@@ -533,7 +533,7 @@ function ComplianceCenter({ instances, onFilter }: { instances: Instance[]; onFi
   ];
 
   const toneClass: Record<string, string> = {
-    default: "text-[var(--text-primary)]",
+    default: "text-(--text-primary)",
     warning: "text-amber-500",
     error: "text-red-500",
     info: "text-blue-500",
@@ -541,26 +541,26 @@ function ComplianceCenter({ instances, onFilter }: { instances: Instance[]; onFi
 
   return (
     <section className="space-y-3">
-      <h2 className="text-mac-callout font-semibold text-[var(--text-primary)]">Central de Conformidade</h2>
+      <h2 className="text-mac-callout font-semibold text-(--text-primary)">Central de Conformidade</h2>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {cards.map((c) => (
           <button
             key={c.label}
             onClick={c.onClick}
             disabled={!c.onClick}
-            className={`glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-4 text-left transition-transform duration-fast ${c.onClick ? "hover:scale-[1.02] cursor-pointer" : "cursor-default"}`}
+            className={`glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-4 text-left transition-transform duration-fast ${c.onClick ? "hover:scale-[1.02] cursor-pointer" : "cursor-default"}`}
           >
             <div className={`text-mac-title2 font-semibold ${toneClass[c.tone]}`}>{c.value}</div>
-            <div className="text-mac-caption text-[var(--text-secondary)] mt-1">{c.label}</div>
-            {c.hint && <div className="text-mac-caption2 text-[var(--text-tertiary)] mt-0.5">{c.hint}</div>}
+            <div className="text-mac-caption text-(--text-secondary) mt-1">{c.label}</div>
+            {c.hint && <div className="text-mac-caption2 text-(--text-tertiary) mt-0.5">{c.hint}</div>}
           </button>
         ))}
       </div>
       {deptEntries.length > 0 && (
-        <div className="flex items-center gap-3 flex-wrap text-mac-caption text-[var(--text-secondary)]">
-          <span className="text-[var(--text-tertiary)]">Pendências por departamento:</span>
+        <div className="flex items-center gap-3 flex-wrap text-mac-caption text-(--text-secondary)">
+          <span className="text-(--text-tertiary)">Pendências por departamento:</span>
           {deptEntries.map(([dept, count]) => (
-            <span key={dept}>{dept} <strong className="text-[var(--text-primary)]">{count}</strong></span>
+            <span key={dept}>{dept} <strong className="text-(--text-primary)">{count}</strong></span>
           ))}
         </div>
       )}
@@ -571,11 +571,11 @@ function ComplianceCenter({ instances, onFilter }: { instances: Instance[]; onFi
 function ModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <Portal>
-      <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-        <div className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[480px] max-h-[85vh] overflow-y-auto">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-default)]">
-            <h2 className="text-mac-body font-semibold text-[var(--text-primary)] truncate">{title}</h2>
-            <button onClick={onClose} className="p-1 rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] flex-shrink-0">
+      <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        <div className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[480px] max-h-[85vh] overflow-y-auto">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-(--border-default)">
+            <h2 className="text-mac-body font-semibold text-(--text-primary) truncate">{title}</h2>
+            <button onClick={onClose} className="p-1 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover) shrink-0">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -586,8 +586,8 @@ function ModalShell({ title, onClose, children }: { title: string; onClose: () =
   );
 }
 
-const inputClass = "w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70";
-const labelClass = "block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5";
+const inputClass = "w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70";
+const labelClass = "block text-mac-caption font-medium text-(--text-secondary) mb-1.5";
 
 function TemplateModal({ companyId, onClose, onCreated }: { companyId: string; onClose: () => void; onCreated: () => void }) {
   const { success, error: showError } = useToast();
@@ -659,8 +659,8 @@ function TemplateModal({ companyId, onClose, onCreated }: { companyId: string; o
           placeholder="Deixe em branco se o documento não expira sozinho"
         />
       </div>
-      <div className="border-t border-[var(--border-default)] pt-3">
-        <label className="flex items-center gap-2 text-mac-caption font-medium text-[var(--text-secondary)] cursor-pointer">
+      <div className="border-t border-(--border-default) pt-3">
+        <label className="flex items-center gap-2 text-mac-caption font-medium text-(--text-secondary) cursor-pointer">
           <input
             type="checkbox" checked={conditionalEnabled}
             onChange={(e) => { setConditionalEnabled(e.target.checked); setConditionalValues([]); }}
@@ -678,7 +678,7 @@ function TemplateModal({ companyId, onClose, onCreated }: { companyId: string; o
                 options={Object.entries(CONDITIONAL_FIELD_LABEL).map(([value, label]) => ({ value, label }))}
               />
             </div>
-            <p className="text-mac-caption text-[var(--text-tertiary)]">Não se aplica quando o perfil fiscal da empresa for:</p>
+            <p className="text-mac-caption text-(--text-tertiary)">Não se aplica quando o perfil fiscal da empresa for:</p>
             <div className="flex flex-wrap gap-1.5">
               {(conditionalField === "uf" ? UFS.map((u) => ({ value: u, label: u })) : CONDITIONAL_VALUE_OPTIONS[conditionalField] ?? []).map((opt) => {
                 const active = conditionalValues.includes(opt.value);
@@ -687,7 +687,7 @@ function TemplateModal({ companyId, onClose, onCreated }: { companyId: string; o
                     key={opt.value} type="button"
                     onClick={() => setConditionalValues((prev) => active ? prev.filter((v) => v !== opt.value) : [...prev, opt.value])}
                     className={`px-2.5 py-1 rounded-full text-mac-caption border transition-colors duration-fast ${
-                      active ? "bg-teal-500/15 border-teal-500 text-teal-600 dark:text-teal-400" : "border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                      active ? "bg-teal-500/15 border-teal-500 text-teal-600 dark:text-teal-400" : "border-(--border-default) text-(--text-secondary) hover:bg-(--bg-hover)"
                     }`}
                   >
                     {opt.label}
@@ -696,7 +696,7 @@ function TemplateModal({ companyId, onClose, onCreated }: { companyId: string; o
               })}
             </div>
             {conditionalEnabled && conditionalValues.length === 0 && (
-              <p className="text-mac-caption text-[var(--text-tertiary)]">Selecione ao menos um valor, ou desmarque a regra condicional.</p>
+              <p className="text-mac-caption text-(--text-tertiary)">Selecione ao menos um valor, ou desmarque a regra condicional.</p>
             )}
           </div>
         )}
@@ -791,13 +791,13 @@ function LinkDocumentModal({ companyId, instance, onClose, onLinked }: { company
         <label className={labelClass}>Buscar documento</label>
         <input className={inputClass} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Digite o nome do documento…" autoFocus />
       </div>
-      {searching && <p className="text-mac-caption text-[var(--text-tertiary)]">Buscando…</p>}
+      {searching && <p className="text-mac-caption text-(--text-tertiary)">Buscando…</p>}
       {results.length > 0 && (
-        <ul className="border border-[var(--border-default)] rounded-[var(--radius-control)] overflow-hidden divide-y divide-[var(--border-default)]">
+        <ul className="border border-(--border-default) rounded-(--radius-control) overflow-hidden divide-y divide-(--border-default)">
           {results.map((r) => (
             <li key={r.id} className="flex items-center gap-2 px-3 py-2">
-              <FileText className="w-3.5 h-3.5 text-[var(--text-tertiary)] flex-shrink-0" />
-              <span className="flex-1 min-w-0 text-mac-body text-[var(--text-primary)] truncate">{r.name}</span>
+              <FileText className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0" />
+              <span className="flex-1 min-w-0 text-mac-body text-(--text-primary) truncate">{r.name}</span>
               <Button variant="ghost" size="sm" onClick={() => link(r.id)} disabled={linkingId === r.id}>
                 {linkingId === r.id ? "Vinculando…" : "Vincular"}
               </Button>
@@ -806,7 +806,7 @@ function LinkDocumentModal({ companyId, instance, onClose, onLinked }: { company
         </ul>
       )}
       {instance.document_count > 0 && (
-        <p className="text-mac-caption text-[var(--text-tertiary)] flex items-center gap-1.5">
+        <p className="text-mac-caption text-(--text-tertiary) flex items-center gap-1.5">
           <Trash2 className="w-3 h-3" /> Documentos já vinculados podem ser removidos na aba Atividade do documento.
         </p>
       )}
@@ -838,7 +838,7 @@ function DependencyModal({ companyId, templates, onClose, onCreated }: { company
 
   return (
     <ModalShell title="Nova dependência" onClose={onClose}>
-      <p className="text-mac-caption text-[var(--text-secondary)]">
+      <p className="text-mac-caption text-(--text-secondary)">
         A obrigação abaixo só fica ativa depois que a segunda for aprovada no mesmo período — evita cobrar algo que ainda não faz sentido cobrar.
       </p>
       <div>

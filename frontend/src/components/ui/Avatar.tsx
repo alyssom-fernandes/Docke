@@ -11,7 +11,7 @@ export default function Avatar({ name, src, size = "md" }: AvatarProps) {
   const sz = size === "sm" ? "w-7 h-7 text-mac-caption" : "w-8 h-8 text-mac-body";
   return (
     <div
-      className={`${sz} rounded-full flex items-center justify-center font-semibold shrink-0 overflow-hidden bg-[var(--bg-hover)] text-[var(--text-secondary)] border border-[var(--border-default)]`}
+      className={`${sz} rounded-full flex items-center justify-center font-semibold shrink-0 overflow-hidden bg-(--bg-hover) text-(--text-secondary) border border-(--border-default)`}
       aria-label={name}
     >
       {src ? <img src={src} alt={name} className="w-full h-full object-cover" /> : initials(name)}

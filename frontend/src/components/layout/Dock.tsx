@@ -28,10 +28,10 @@ function DockItem({ to, icon: Icon, label }: { to: string; icon: ElementType; la
       aria-label={label}
       title={label}
       className={({ isActive }) =>
-        `flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-[10px] transition-colors duration-fast ${
+        `shrink-0 flex items-center justify-center w-10 h-10 rounded-[10px] transition-colors duration-fast ${
           isActive
             ? "text-teal-500 bg-teal-500/10"
-            : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+            : "text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-hover)"
         }`
       }
     >
@@ -42,7 +42,7 @@ function DockItem({ to, icon: Icon, label }: { to: string; icon: ElementType; la
 
 export default function Dock() {
   return (
-    <nav className="hidden lg:flex fixed bottom-5 left-1/2 -translate-x-1/2 z-30 items-center gap-1 px-2 py-1.5 rounded-[var(--radius-panel)] glass-panel glass-blur-panel glass-shadow glass-highlight-line">
+    <nav className="hidden lg:flex fixed bottom-5 left-1/2 -translate-x-1/2 z-30 items-center gap-1 px-2 py-1.5 rounded-(--radius-panel) glass-panel glass-blur-panel glass-shadow glass-highlight-line">
       {ITEMS.map((item) => (
         <DockItem key={item.to} {...item} />
       ))}

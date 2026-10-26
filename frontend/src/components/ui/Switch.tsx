@@ -21,8 +21,8 @@ export default function Switch({
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-[26px] w-[46px] flex-shrink-0 items-center rounded-full transition-colors duration-normal disabled:opacity-40 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)] ${
-        checked ? "bg-teal-500" : "bg-[var(--bg-hover)] border border-[var(--border-default)]"
+      className={`relative inline-flex h-[26px] w-[46px] shrink-0 items-center rounded-full transition-colors duration-normal disabled:opacity-40 disabled:pointer-events-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-card) ${
+        checked ? "bg-teal-500" : "bg-(--bg-hover) border border-(--border-default)"
       }`}
     >
       <span

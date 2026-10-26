@@ -42,27 +42,27 @@ export default function Activity() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-mac-title2 font-semibold text-[var(--text-primary)]">Atividade</h1>
+        <h1 className="text-mac-title2 font-semibold text-(--text-primary)">Atividade</h1>
         <div className="relative" ref={exportRef}>
           <button
             onClick={() => setExportOpen((v) => !v)}
-            className="flex items-center gap-1.5 h-8 px-3.5 text-mac-body text-[var(--text-secondary)] border border-[var(--border-default)] rounded-full hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+            className="flex items-center gap-1.5 h-8 px-3.5 text-mac-body text-(--text-secondary) border border-(--border-default) rounded-full hover:bg-(--bg-hover) transition-colors duration-fast"
           >
             <Download className="w-3.5 h-3.5" />
             Exportar
             <ChevronDown className="w-3.5 h-3.5" />
           </button>
           {exportOpen && (
-            <div className="popover-tail-right absolute top-full right-0 mt-1 w-40 glass-panel glass-blur-strong rounded-[var(--radius-popover)] shadow-dropdown py-1 z-50">
+            <div className="popover-tail-right absolute top-full right-0 mt-1 w-40 glass-panel glass-blur-strong rounded-(--radius-popover) shadow-dropdown py-1 z-50">
               <button
                 onClick={() => exportActivity("csv")}
-                className="w-full text-left px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white transition-colors duration-fast"
+                className="w-full text-left px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white transition-colors duration-fast"
               >
                 CSV
               </button>
               <button
                 onClick={() => exportActivity("xlsx")}
-                className="w-full text-left px-3 py-2 text-mac-body text-[var(--text-primary)] hover:bg-teal-500 hover:text-white transition-colors duration-fast"
+                className="w-full text-left px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white transition-colors duration-fast"
               >
                 Excel (.xlsx)
               </button>
@@ -78,17 +78,17 @@ export default function Activity() {
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
-            className="h-8 px-3.5 text-mac-body border border-[var(--border-default)] rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40 disabled:pointer-events-none transition-colors duration-fast"
+            className="h-8 px-3.5 text-mac-body border border-(--border-default) rounded-full text-(--text-secondary) hover:bg-(--bg-hover) disabled:opacity-40 disabled:pointer-events-none transition-colors duration-fast"
           >
             Anterior
           </button>
-          <span className="text-mac-body text-[var(--text-secondary)]">
+          <span className="text-mac-body text-(--text-secondary)">
             {page} / {totalPages}
           </span>
           <button
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page >= totalPages}
-            className="h-8 px-3.5 text-mac-body border border-[var(--border-default)] rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40 disabled:pointer-events-none transition-colors duration-fast"
+            className="h-8 px-3.5 text-mac-body border border-(--border-default) rounded-full text-(--text-secondary) hover:bg-(--bg-hover) disabled:opacity-40 disabled:pointer-events-none transition-colors duration-fast"
           >
             Próxima
           </button>

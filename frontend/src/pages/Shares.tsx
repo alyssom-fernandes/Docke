@@ -71,8 +71,8 @@ export default function Shares() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-mac-title2 font-semibold text-[var(--text-primary)]">Compartilhados</h1>
-        <p className="text-mac-body text-[var(--text-secondary)] mt-1">
+        <h1 className="text-mac-title2 font-semibold text-(--text-primary)">Compartilhados</h1>
+        <p className="text-mac-body text-(--text-secondary) mt-1">
           Todos os links de compartilhamento externo ativos nesta empresa — seus próprios links e, se você for admin, os de toda a equipe.
         </p>
       </div>
@@ -80,7 +80,7 @@ export default function Shares() {
       {loading ? (
         <div className="space-y-2">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-14 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] animate-pulse" />
+            <div key={i} className="h-14 bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) animate-pulse" />
           ))}
         </div>
       ) : shares.length === 0 ? (
@@ -98,12 +98,12 @@ export default function Shares() {
           }
         />
       ) : (
-        <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
+        <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
           <ul>
             {shares.map((s) => (
               <li
                 key={s.id}
-                className="flex items-center gap-3 px-5 py-3 hover:bg-[var(--bg-hover)] transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 group"
+                className="flex items-center gap-3 px-5 py-3 hover:bg-(--bg-hover) transition-colors duration-fast border-b border-(--border-default) last:border-0 group"
               >
                 <button
                   onClick={() => openResource(s)}
@@ -111,19 +111,19 @@ export default function Shares() {
                   title="Abrir item compartilhado"
                 >
                   {s.resource_type === "folder" ? (
-                    <FolderOpen className="w-4 h-4 text-teal-500 flex-shrink-0" />
+                    <FolderOpen className="w-4 h-4 text-teal-500 shrink-0" />
                   ) : (
                     (() => { const style = getFileStyle(s.resource_name ?? ""); const Icon = style.icon; return (
-                      <div className={`w-6 h-6 rounded-[4px] flex items-center justify-center flex-shrink-0 ${style.bgColor}`}>
+                      <div className={`w-6 h-6 rounded-badge flex items-center justify-center shrink-0 ${style.bgColor}`}>
                         <Icon className={`w-3.5 h-3.5 ${style.iconColor} ${style.fillColor}`} />
                       </div>
                     ); })()
                   )}
                   <span className="flex-1 min-w-0">
-                    <span className="block text-mac-body text-[var(--text-primary)] truncate">
+                    <span className="block text-mac-body text-(--text-primary) truncate">
                       {s.resource_name ?? "(item removido)"}
                     </span>
-                    <span className="block text-mac-caption text-[var(--text-tertiary)]">
+                    <span className="block text-mac-caption text-(--text-tertiary)">
                       {s.has_password && <Lock className="w-3 h-3 inline mr-1" />}
                       {s.view_count} acesso{s.view_count !== 1 ? "s" : ""} ·{" "}
                       {s.expires_at
@@ -135,10 +135,10 @@ export default function Shares() {
                     </span>
                   </span>
                 </button>
-                <ExternalLink className="w-3.5 h-3.5 text-[var(--text-tertiary)] flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-fast" />
+                <ExternalLink className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-fast" />
                 <button
                   onClick={() => setRevoking(s)}
-                  className="p-1.5 rounded-full text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-all duration-fast flex-shrink-0"
+                  className="p-1.5 rounded-full text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--bg-hover) transition-all duration-fast shrink-0"
                   title="Revogar link"
                 >
                   <Trash2 className="w-3.5 h-3.5" />

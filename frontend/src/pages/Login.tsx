@@ -119,12 +119,12 @@ export default function Login() {
           <div className="brand-wordmark block w-[124px] h-[36px]" role="img" aria-label="Docke" />
           <h1
             id="titulo"
-            className="mt-9 max-w-[22ch] text-[34px] leading-[40px] font-semibold tracking-[-0.022em] text-[var(--text-primary)] lg:mt-12 lg:text-[42px] lg:leading-[48px]"
+            className="mt-9 max-w-[22ch] text-[34px] leading-[40px] font-semibold tracking-[-0.022em] text-(--text-primary) lg:mt-12 lg:text-[42px] lg:leading-[48px]"
             style={{ textWrap: "balance" } as CSSProperties}
           >
             Documentos de várias empresas, organizados e auditáveis.
           </h1>
-          <p className="mt-4 max-w-[52ch] text-[15px] leading-[23px] text-[var(--text-secondary)] lg:text-[16px] lg:leading-[25px]">
+          <p className="mt-4 max-w-[52ch] text-[15px] leading-[23px] text-(--text-secondary) lg:text-[16px] lg:leading-[25px]">
             Notas fiscais, folha e contratos com busca dentro do texto digitalizado, prazos de obrigações,
             retenção legal e uma trilha de auditoria encadeada por hash.
           </p>
@@ -132,9 +132,9 @@ export default function Login() {
 
         {/* Acesso */}
         <section aria-labelledby="acesso" className="lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-center">
-          <div className="glass-panel glass-blur-panel glass-shadow rounded-[16px] px-[18px] py-[22px] sm:p-7">
-            <h2 id="acesso" className="text-mac-title2 font-semibold text-[var(--text-primary)]">Ver o Docke por dentro</h2>
-            <p className="mt-1.5 mb-[18px] text-mac-body leading-[19px] text-[var(--text-secondary)]">
+          <div className="glass-panel glass-blur-panel glass-shadow rounded-stat px-[18px] py-[22px] sm:p-7">
+            <h2 id="acesso" className="text-mac-title2 font-semibold text-(--text-primary)">Ver o Docke por dentro</h2>
+            <p className="mt-1.5 mb-[18px] text-mac-body leading-[19px] text-(--text-secondary)">
               Abre uma conta de demonstração com 3 empresas fictícias. Sem cadastro.
             </p>
 
@@ -144,22 +144,22 @@ export default function Login() {
               onClick={handleDemoLogin}
               loading={demoBusy}
               disabled={loading}
-              className="w-full !h-10 !text-[14px] font-semibold"
+              className="w-full h-10! text-[14px]! font-semibold"
             >
               {demoBusy ? "Abrindo a demonstração…" : demo === "error" ? "Tentar de novo" : "Explorar a demonstração"}
             </Button>
 
             <div role="status" aria-live="polite">
               {demo === "slow" && (
-                <p className="mt-3 text-mac-footnote leading-[18px] text-[var(--text-secondary)]">
+                <p className="mt-3 text-mac-footnote leading-[18px] text-(--text-secondary)">
                   O servidor estava em repouso e está ligando. Aguarde mais alguns segundos.
                 </p>
               )}
             </div>
             {demo === "error" && (
-              <div role="alert" className="mt-3.5 rounded-[12px] border border-[#e07a88]/30 bg-[#e07a88]/[0.08] px-4 py-3.5">
-                <p className="text-mac-body leading-[19px] text-[var(--text-secondary)]">
-                  <strong className="mb-1 block font-semibold text-[var(--text-primary)]">Não foi possível abrir a demonstração agora.</strong>
+              <div role="alert" className="mt-3.5 rounded-card border border-[#e07a88]/30 bg-[#e07a88]/8 px-4 py-3.5">
+                <p className="text-mac-body leading-[19px] text-(--text-secondary)">
+                  <strong className="mb-1 block font-semibold text-(--text-primary)">Não foi possível abrir a demonstração agora.</strong>
                   O servidor está desligado ou demorou para ligar. Tente de novo em alguns minutos.
                 </p>
                 <a href={REPO_URL} className="mt-2.5 inline-block text-mac-body text-teal-600 underline underline-offset-[3px] hover:text-teal-500 dark:text-teal-200 dark:hover:text-teal-100">
@@ -168,10 +168,10 @@ export default function Login() {
               </div>
             )}
 
-            <div className="mt-6 mb-4 flex items-center gap-3 text-mac-footnote text-[var(--text-tertiary)]">
-              <div className="h-px flex-1 bg-[var(--border-default)]" />
+            <div className="mt-6 mb-4 flex items-center gap-3 text-mac-footnote text-(--text-tertiary)">
+              <div className="h-px flex-1 bg-(--border-default)" />
               ou entre com sua conta
-              <div className="h-px flex-1 bg-[var(--border-default)]" />
+              <div className="h-px flex-1 bg-(--border-default)" />
             </div>
 
             <form id="main-form" onSubmit={handleSubmit} className="flex flex-col gap-3 text-left" noValidate>
@@ -196,7 +196,7 @@ export default function Login() {
                 disabled={loading}
                 className="shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.25)]"
               />
-              <Button type="submit" variant="secondary" loading={loading} disabled={demoBusy} className="w-full mt-1 !h-9">
+              <Button type="submit" variant="secondary" loading={loading} disabled={demoBusy} className="w-full mt-1 h-9!">
                 Entrar
               </Button>
             </form>
@@ -212,11 +212,11 @@ export default function Login() {
                 key={e.hash}
                 className={`relative grid grid-cols-1 pb-[18px] pl-[30px] sm:grid-cols-[1fr_auto] sm:items-baseline sm:gap-x-5 ${i === 3 ? "hidden sm:grid" : ""}`}
               >
-                <span className="text-[14px] leading-5 text-[var(--text-primary)]">{e.what}</span>
-                <span className="mt-0.5 text-mac-footnote leading-[17px] text-[var(--text-tertiary)] sm:col-start-1">
+                <span className="text-[14px] leading-5 text-(--text-primary)">{e.what}</span>
+                <span className="mt-0.5 text-mac-footnote leading-[17px] text-(--text-tertiary) sm:col-start-1">
                   Comércio Alfa Modelo Ltda, {e.where}
                 </span>
-                <span className="mt-1 whitespace-nowrap font-mono text-[11.5px] leading-[17px] text-[var(--text-tertiary)] sm:col-start-2 sm:row-span-2 sm:row-start-1 sm:mt-0 sm:text-right">
+                <span className="mt-1 whitespace-nowrap font-mono text-[11.5px] leading-[17px] text-(--text-tertiary) sm:col-start-2 sm:row-span-2 sm:row-start-1 sm:mt-0 sm:text-right">
                   anterior <span className={i === 0 ? "" : "text-teal-600 dark:text-teal-200"}>{e.prev}</span>
                   <br />
                   <span className="text-teal-600 dark:text-teal-200">hash {e.hash}</span>
@@ -224,13 +224,13 @@ export default function Login() {
               </li>
             ))}
           </ol>
-          <p className="mt-1 max-w-[54ch] text-[12.5px] leading-[19px] text-[var(--text-tertiary)]">
+          <p className="mt-1 max-w-[54ch] text-[12.5px] leading-[19px] text-(--text-tertiary)">
             Exemplo com dados fictícios da demonstração. Cada registro guarda o hash do anterior, então alterar um deles
             quebra a sequência inteira.
           </p>
         </section>
 
-        <footer className="flex flex-wrap gap-x-[18px] gap-y-1.5 text-mac-footnote text-[var(--text-tertiary)] lg:col-span-2 lg:row-start-3">
+        <footer className="flex flex-wrap gap-x-[18px] gap-y-1.5 text-mac-footnote text-(--text-tertiary) lg:col-span-2 lg:row-start-3">
           <span>
             Desenvolvido por{" "}
             <span className="font-bold" style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--afn-brand)" }}>

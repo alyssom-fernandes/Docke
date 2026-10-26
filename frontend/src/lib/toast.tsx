@@ -73,13 +73,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           return (
             <div
               key={t.id}
-              className="toast-in glass-panel glass-blur-strong flex items-start gap-3 rounded-[var(--radius-dialog)] shadow-dropdown p-3"
+              className="toast-in glass-panel glass-blur-strong flex items-start gap-3 rounded-(--radius-dialog) shadow-dropdown p-3"
             >
               <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${iconBg[t.type]}`}>
                 <Icon className={`w-4 h-4 ${iconColors[t.type]}`} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-mac-body text-[var(--text-primary)]">{t.message}</p>
+                <p className="text-mac-body text-(--text-primary)">{t.message}</p>
                 {t.action && (
                   <button
                     onClick={() => { t.action!.onClick(); remove(t.id); }}
@@ -91,7 +91,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               </div>
               <button
                 onClick={() => remove(t.id)}
-                className="text-[var(--text-placeholder)] hover:text-[var(--text-secondary)] shrink-0"
+                className="text-(--text-placeholder) hover:text-(--text-secondary) shrink-0"
               >
                 <X className="w-3.5 h-3.5" />
               </button>

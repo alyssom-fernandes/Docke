@@ -162,17 +162,17 @@ export default function Search() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-mac-title2 font-semibold text-[var(--text-primary)]">Busca avançada</h1>
+      <h1 className="text-mac-title2 font-semibold text-(--text-primary)">Busca avançada</h1>
 
       <form onSubmit={handleSubmit} className="flex gap-2">
         <div className="flex-1 relative">
-          <SearchIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-placeholder)] pointer-events-none" />
+          <SearchIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-(--text-placeholder) pointer-events-none" />
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Digite para buscar documentos por conteúdo ou nome…"
-            className="w-full h-10 pl-10 pr-9 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-full text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+            className="w-full h-10 pl-10 pr-9 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-full text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
           />
           {/* Botão de limpar customizado — type="text" em vez de "search" pra
               não depender do X nativo do navegador (inconsistente entre
@@ -183,7 +183,7 @@ export default function Search() {
               type="button"
               onClick={clearQuery}
               aria-label="Limpar busca"
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors duration-fast"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full text-(--text-tertiary) hover:bg-(--bg-hover) hover:text-(--text-primary) transition-colors duration-fast"
             >
               <X className="w-3 h-3" strokeWidth={2.5} />
             </button>
@@ -200,7 +200,7 @@ export default function Search() {
       {loading ? (
         <div className="space-y-3">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-20 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] animate-pulse" />
+            <div key={i} className="h-20 bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) animate-pulse" />
           ))}
         </div>
       ) : searched && results.length === 0 ? (
@@ -211,7 +211,7 @@ export default function Search() {
         />
       ) : results.length > 0 ? (
         <>
-          <p className="text-mac-body text-[var(--text-secondary)]">{total} resultado{total !== 1 ? "s" : ""} para "{params.get("q")}"</p>
+          <p className="text-mac-body text-(--text-secondary)">{total} resultado{total !== 1 ? "s" : ""} para "{params.get("q")}"</p>
 
           {/* Fase 7.2: facetas dinâmicas — setor e tipo de arquivo entre os
               documentos que bateram com a busca, com contagem por opção. */}
@@ -225,7 +225,7 @@ export default function Search() {
                   className={`h-7 px-3 text-mac-caption font-medium rounded-full border transition-colors duration-fast ${
                     sectorFilter === f.value
                       ? "bg-teal-600 border-teal-600 text-white"
-                      : "bg-[var(--bg-card)] border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                      : "bg-(--bg-card) border-(--border-default) text-(--text-secondary) hover:bg-(--bg-hover)"
                   }`}
                 >
                   {f.value} <span className="opacity-70">({f.count})</span>
@@ -239,7 +239,7 @@ export default function Search() {
                   className={`h-7 px-3 text-mac-caption font-medium rounded-full border transition-colors duration-fast ${
                     fileTypeFilter === f.value
                       ? "bg-teal-600 border-teal-600 text-white"
-                      : "bg-[var(--bg-card)] border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                      : "bg-(--bg-card) border-(--border-default) text-(--text-secondary) hover:bg-(--bg-hover)"
                   }`}
                 >
                   .{f.value} <span className="opacity-70">({f.count})</span>
@@ -251,7 +251,7 @@ export default function Search() {
           {/* Lista agrupada num único cartão com divisores — mesma convenção
               usada em Atividade/Lixeira/Compartilhados, em vez de um cartão
               flutuante por item (que destoava do resto do app no mobile). */}
-          <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
+          <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
             <ul>
               {results.map((r) => (
                 <li
@@ -265,23 +265,23 @@ export default function Search() {
                       navigate(`/documents?folder_id=${r.folder_id ?? ""}&doc=${r.id}`);
                     }
                   }}
-                  className="flex items-start gap-3 px-5 py-3.5 hover:bg-[var(--bg-hover)] transition-colors duration-fast cursor-pointer border-b border-[var(--border-default)] last:border-0"
+                  className="flex items-start gap-3 px-5 py-3.5 hover:bg-(--bg-hover) transition-colors duration-fast cursor-pointer border-b border-(--border-default) last:border-0"
                 >
                   {(() => { const s = getFileStyle(r.name); const Icon = s.icon; return (
-                    <div className={`w-6 h-6 rounded-[4px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
+                    <div className={`w-6 h-6 rounded-badge flex items-center justify-center shrink-0 ${s.bgColor}`}>
                       <Icon className={`w-3.5 h-3.5 ${s.iconColor} ${s.fillColor}`} />
                     </div>
                   ); })()}
                   <div className="flex-1 min-w-0">
-                    <TruncatedFileName name={r.name} className="text-mac-body font-medium text-[var(--text-primary)]" />
+                    <TruncatedFileName name={r.name} className="text-mac-body font-medium text-(--text-primary)" />
                     {r.snippet && highlightSnippet(r.snippet).map((fragment, i) => (
                       <p
                         key={i}
-                        className="text-mac-caption text-[var(--text-secondary)] mt-1 line-clamp-2"
+                        className="text-mac-caption text-(--text-secondary) mt-1 line-clamp-2"
                         dangerouslySetInnerHTML={{ __html: fragment }}
                       />
                     ))}
-                    <p className="text-mac-caption text-[var(--text-tertiary)] mt-1">
+                    <p className="text-mac-caption text-(--text-tertiary) mt-1">
                       {r.folder_name && <>{r.folder_name} · </>}
                       {fmtDate(r.created_at)}
                     </p>

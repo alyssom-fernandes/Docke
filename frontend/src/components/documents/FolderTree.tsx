@@ -173,11 +173,11 @@ function TreeNode({
             ? "bg-teal-500/10 text-teal-500 font-medium"
             : isDragOver
             ? "bg-teal-50 dark:bg-teal-900/20 border border-teal-400"
-            : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            : "text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)"
         }`}
         aria-label={node.name}
       >
-        <span className="w-4 flex-shrink-0 flex items-center justify-center">
+        <span className="w-4 shrink-0 flex items-center justify-center">
           {hasChildren ? (
             <ChevronRight
               className={`w-3.5 h-3.5 transition-transform duration-fast ${isExpanded ? "rotate-90" : ""}`}
@@ -186,7 +186,7 @@ function TreeNode({
           ) : null}
         </span>
         <FolderIcon
-          className={`w-4 h-4 flex-shrink-0 fill-teal-500/20 ${isActive ? "text-teal-500" : "text-teal-500"}`}
+          className={`w-4 h-4 shrink-0 fill-teal-500/20 ${isActive ? "text-teal-500" : "text-teal-500"}`}
         />
         <span className="truncate flex-1">{node.name}</span>
       </button>
@@ -324,7 +324,7 @@ export default function FolderTree({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-6">
-        <Loader2 className="w-5 h-5 animate-spin text-[var(--text-placeholder)]" />
+        <Loader2 className="w-5 h-5 animate-spin text-(--text-placeholder)" />
       </div>
     );
   }
@@ -383,12 +383,12 @@ export default function FolderTree({
               }}
               onBlur={createRootFolder}
               placeholder="Nome da pasta"
-              className="w-full h-7 px-2 text-mac-caption bg-[var(--bg-page)] border border-teal-400 rounded-[6px] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none"
+              className="w-full h-7 px-2 text-mac-caption bg-(--bg-page) border border-teal-400 rounded-[6px] text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden"
             />
           ) : (
             <button
               onClick={() => setCreatingRoot(true)}
-              className="flex items-center gap-1.5 h-7 px-2 text-mac-caption text-[var(--text-tertiary)] hover:text-teal-500 hover:bg-[var(--bg-hover)] rounded-[6px] transition-colors duration-fast w-full"
+              className="flex items-center gap-1.5 h-7 px-2 text-mac-caption text-(--text-tertiary) hover:text-teal-500 hover:bg-(--bg-hover) rounded-[6px] transition-colors duration-fast w-full"
             >
               <FolderPlus className="w-3.5 h-3.5" />
               Nova pasta

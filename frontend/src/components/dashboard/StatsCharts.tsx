@@ -81,7 +81,7 @@ export function UploadsLineChart({ data }: { data: DailyUpload[] }) {
       </svg>
       {hover && (
         <div
-          className="absolute -top-1 px-2 py-1 rounded-[6px] bg-[var(--text-primary)] text-[var(--bg-card)] text-mac-caption2 pointer-events-none whitespace-nowrap"
+          className="absolute -top-1 px-2 py-1 rounded-[6px] bg-(--text-primary) text-(--bg-card) text-mac-caption2 pointer-events-none whitespace-nowrap"
           style={{ left: `${(hover.x / W) * 100}%`, transform: "translate(-50%, -100%)" }}
         >
           {fmtDayLabel(hover.date)} · {hover.count} {hover.count === 1 ? "documento" : "documentos"}
@@ -112,25 +112,25 @@ export function FolderBarChart({ data, onDrill }: { data: FolderBreakdown[]; onD
             className="flex-1 min-w-0 flex items-center gap-2 text-left"
             title={`Ver documentos por pasta dentro de "${f.name}"`}
           >
-            <span className="w-20 flex-shrink-0 text-mac-caption text-[var(--text-secondary)] truncate group-hover:text-teal-500 transition-colors duration-fast">
+            <span className="w-20 shrink-0 text-mac-caption text-(--text-secondary) truncate group-hover:text-teal-500 transition-colors duration-fast">
               {f.name}
             </span>
-            <span className="flex-1 h-4 bg-[var(--bg-hover)] rounded-[3px] overflow-hidden">
+            <span className="flex-1 h-4 bg-(--bg-hover) rounded-[3px] overflow-hidden">
               <span
                 className="block h-full bg-teal-500 rounded-[3px] transition-[width] duration-normal group-hover:bg-teal-400"
                 style={{ width: `${Math.max(4, (f.document_count / max) * 100)}%` }}
               />
             </span>
-            <span className="w-6 flex-shrink-0 text-mac-caption text-[var(--text-tertiary)] text-right tabular-nums">
+            <span className="w-6 shrink-0 text-mac-caption text-(--text-tertiary) text-right tabular-nums">
               {f.document_count}
             </span>
-            <ChevronRight className="w-3 h-3 text-[var(--text-tertiary)] flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-fast" />
+            <ChevronRight className="w-3 h-3 text-(--text-tertiary) shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-fast" />
           </button>
           <button
             onClick={() => navigate(`/documents?folder_id=${f.id}`)}
             title={`Abrir pasta "${f.name}" em Documentos`}
             aria-label={`Abrir pasta ${f.name} em Documentos`}
-            className="flex-shrink-0 p-1 rounded-[4px] text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100 hover:text-teal-500 hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+            className="shrink-0 p-1 rounded-badge text-(--text-tertiary) opacity-0 group-hover:opacity-100 hover:text-teal-500 hover:bg-(--bg-hover) transition-colors duration-fast"
           >
             <ArrowUpRight className="w-3.5 h-3.5" />
           </button>
@@ -150,16 +150,16 @@ export interface FolderCrumb {
  * isolada aqui dentro do card (não navega a página, só refiltra o gráfico). */
 export function FolderChartBreadcrumb({ path, onNavigate }: { path: FolderCrumb[]; onNavigate: (index: number) => void }) {
   return (
-    <div className="flex items-center gap-1 min-w-0 text-mac-caption text-[var(--text-tertiary)]">
-      <FolderOpen className="w-3 h-3 flex-shrink-0" />
+    <div className="flex items-center gap-1 min-w-0 text-mac-caption text-(--text-tertiary)">
+      <FolderOpen className="w-3 h-3 shrink-0" />
       {path.map((crumb, i) => (
         <span key={crumb.id ?? "root"} className="flex items-center gap-1 min-w-0">
-          {i > 0 && <ChevronRight className="w-2.5 h-2.5 flex-shrink-0" />}
+          {i > 0 && <ChevronRight className="w-2.5 h-2.5 shrink-0" />}
           <button
             onClick={() => onNavigate(i)}
             disabled={i === path.length - 1}
             className={`truncate transition-colors duration-fast ${
-              i === path.length - 1 ? "text-[var(--text-secondary)] font-medium cursor-default" : "hover:text-teal-500"
+              i === path.length - 1 ? "text-(--text-secondary) font-medium cursor-default" : "hover:text-teal-500"
             }`}
           >
             {crumb.name}

@@ -69,7 +69,7 @@ function ProtectedRoutes() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-[var(--bg-page)]">
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-(--bg-page)">
         <div className="brand-wordmark w-[150px] h-[43px]" role="img" aria-label="Docke" />
         <div className="w-5 h-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
       </div>

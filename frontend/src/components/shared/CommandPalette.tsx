@@ -138,7 +138,7 @@ export default function CommandPalette() {
   return (
     <Portal>
     <div
-      className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-start justify-center pt-[15vh] z-50 px-4"
+      className="fixed inset-0 bg-(--overlay-scrim) flex items-start justify-center pt-[15vh] z-50 px-4"
       onClick={(e) => { if (e.target === e.currentTarget) close(); }}
     >
       <div
@@ -148,8 +148,8 @@ export default function CommandPalette() {
         }`}
       >
         {/* Search input */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border-default)]">
-          <Search className="w-4 h-4 text-[var(--text-placeholder)] flex-shrink-0" />
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-(--border-default)">
+          <Search className="w-4 h-4 text-(--text-placeholder) shrink-0" />
           <input
             ref={inputRef}
             type="text"
@@ -157,7 +157,7 @@ export default function CommandPalette() {
             onChange={(e) => handleChange(e.target.value)}
             onKeyDown={handleKey}
             placeholder="Buscar documentos, pastas ou ações…"
-            className="flex-1 text-mac-body bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none"
+            className="flex-1 text-mac-body bg-transparent text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden"
           />
         </div>
 
@@ -167,23 +167,23 @@ export default function CommandPalette() {
           {loading && (
             <div className="py-3 px-4 space-y-2">
               {[0, 1, 2].map((i) => (
-                <div key={i} className="h-9 bg-[var(--bg-hover)] rounded animate-pulse" />
+                <div key={i} className="h-9 bg-(--bg-hover) rounded animate-pulse" />
               ))}
             </div>
           )}
 
           {!loading && query.trim() && results.length === 0 && (
             <div className="flex flex-col items-center justify-center py-10 text-center">
-              <Anchor className="w-7 h-7 text-[var(--text-placeholder)] mb-2" />
-              <p className="text-mac-body text-[var(--text-secondary)]">Nenhum resultado para "{query}"</p>
+              <Anchor className="w-7 h-7 text-(--text-placeholder) mb-2" />
+              <p className="text-mac-body text-(--text-secondary)">Nenhum resultado para "{query}"</p>
             </div>
           )}
 
           {!loading && !query.trim() && (
             <div className="flex flex-col items-center justify-center py-10 text-center">
-              <Search className="w-7 h-7 text-[var(--text-placeholder)] mb-2" />
-              <p className="text-mac-body text-[var(--text-secondary)]">Digite para buscar</p>
-              <p className="text-mac-caption text-[var(--text-tertiary)] mt-1">Documentos, pastas e ações do sistema</p>
+              <Search className="w-7 h-7 text-(--text-placeholder) mb-2" />
+              <p className="text-mac-body text-(--text-secondary)">Digite para buscar</p>
+              <p className="text-mac-caption text-(--text-tertiary) mt-1">Documentos, pastas e ações do sistema</p>
             </div>
           )}
 
@@ -195,22 +195,22 @@ export default function CommandPalette() {
                     className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors duration-fast ${
                       i === activeIdx
                         ? "bg-teal-500 text-white"
-                        : "text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                        : "text-(--text-primary) hover:bg-(--bg-hover)"
                     }`}
                     onClick={() => select(r)}
                     onMouseEnter={() => setActiveIdx(i)}
                   >
                     {r.type === "folder" ? (
-                      <FolderOpen className={`w-4 h-4 flex-shrink-0 ${i === activeIdx ? "text-white" : "text-teal-500"}`} />
+                      <FolderOpen className={`w-4 h-4 shrink-0 ${i === activeIdx ? "text-white" : "text-teal-500"}`} />
                     ) : (
                       (() => { const s = getFileStyle(r.name); const Icon = s.icon; return (
-                        <div className={`w-5 h-5 rounded-[3px] flex items-center justify-center flex-shrink-0 ${i === activeIdx ? "" : s.bgColor}`}>
+                        <div className={`w-5 h-5 rounded-[3px] flex items-center justify-center shrink-0 ${i === activeIdx ? "" : s.bgColor}`}>
                           <Icon className={`w-3 h-3 ${i === activeIdx ? "text-white fill-white/25" : `${s.iconColor} ${s.fillColor}`}`} />
                         </div>
                       ); })()
                     )}
                     <span className="flex-1 text-mac-body truncate">{r.name}</span>
-                    <span className={`text-mac-caption flex-shrink-0 ${i === activeIdx ? "text-white/80" : "text-[var(--text-tertiary)]"}`}>
+                    <span className={`text-mac-caption shrink-0 ${i === activeIdx ? "text-white/80" : "text-(--text-tertiary)"}`}>
                       {r.type === "folder" ? "Pasta" : "Documento"}
                     </span>
                   </button>
@@ -221,14 +221,14 @@ export default function CommandPalette() {
 
           {/* Full search shortcut */}
           {!loading && query.trim() && (
-            <div className="border-t border-[var(--border-default)] px-4 py-2">
+            <div className="border-t border-(--border-default) px-4 py-2">
               <button
                 onClick={() => { close(); navigate(`/search?q=${encodeURIComponent(query.trim())}`); }}
-                className="w-full flex items-center gap-2 text-mac-caption text-[var(--text-secondary)] hover:text-teal-500 transition-colors duration-fast py-1"
+                className="w-full flex items-center gap-2 text-mac-caption text-(--text-secondary) hover:text-teal-500 transition-colors duration-fast py-1"
               >
                 <Search className="w-3.5 h-3.5" />
                 Busca avançada por "{query}"
-                <kbd className="ml-auto px-1 py-0.5 text-mac-caption bg-[var(--bg-hover)] rounded border border-[var(--border-default)]">↵</kbd>
+                <kbd className="ml-auto px-1 py-0.5 text-mac-caption bg-(--bg-hover) rounded border border-(--border-default)">↵</kbd>
               </button>
             </div>
           )}
@@ -239,31 +239,31 @@ export default function CommandPalette() {
             sem sair da paleta (setor, competência, tipo fiscal, tamanho e um
             trecho do texto OCR). Só aparece quando há um documento em foco. */}
         {preview && (
-          <div className="w-[300px] flex-shrink-0 border-l border-[var(--border-default)] px-4 py-3 max-h-[360px] overflow-y-auto">
+          <div className="w-[300px] shrink-0 border-l border-(--border-default) px-4 py-3 max-h-[360px] overflow-y-auto">
             {previewLoading ? (
               <div className="space-y-2">
-                <div className="h-4 w-2/3 bg-[var(--bg-hover)] rounded animate-pulse" />
-                <div className="h-3 w-1/2 bg-[var(--bg-hover)] rounded animate-pulse" />
-                <div className="h-16 bg-[var(--bg-hover)] rounded animate-pulse" />
+                <div className="h-4 w-2/3 bg-(--bg-hover) rounded animate-pulse" />
+                <div className="h-3 w-1/2 bg-(--bg-hover) rounded animate-pulse" />
+                <div className="h-16 bg-(--bg-hover) rounded animate-pulse" />
               </div>
             ) : (
               <>
-                <p className="text-mac-body font-medium text-[var(--text-primary)] break-words">{preview.name}</p>
-                <dl className="mt-2 space-y-1 text-mac-caption text-[var(--text-secondary)]">
+                <p className="text-mac-body font-medium text-(--text-primary) wrap-break-word">{preview.name}</p>
+                <dl className="mt-2 space-y-1 text-mac-caption text-(--text-secondary)">
                   {preview.sector && (
-                    <div className="flex justify-between gap-2"><dt className="text-[var(--text-tertiary)]">Setor</dt><dd>{preview.sector}</dd></div>
+                    <div className="flex justify-between gap-2"><dt className="text-(--text-tertiary)">Setor</dt><dd>{preview.sector}</dd></div>
                   )}
                   {preview.tipo_fiscal && (
-                    <div className="flex justify-between gap-2"><dt className="text-[var(--text-tertiary)]">Tipo fiscal</dt><dd>{preview.tipo_fiscal}</dd></div>
+                    <div className="flex justify-between gap-2"><dt className="text-(--text-tertiary)">Tipo fiscal</dt><dd>{preview.tipo_fiscal}</dd></div>
                   )}
                   {preview.competencia && (
-                    <div className="flex justify-between gap-2"><dt className="text-[var(--text-tertiary)]">Competência</dt><dd>{preview.competencia}</dd></div>
+                    <div className="flex justify-between gap-2"><dt className="text-(--text-tertiary)">Competência</dt><dd>{preview.competencia}</dd></div>
                   )}
-                  <div className="flex justify-between gap-2"><dt className="text-[var(--text-tertiary)]">Tamanho</dt><dd>{fmtSize(preview.size_bytes)}</dd></div>
-                  <div className="flex justify-between gap-2"><dt className="text-[var(--text-tertiary)]">Enviado</dt><dd>{relativeDate(preview.created_at)}</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-(--text-tertiary)">Tamanho</dt><dd>{fmtSize(preview.size_bytes)}</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-(--text-tertiary)">Enviado</dt><dd>{relativeDate(preview.created_at)}</dd></div>
                 </dl>
                 {preview.ocr_text && (
-                  <p className="mt-3 text-mac-caption text-[var(--text-secondary)] line-clamp-6">
+                  <p className="mt-3 text-mac-caption text-(--text-secondary) line-clamp-6">
                     {preview.ocr_text.slice(0, 400)}
                   </p>
                 )}

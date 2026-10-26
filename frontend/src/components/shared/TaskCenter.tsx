@@ -25,8 +25,8 @@ function TaskRow({ task, onRemove, onRetry }: { task: Task; onRemove: () => void
   // pras duas etapas.
   const Icon = task.kind === "upload" && task.phase === "processing" ? FileSearch : KIND_ICON[task.kind];
   return (
-    <li className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--bg-hover)] transition-colors duration-fast group">
-      <div className="flex-shrink-0">
+    <li className="flex items-center gap-3 px-4 py-3 hover:bg-(--bg-hover) transition-colors duration-fast group">
+      <div className="shrink-0">
         {task.status === "running" ? (
           <Loader2 className="w-4 h-4 text-teal-500 animate-spin" />
         ) : task.status === "done" ? (
@@ -36,9 +36,9 @@ function TaskRow({ task, onRemove, onRetry }: { task: Task; onRemove: () => void
         )}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-mac-body text-[var(--text-primary)] truncate">{task.label}</p>
+        <p className="text-mac-body text-(--text-primary) truncate">{task.label}</p>
         {task.status === "running" && task.progress !== undefined && (
-          <div className="mt-1 h-1 bg-[var(--bg-hover)] rounded-full overflow-hidden">
+          <div className="mt-1 h-1 bg-(--bg-hover) rounded-full overflow-hidden">
             <div
               className="h-full bg-teal-500 rounded-full transition-[width] duration-normal"
               style={{ width: `${task.progress}%` }}
@@ -46,7 +46,7 @@ function TaskRow({ task, onRemove, onRetry }: { task: Task; onRemove: () => void
           </div>
         )}
         {task.status === "running" && task.progress === undefined && (
-          <div className="mt-1 h-1 bg-[var(--bg-hover)] rounded-full overflow-hidden">
+          <div className="mt-1 h-1 bg-(--bg-hover) rounded-full overflow-hidden">
             <div className="h-full w-1/3 bg-teal-500 rounded-full animate-pulse" />
           </div>
         )}
@@ -54,22 +54,22 @@ function TaskRow({ task, onRemove, onRetry }: { task: Task; onRemove: () => void
           <p className="text-mac-caption text-red-500 mt-0.5 truncate">{task.error}</p>
         )}
       </div>
-      <div className="flex items-center gap-1 flex-shrink-0">
+      <div className="flex items-center gap-1 shrink-0">
         {/* Fase 11.3: retry por item — só faz sentido pra upload que falhou
             (é o único fluxo que sabe refazer com o File original). */}
         {task.status === "failed" && task.kind === "upload" && (
           <button
             onClick={onRetry}
             title="Tentar novamente"
-            className="p-1 rounded-full text-[var(--text-tertiary)] hover:text-teal-500 hover:bg-teal-500/10 transition-colors duration-fast"
+            className="p-1 rounded-full text-(--text-tertiary) hover:text-teal-500 hover:bg-teal-500/10 transition-colors duration-fast"
           >
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
         )}
-        <Icon className="w-3.5 h-3.5 text-[var(--text-tertiary)]" />
+        <Icon className="w-3.5 h-3.5 text-(--text-tertiary)" />
         <button
           onClick={onRemove}
-          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 rounded-full text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-all duration-fast"
+          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 rounded-full text-(--text-tertiary) hover:text-(--text-primary) transition-all duration-fast"
         >
           <X className="w-3 h-3" />
         </button>
@@ -140,7 +140,7 @@ export default function TaskCenter() {
     <div className="relative" ref={ref}>
       <button
         onClick={handleToggle}
-        className="relative w-7 h-7 flex items-center justify-center rounded-full text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/10 hover:text-[var(--text-primary)] transition-colors duration-fast"
+        className="relative w-7 h-7 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-black/5 dark:hover:bg-white/10 hover:text-(--text-primary) transition-colors duration-fast"
         title="Central de tarefas e notificações — acompanhe uploads, processamentos e atividade"
         aria-label="Central de tarefas e notificações"
       >
@@ -151,24 +151,24 @@ export default function TaskCenter() {
           </span>
         )}
         {!everSeen && badgeCount === 0 && failed === 0 && (
-          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-teal-500 ring-2 ring-[var(--bg-card)]" aria-hidden="true" />
+          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-teal-500 ring-2 ring-(--bg-card)" aria-hidden="true" />
         )}
       </button>
 
       {open && (
-        <div className="glass-dialog glass-blur-strong fixed left-4 right-4 top-[84px] sm:absolute sm:left-auto sm:right-0 sm:top-full sm:w-[340px] sm:mt-1 rounded-[var(--radius-popover)] shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-50 overflow-hidden max-h-[70vh] flex flex-col">
+        <div className="glass-dialog glass-blur-strong fixed left-4 right-4 top-[84px] sm:absolute sm:left-auto sm:right-0 sm:top-full sm:w-[340px] sm:mt-1 rounded-(--radius-popover) shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-50 overflow-hidden max-h-[70vh] flex flex-col">
           {/* Seção "Em andamento" — some inteira quando não há nada rodando */}
           {tasks.length > 0 && (
             <>
-              <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--border-default)] flex-shrink-0">
-                <span className="text-mac-caption font-medium text-[var(--text-primary)]">Em andamento</span>
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-(--border-default) shrink-0">
+                <span className="text-mac-caption font-medium text-(--text-primary)">Em andamento</span>
                 {hasDone && (
-                  <button onClick={clearDone} className="text-mac-caption text-[var(--text-secondary)] hover:text-teal-500 transition-colors duration-fast">
+                  <button onClick={clearDone} className="text-mac-caption text-(--text-secondary) hover:text-teal-500 transition-colors duration-fast">
                     Limpar concluídos
                   </button>
                 )}
               </div>
-              <ul className="max-h-[200px] overflow-y-auto divide-y divide-[var(--border-default)] flex-shrink-0">
+              <ul className="max-h-[200px] overflow-y-auto divide-y divide-(--border-default) shrink-0">
                 {tasks.map((task) => (
                   <TaskRow key={task.id} task={task} onRemove={() => removeTask(task.id)} onRetry={() => retry(task.id)} />
                 ))}
@@ -177,10 +177,10 @@ export default function TaskCenter() {
           )}
 
           {/* Seção "Notificações" */}
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--border-default)] flex-shrink-0">
-            <span className="text-mac-caption font-medium text-[var(--text-primary)]">Notificações</span>
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-(--border-default) shrink-0">
+            <span className="text-mac-caption font-medium text-(--text-primary)">Notificações</span>
             {unreadCount > 0 && (
-              <button onClick={markAllRead} className="text-mac-caption text-[var(--text-secondary)] hover:text-teal-500 transition-colors duration-fast">
+              <button onClick={markAllRead} className="text-mac-caption text-(--text-secondary) hover:text-teal-500 transition-colors duration-fast">
                 Marcar todas como lidas
               </button>
             )}
@@ -189,16 +189,16 @@ export default function TaskCenter() {
           {notifications.length === 0 ? (
             tasks.length === 0 && (
               <div className="flex flex-col items-center py-8 text-center flex-1">
-                <Bell className="w-6 h-6 text-[var(--text-placeholder)] mb-2" />
-                <p className="text-mac-body text-[var(--text-secondary)]">Nada por aqui ainda</p>
+                <Bell className="w-6 h-6 text-(--text-placeholder) mb-2" />
+                <p className="text-mac-body text-(--text-secondary)">Nada por aqui ainda</p>
               </div>
             )
           ) : (
-            <ul className="overflow-y-auto divide-y divide-[var(--border-default)]">
+            <ul className="overflow-y-auto divide-y divide-(--border-default)">
               {notifications.map((n) => (
                 <li key={n.id} className={`px-4 py-3 ${!n.read_at ? "bg-teal-50/50 dark:bg-teal-900/10" : ""}`}>
-                  <p className="text-mac-body text-[var(--text-primary)]">{n.message}</p>
-                  <p className="text-mac-caption text-[var(--text-tertiary)] mt-0.5">{relativeDate(n.created_at)}</p>
+                  <p className="text-mac-body text-(--text-primary)">{n.message}</p>
+                  <p className="text-mac-caption text-(--text-tertiary) mt-0.5">{relativeDate(n.created_at)}</p>
                 </li>
               ))}
             </ul>

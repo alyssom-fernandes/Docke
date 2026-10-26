@@ -67,27 +67,27 @@ export default function AdminHome() {
 
   return (
     <div className="space-y-4">
-      <p className="text-mac-body text-[var(--text-secondary)]">
-        Visão geral da administração de <strong className="text-[var(--text-primary)]">{current?.name ?? "…"}</strong>.
+      <p className="text-mac-body text-(--text-secondary)">
+        Visão geral da administração de <strong className="text-(--text-primary)">{current?.name ?? "…"}</strong>.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {cards.map((card) => (
           <button
             key={card.to}
             onClick={() => navigate(card.to)}
-            className="text-left glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-4 flex items-start gap-3 hover:bg-[var(--bg-hover)] transition-colors duration-fast group"
+            className="text-left glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-4 flex items-start gap-3 hover:bg-(--bg-hover) transition-colors duration-fast group"
           >
-            <span className={`w-9 h-9 rounded-[var(--radius-control)] flex items-center justify-center flex-shrink-0 ${card.color}`}>
+            <span className={`w-9 h-9 rounded-(--radius-control) flex items-center justify-center shrink-0 ${card.color}`}>
               <card.icon className="w-4 h-4 text-white" strokeWidth={2.25} />
             </span>
             <div className="flex-1 min-w-0">
-              <p className="text-mac-body font-semibold text-[var(--text-primary)]">{card.title}</p>
-              <p className="text-mac-caption text-[var(--text-secondary)] mb-1">{card.description}</p>
+              <p className="text-mac-body font-semibold text-(--text-primary)">{card.title}</p>
+              <p className="text-mac-caption text-(--text-secondary) mb-1">{card.description}</p>
               <p className="text-mac-caption text-teal-500 font-medium">
-                {card.stat ?? <span className="inline-block w-16 h-3 bg-[var(--bg-hover)] rounded-full animate-pulse align-middle" />}
+                {card.stat ?? <span className="inline-block w-16 h-3 bg-(--bg-hover) rounded-full animate-pulse align-middle" />}
               </p>
             </div>
-            <ChevronRight className="w-4 h-4 text-[var(--text-tertiary)] flex-shrink-0 group-hover:translate-x-0.5 transition-transform duration-fast" />
+            <ChevronRight className="w-4 h-4 text-(--text-tertiary) shrink-0 group-hover:translate-x-0.5 transition-transform duration-fast" />
           </button>
         ))}
       </div>

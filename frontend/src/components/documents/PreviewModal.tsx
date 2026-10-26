@@ -117,7 +117,7 @@ function PreviewWatermark({ label }: { label: string }) {
         style={{ inset: "-30%", transform: "rotate(-30deg)" }}
       >
         {Array.from({ length: 48 }).map((_, i) => (
-          <span key={i} className="text-mac-caption font-medium whitespace-nowrap text-[var(--text-primary)] opacity-[0.06]">
+          <span key={i} className="text-mac-caption font-medium whitespace-nowrap text-(--text-primary) opacity-[0.06]">
             {label}
           </span>
         ))}
@@ -153,7 +153,7 @@ function Danfe({ fields, docName }: { fields: XmlFields; docName: string }) {
           Imprimir / Salvar PDF
         </button>
       </div>
-      <div id="danfe-print-area" className="max-w-[720px] mx-auto bg-white text-black rounded-[4px] shadow-[0_2px_16px_rgba(0,0,0,0.15)] p-6 font-sans text-[12px] leading-snug">
+      <div id="danfe-print-area" className="max-w-[720px] mx-auto bg-white text-black rounded-badge shadow-[0_2px_16px_rgba(0,0,0,0.15)] p-6 font-sans text-[12px] leading-snug">
         <div className="flex items-start justify-between border-b-2 border-black pb-3 mb-3">
           <div>
             <p className="font-bold text-[14px]">DANFE</p>
@@ -171,7 +171,7 @@ function Danfe({ fields, docName }: { fields: XmlFields; docName: string }) {
           <p className="font-mono text-[13px] tracking-wider my-1">{chunkChaveAcesso(fields.chave_acesso)}</p>
           {/* Barras estilizadas — representação visual de código de barras,
               não um Code-128 real/escaneável (fora do escopo desta fase). */}
-          <div className="flex items-end gap-[1px] h-8 mt-1" aria-hidden="true">
+          <div className="flex items-end gap-px h-8 mt-1" aria-hidden="true">
             {Array.from({ length: 90 }).map((_, i) => (
               <div key={i} className="bg-black" style={{ width: (i * 7) % 3 === 0 ? 2 : 1, height: `${40 + ((i * 37) % 60)}%` }} />
             ))}
@@ -207,8 +207,8 @@ function Danfe({ fields, docName }: { fields: XmlFields; docName: string }) {
 function XmlField({ label, value, mono, span }: { label: string; value: string; mono?: boolean; span?: boolean }) {
   return (
     <div className={span ? "col-span-2" : undefined}>
-      <dt className="text-mac-caption text-[var(--text-secondary)]">{label}</dt>
-      <dd className={`text-mac-body text-[var(--text-primary)] mt-0.5 break-words ${mono ? "font-mono text-mac-caption" : ""}`}>
+      <dt className="text-mac-caption text-(--text-secondary)">{label}</dt>
+      <dd className={`text-mac-body text-(--text-primary) mt-0.5 wrap-break-word ${mono ? "font-mono text-mac-caption" : ""}`}>
         {value}
       </dd>
     </div>
@@ -348,19 +348,19 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
   return (
     <Portal>
     <div
-      className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
         ref={containerRef}
-        className="modal-card glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal flex flex-col w-full max-w-4xl"
+        className="modal-card glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal flex flex-col w-full max-w-4xl"
         style={{ height: "min(90vh, 760px)" }}
       >
         {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-3 border-b border-[var(--border-default)] flex-shrink-0">
-          <Icon className={`w-5 h-5 flex-shrink-0 ${iconColor}`} strokeWidth={1.5} />
+        <div className="flex items-center gap-3 px-5 py-3 border-b border-(--border-default) shrink-0">
+          <Icon className={`w-5 h-5 shrink-0 ${iconColor}`} strokeWidth={1.5} />
           <span
-            className="flex-1 text-mac-body font-medium text-[var(--text-primary)] truncate"
+            className="flex-1 text-mac-body font-medium text-(--text-primary) truncate"
             title={doc.name}
           >
             {doc.name}
@@ -368,7 +368,7 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
           {!!searchableText && (
             <button
               onClick={() => setSearchOpen((v) => !v)}
-              className={`p-1.5 rounded-[6px] transition-colors duration-fast ${searchOpen ? "bg-teal-500/15 text-teal-500" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"}`}
+              className={`p-1.5 rounded-[6px] transition-colors duration-fast ${searchOpen ? "bg-teal-500/15 text-teal-500" : "text-(--text-secondary) hover:bg-(--bg-hover)"}`}
               aria-label="Buscar no documento"
               title="Buscar no documento (usa o texto extraído por OCR)"
             >
@@ -377,7 +377,7 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
           )}
           <button
             onClick={download}
-            className="flex items-center gap-1.5 h-8 px-3 text-mac-caption border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+            className="flex items-center gap-1.5 h-8 px-3 text-mac-caption border border-(--border-default) rounded-(--radius-control) text-(--text-secondary) hover:bg-(--bg-hover) transition-colors duration-fast"
             aria-label="Baixar arquivo"
           >
             <Download className="w-3.5 h-3.5" />
@@ -385,7 +385,7 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
           </button>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+            className="p-1.5 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover) transition-colors duration-fast"
             aria-label="Fechar preview"
           >
             <X className="w-4 h-4" />
@@ -394,8 +394,8 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
 
         {/* Fase 12.3: barra de busca dentro do documento */}
         {searchOpen && !!searchableText && (
-          <div className="flex items-center gap-2 px-5 py-2 border-b border-[var(--border-default)] flex-shrink-0">
-            <Search className="w-3.5 h-3.5 text-[var(--text-tertiary)] flex-shrink-0" />
+          <div className="flex items-center gap-2 px-5 py-2 border-b border-(--border-default) shrink-0">
+            <Search className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0" />
             <input
               autoFocus
               value={searchQuery}
@@ -406,17 +406,17 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
                 }
               }}
               placeholder="Buscar no texto extraído (OCR)…"
-              className="flex-1 h-7 px-2 text-mac-caption bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[6px] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[2px] focus:ring-teal-500/70"
+              className="flex-1 h-7 px-2 text-mac-caption bg-(--bg-card) border border-(--border-default) rounded-[6px] text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-2 focus:ring-teal-500/70"
             />
             {searchQuery.trim() && (
-              <span className="text-mac-caption text-[var(--text-tertiary)] tabular-nums flex-shrink-0">
+              <span className="text-mac-caption text-(--text-tertiary) tabular-nums shrink-0">
                 {matches.length === 0 ? "0 resultados" : `${activeMatch + 1} de ${matches.length}`}
               </span>
             )}
             <button
               onClick={() => setActiveMatch((i) => (i - 1 + matches.length) % matches.length)}
               disabled={matches.length === 0}
-              className="h-6 w-6 flex items-center justify-center rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-30 disabled:pointer-events-none transition-colors duration-fast flex-shrink-0"
+              className="h-6 w-6 flex items-center justify-center rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover) disabled:opacity-30 disabled:pointer-events-none transition-colors duration-fast shrink-0"
               aria-label="Resultado anterior"
             >
               <ChevronUp className="w-3.5 h-3.5" />
@@ -424,7 +424,7 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
             <button
               onClick={() => setActiveMatch((i) => (i + 1) % matches.length)}
               disabled={matches.length === 0}
-              className="h-6 w-6 flex items-center justify-center rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-30 disabled:pointer-events-none transition-colors duration-fast flex-shrink-0"
+              className="h-6 w-6 flex items-center justify-center rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover) disabled:opacity-30 disabled:pointer-events-none transition-colors duration-fast shrink-0"
               aria-label="Próximo resultado"
             >
               <ChevronDown className="w-3.5 h-3.5" />
@@ -436,26 +436,26 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
         <div className="flex-1 overflow-hidden relative">
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center">
-              <Loader2 className="w-8 h-8 text-[var(--text-placeholder)] animate-spin" />
+              <Loader2 className="w-8 h-8 text-(--text-placeholder) animate-spin" />
             </div>
           )}
 
           {!loading && error && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-8">
-              <AlertCircle className="w-10 h-10 text-[var(--text-placeholder)]" />
-              <p className="text-mac-body text-[var(--text-secondary)]">{error}</p>
+              <AlertCircle className="w-10 h-10 text-(--text-placeholder)" />
+              <p className="text-mac-body text-(--text-secondary)">{error}</p>
             </div>
           )}
 
           {!loading && !error && type === "unsupported" && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-8">
               <Icon className={`w-12 h-12 ${iconColor}`} strokeWidth={1.5} />
-              <p className="text-mac-body text-[var(--text-secondary)]">
+              <p className="text-mac-body text-(--text-secondary)">
                 Nenhuma visualização disponível para este tipo de arquivo.
               </p>
               <button
                 onClick={download}
-                className="flex items-center gap-1.5 h-9 px-4 text-mac-body bg-teal-600 text-white rounded-[var(--radius-control)] hover:bg-teal-500 transition-colors duration-fast"
+                className="flex items-center gap-1.5 h-9 px-4 text-mac-body bg-teal-600 text-white rounded-(--radius-control) hover:bg-teal-500 transition-colors duration-fast"
               >
                 <Download className="w-4 h-4" />
                 Fazer download para abrir
@@ -472,17 +472,17 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
               "isso não parece um site de verdade" do app inteiro) não é
               mais necessário. */}
           {!loading && !error && type === "pdf" && url && (
-            <Suspense fallback={<div className="flex flex-1 items-center justify-center"><Loader2 className="w-5 h-5 animate-spin text-[var(--text-tertiary)]" /></div>}>
+            <Suspense fallback={<div className="flex flex-1 items-center justify-center"><Loader2 className="w-5 h-5 animate-spin text-(--text-tertiary)" /></div>}>
               <PdfViewer url={url} />
             </Suspense>
           )}
 
           {!loading && !error && type === "image" && url && (
-            <div className="w-full h-full flex items-center justify-center bg-[var(--bg-page)] overflow-auto p-4">
+            <div className="w-full h-full flex items-center justify-center bg-(--bg-page) overflow-auto p-4">
               <img
                 src={url}
                 alt={doc.name}
-                className="max-w-full max-h-full object-contain rounded-[4px]"
+                className="max-w-full max-h-full object-contain rounded-badge"
               />
             </div>
           )}
@@ -492,16 +492,16 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
               lista de contexto — não dá pra "pular" pra posição exata sem
               coordenadas de OCR por página, que não guardamos hoje. */}
           {!loading && !error && (type === "pdf" || type === "image") && searchOpen && searchQuery.trim() && (
-            <div className="absolute bottom-3 right-3 left-3 sm:left-auto sm:w-80 max-h-56 overflow-y-auto glass-panel glass-blur-strong rounded-[var(--radius-panel)] shadow-modal p-2 space-y-1 z-20">
+            <div className="absolute bottom-3 right-3 left-3 sm:left-auto sm:w-80 max-h-56 overflow-y-auto glass-panel glass-blur-strong rounded-(--radius-panel) shadow-modal p-2 space-y-1 z-20">
               {matches.length === 0 ? (
-                <p className="text-mac-caption text-[var(--text-tertiary)] px-2 py-1">Nenhuma ocorrência no texto extraído por OCR.</p>
+                <p className="text-mac-caption text-(--text-tertiary) px-2 py-1">Nenhuma ocorrência no texto extraído por OCR.</p>
               ) : (
                 matches.map((m, i) => (
                   <button
                     key={i}
                     onClick={() => setActiveMatch(i)}
                     className={`w-full text-left px-2 py-1.5 rounded-[6px] text-mac-caption transition-colors duration-fast ${
-                      i === activeMatch ? "bg-teal-500/15 text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                      i === activeMatch ? "bg-teal-500/15 text-(--text-primary)" : "text-(--text-secondary) hover:bg-(--bg-hover)"
                     }`}
                   >
                     {m.snippet}
@@ -514,17 +514,17 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
           {!loading && !error && type === "text" && textContent !== null && isXml && xmlFields?.recognized && !showRawXml && (
             <div className="w-full h-full overflow-auto p-5">
               <div className="flex items-center justify-between mb-4 print:hidden">
-                <p className="text-mac-body font-medium text-[var(--text-primary)]">Nota fiscal eletrônica</p>
+                <p className="text-mac-body font-medium text-(--text-primary)">Nota fiscal eletrônica</p>
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => setShowDanfeFields((v) => !v)}
-                    className="px-2.5 py-1 rounded-full text-mac-caption text-teal-500 hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+                    className="px-2.5 py-1 rounded-full text-mac-caption text-teal-500 hover:bg-(--bg-hover) transition-colors duration-fast"
                   >
                     {showDanfeFields ? "Ver DANFE" : "Ver campos"}
                   </button>
                   <button
                     onClick={() => setShowRawXml(true)}
-                    className="px-2.5 py-1 rounded-full text-mac-caption text-teal-500 hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+                    className="px-2.5 py-1 rounded-full text-mac-caption text-teal-500 hover:bg-(--bg-hover) transition-colors duration-fast"
                   >
                     Ver XML bruto
                   </button>
@@ -552,16 +552,16 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
           {!loading && !error && type === "text" && textContent !== null && (!isXml || !xmlFields?.recognized || showRawXml) && (
             <div ref={previewBodyRef} className="w-full h-full overflow-auto">
               {isXml && xmlFields?.recognized && (
-                <div className="sticky top-0 bg-[var(--bg-card)] border-b border-[var(--border-default)] px-5 py-2 flex justify-end">
+                <div className="sticky top-0 bg-(--bg-card) border-b border-(--border-default) px-5 py-2 flex justify-end">
                   <button
                     onClick={() => setShowRawXml(false)}
-                    className="px-2.5 py-1 rounded-full text-mac-caption text-teal-500 hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+                    className="px-2.5 py-1 rounded-full text-mac-caption text-teal-500 hover:bg-(--bg-hover) transition-colors duration-fast"
                   >
                     Ver campos extraídos
                   </button>
                 </div>
               )}
-              <pre className="p-5 text-mac-caption font-mono text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap break-words">
+              <pre className="p-5 text-mac-caption font-mono text-(--text-secondary) leading-relaxed whitespace-pre-wrap wrap-break-word">
                 {highlightedTextNodes ?? textContent}
               </pre>
             </div>

@@ -176,11 +176,11 @@ function actionIcon(action: string) {
 // explicar se é muito, pouco, ou o de sempre.
 function StatCard({ label, value, icon: Icon, color, context }: { label: string; value: number; icon: ElementType; color: string; context?: string }) {
   return (
-    <div className="glass-panel glass-blur-card glass-highlight-line glass-interactive relative rounded-[var(--radius-panel)] p-5 flex items-center gap-3.5">
-      <Icon className={`w-5 h-5 flex-shrink-0 ${color}`} strokeWidth={1.5} />
+    <div className="glass-panel glass-blur-card glass-highlight-line glass-interactive relative rounded-(--radius-panel) p-5 flex items-center gap-3.5">
+      <Icon className={`w-5 h-5 shrink-0 ${color}`} strokeWidth={1.5} />
       <div>
-        <p className="text-mac-title1 font-semibold text-[var(--text-primary)]">{value.toLocaleString("pt-BR")}</p>
-        <p className="text-mac-caption text-[var(--text-secondary)] mt-0.5">{label}</p>
+        <p className="text-mac-title1 font-semibold text-(--text-primary)">{value.toLocaleString("pt-BR")}</p>
+        <p className="text-mac-caption text-(--text-secondary) mt-0.5">{label}</p>
         {context && <p className="text-mac-caption2 text-teal-600 dark:text-teal-400 mt-0.5">{context}</p>}
       </div>
     </div>
@@ -332,19 +332,19 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       {/* Fase 3.3: "atualizado há X" — o número vem de uma materialized view
           recalculada a cada 15min pelo worker; sem isso fica ambíguo se o
           usuário está vendo dado em tempo real ou não. */}
       {!loading && stats && (
         <div className="flex items-center justify-end gap-2 -mb-2">
-          <span className="text-mac-caption text-[var(--text-tertiary)]">
+          <span className="text-mac-caption text-(--text-tertiary)">
             {stats.refreshed_at ? `Atualizado ${relativeDate(stats.refreshed_at)}` : "Atualizando…"}
           </span>
           <button
             onClick={refreshStats}
             disabled={refreshing || refreshCooldown > 0}
-            className="flex items-center gap-1 text-mac-caption text-[var(--text-secondary)] hover:text-teal-500 disabled:opacity-40 disabled:pointer-events-none transition-colors duration-fast"
+            className="flex items-center gap-1 text-mac-caption text-(--text-secondary) hover:text-teal-500 disabled:opacity-40 disabled:pointer-events-none transition-colors duration-fast"
           >
             <RefreshCw className={`w-3 h-3 ${refreshing ? "animate-spin" : ""}`} />
             {refreshCooldown > 0 ? `Aguarde ${refreshCooldown}s` : "Atualizar"}
@@ -356,12 +356,12 @@ export default function Dashboard() {
       {loading ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-panel)] p-5 h-[84px] animate-pulse" />
+            <div key={i} className="bg-(--bg-card) border border-(--border-default) rounded-(--radius-panel) p-5 h-[84px] animate-pulse" />
           ))}
         </div>
       ) : statsError ? (
-        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-panel)] px-5 py-4">
-          <p className="text-mac-body text-[var(--text-secondary)]">
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 bg-(--bg-card) border border-(--border-default) rounded-(--radius-panel) px-5 py-4">
+          <p className="text-mac-body text-(--text-secondary)">
             Não foi possível carregar os números da empresa agora. Tente novamente em alguns segundos.
           </p>
           <button
@@ -395,13 +395,13 @@ export default function Dashboard() {
       {!loading && (
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-0.5 p-0.5 rounded-[8px] bg-[var(--bg-hover)]">
+            <div className="flex items-center gap-0.5 p-0.5 rounded-sm bg-(--bg-hover)">
               {PERIOD_OPTIONS.map((p) => (
                 <button
                   key={p}
                   onClick={() => changePeriod(p)}
                   className={`px-2.5 h-6 rounded-[6px] text-mac-caption font-medium transition-colors duration-fast ${
-                    period === p ? "bg-teal-500 text-white" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    period === p ? "bg-teal-500 text-white" : "text-(--text-secondary) hover:text-(--text-primary)"
                   }`}
                 >
                   {p}d
@@ -411,7 +411,7 @@ export default function Dashboard() {
             {(dailyUploads.length > 0 || byFolder.length > 0) && (
               <button
                 onClick={exportChartsCsv}
-                className="flex items-center gap-1 text-mac-caption text-[var(--text-secondary)] hover:text-teal-500 transition-colors duration-fast"
+                className="flex items-center gap-1 text-mac-caption text-(--text-secondary) hover:text-teal-500 transition-colors duration-fast"
               >
                 <Download className="w-3 h-3" />
                 Exportar CSV
@@ -420,27 +420,27 @@ export default function Dashboard() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-5">
-              <h2 className="text-mac-body font-semibold text-[var(--text-secondary)] mb-3">Uploads · últimos {period} dias</h2>
+            <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-5">
+              <h2 className="text-mac-body font-semibold text-(--text-secondary) mb-3">Uploads · últimos {period} dias</h2>
               {chartsLoading ? (
-                <div className="h-[88px] bg-[var(--bg-hover)] rounded animate-pulse" />
+                <div className="h-[88px] bg-(--bg-hover) rounded animate-pulse" />
               ) : dailyUploads.length > 0 ? (
                 <UploadsLineChart data={dailyUploads} />
               ) : (
-                <p className="text-mac-caption text-[var(--text-tertiary)] py-4">Nenhum upload neste período.</p>
+                <p className="text-mac-caption text-(--text-tertiary) py-4">Nenhum upload neste período.</p>
               )}
             </div>
-            <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-5">
+            <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-5">
               <div className="flex items-center justify-between gap-2 mb-3">
-                <h2 className="text-mac-body font-semibold text-[var(--text-secondary)] flex-shrink-0">Documentos por pasta</h2>
+                <h2 className="text-mac-body font-semibold text-(--text-secondary) shrink-0">Documentos por pasta</h2>
                 {folderPath.length > 1 && <FolderChartBreadcrumb path={folderPath} onNavigate={navigateBreadcrumb} />}
               </div>
               {chartsLoading ? (
-                <div className="h-[88px] bg-[var(--bg-hover)] rounded animate-pulse" />
+                <div className="h-[88px] bg-(--bg-hover) rounded animate-pulse" />
               ) : byFolder.length > 0 ? (
                 <FolderBarChart data={byFolder} onDrill={drillFolder} />
               ) : (
-                <p className="text-mac-caption text-[var(--text-tertiary)] py-4">
+                <p className="text-mac-caption text-(--text-tertiary) py-4">
                   {folderPath.length > 1 ? "Nenhuma subpasta com documentos aqui." : "Nenhum documento ainda."}
                 </p>
               )}
@@ -459,16 +459,16 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Documentos recentes */}
-        <div className="lg:col-span-2 glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-2 border-b border-[var(--border-default)]">
-            <h2 className="text-mac-body font-semibold text-[var(--text-secondary)]">Documentos recentes</h2>
-            <Link to="/documents" className="flex items-center gap-1 text-mac-caption text-[var(--text-secondary)] hover:text-teal-500">
+        <div className="lg:col-span-2 glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-2 border-b border-(--border-default)">
+            <h2 className="text-mac-body font-semibold text-(--text-secondary)">Documentos recentes</h2>
+            <Link to="/documents" className="flex items-center gap-1 text-mac-caption text-(--text-secondary) hover:text-teal-500">
               Ver todos <ChevronRight className="w-3 h-3" />
             </Link>
           </div>
           {loading ? (
             <div className="p-5 space-y-3">
-              {[0, 1, 2].map((i) => <div key={i} className="h-8 bg-[var(--bg-hover)] rounded animate-pulse" />)}
+              {[0, 1, 2].map((i) => <div key={i} className="h-8 bg-(--bg-hover) rounded animate-pulse" />)}
             </div>
           ) : recent.length === 0 ? (
             <div className="py-8">
@@ -488,15 +488,15 @@ export default function Dashboard() {
                       navigate(`/documents?folder_id=${doc.folder_id ?? ""}&doc=${doc.id}`);
                     }
                   }}
-                  className="flex items-center gap-3 px-5 py-2 hover:bg-[var(--bg-hover)] transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 cursor-pointer"
+                  className="flex items-center gap-3 px-5 py-2 hover:bg-(--bg-hover) transition-colors duration-fast border-b border-(--border-default) last:border-0 cursor-pointer"
                 >
                   {(() => { const s = getFileStyle(doc.name); const Icon = s.icon; return (
-                    <div className={`w-6 h-6 rounded-[4px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
+                    <div className={`w-6 h-6 rounded-badge flex items-center justify-center shrink-0 ${s.bgColor}`}>
                       <Icon className={`w-3.5 h-3.5 ${s.iconColor} ${s.fillColor}`} />
                     </div>
                   ); })()}
-                  <span className="flex-1 text-mac-body text-[var(--text-primary)] truncate">{doc.name}</span>
-                  <span className="text-mac-caption text-[var(--text-tertiary)] flex-shrink-0">{fmtDate(doc.created_at)}</span>
+                  <span className="flex-1 text-mac-body text-(--text-primary) truncate">{doc.name}</span>
+                  <span className="text-mac-caption text-(--text-tertiary) shrink-0">{fmtDate(doc.created_at)}</span>
                 </li>
               ))}
             </ul>
@@ -504,16 +504,16 @@ export default function Dashboard() {
         </div>
 
         {/* Favorites */}
-        <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-2 border-b border-[var(--border-default)]">
-            <h2 className="text-mac-body font-semibold text-[var(--text-secondary)]">Ancorados</h2>
-            <Link to="/favorites" className="flex items-center gap-1 text-mac-caption text-[var(--text-secondary)] hover:text-teal-500">
+        <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-2 border-b border-(--border-default)">
+            <h2 className="text-mac-body font-semibold text-(--text-secondary)">Ancorados</h2>
+            <Link to="/favorites" className="flex items-center gap-1 text-mac-caption text-(--text-secondary) hover:text-teal-500">
               Ver todos <ChevronRight className="w-3 h-3" />
             </Link>
           </div>
           {loading ? (
             <div className="p-5 space-y-3">
-              {[0, 1, 2].map((i) => <div key={i} className="h-8 bg-[var(--bg-hover)] rounded animate-pulse" />)}
+              {[0, 1, 2].map((i) => <div key={i} className="h-8 bg-(--bg-hover) rounded animate-pulse" />)}
             </div>
           ) : favorites.length === 0 ? (
             <div className="py-8">
@@ -522,17 +522,17 @@ export default function Dashboard() {
           ) : (
             <ul>
               {favorites.map((fav) => (
-                <li key={fav.id} className="flex items-center gap-2 px-5 py-2 hover:bg-[var(--bg-hover)] transition-colors duration-fast border-b border-[var(--border-default)] last:border-0">
+                <li key={fav.id} className="flex items-center gap-2 px-5 py-2 hover:bg-(--bg-hover) transition-colors duration-fast border-b border-(--border-default) last:border-0">
                   {fav.item_type === "folder" ? (
-                    <FolderOpen className="w-4 h-4 text-teal-500 fill-teal-500/20 flex-shrink-0" />
+                    <FolderOpen className="w-4 h-4 text-teal-500 fill-teal-500/20 shrink-0" />
                   ) : (
                     (() => { const s = getFileStyle(fav.item_name); const Icon = s.icon; return (
-                      <div className={`w-6 h-6 rounded-[4px] flex items-center justify-center flex-shrink-0 ${s.bgColor}`}>
+                      <div className={`w-6 h-6 rounded-badge flex items-center justify-center shrink-0 ${s.bgColor}`}>
                         <Icon className={`w-3.5 h-3.5 ${s.iconColor} ${s.fillColor}`} />
                       </div>
                     ); })()
                   )}
-                  <span className="flex-1 text-mac-body text-[var(--text-primary)] truncate">{fav.item_name}</span>
+                  <span className="flex-1 text-mac-body text-(--text-primary) truncate">{fav.item_name}</span>
                   <Badge variant="default">{fav.item_type === "folder" ? "Pasta" : "Doc"}</Badge>
                 </li>
               ))}
@@ -542,16 +542,16 @@ export default function Dashboard() {
       </div>
 
       {/* Activity feed */}
-      <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-2 border-b border-[var(--border-default)]">
-          <h2 className="text-mac-body font-semibold text-[var(--text-secondary)]">Atividade recente</h2>
-          <Link to="/activity" className="flex items-center gap-1 text-mac-caption text-[var(--text-secondary)] hover:text-teal-500">
+      <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-2 border-b border-(--border-default)">
+          <h2 className="text-mac-body font-semibold text-(--text-secondary)">Atividade recente</h2>
+          <Link to="/activity" className="flex items-center gap-1 text-mac-caption text-(--text-secondary) hover:text-teal-500">
             Ver tudo <ChevronRight className="w-3 h-3" />
           </Link>
         </div>
         {loading ? (
           <div className="p-5 space-y-3">
-            {[0, 1, 2].map((i) => <div key={i} className="h-8 bg-[var(--bg-hover)] rounded animate-pulse" />)}
+            {[0, 1, 2].map((i) => <div key={i} className="h-8 bg-(--bg-hover) rounded animate-pulse" />)}
           </div>
         ) : activity.length === 0 ? (
           <div className="py-8">
@@ -578,19 +578,19 @@ export default function Dashboard() {
                       : undefined
                   }
                   title={target ? undefined : "Item não está mais disponível"}
-                  className={`flex items-center gap-3 px-5 py-2 transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 ${
-                    target ? "hover:bg-[var(--bg-hover)] cursor-pointer" : ""
+                  className={`flex items-center gap-3 px-5 py-2 transition-colors duration-fast border-b border-(--border-default) last:border-0 ${
+                    target ? "hover:bg-(--bg-hover) cursor-pointer" : ""
                   }`}
                 >
                   <Avatar name={ev.user_name} size="sm" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-mac-body text-[var(--text-primary)] truncate">
+                    <p className="text-mac-body text-(--text-primary) truncate">
                       <span className="font-medium">{ev.user_name}</span>{" "}
                       {actionLabel(ev.action)}{" "}
-                      <span className="text-[var(--text-secondary)]">{ev.item_name_snapshot}</span>
+                      <span className="text-(--text-secondary)">{ev.item_name_snapshot}</span>
                     </p>
                   </div>
-                  <div className="flex items-center gap-1.5 text-[var(--text-tertiary)] flex-shrink-0">
+                  <div className="flex items-center gap-1.5 text-(--text-tertiary) shrink-0">
                     {actionIcon(ev.action)}
                     <span className="text-mac-caption">{fmtDate(ev.created_at)}</span>
                   </div>
@@ -613,18 +613,18 @@ function ObligationsWidget({ obligations }: { obligations: ObligationInstance[] 
   const blockedCount = obligations.filter((o) => o.effective_status === "blocked").length;
 
   return (
-    <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-2 border-b border-[var(--border-default)]">
-        <h2 className="text-mac-body font-semibold text-[var(--text-secondary)]">Obrigações</h2>
-        <Link to="/obligations" className="flex items-center gap-1 text-mac-caption text-[var(--text-secondary)] hover:text-teal-500">
+    <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-2 border-b border-(--border-default)">
+        <h2 className="text-mac-body font-semibold text-(--text-secondary)">Obrigações</h2>
+        <Link to="/obligations" className="flex items-center gap-1 text-mac-caption text-(--text-secondary) hover:text-teal-500">
           Ver central de conformidade <ChevronRight className="w-3 h-3" />
         </Link>
       </div>
       {urgent.length === 0 ? (
-        <div className="px-5 py-4 text-mac-body text-[var(--text-secondary)] flex items-center gap-2">
+        <div className="px-5 py-4 text-mac-body text-(--text-secondary) flex items-center gap-2">
           <ShieldQuestion className="w-4 h-4 text-teal-500" />
           Nenhuma obrigação atrasada ou vencendo.
-          {blockedCount > 0 && <span className="text-mac-caption text-[var(--text-tertiary)]">({blockedCount} bloqueada{blockedCount > 1 ? "s" : ""} aguardando pré-requisito)</span>}
+          {blockedCount > 0 && <span className="text-mac-caption text-(--text-tertiary)">({blockedCount} bloqueada{blockedCount > 1 ? "s" : ""} aguardando pré-requisito)</span>}
         </div>
       ) : (
         <ul>
@@ -635,14 +635,14 @@ function ObligationsWidget({ obligations }: { obligations: ObligationInstance[] 
               tabIndex={0}
               onClick={() => navigate("/obligations")}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/obligations"); } }}
-              className="flex items-center gap-3 px-5 py-2 hover:bg-[var(--bg-hover)] transition-colors duration-fast border-b border-[var(--border-default)] last:border-0 cursor-pointer"
+              className="flex items-center gap-3 px-5 py-2 hover:bg-(--bg-hover) transition-colors duration-fast border-b border-(--border-default) last:border-0 cursor-pointer"
             >
               {o.effective_status === "overdue" ? (
-                <Clock className="w-4 h-4 text-red-500 flex-shrink-0" />
+                <Clock className="w-4 h-4 text-red-500 shrink-0" />
               ) : (
-                <Lock className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                <Lock className="w-4 h-4 text-amber-500 shrink-0" />
               )}
-              <span className="flex-1 min-w-0 text-mac-body text-[var(--text-primary)] truncate">{o.template_name} · {o.period}</span>
+              <span className="flex-1 min-w-0 text-mac-body text-(--text-primary) truncate">{o.template_name} · {o.period}</span>
               <Badge variant={o.effective_status === "overdue" ? "error" : "warning"}>{OBLIGATION_STATUS_LABEL[o.effective_status] ?? o.effective_status}</Badge>
             </li>
           ))}

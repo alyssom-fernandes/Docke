@@ -9,7 +9,7 @@
 function Bar({ w, className = "" }: { w: string; className?: string }) {
   return (
     <div
-      className={`h-3 rounded-full bg-[var(--bg-hover)] animate-pulse ${className}`}
+      className={`h-3 rounded-full bg-(--bg-hover) animate-pulse ${className}`}
       style={{ width: w }}
     />
   );
@@ -32,15 +32,15 @@ export function SkeletonTableRow({
   const nameWidths = ["58%", "42%", "70%", "50%"];
   const idx = Math.floor(Math.random() * nameWidths.length);
   return (
-    <tr className="border-b border-[var(--border-default)]">
+    <tr className="border-b border-(--border-default)">
       {selectionMode && (
         <td className={`px-4 ${pad}`}>
-          <div className="w-4 h-4 rounded-[4px] bg-[var(--bg-hover)] animate-pulse" />
+          <div className="w-4 h-4 rounded-badge bg-(--bg-hover) animate-pulse" />
         </td>
       )}
       <td className={`px-3 ${pad}`}>
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded-[4px] bg-[var(--bg-hover)] animate-pulse flex-shrink-0" />
+          <div className="w-4 h-4 rounded-badge bg-(--bg-hover) animate-pulse shrink-0" />
           <Bar w={nameWidths[idx]} />
         </div>
       </td>
@@ -60,7 +60,7 @@ export function SkeletonTableRow({
 export function SkeletonGridItem() {
   return (
     <div className="flex flex-col items-center gap-1.5 py-3 px-2">
-      <div className="w-8 h-8 rounded-[8px] bg-[var(--bg-hover)] animate-pulse" />
+      <div className="w-8 h-8 rounded-sm bg-(--bg-hover) animate-pulse" />
       <Bar w="70%" className="h-2.5" />
     </div>
   );

@@ -90,7 +90,7 @@ export default function PdfViewer({ url }: { url: string }) {
   if (loading) {
     return (
       <div className="w-full h-full flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-[var(--text-placeholder)] animate-spin" />
+        <Loader2 className="w-8 h-8 text-(--text-placeholder) animate-spin" />
       </div>
     );
   }
@@ -98,57 +98,57 @@ export default function PdfViewer({ url }: { url: string }) {
   if (error) {
     return (
       <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-center px-8">
-        <AlertCircle className="w-10 h-10 text-[var(--text-placeholder)]" />
-        <p className="text-mac-body text-[var(--text-secondary)]">{error}</p>
+        <AlertCircle className="w-10 h-10 text-(--text-placeholder)" />
+        <p className="text-mac-body text-(--text-secondary)">{error}</p>
       </div>
     );
   }
 
   return (
-    <div ref={containerRef} className="w-full h-full flex flex-col bg-[var(--bg-page)]">
+    <div ref={containerRef} className="w-full h-full flex flex-col bg-(--bg-page)">
       <div className="flex-1 overflow-auto flex justify-center p-6">
-        <canvas ref={canvasRef} className="rounded-[4px] shadow-[0_2px_16px_rgba(0,0,0,0.15)] bg-white" />
+        <canvas ref={canvasRef} className="rounded-badge shadow-[0_2px_16px_rgba(0,0,0,0.15)] bg-white" />
       </div>
 
       {/* Barra flutuante de navegação/zoom — mesma "cápsula" de vidro usada no
           Dock e na barra inferior mobile, igual ao Preview.app real. */}
-      <div className="flex-shrink-0 flex justify-center pb-4 pointer-events-none">
+      <div className="shrink-0 flex justify-center pb-4 pointer-events-none">
         <div className="pointer-events-auto glass-panel glass-blur-strong glass-shadow rounded-full flex items-center gap-1 px-2 py-1.5">
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
-            className="h-7 w-7 flex items-center justify-center rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-30 disabled:pointer-events-none transition-colors duration-fast"
+            className="h-7 w-7 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) disabled:opacity-30 disabled:pointer-events-none transition-colors duration-fast"
             aria-label="Página anterior"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="text-mac-caption text-[var(--text-secondary)] px-1.5 min-w-[64px] text-center tabular-nums">
+          <span className="text-mac-caption text-(--text-secondary) px-1.5 min-w-[64px] text-center tabular-nums">
             {page} de {numPages}
           </span>
           <button
             onClick={() => setPage((p) => Math.min(numPages, p + 1))}
             disabled={page >= numPages}
-            className="h-7 w-7 flex items-center justify-center rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-30 disabled:pointer-events-none transition-colors duration-fast"
+            className="h-7 w-7 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) disabled:opacity-30 disabled:pointer-events-none transition-colors duration-fast"
             aria-label="Próxima página"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
-          <span className="w-px h-4 bg-[var(--border-default)] mx-1" />
+          <span className="w-px h-4 bg-(--border-default) mx-1" />
           <button
             onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.25).toFixed(2)))}
             disabled={zoom <= 0.5}
-            className="h-7 w-7 flex items-center justify-center rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-30 disabled:pointer-events-none transition-colors duration-fast"
+            className="h-7 w-7 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) disabled:opacity-30 disabled:pointer-events-none transition-colors duration-fast"
             aria-label="Diminuir zoom"
           >
             <ZoomOut className="w-4 h-4" />
           </button>
-          <span className="text-mac-caption text-[var(--text-secondary)] min-w-[40px] text-center tabular-nums">
+          <span className="text-mac-caption text-(--text-secondary) min-w-[40px] text-center tabular-nums">
             {Math.round(zoom * 100)}%
           </span>
           <button
             onClick={() => setZoom((z) => Math.min(3, +(z + 0.25).toFixed(2)))}
             disabled={zoom >= 3}
-            className="h-7 w-7 flex items-center justify-center rounded-full text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-30 disabled:pointer-events-none transition-colors duration-fast"
+            className="h-7 w-7 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) disabled:opacity-30 disabled:pointer-events-none transition-colors duration-fast"
             aria-label="Aumentar zoom"
           >
             <ZoomIn className="w-4 h-4" />

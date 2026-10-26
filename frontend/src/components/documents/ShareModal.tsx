@@ -89,18 +89,18 @@ export default function ShareModal({
 
   return (
     <Portal>
-    <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-[480px] max-h-[85vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-default)]">
-          <h2 className="text-mac-body font-semibold text-[var(--text-primary)] truncate">Compartilhar "{name}"</h2>
-          <button onClick={onClose} className="p-1 rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] flex-shrink-0">
+    <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[480px] max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-(--border-default)">
+          <h2 className="text-mac-body font-semibold text-(--text-primary) truncate">Compartilhar "{name}"</h2>
+          <button onClick={onClose} className="p-1 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover) shrink-0">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <label className="text-mac-caption font-medium text-[var(--text-secondary)] flex items-center gap-1.5">
+            <label className="text-mac-caption font-medium text-(--text-secondary) flex items-center gap-1.5">
               <Lock className="w-3.5 h-3.5" /> Proteger com senha
             </label>
             <Switch checked={usePassword} onChange={setUsePassword} label="Proteger com senha" />
@@ -111,12 +111,12 @@ export default function ShareModal({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Senha do link"
-              className="w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70"
+              className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
             />
           )}
 
           <div>
-            <label className="block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5">Expiração</label>
+            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Expiração</label>
             <Dropdown
               value={expiresIn}
               onChange={setExpiresIn}
@@ -132,7 +132,7 @@ export default function ShareModal({
 
           {resourceType === "document" && (
             <div className="flex items-center justify-between">
-              <label className="text-mac-caption text-[var(--text-secondary)]">Vincular à versão mais recente (em vez de fixar a atual)</label>
+              <label className="text-mac-caption text-(--text-secondary)">Vincular à versão mais recente (em vez de fixar a atual)</label>
               <Switch checked={alwaysLatest} onChange={setAlwaysLatest} label="Vincular à versão mais recente" />
             </div>
           )}
@@ -143,7 +143,7 @@ export default function ShareModal({
           </Button>
 
           {newLink && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-900/40 rounded-[var(--radius-control)]">
+            <div className="flex items-center gap-2 px-3 py-2 bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-900/40 rounded-(--radius-control)">
               <span className="flex-1 text-mac-caption text-teal-700 dark:text-teal-400 truncate font-mono">{newLink}</span>
               <button onClick={() => navigator.clipboard.writeText(newLink)} className="p-1 rounded-full text-teal-500 hover:bg-teal-100 dark:hover:bg-teal-900/40">
                 <Copy className="w-3.5 h-3.5" />
@@ -151,26 +151,26 @@ export default function ShareModal({
             </div>
           )}
 
-          <div className="pt-3 border-t border-[var(--border-default)]">
-            <p className="text-mac-caption font-medium text-[var(--text-secondary)] mb-2">Links ativos</p>
+          <div className="pt-3 border-t border-(--border-default)">
+            <p className="text-mac-caption font-medium text-(--text-secondary) mb-2">Links ativos</p>
             {loading ? (
-              <div className="h-10 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />
+              <div className="h-10 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />
             ) : links.length === 0 ? (
-              <p className="text-mac-caption text-[var(--text-tertiary)]">Nenhum link ativo.</p>
+              <p className="text-mac-caption text-(--text-tertiary)">Nenhum link ativo.</p>
             ) : (
               <ul className="space-y-1.5">
                 {links.map((l) => (
-                  <li key={l.id} className="flex items-center gap-2 px-2.5 py-2 bg-[var(--bg-page)] rounded-[var(--radius-control)] text-mac-caption">
+                  <li key={l.id} className="flex items-center gap-2 px-2.5 py-2 bg-(--bg-page) rounded-(--radius-control) text-mac-caption">
                     <div className="flex-1 min-w-0">
-                      <p className="text-[var(--text-primary)]">
+                      <p className="text-(--text-primary)">
                         {l.has_password && <Lock className="w-3 h-3 inline mr-1" />}
                         {l.view_count} acesso{l.view_count !== 1 ? "s" : ""}
                       </p>
-                      <p className="text-[var(--text-tertiary)]">
+                      <p className="text-(--text-tertiary)">
                         {l.expires_at ? `Expira ${relativeDate(l.expires_at)}` : "Nunca expira"}
                       </p>
                     </div>
-                    <button onClick={() => setRevokingId(l.id)} title="Revogar" className="p-1 rounded-full text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
+                    <button onClick={() => setRevokingId(l.id)} title="Revogar" className="p-1 rounded-full text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--bg-hover)">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </li>

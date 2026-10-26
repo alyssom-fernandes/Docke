@@ -19,8 +19,8 @@ export default function Tooltip({ label, children, side = "top" }: TooltipProps)
     side === "top" ? "bottom-full left-1/2 -translate-x-1/2 mb-2" : "top-full left-1/2 -translate-x-1/2 mt-2";
   const tailClass =
     side === "top"
-      ? "top-full left-1/2 -translate-x-1/2 -mt-[3px] border-t-[var(--bg-elevated)] border-x-transparent border-b-transparent"
-      : "bottom-full left-1/2 -translate-x-1/2 -mb-[3px] border-b-[var(--bg-elevated)] border-x-transparent border-t-transparent";
+      ? "top-full left-1/2 -translate-x-1/2 mt-[-3px] border-t-(--bg-elevated) border-x-transparent border-b-transparent"
+      : "bottom-full left-1/2 -translate-x-1/2 mb-[-3px] border-b-(--bg-elevated) border-x-transparent border-t-transparent";
 
   return (
     <span className="relative inline-flex group/tooltip">
@@ -29,10 +29,10 @@ export default function Tooltip({ label, children, side = "top" }: TooltipProps)
         role="tooltip"
         className={`pointer-events-none absolute z-50 whitespace-nowrap opacity-0 scale-95 group-hover/tooltip:opacity-100 group-hover/tooltip:scale-100 group-focus-within/tooltip:opacity-100 group-focus-within/tooltip:scale-100 transition-[opacity,transform] duration-fast delay-300 ${positionClass}`}
       >
-        <span className="block rounded-[6px] bg-[var(--bg-elevated)] border border-[var(--border-default)] shadow-dropdown px-2 py-1 text-mac-caption text-[var(--text-primary)]">
+        <span className="block rounded-[6px] bg-(--bg-elevated) border border-(--border-default) shadow-dropdown px-2 py-1 text-mac-caption text-(--text-primary)">
           {label}
         </span>
-        <span className={`absolute w-0 h-0 border-[4px] ${tailClass}`} />
+        <span className={`absolute w-0 h-0 border-4 ${tailClass}`} />
       </span>
     </span>
   );

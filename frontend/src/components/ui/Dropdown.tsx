@@ -47,20 +47,20 @@ export default function Dropdown({
         type="button"
         disabled={disabled}
         onClick={() => setOpen((v) => !v)}
-        className="w-full h-9 px-3 flex items-center justify-between gap-2 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] disabled:opacity-50 focus:outline-none focus:ring-[3px] focus:ring-teal-500/70 hover:bg-[var(--bg-hover)] transition-colors duration-fast"
+        className="w-full h-9 px-3 flex items-center justify-between gap-2 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) disabled:opacity-50 focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70 hover:bg-(--bg-hover) transition-colors duration-fast"
       >
-        <span className={`truncate ${selected ? "" : "text-[var(--text-placeholder)]"}`}>
+        <span className={`truncate ${selected ? "" : "text-(--text-placeholder)"}`}>
           {selected ? selected.label : placeholder}
         </span>
-        <ChevronDown className={`w-4 h-4 flex-shrink-0 text-[var(--text-tertiary)] transition-transform duration-fast ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className={`w-4 h-4 shrink-0 text-(--text-tertiary) transition-transform duration-fast ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
         <div
           role="listbox"
-          className="popover-tail-left absolute top-full left-0 mt-1 w-full min-w-[220px] max-h-[280px] overflow-y-auto glass-panel glass-blur-strong rounded-[var(--radius-popover)] shadow-dropdown py-1 z-50"
+          className="popover-tail-left absolute top-full left-0 mt-1 w-full min-w-[220px] max-h-[280px] overflow-y-auto glass-panel glass-blur-strong rounded-(--radius-popover) shadow-dropdown py-1 z-50"
         >
           {options.length === 0 ? (
-            <p className="px-3 py-2 text-mac-caption text-[var(--text-tertiary)]">Nenhuma opção disponível.</p>
+            <p className="px-3 py-2 text-mac-caption text-(--text-tertiary)">Nenhuma opção disponível.</p>
           ) : (
             options.map((o) => (
               <button
@@ -75,11 +75,11 @@ export default function Dropdown({
                 // cinza neutro que uma lista/tabela usa. Vale só pra menus
                 // (este dropdown, menus de contexto, pull-downs).
                 className={`w-full flex items-center justify-between gap-2 pr-3 py-1.5 text-mac-body text-left transition-colors duration-fast hover:bg-teal-500 hover:text-white ${
-                  o.value === value ? "text-teal-500 font-medium" : "text-[var(--text-primary)]"
+                  o.value === value ? "text-teal-500 font-medium" : "text-(--text-primary)"
                 }`}
               >
                 <span className="truncate">{o.label}</span>
-                {o.value === value && <Check className="w-4 h-4 flex-shrink-0" />}
+                {o.value === value && <Check className="w-4 h-4 shrink-0" />}
               </button>
             ))
           )}

@@ -71,8 +71,8 @@ interface Certificate {
   executed_at: string;
 }
 
-const inputClass = "w-full h-9 px-3 text-mac-body bg-[var(--bg-card)] border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] focus:outline-none focus:ring-[3px] focus:ring-teal-500/70";
-const labelClass = "block text-mac-caption font-medium text-[var(--text-secondary)] mb-1.5";
+const inputClass = "w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70";
+const labelClass = "block text-mac-caption font-medium text-(--text-secondary) mb-1.5";
 
 export default function Retention() {
   usePageTitle("Retenção");
@@ -220,18 +220,18 @@ export default function Retention() {
   return (
     <div className="space-y-6">
       {/* Lixeira */}
-      <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6 space-y-5">
-        <p className="text-mac-body font-medium text-[var(--text-primary)]">Dias na lixeira antes da exclusão permanente</p>
+      <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-6 space-y-5">
+        <p className="text-mac-body font-medium text-(--text-primary)">Dias na lixeira antes da exclusão permanente</p>
         {loadingDays ? (
-          <div className="h-9 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse max-w-[200px]" />
+          <div className="h-9 bg-(--bg-hover) rounded-(--radius-control) animate-pulse max-w-[200px]" />
         ) : (
           <div className="flex items-center gap-2 max-w-[200px]">
             <input type="number" min={1} value={days} onChange={(e) => setDays(Math.max(1, Number(e.target.value)))} className={inputClass} />
-            <span className="text-mac-body text-[var(--text-secondary)]">dias</span>
+            <span className="text-mac-body text-(--text-secondary)">dias</span>
           </div>
         )}
-        <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-[var(--radius-control)]">
-          <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+        <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-(--radius-control)">
+          <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
           <p className="text-mac-caption text-amber-800 dark:text-amber-300">
             Itens excluídos há mais de {Math.min(days, 7)} dia(s) manterão a retenção anterior. Itens mais recentes seguirão a nova regra imediatamente.
           </p>
@@ -254,25 +254,25 @@ export default function Retention() {
       <HoldSection companyId={current?.id} folderOptions={folderOptions} holds={holds} loading={loading} onRelease={releaseHold} onCreated={load} />
 
       {/* Fila de revisão */}
-      <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6 space-y-4">
+      <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-6 space-y-4">
         <div className="flex items-center gap-2">
           <Inbox className="w-4 h-4 text-teal-500" />
-          <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Fila de descarte — aguardando revisão</h2>
+          <h2 className="text-mac-body font-semibold text-(--text-primary)">Fila de descarte — aguardando revisão</h2>
         </div>
-        <p className="text-mac-caption text-[var(--text-secondary)]">
+        <p className="text-mac-caption text-(--text-secondary)">
           Documentos cujo prazo de retenção já passou entram aqui automaticamente (varredura diária) — nenhum é apagado sem essa revisão. "Aprovar" só marca a decisão; a exclusão em si é um passo separado, feito depois na seção "Aprovados aguardando execução".
         </p>
         {loading ? (
-          <div className="h-14 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />
+          <div className="h-14 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />
         ) : queue.length === 0 ? (
-          <p className="text-mac-caption text-[var(--text-tertiary)]">Nenhum documento pendente de revisão.</p>
+          <p className="text-mac-caption text-(--text-tertiary)">Nenhum documento pendente de revisão.</p>
         ) : (
-          <ul className="border border-[var(--border-default)] rounded-[var(--radius-control)] divide-y divide-[var(--border-default)] overflow-hidden">
+          <ul className="border border-(--border-default) rounded-(--radius-control) divide-y divide-(--border-default) overflow-hidden">
             {queue.map((q) => (
               <li key={q.id} className="flex items-center gap-3 px-4 py-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-mac-body text-[var(--text-primary)] truncate">{q.document_name}</p>
-                  <p className="text-mac-caption text-[var(--text-tertiary)]">
+                  <p className="text-mac-body text-(--text-primary) truncate">{q.document_name}</p>
+                  <p className="text-mac-caption text-(--text-tertiary)">
                     {q.policy_name_snapshot} · venceu em {new Date(q.computed_expires_at + "T00:00:00").toLocaleDateString("pt-BR")}
                   </p>
                 </div>
@@ -292,12 +292,12 @@ export default function Retention() {
           title="Aprovados aguardando execução"
           description="Já foram aprovados na fila acima, mas ainda NÃO foram excluídos. Executar é definitivo e irreversível — apaga o documento do banco e do armazenamento, e gera um certificado de destruição."
         >
-          <ul className="border border-[var(--border-default)] rounded-[var(--radius-control)] divide-y divide-[var(--border-default)] overflow-hidden">
+          <ul className="border border-(--border-default) rounded-(--radius-control) divide-y divide-(--border-default) overflow-hidden">
             {approvedQueue.map((q) => (
               <li key={q.id} className="flex items-center gap-3 px-4 py-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-mac-body text-[var(--text-primary)] truncate">{q.document_name}</p>
-                  <p className="text-mac-caption text-[var(--text-tertiary)]">{q.policy_name_snapshot} · aprovado</p>
+                  <p className="text-mac-body text-(--text-primary) truncate">{q.document_name}</p>
+                  <p className="text-mac-caption text-(--text-tertiary)">{q.policy_name_snapshot} · aprovado</p>
                 </div>
                 <Button variant="danger" size="sm" onClick={() => setPurgingItem(q)}>
                   <Trash2 className="w-3.5 h-3.5" /> Executar descarte
@@ -324,23 +324,23 @@ export default function Retention() {
 
       {/* Fase 5.6: certificados de destruição — evidência que sobrevive ao documento */}
       {!loading && certificates.length > 0 && (
-        <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6 space-y-4">
+        <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-6 space-y-4">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-teal-500" />
-            <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Certificados de destruição</h2>
+            <h2 className="text-mac-body font-semibold text-(--text-primary)">Certificados de destruição</h2>
           </div>
-          <p className="text-mac-caption text-[var(--text-secondary)]">
+          <p className="text-mac-caption text-(--text-secondary)">
             Registro permanente de todo descarte já executado — continua legível mesmo depois que o documento não existe mais.
           </p>
-          <ul className="border border-[var(--border-default)] rounded-[var(--radius-control)] divide-y divide-[var(--border-default)] overflow-hidden">
+          <ul className="border border-(--border-default) rounded-(--radius-control) divide-y divide-(--border-default) overflow-hidden">
             {certificates.map((c) => (
               <li key={c.id} className="px-4 py-3">
-                <p className="text-mac-body text-[var(--text-primary)] truncate">{c.document_name_snapshot}</p>
-                <p className="text-mac-caption text-[var(--text-tertiary)]">
+                <p className="text-mac-body text-(--text-primary) truncate">{c.document_name_snapshot}</p>
+                <p className="text-mac-caption text-(--text-tertiary)">
                   {c.policy_name_snapshot}{c.legal_basis_snapshot ? ` (${c.legal_basis_snapshot})` : ""} · destruído em {new Date(c.executed_at).toLocaleString("pt-BR")} por {c.executed_by_name_snapshot}
                   {c.folder_path_snapshot ? ` · pasta original: ${c.folder_path_snapshot.replace(/\./g, " / ")}` : ""}
                 </p>
-                {c.document_sha256 && <p className="text-mac-caption2 text-[var(--text-tertiary)] font-mono truncate">SHA-256: {c.document_sha256}</p>}
+                {c.document_sha256 && <p className="text-mac-caption2 text-(--text-tertiary) font-mono truncate">SHA-256: {c.document_sha256}</p>}
               </li>
             ))}
           </ul>
@@ -382,11 +382,11 @@ function PolicySection({ companyId, policies, loading, onArchive, onCreated }: {
   }
 
   return (
-    <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6 space-y-4">
+    <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-6 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <ScrollText className="w-4 h-4 text-teal-500" />
-          <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Políticas de retenção legal</h2>
+          <h2 className="text-mac-body font-semibold text-(--text-primary)">Políticas de retenção legal</h2>
         </div>
         <Button variant="ghost" size="sm" onClick={() => setShowForm((v) => !v)}>
           <Plus className="w-3.5 h-3.5" /> Nova política
@@ -394,7 +394,7 @@ function PolicySection({ companyId, policies, loading, onArchive, onCreated }: {
       </div>
 
       {showForm && (
-        <div className="border border-[var(--border-default)] rounded-[var(--radius-control)] p-4 space-y-3">
+        <div className="border border-(--border-default) rounded-(--radius-control) p-4 space-y-3">
           <div>
             <label className={labelClass}>Nome</label>
             <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Fiscal — 5 anos" autoFocus />
@@ -405,7 +405,7 @@ function PolicySection({ companyId, policies, loading, onArchive, onCreated }: {
           </div>
           <div className="flex items-center gap-2">
             <input type="checkbox" checked={indeterminate} onChange={(e) => setIndeterminate(e.target.checked)} id="indeterminate" />
-            <label htmlFor="indeterminate" className="text-mac-caption text-[var(--text-secondary)]">Retenção indeterminada (nunca expira sozinha)</label>
+            <label htmlFor="indeterminate" className="text-mac-caption text-(--text-secondary)">Retenção indeterminada (nunca expira sozinha)</label>
           </div>
           {!indeterminate && (
             <div>
@@ -415,7 +415,7 @@ function PolicySection({ companyId, policies, loading, onArchive, onCreated }: {
           )}
           <div className="flex items-center gap-2">
             <input type="checkbox" checked={locked} onChange={(e) => setLocked(e.target.checked)} id="locked" />
-            <label htmlFor="locked" className="text-mac-caption text-[var(--text-secondary)]">Política travada — vence qualquer outra em caso de conflito</label>
+            <label htmlFor="locked" className="text-mac-caption text-(--text-secondary)">Política travada — vence qualquer outra em caso de conflito</label>
           </div>
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" size="sm" onClick={() => setShowForm(false)}>Cancelar</Button>
@@ -425,20 +425,20 @@ function PolicySection({ companyId, policies, loading, onArchive, onCreated }: {
       )}
 
       {loading ? (
-        <div className="h-12 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />
+        <div className="h-12 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />
       ) : policies.length === 0 ? (
-        <p className="text-mac-caption text-[var(--text-tertiary)]">Nenhuma política cadastrada ainda.</p>
+        <p className="text-mac-caption text-(--text-tertiary)">Nenhuma política cadastrada ainda.</p>
       ) : (
-        <ul className="border border-[var(--border-default)] rounded-[var(--radius-control)] divide-y divide-[var(--border-default)] overflow-hidden">
+        <ul className="border border-(--border-default) rounded-(--radius-control) divide-y divide-(--border-default) overflow-hidden">
           {policies.map((p) => (
             <li key={p.id} className="flex items-center gap-3 px-4 py-2.5">
               <div className="flex-1 min-w-0">
-                <p className="text-mac-body text-[var(--text-primary)] truncate">{p.name} {p.locked && <Badge variant="warning">Travada</Badge>}</p>
-                <p className="text-mac-caption text-[var(--text-tertiary)]">
+                <p className="text-mac-body text-(--text-primary) truncate">{p.name} {p.locked && <Badge variant="warning">Travada</Badge>}</p>
+                <p className="text-mac-caption text-(--text-tertiary)">
                   {p.duration_months ? `${p.duration_months} meses` : "Indeterminada"} · {TRIGGER_LABEL[p.trigger_type]}{p.legal_basis ? ` · ${p.legal_basis}` : ""}
                 </p>
               </div>
-              <button onClick={() => onArchive(p)} className="p-1.5 rounded-full text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]" title="Arquivar">
+              <button onClick={() => onArchive(p)} className="p-1.5 rounded-full text-(--text-tertiary) hover:bg-(--bg-hover) hover:text-(--text-primary)" title="Arquivar">
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </li>
@@ -500,16 +500,16 @@ function AssignmentSection({ companyId, policies, folderOptions, assignments, lo
   if (policies.length === 0) return null;
 
   return (
-    <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6 space-y-4">
+    <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-6 space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Onde cada política vale</h2>
+        <h2 className="text-mac-body font-semibold text-(--text-primary)">Onde cada política vale</h2>
         <Button variant="ghost" size="sm" onClick={() => setShowForm((v) => !v)}>
           <Plus className="w-3.5 h-3.5" /> Nova atribuição
         </Button>
       </div>
 
       {showForm && (
-        <div className="border border-[var(--border-default)] rounded-[var(--radius-control)] p-4 space-y-3">
+        <div className="border border-(--border-default) rounded-(--radius-control) p-4 space-y-3">
           <div>
             <label className={labelClass}>Política</label>
             <Dropdown value={policyId} onChange={(v) => { setPolicyId(v); setImpact(null); }} placeholder="Escolha a política" options={policies.map((p) => ({ value: p.id, label: p.name }))} />
@@ -523,13 +523,13 @@ function AssignmentSection({ companyId, policies, folderOptions, assignments, lo
             <div>
               <Button variant="secondary" size="sm" onClick={simulate} loading={simulating}>Ver impacto antes de atribuir</Button>
               {impact && (
-                <div className="mt-2 p-3 rounded-[var(--radius-control)] bg-[var(--bg-page)] border border-[var(--border-default)] space-y-1.5">
-                  <p className="text-mac-body text-[var(--text-primary)]">
+                <div className="mt-2 p-3 rounded-(--radius-control) bg-(--bg-page) border border-(--border-default) space-y-1.5">
+                  <p className="text-mac-body text-(--text-primary)">
                     {impact.total_documents_in_scope} documento{impact.total_documents_in_scope !== 1 ? "s" : ""} no escopo —{" "}
                     <strong>{impact.changed_count}</strong> {impact.changed_count === 1 ? "teria" : "teriam"} a política efetiva mudada, {impact.unchanged_count} sem mudança.
                   </p>
                   {impact.sample.length > 0 && (
-                    <ul className="text-mac-caption text-[var(--text-secondary)] space-y-0.5">
+                    <ul className="text-mac-caption text-(--text-secondary) space-y-0.5">
                       {impact.sample.map((s, i) => (
                         <li key={i}>
                           {s.document_name}: {s.before_policy ?? "sem política"} → {s.after_policy ?? "sem política"}
@@ -538,7 +538,7 @@ function AssignmentSection({ companyId, policies, folderOptions, assignments, lo
                     </ul>
                   )}
                   {impact.changed_count > impact.sample.length && (
-                    <p className="text-mac-caption text-[var(--text-tertiary)]">…e mais {impact.changed_count - impact.sample.length}.</p>
+                    <p className="text-mac-caption text-(--text-tertiary)">…e mais {impact.changed_count - impact.sample.length}.</p>
                   )}
                 </div>
               )}
@@ -553,17 +553,17 @@ function AssignmentSection({ companyId, policies, folderOptions, assignments, lo
       )}
 
       {loading ? (
-        <div className="h-12 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />
+        <div className="h-12 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />
       ) : assignments.length === 0 ? (
-        <p className="text-mac-caption text-[var(--text-tertiary)]">Nenhuma política atribuída a uma pasta ainda.</p>
+        <p className="text-mac-caption text-(--text-tertiary)">Nenhuma política atribuída a uma pasta ainda.</p>
       ) : (
-        <ul className="border border-[var(--border-default)] rounded-[var(--radius-control)] divide-y divide-[var(--border-default)] overflow-hidden">
+        <ul className="border border-(--border-default) rounded-(--radius-control) divide-y divide-(--border-default) overflow-hidden">
           {assignments.map((a) => (
             <li key={a.id} className="flex items-center gap-3 px-4 py-2.5">
-              <p className="flex-1 text-mac-body text-[var(--text-primary)]">
-                {a.policy_name} <span className="text-[var(--text-tertiary)]">em</span> {a.folder_path ? a.folder_path.replace(/\./g, " / ") : "empresa toda"}
+              <p className="flex-1 text-mac-body text-(--text-primary)">
+                {a.policy_name} <span className="text-(--text-tertiary)">em</span> {a.folder_path ? a.folder_path.replace(/\./g, " / ") : "empresa toda"}
               </p>
-              <button onClick={() => onRemove(a)} className="p-1.5 rounded-full text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]" title="Remover">
+              <button onClick={() => onRemove(a)} className="p-1.5 rounded-full text-(--text-tertiary) hover:bg-(--bg-hover) hover:text-(--text-primary)" title="Remover">
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </li>
@@ -599,40 +599,40 @@ function HealthCheckSection({ companyId }: { companyId: string | undefined }) {
   const clean = result && result.policies_without_assignments.length === 0 && result.documents_without_policy_sample.length === 0;
 
   return (
-    <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6">
-      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between text-mac-body font-semibold text-[var(--text-primary)]">
+    <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-6">
+      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between text-mac-body font-semibold text-(--text-primary)">
         <span className="flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-teal-500" />Diagnóstico de governança</span>
-        <ChevronDown className={`w-4 h-4 text-[var(--text-tertiary)] transition-transform duration-fast ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className={`w-4 h-4 text-(--text-tertiary) transition-transform duration-fast ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
         <div className="mt-4 space-y-4">
           {loading ? (
-            <div className="h-16 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />
+            <div className="h-16 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />
           ) : !result ? (
-            <p className="text-mac-caption text-[var(--text-tertiary)]">Não foi possível carregar o diagnóstico.</p>
+            <p className="text-mac-caption text-(--text-tertiary)">Não foi possível carregar o diagnóstico.</p>
           ) : clean ? (
             <p className="text-mac-body text-emerald-600 dark:text-emerald-400">Nenhum problema encontrado — todas as políticas estão em uso e todos os documentos têm cobertura.</p>
           ) : (
             <>
               <div>
-                <p className="text-mac-body font-medium text-[var(--text-primary)] mb-1">Políticas sem nenhuma atribuição ({result.policies_without_assignments.length})</p>
+                <p className="text-mac-body font-medium text-(--text-primary) mb-1">Políticas sem nenhuma atribuição ({result.policies_without_assignments.length})</p>
                 {result.policies_without_assignments.length === 0 ? (
-                  <p className="text-mac-caption text-[var(--text-tertiary)]">Nenhuma — todas as políticas ativas protegem algum escopo.</p>
+                  <p className="text-mac-caption text-(--text-tertiary)">Nenhuma — todas as políticas ativas protegem algum escopo.</p>
                 ) : (
-                  <ul className="text-mac-caption text-[var(--text-secondary)] space-y-0.5">
+                  <ul className="text-mac-caption text-(--text-secondary) space-y-0.5">
                     {result.policies_without_assignments.map((p) => <li key={p.id}>{p.name}</li>)}
                   </ul>
                 )}
               </div>
               <div>
-                <p className="text-mac-body font-medium text-[var(--text-primary)] mb-1">
+                <p className="text-mac-body font-medium text-(--text-primary) mb-1">
                   Documentos sem política aplicável {result.documents_without_policy_has_more ? "(50+)" : `(${result.documents_without_policy_sample.length})`}
                 </p>
                 {result.documents_without_policy_sample.length === 0 ? (
-                  <p className="text-mac-caption text-[var(--text-tertiary)]">Nenhum — todo documento tem ao menos uma política cobrindo ele.</p>
+                  <p className="text-mac-caption text-(--text-tertiary)">Nenhum — todo documento tem ao menos uma política cobrindo ele.</p>
                 ) : (
-                  <ul className="text-mac-caption text-[var(--text-secondary)] space-y-0.5 max-h-48 overflow-y-auto">
-                    {result.documents_without_policy_sample.map((d) => <li key={d.id}>{d.name} <span className="text-[var(--text-tertiary)]">— {d.folder_name}</span></li>)}
+                  <ul className="text-mac-caption text-(--text-secondary) space-y-0.5 max-h-48 overflow-y-auto">
+                    {result.documents_without_policy_sample.map((d) => <li key={d.id}>{d.name} <span className="text-(--text-tertiary)">— {d.folder_name}</span></li>)}
                   </ul>
                 )}
               </div>
@@ -686,23 +686,23 @@ function HoldSection({ companyId, folderOptions, holds, loading, onRelease, onCr
   }
 
   return (
-    <div className="glass-panel glass-blur-card glass-highlight-line rounded-[var(--radius-panel)] p-6 space-y-4">
+    <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-6 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Lock className="w-4 h-4 text-amber-500" />
-          <h2 className="text-mac-body font-semibold text-[var(--text-primary)]">Legal Hold</h2>
+          <h2 className="text-mac-body font-semibold text-(--text-primary)">Legal Hold</h2>
         </div>
         <Button variant="ghost" size="sm" onClick={() => setShowForm((v) => !v)}>
           <Plus className="w-3.5 h-3.5" /> Novo hold
         </Button>
       </div>
-      <p className="text-mac-caption text-[var(--text-secondary)]">Bloqueia exclusão mesmo com o prazo de retenção vencido — para documentos que viram prova num processo, por exemplo. Um hold em pasta protege tudo dentro dela, inclusive o que for adicionado depois.</p>
+      <p className="text-mac-caption text-(--text-secondary)">Bloqueia exclusão mesmo com o prazo de retenção vencido — para documentos que viram prova num processo, por exemplo. Um hold em pasta protege tudo dentro dela, inclusive o que for adicionado depois.</p>
 
       {showForm && (
-        <div className="border border-[var(--border-default)] rounded-[var(--radius-control)] p-4 space-y-3">
+        <div className="border border-(--border-default) rounded-(--radius-control) p-4 space-y-3">
           <div className="flex gap-2">
-            <button onClick={() => setResourceType("folder")} className={`px-3 py-1.5 rounded-full text-mac-caption border ${resourceType === "folder" ? "bg-teal-500/15 border-teal-500 text-teal-600 dark:text-teal-400" : "border-[var(--border-default)] text-[var(--text-secondary)]"}`}>Pasta</button>
-            <button onClick={() => setResourceType("document")} className={`px-3 py-1.5 rounded-full text-mac-caption border ${resourceType === "document" ? "bg-teal-500/15 border-teal-500 text-teal-600 dark:text-teal-400" : "border-[var(--border-default)] text-[var(--text-secondary)]"}`}>Documento</button>
+            <button onClick={() => setResourceType("folder")} className={`px-3 py-1.5 rounded-full text-mac-caption border ${resourceType === "folder" ? "bg-teal-500/15 border-teal-500 text-teal-600 dark:text-teal-400" : "border-(--border-default) text-(--text-secondary)"}`}>Pasta</button>
+            <button onClick={() => setResourceType("document")} className={`px-3 py-1.5 rounded-full text-mac-caption border ${resourceType === "document" ? "bg-teal-500/15 border-teal-500 text-teal-600 dark:text-teal-400" : "border-(--border-default) text-(--text-secondary)"}`}>Documento</button>
           </div>
           {resourceType === "folder" ? (
             <div>
@@ -714,12 +714,12 @@ function HoldSection({ companyId, folderOptions, holds, loading, onRelease, onCr
               <label className={labelClass}>Buscar documento</label>
               <input className={inputClass} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Digite o nome do documento…" />
               {results.length > 0 && (
-                <ul className="mt-2 border border-[var(--border-default)] rounded-[var(--radius-control)] overflow-hidden divide-y divide-[var(--border-default)]">
+                <ul className="mt-2 border border-(--border-default) rounded-(--radius-control) overflow-hidden divide-y divide-(--border-default)">
                   {results.map((r) => (
                     <li key={r.id}>
                       <button
                         onClick={() => { setDocumentId(r.id); setQuery(r.name); setResults([]); }}
-                        className={`w-full text-left px-3 py-2 text-mac-body hover:bg-[var(--bg-hover)] ${documentId === r.id ? "text-teal-500" : "text-[var(--text-primary)]"}`}
+                        className={`w-full text-left px-3 py-2 text-mac-body hover:bg-(--bg-hover) ${documentId === r.id ? "text-teal-500" : "text-(--text-primary)"}`}
                       >
                         {r.name}
                       </button>
@@ -741,17 +741,17 @@ function HoldSection({ companyId, folderOptions, holds, loading, onRelease, onCr
       )}
 
       {loading ? (
-        <div className="h-12 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />
+        <div className="h-12 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />
       ) : holds.length === 0 ? (
-        <p className="text-mac-caption text-[var(--text-tertiary)]">Nenhum hold ativo.</p>
+        <p className="text-mac-caption text-(--text-tertiary)">Nenhum hold ativo.</p>
       ) : (
-        <ul className="border border-[var(--border-default)] rounded-[var(--radius-control)] divide-y divide-[var(--border-default)] overflow-hidden">
+        <ul className="border border-(--border-default) rounded-(--radius-control) divide-y divide-(--border-default) overflow-hidden">
           {holds.map((h) => (
             <li key={h.id} className="flex items-center gap-3 px-4 py-2.5">
-              <Lock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+              <Lock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-mac-body text-[var(--text-primary)] truncate">{h.reason}</p>
-                <p className="text-mac-caption text-[var(--text-tertiary)]">{h.resource_type === "folder" ? "Pasta" : "Documento"} · criado em {new Date(h.created_at).toLocaleDateString("pt-BR")}</p>
+                <p className="text-mac-body text-(--text-primary) truncate">{h.reason}</p>
+                <p className="text-mac-caption text-(--text-tertiary)">{h.resource_type === "folder" ? "Pasta" : "Documento"} · criado em {new Date(h.created_at).toLocaleDateString("pt-BR")}</p>
               </div>
               <Button variant="ghost" size="sm" onClick={() => onRelease(h)}>
                 <Unlock className="w-3.5 h-3.5" /> Liberar

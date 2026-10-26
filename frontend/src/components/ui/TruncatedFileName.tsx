@@ -24,7 +24,7 @@ export default function TruncatedFileName({ name, maxWidth = "300px", className 
       title={name}
     >
       <span className="truncate">{base}</span>
-      {ext && <span className={`flex-shrink-0 ${inverted ? "text-white/70" : "text-[var(--text-tertiary)]"}`}>{ext}</span>}
+      {ext && <span className={`shrink-0 ${inverted ? "text-white/70" : "text-(--text-tertiary)"}`}>{ext}</span>}
     </span>
   );
 }

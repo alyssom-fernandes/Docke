@@ -77,29 +77,29 @@ function DiffModal({ documentId, versionA, versionB, onClose }: {
 
   return (
     <Portal>
-      <div className="fixed inset-0 bg-[var(--overlay-scrim)] flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-        <div className="glass-dialog glass-blur-strong rounded-[var(--radius-dialog)] shadow-modal modal-card w-full max-w-2xl flex flex-col" style={{ height: "min(80vh, 640px)" }}>
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-default)] flex-shrink-0">
-            <h2 className="text-mac-body font-semibold text-[var(--text-primary)] flex items-center gap-2">
+      <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        <div className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-2xl flex flex-col" style={{ height: "min(80vh, 640px)" }}>
+          <div className="flex items-center justify-between px-5 py-4 border-b border-(--border-default) shrink-0">
+            <h2 className="text-mac-body font-semibold text-(--text-primary) flex items-center gap-2">
               <GitCompare className="w-4 h-4 text-teal-500" />
               v{older.version_number} → v{newer.version_number}
             </h2>
-            <button onClick={onClose} className="p-1 rounded-[6px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]">
+            <button onClick={onClose} className="p-1 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover)">
               <X className="w-4 h-4" />
             </button>
           </div>
           <div className="flex-1 overflow-auto">
             {loading ? (
               <div className="h-full flex items-center justify-center">
-                <Loader2 className="w-6 h-6 text-[var(--text-placeholder)] animate-spin" />
+                <Loader2 className="w-6 h-6 text-(--text-placeholder) animate-spin" />
               </div>
             ) : unavailableReason ? (
               <div className="h-full flex items-center justify-center px-8 text-center">
-                <p className="text-mac-body text-[var(--text-secondary)]">{unavailableReason}</p>
+                <p className="text-mac-body text-(--text-secondary)">{unavailableReason}</p>
               </div>
             ) : diff && diff.every((l) => l.type === "same") ? (
               <div className="h-full flex items-center justify-center px-8 text-center">
-                <p className="text-mac-body text-[var(--text-secondary)]">Nenhuma diferença de texto entre estas duas versões.</p>
+                <p className="text-mac-body text-(--text-secondary)">Nenhuma diferença de texto entre estas duas versões.</p>
               </div>
             ) : (
               <pre className="p-4 text-mac-caption font-mono leading-relaxed">
@@ -109,7 +109,7 @@ function DiffModal({ documentId, versionA, versionB, onClose }: {
                     className={
                       line.type === "add" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" :
                       line.type === "remove" ? "bg-red-500/15 text-red-700 dark:text-red-400 line-through decoration-1" :
-                      "text-[var(--text-secondary)]"
+                      "text-(--text-secondary)"
                     }
                   >
                     {line.type === "add" ? "+ " : line.type === "remove" ? "- " : "  "}{line.text}
@@ -230,10 +230,10 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
   }
 
   return (
-    <div className="border-t border-[var(--border-default)] pt-3">
+    <div className="border-t border-(--border-default) pt-3">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between text-mac-body text-[var(--text-primary)] hover:text-teal-500 transition-colors duration-fast"
+        className="w-full flex items-center justify-between text-mac-body text-(--text-primary) hover:text-teal-500 transition-colors duration-fast"
       >
         <span className="flex items-center gap-2">
           <History className="w-4 h-4" />
@@ -253,16 +253,16 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="w-full h-8 flex items-center justify-center gap-1.5 text-mac-caption border border-[var(--border-default)] rounded-[var(--radius-control)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors duration-fast disabled:opacity-50"
+            className="w-full h-8 flex items-center justify-center gap-1.5 text-mac-caption border border-(--border-default) rounded-(--radius-control) text-(--text-secondary) hover:bg-(--bg-hover) transition-colors duration-fast disabled:opacity-50"
           >
             <Upload className="w-3.5 h-3.5" />
             {uploading ? "Enviando…" : "Enviar nova versão"}
           </button>
 
           {loading ? (
-            <div className="h-16 bg-[var(--bg-hover)] rounded-[var(--radius-control)] animate-pulse" />
+            <div className="h-16 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />
           ) : versions.length === 0 ? (
-            <p className="text-mac-caption text-[var(--text-tertiary)] text-center py-2">Nenhum histórico ainda.</p>
+            <p className="text-mac-caption text-(--text-tertiary) text-center py-2">Nenhum histórico ainda.</p>
           ) : (
             <>
               {/* Fase 12.4: aparece só quando exatamente 2 versões marcadas */}
@@ -272,7 +272,7 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
                     const [a, b] = compareIds.map((id) => versions.find((v) => v.id === id)!);
                     setDiffPair([a, b]);
                   }}
-                  className="w-full h-8 flex items-center justify-center gap-1.5 text-mac-caption bg-teal-600 text-white rounded-[var(--radius-control)] hover:bg-teal-500 transition-colors duration-fast"
+                  className="w-full h-8 flex items-center justify-center gap-1.5 text-mac-caption bg-teal-600 text-white rounded-(--radius-control) hover:bg-teal-500 transition-colors duration-fast"
                 >
                   <GitCompare className="w-3.5 h-3.5" />
                   Comparar versões selecionadas
@@ -282,8 +282,8 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
               {versions.map((v) => (
                 <li
                   key={v.id}
-                  className={`flex items-center gap-2 px-2.5 py-2 rounded-[var(--radius-control)] text-mac-caption ${
-                    v.is_current ? "bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-900/40" : "bg-[var(--bg-page)]"
+                  className={`flex items-center gap-2 px-2.5 py-2 rounded-(--radius-control) text-mac-caption ${
+                    v.is_current ? "bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-900/40" : "bg-(--bg-page)"
                   }`}
                 >
                   {versions.length > 1 && (
@@ -292,18 +292,18 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
                       checked={compareIds.includes(v.id)}
                       onChange={() => toggleCompare(v.id)}
                       title="Selecionar para comparar"
-                      className="flex-shrink-0 accent-teal-500"
+                      className="shrink-0 accent-teal-500"
                     />
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-[var(--text-primary)]">
+                    <p className="font-medium text-(--text-primary)">
                       v{v.version_number} {v.is_current && <span className="text-teal-500">· atual</span>}
                     </p>
-                    <p className="text-[var(--text-tertiary)] truncate">
+                    <p className="text-(--text-tertiary) truncate">
                       {fmtSize(v.size_bytes)} · {relativeDate(v.created_at)} {v.uploaded_by_name ? `· ${v.uploaded_by_name}` : ""}
                     </p>
                   </div>
-                  <button onClick={() => downloadVersion(v)} title="Baixar esta versão" className="p-1 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
+                  <button onClick={() => downloadVersion(v)} title="Baixar esta versão" className="p-1 rounded text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--bg-hover)">
                     <Download className="w-3.5 h-3.5" />
                   </button>
                   {!v.is_current && (
@@ -312,7 +312,7 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
                         onClick={() => restoreVersion(v)}
                         disabled={busyId === v.id}
                         title="Restaurar esta versão"
-                        className="p-1 rounded text-[var(--text-tertiary)] hover:text-teal-500 hover:bg-[var(--bg-hover)] disabled:opacity-50"
+                        className="p-1 rounded text-(--text-tertiary) hover:text-teal-500 hover:bg-(--bg-hover) disabled:opacity-50"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                       </button>
@@ -320,7 +320,7 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
                         onClick={() => deleteVersion(v)}
                         disabled={busyId === v.id}
                         title="Excluir esta versão"
-                        className="p-1 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-50"
+                        className="p-1 rounded text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--bg-hover) disabled:opacity-50"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -331,7 +331,7 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
             </ul>
             </>
           )}
-          <p className="text-[10px] text-[var(--text-tertiary)] text-center">Limite de 10 versões por documento.</p>
+          <p className="text-[10px] text-(--text-tertiary) text-center">Limite de 10 versões por documento.</p>
         </div>
       )}
 
