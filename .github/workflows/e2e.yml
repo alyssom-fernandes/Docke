@@ -9,7 +9,7 @@ on:
 
 jobs:
   playwright:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # o ubuntu-latest passou a ser o 26.04, que o Playwright ainda não suporta
     steps:
       - uses: actions/checkout@v4
 
