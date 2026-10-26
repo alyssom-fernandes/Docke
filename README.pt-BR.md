@@ -23,6 +23,17 @@
 - **Toda ação fica registrada.** A trilha de atividades é encadeada por empresa com um HMAC sobre o hash anterior; alterar um registro antigo quebra a sequência.
 - **Arquivos fiscais brasileiros.** O DANFE é montado direto do XML da NF-e; DOCX/XLSX ganham pré-visualização em PDF via LibreOffice headless.
 
+## Telas
+
+Todas capturadas da demonstração pública, com os dados fictícios dela.
+
+| | |
+|---|---|
+| ![Painel com contadores de documentos, gráfico de envios e documentos por pasta](.github/readme/dashboard.png) | ![Documentos com a árvore de pastas e o painel de detalhes](.github/readme/documents.png) |
+| **Painel** (tema escuro) | **Documentos** com o painel de detalhes (tema claro) |
+| ![DANFE montado a partir de um XML de NF-e fictício](.github/readme/danfe.png) | ![Verificação de integridade da trilha de auditoria indicando cadeia íntegra](.github/readme/audit-chain.png) |
+| **DANFE** montado direto do XML da NF-e | **Verificação da trilha**: cada evento conferido de novo contra a cadeia de hash |
+
 ## Arquitetura
 
 ```mermaid
@@ -43,7 +54,7 @@ flowchart LR
 
 | Camada | Tecnologia |
 |---|---|
-| Frontend | React 18, TypeScript (strict), Vite, Tailwind CSS, pdf.js |
+| Frontend | React 19, TypeScript (strict), Vite 6, Tailwind CSS 4, pdf.js |
 | Backend | Python 3.11, FastAPI, asyncpg, python-jose |
 | Dados | Supabase (Postgres + Auth), 35 migrations SQL |
 | Arquivos | Cloudflare R2 (API S3) |
@@ -81,7 +92,7 @@ Sem credenciais do R2, a API guarda os arquivos no disco local (modo de desenvol
 
 ## Situação e limitações
 
-- A demonstração pública depende da API na Fly.io e de um projeto Supabase que está pausado no momento; por isso o botão da demo pode avisar que o servidor está desligado.
+- A demonstração pública roda em planos gratuitos ou quase: a API na Fly.io desliga quando ociosa, então a primeira visita pode levar alguns segundos enquanto ela liga. Uma tarefa diária impede o projeto Supabase Free de pausar.
 - A interface existe só em português do Brasil.
 - Os dados da demo são fictícios: os nomes das empresas são inventados e os três CNPJs não passam na validação dos dígitos verificadores, então não podem pertencer a uma empresa real.
 

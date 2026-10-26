@@ -23,6 +23,17 @@
 - **Every action is recorded.** The activity log is chained per company with an HMAC over the previous hash, so editing a past entry breaks the chain.
 - **Brazilian fiscal files.** A DANFE is rendered straight from the NF-e XML; DOCX/XLSX get a PDF preview through headless LibreOffice.
 
+## Screens
+
+All captured from the public demo with its fictitious data.
+
+| | |
+|---|---|
+| ![Dashboard with document counters, uploads chart and documents per folder](.github/readme/dashboard.png) | ![Documents with the folder tree and the details panel](.github/readme/documents.png) |
+| **Dashboard** (dark theme) | **Documents** with the details panel (light theme) |
+| ![DANFE rendered from a fictitious NF-e XML](.github/readme/danfe.png) | ![Audit trail integrity check reporting an intact chain](.github/readme/audit-chain.png) |
+| **DANFE** rendered straight from the NF-e XML | **Audit trail check**: every event re-verified against the hash chain |
+
 ## Architecture
 
 ```mermaid
@@ -43,7 +54,7 @@ flowchart LR
 
 | Layer | Technology |
 |---|---|
-| Frontend | React 18, TypeScript (strict), Vite, Tailwind CSS, pdf.js |
+| Frontend | React 19, TypeScript (strict), Vite 6, Tailwind CSS 4, pdf.js |
 | Backend | Python 3.11, FastAPI, asyncpg, python-jose |
 | Data | Supabase (Postgres + Auth), 35 SQL migrations |
 | Files | Cloudflare R2 (S3 API) |
@@ -81,7 +92,7 @@ Without R2 credentials the API stores files on local disk (development mode).
 
 ## Status and limitations
 
-- The public demo depends on the API on Fly.io and on a Supabase project that is currently paused, so the demo button may report that the server is off.
+- The public demo runs on free or near-free tiers: the API on Fly.io stops when idle, so the first visit can take a few seconds while it starts. A daily job keeps the Supabase Free project from pausing.
 - The interface is in Brazilian Portuguese only.
 - The demo data is fictitious: company names are made up and the three CNPJs fail the check-digit validation, so they cannot belong to a real company.
 
