@@ -7,7 +7,7 @@ const FOCUSABLE =
  * Traps Tab/Shift+Tab focus within the given container ref while active.
  * Restores focus to the previously-focused element on unmount.
  */
-export function useFocusTrap(containerRef: RefObject<HTMLElement>, active = true) {
+export function useFocusTrap(containerRef: RefObject<HTMLElement | null>, active = true) {
   useEffect(() => {
     if (!active) return;
     const previous = document.activeElement as HTMLElement | null;

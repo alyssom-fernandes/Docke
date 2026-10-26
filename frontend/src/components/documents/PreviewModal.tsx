@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { X, Download, AlertCircle, Loader2, Search, ChevronUp, ChevronDown } from "lucide-react";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { getFileStyle } from "@/lib/fileType";
@@ -314,7 +314,7 @@ export default function PreviewModal({ doc, onClose }: PreviewModalProps) {
   const highlightedTextNodes = useMemo(() => {
     if (!searchableText || matches.length === 0) return null;
     const q = searchQuery.trim();
-    const parts: JSX.Element[] = [];
+    const parts: ReactElement[] = [];
     let cursor = 0;
     matches.forEach((m, i) => {
       if (m.index > cursor) parts.push(<span key={`t${i}`}>{searchableText.slice(cursor, m.index)}</span>);

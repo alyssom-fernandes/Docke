@@ -37,7 +37,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [demo, setDemo] = useState<DemoState>("idle");
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
-  const slowTimer = useRef<number>();
+  const slowTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     if (user) navigate("/dashboard", { replace: true });

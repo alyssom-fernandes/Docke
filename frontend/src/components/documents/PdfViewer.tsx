@@ -32,7 +32,10 @@ export default function PdfViewer({ url }: { url: string }) {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    pdfjsLib.getDocument(url).promise
+    // pdf.js 5+: getDocument recebe objeto; o destroy() saiu do documento e
+    // ficou só na tarefa de carregamento.
+    const loadingTask = pdfjsLib.getDocument({ url });
+    loadingTask.promise
       .then((pdf) => {
         if (cancelled) return;
         pdfRef.current = pdf;
@@ -43,7 +46,7 @@ export default function PdfViewer({ url }: { url: string }) {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => {
       cancelled = true;
-      pdfRef.current?.destroy();
+      loadingTask.destroy();
       pdfRef.current = null;
     };
   }, [url]);
@@ -74,7 +77,9 @@ export default function PdfViewer({ url }: { url: string }) {
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       renderTaskRef.current?.cancel();
-      const task = pdfPage.render({ canvasContext: context, viewport });
+      // canvas: null + canvasContext = forma suportada pelo pdf.js 6 para
+      // renderizar num contexto já transformado (o setTransform do dpr acima).
+      const task = pdfPage.render({ canvas: null, canvasContext: context, viewport });
       renderTaskRef.current = task;
       task.promise.catch(() => {});
     });
