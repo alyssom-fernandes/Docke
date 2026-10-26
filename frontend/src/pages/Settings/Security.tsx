@@ -4,6 +4,7 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import { useToast } from "@/lib/toast";
 import { useCompany } from "@/lib/CompanyContext";
+import { useAuthContext } from "@/lib/AuthContext";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 
@@ -73,6 +74,9 @@ function IntegritySection() {
 
 export default function Security() {
   usePageTitle("Segurança");
+  const { user } = useAuthContext();
+  // Conta demo é compartilhada: o backend recusa a troca de senha dela.
+  const isDemo = user?.username === "demo";
   const { success, error: showError } = useToast();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -108,6 +112,11 @@ export default function Security() {
   return (
     <div>
       <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-6">
+        {isDemo ? (
+          <p className="text-mac-body text-(--text-secondary) max-w-[520px]">
+            Na conta de demonstração a senha não pode ser trocada, porque todos os visitantes usam a mesma conta.
+          </p>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-4 max-w-[400px]">
           <Input
             label="Senha atual"
@@ -139,6 +148,7 @@ export default function Security() {
             </Button>
           </div>
         </form>
+        )}
       </div>
       <IntegritySection />
     </div>

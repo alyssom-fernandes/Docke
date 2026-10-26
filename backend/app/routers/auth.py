@@ -194,6 +194,12 @@ async def change_password(
     if not email:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Não foi possível identificar o e-mail da conta.")
 
+    # A conta demo é compartilhada por todos os visitantes: quem trocasse a
+    # senha travaria o botão "Explorar a demonstração" para os demais até o
+    # próximo reset. A senha dela só muda pelo Fly secret DEMO_PASSWORD.
+    if email.lower().strip() == settings.DEMO_EMAIL.lower():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="A conta de demonstração não permite trocar a senha.")
+
     email_key = f"login-email:{email.lower().strip()}"
     ip_key = f"login-ip:{rate_limit.client_ip_hash(request)}"
     for key in (email_key, ip_key):
