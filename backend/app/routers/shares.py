@@ -2,8 +2,9 @@
 ADR-022/027/031 — Compartilhamento externo.
 
 Rotas autenticadas: criar, listar, revogar links (prefix /shares).
-Rotas públicas: resolver/acessar um link (prefix /s) — sem autenticação,
-usam admin_conn diretamente (não há usuário logado para RLS aplicar).
+Rotas públicas: resolver/acessar um link (prefix /s) — sem autenticação, então
+sem RLS por usuário; usam get_db_share_public, no papel docke_share_public, que
+só alcança as colunas que essas rotas usam (migration 20261026000002).
 """
 import hashlib
 from datetime import date, datetime, timedelta, timezone
@@ -15,7 +16,7 @@ import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 
-from app.dependencies import get_current_user, get_db, get_db_admin
+from app.dependencies import get_current_user, get_db, get_db_share_public
 from app.services import rate_limit, storage_service
 from app.services.notification_service import notify_share_accessed, notify_share_blocked
 from app.services.shares_service import SharesService
@@ -166,8 +167,8 @@ async def expire_shares_for_resource(admin_conn: asyncpg.Connection, resource_ty
     await SharesService.expire_shares_for_resource(admin_conn, resource_type, resource_id)
 
 
-async def _resolve_share(admin_conn: asyncpg.Connection, token: str) -> dict[str, Any]:
-    row = await SharesService.resolve_share_by_token_hash(admin_conn, _hash_token(token))
+async def _resolve_share(conn: asyncpg.Connection, token: str) -> dict[str, Any]:
+    row = await SharesService.resolve_share_by_token_hash(conn, _hash_token(token))
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link não encontrado.")
     if row["revoked_at"] is not None:
@@ -182,17 +183,17 @@ async def _resolve_share(admin_conn: asyncpg.Connection, token: str) -> dict[str
 @public_router.get("/{token}/info")
 async def share_info(
     token: str,
-    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    conn: asyncpg.Connection = Depends(get_db_share_public),
 ) -> dict[str, Any]:
-    share = await _resolve_share(admin_conn, token)
+    share = await _resolve_share(conn, token)
 
     if share["resource_type"] == "document":
-        doc = await SharesService.get_document_name(admin_conn, share["resource_id"])
+        doc = await SharesService.get_document_name(conn, share["resource_id"])
         if doc is None or doc["deleted_at"] is not None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Este documento não está mais disponível.")
         name = doc["name"]
     else:
-        folder = await SharesService.get_folder_name(admin_conn, share["resource_id"])
+        folder = await SharesService.get_folder_name(conn, share["resource_id"])
         if folder is None or folder["deleted_at"] is not None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Esta pasta não está mais disponível.")
         name = folder["name"]
@@ -209,7 +210,7 @@ class UnlockRequest(BaseModel):
 
 
 async def _verify_password(
-    admin_conn: asyncpg.Connection, request: Request, token: str, share: dict[str, Any], password: str | None,
+    conn: asyncpg.Connection, request: Request, token: str, share: dict[str, Any], password: str | None,
 ) -> None:
     if share["password_hash"] is None:
         return
@@ -219,21 +220,21 @@ async def _verify_password(
         raise HTTPException(status_code=status.HTTP_423_LOCKED, detail=f"Muitas tentativas. Tente novamente em {int(locked // 60) + 1} minuto(s).")
     if not password or not bcrypt.checkpw(password.encode(), share["password_hash"].encode()):
         just_locked = rate_limit.record_failed_attempt(key, _PASSWORD_ATTEMPTS, _PASSWORD_WINDOW_SECS, _LOCKOUT_SECS)
-        await _log_access(admin_conn, request, share["id"], False)
+        await _log_access(conn, request, share["id"], False)
         if just_locked:
-            await notify_share_blocked(admin_conn, share["id"])
+            await notify_share_blocked(conn, share["id"])
             raise HTTPException(status_code=status.HTTP_423_LOCKED, detail="Muitas tentativas incorretas. Tente novamente em 15 minutos.")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Senha incorreta.")
 
 
-async def _log_access(admin_conn: asyncpg.Connection, request: Request, share_id: str, success: bool) -> None:
+async def _log_access(conn: asyncpg.Connection, request: Request, share_id: str, success: bool) -> None:
     await SharesService.insert_access_log(
-        admin_conn, share_id=share_id, ip_hash=rate_limit.client_ip_hash(request),
+        conn, share_id=share_id, ip_hash=rate_limit.client_ip_hash(request),
         user_agent=request.headers.get("user-agent", "")[:500], success=success,
     )
     if success:
-        await SharesService.register_successful_access(admin_conn, share_id)
-        await notify_share_accessed(admin_conn, share_id)
+        await SharesService.register_successful_access(conn, share_id)
+        await notify_share_accessed(conn, share_id)
 
 
 @public_router.post("/{token}/content")
@@ -242,39 +243,39 @@ async def share_content(
     body: UnlockRequest,
     request: Request,
     folder_id: UUID | None = Query(None, description="Navegar para uma subpasta dentro do link (só para resource_type=folder)"),
-    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    conn: asyncpg.Connection = Depends(get_db_share_public),
 ) -> dict[str, Any]:
     """Retorna o conteúdo do link — documento (com URL de download) ou listagem de pasta."""
-    share = await _resolve_share(admin_conn, token)
-    await _verify_password(admin_conn, request, token, share, body.password)
+    share = await _resolve_share(conn, token)
+    await _verify_password(conn, request, token, share, body.password)
 
     if share["resource_type"] == "document":
         version_id = share["pin_to_version_id"]
-        doc = await SharesService.get_document_for_content(admin_conn, share["resource_id"])
+        doc = await SharesService.get_document_for_content(conn, share["resource_id"])
         if doc is None or doc["deleted_at"] is not None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Este documento não está mais disponível.")
         version_id = version_id or doc["current_version_id"]
-        version = await SharesService.get_version_for_content(admin_conn, version_id)
+        version = await SharesService.get_version_for_content(conn, version_id)
         if version is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Versão do documento não encontrada.")
 
         download_url, expires_at = storage_service.generate_preview_url(key=version["storage_key"], content_type=version["mime_type"])
-        await _log_access(admin_conn, request, share["id"], True)
+        await _log_access(conn, request, share["id"], True)
         return {"type": "document", "name": doc["name"], "mime_type": version["mime_type"], "preview_url": download_url}
 
     # resource_type == "folder" — navegação somente leitura dentro da árvore compartilhada
-    root_folder = await SharesService.get_folder_for_content(admin_conn, share["resource_id"])
+    root_folder = await SharesService.get_folder_for_content(conn, share["resource_id"])
     if root_folder is None or root_folder["deleted_at"] is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Esta pasta não está mais disponível.")
 
     current_id = folder_id or root_folder["id"]
-    current = await SharesService.get_active_folder(admin_conn, current_id)
+    current = await SharesService.get_active_folder(conn, current_id)
     if current is None or not _is_within_shared_root(str(current["path"]), str(root_folder["path"])):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Fora da pasta compartilhada.")
 
-    subfolders = await SharesService.list_subfolders(admin_conn, current["id"])
-    documents = await SharesService.list_documents_in_folder(admin_conn, current["id"])
-    await _log_access(admin_conn, request, share["id"], True)
+    subfolders = await SharesService.list_subfolders(conn, current["id"])
+    documents = await SharesService.list_documents_in_folder(conn, current["id"])
+    await _log_access(conn, request, share["id"], True)
     return {
         "type": "folder",
         "name": current["name"],
@@ -291,29 +292,29 @@ async def share_download(
     document_id: UUID,
     body: UnlockRequest,
     request: Request,
-    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    conn: asyncpg.Connection = Depends(get_db_share_public),
 ) -> dict[str, Any]:
     """Download de um documento específico dentro de uma pasta compartilhada."""
-    share = await _resolve_share(admin_conn, token)
-    await _verify_password(admin_conn, request, token, share, body.password)
+    share = await _resolve_share(conn, token)
+    await _verify_password(conn, request, token, share, body.password)
 
     if share["resource_type"] == "document":
         if str(document_id) != str(share["resource_id"]):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Documento fora do escopo deste link.")
     else:
-        root_folder = await SharesService.get_folder_path(admin_conn, share["resource_id"])
+        root_folder = await SharesService.get_folder_path(conn, share["resource_id"])
         doc = await SharesService.get_document_in_folder_scope(
-            admin_conn, document_id, root_folder["path"] if root_folder else None,
+            conn, document_id, root_folder["path"] if root_folder else None,
         )
         if doc is None:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Documento fora do escopo deste link.")
 
-    doc = await SharesService.get_document_for_download(admin_conn, document_id)
+    doc = await SharesService.get_document_for_download(conn, document_id)
     if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
 
     download_url, expires_at = storage_service.generate_download_url(
         key=doc["storage_path"], filename=doc["name"], content_type=doc["mime_type"],
     )
-    await _log_access(admin_conn, request, share["id"], True)
+    await _log_access(conn, request, share["id"], True)
     return {"download_url": download_url, "name": doc["name"]}

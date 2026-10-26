@@ -20,7 +20,7 @@
 - **Several companies, one place.** Each company has its own folder tree; access is granted per company or per folder and enforced by Postgres Row Level Security, not only by the API.
 - **Find what is inside the files.** Scanned PDFs and images go through Tesseract OCR (Portuguese) in a background worker, and full-text search highlights the matching passage.
 - **Deadlines and retention.** Tax obligations with alerts, retention policies that explain *why* a policy applies to a document, and an impact preview before assigning one.
-- **Every action is recorded.** The activity log is chained per company with an HMAC over the previous hash, so editing a past entry breaks the chain.
+- **Every action is recorded.** The activity log is chained per company with an HMAC over the previous hash, so an edited entry shows up as tampered and a deleted one breaks the chain, including the most recent.
 - **Brazilian fiscal files.** A DANFE is rendered straight from the NF-e XML; DOCX/XLSX get a PDF preview through headless LibreOffice.
 
 ## Screens
@@ -86,7 +86,7 @@ Without R2 credentials the API stores files on local disk (development mode).
 
 ## Tests
 
-- `backend/tests`: 8 pytest integration tests (RLS, permissions, OCR sync, folder move, permanent deletion with a version-pinned share link, and the audit chain catching an edited or deleted event) against a real local Supabase.
+- `backend/tests`: 13 pytest integration tests (RLS, including column limits on the user's own profile and the activity log partitions; permissions; OCR sync; folder move; share links, with permanent deletion of a version-pinned link and the public link role; and the audit chain catching an edited, deleted or truncated event and refusing a company the caller has no access to) against a real local Supabase.
 - `frontend/e2e`: 4 Playwright specs (demo login, identity switch, PDF preview, search deep link).
 - CI runs both on every push to `main`.
 

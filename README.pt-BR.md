@@ -20,7 +20,7 @@
 - **Várias empresas num só lugar.** Cada empresa tem sua árvore de pastas; o acesso é concedido por empresa ou por pasta e garantido pela Row Level Security do Postgres, não só pela API.
 - **Busca dentro dos arquivos.** PDFs digitalizados e imagens passam por OCR (Tesseract, português) num worker em segundo plano, e a busca de texto completo destaca o trecho encontrado.
 - **Prazos e retenção.** Obrigações fiscais com alertas, políticas de retenção que explicam *por que* valem para um documento e uma simulação de impacto antes de atribuir uma.
-- **Toda ação fica registrada.** A trilha de atividades é encadeada por empresa com um HMAC sobre o hash anterior; alterar um registro antigo quebra a sequência.
+- **Toda ação fica registrada.** A trilha de atividades é encadeada por empresa com um HMAC sobre o hash anterior; um registro alterado aparece como adulterado, e um apagado quebra a cadeia, inclusive o mais recente.
 - **Arquivos fiscais brasileiros.** O DANFE é montado direto do XML da NF-e; DOCX/XLSX ganham pré-visualização em PDF via LibreOffice headless.
 
 ## Telas
@@ -86,7 +86,7 @@ Sem credenciais do R2, a API guarda os arquivos no disco local (modo de desenvol
 
 ## Testes
 
-- `backend/tests`: 8 testes de integração em pytest (RLS, permissões, sincronização do OCR, mover pasta, exclusão definitiva com link fixado numa versão e a trilha de auditoria detectando evento alterado ou apagado) contra um Supabase local real.
+- `backend/tests`: 13 testes de integração em pytest (RLS, inclusive o limite de colunas no próprio perfil e as partições da trilha; permissões; sincronização do OCR; mover pasta; links de compartilhamento, com a exclusão definitiva de link fixado numa versão e o papel dos links públicos; e a trilha de auditoria detectando evento alterado, apagado ou truncado e recusando empresa a que quem chama não tem acesso) contra um Supabase local real.
 - `frontend/e2e`: 4 specs do Playwright (login demo, troca de identidade, preview de PDF, link direto da busca).
 - O CI roda os dois a cada push na `main`.
 

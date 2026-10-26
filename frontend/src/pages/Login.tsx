@@ -225,8 +225,8 @@ export default function Login() {
             ))}
           </ol>
           <p className="mt-1 max-w-[54ch] text-[12.5px] leading-[19px] text-(--text-tertiary)">
-            Exemplo com dados fictícios da demonstração. Cada registro guarda o hash do anterior, então alterar um deles
-            quebra a sequência inteira.
+            Exemplo com dados fictícios da demonstração. Cada registro guarda o hash do anterior: alterar um registro o
+            marca como adulterado, e apagar um quebra a cadeia a partir dele.
           </p>
         </section>
 

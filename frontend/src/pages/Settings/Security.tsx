@@ -12,7 +12,9 @@ interface IntegrityResult {
   total_events: number;
   intact: boolean;
   broken_count: number;
-  first_broken: { event_id: string; event_created_at: string; reason: string } | null;
+  // event_id e event_created_at vêm nulos na quebra de "Cadeia truncada"
+  // (eventos mais recentes apagados): não há evento para apontar.
+  first_broken: { event_id: string | null; event_created_at: string | null; reason: string } | null;
 }
 
 // Fase 2.9: botão "verificar integridade da cadeia" — só admin/supremo, é
@@ -43,7 +45,7 @@ function IntegritySection() {
     <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-6 mt-6">
       <h2 className="text-mac-body font-semibold text-(--text-primary) mb-1">Integridade da trilha de auditoria</h2>
       <p className="text-mac-caption text-(--text-secondary) mb-4">
-        Cada evento registrado em Atividade carrega um hash encadeado ao anterior — qualquer alteração feita fora do fluxo normal do sistema quebra a cadeia a partir daquele ponto. Verifique a qualquer momento se a trilha continua íntegra.
+        Cada evento registrado em Atividade carrega um hash encadeado ao anterior. Um evento alterado fora do fluxo normal do sistema aparece como adulterado, e um evento apagado quebra a cadeia a partir dele, inclusive quando é o mais recente. Verifique a qualquer momento se a trilha continua íntegra.
       </p>
       <Button size="sm" variant="secondary" onClick={verify} loading={checking}>
         Verificar agora
@@ -60,8 +62,10 @@ function IntegritySection() {
               <p className="text-(--text-primary)">Cadeia íntegra — {result.total_events} eventos verificados, nenhuma quebra encontrada.</p>
             ) : (
               <p className="text-red-600 dark:text-red-400">
-                Quebra detectada em {result.broken_count} evento{result.broken_count > 1 ? "s" : ""}. O primeiro ponto adulterado foi registrado originalmente em{" "}
-                {result.first_broken && new Date(result.first_broken.event_created_at).toLocaleString("pt-BR")}.
+                Quebra detectada em {result.broken_count} ponto{result.broken_count > 1 ? "s" : ""}. {result.first_broken?.reason}
+                {result.first_broken?.event_created_at && (
+                  <> O primeiro evento afetado foi registrado originalmente em {new Date(result.first_broken.event_created_at).toLocaleString("pt-BR")}.</>
+                )}
               </p>
             )}
           </div>
