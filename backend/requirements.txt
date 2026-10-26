@@ -1,15 +1,15 @@
 # Versões fixas = as que o CI instalou e testou (run verde de 16/10/2026).
 # Atualizações chegam pelo Dependabot (.github/dependabot.yml), uma por PR.
-fastapi==0.143.3
+fastapi==0.161.1
 email-validator==2.3.0
 uvicorn[standard]==0.54.0
-pydantic-settings==2.16.0
+pydantic-settings==2.16.1
 python-multipart==0.0.32
 python-jose[cryptography]==3.5.0
 asyncpg==0.32.0
 psycopg2-binary==2.9.13
-boto3==1.43.114
-botocore==1.43.114
+boto3==1.43.118
+botocore==1.43.118
 pytesseract==0.3.13
 Pillow==13.0.0
 opencv-python-headless==5.0.0.93
