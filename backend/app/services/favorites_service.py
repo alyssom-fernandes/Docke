@@ -3,12 +3,14 @@ FavoritesService — CRUD de favoritos (documento ou pasta) + log de atividade.
 activity_log usa a policy própria de INSERT (RLS permite auth.uid() = user_id),
 nunca precisa da conexão admin.
 """
+from uuid import UUID
+
 import asyncpg
 
 
 class FavoritesService:
     @staticmethod
-    async def list_favorites(conn: asyncpg.Connection) -> list[asyncpg.Record]:
+    async def list_favorites(conn: asyncpg.Connection, company_id: UUID | None = None) -> list[asyncpg.Record]:
         return await conn.fetch(
             """
             SELECT
@@ -35,8 +37,12 @@ class FavoritesService:
             WHERE fav.user_id = auth.uid()
               AND (fav.document_id IS NULL OR d.id IS NOT NULL)
               AND (fav.folder_id   IS NULL OR f.id IS NOT NULL)
+              -- Filtro opcional por empresa: Painel, lateral de Documentos e a
+              -- página de Ancorados mostram só os itens da empresa selecionada.
+              AND ($1::uuid IS NULL OR COALESCE(d.company_id, f.company_id) = $1::uuid)
             ORDER BY fav.created_at DESC
-            """
+            """,
+            company_id,
         )
 
     @staticmethod

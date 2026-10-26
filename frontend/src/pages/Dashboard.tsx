@@ -231,7 +231,7 @@ export default function Dashboard() {
     Promise.all([
       api.get(`/companies/${current.id}/stats`).catch(() => ({ data: null })),
       api.get("/documents/recent", { params: { company_id: current.id, limit: 5 } }).catch(() => ({ data: [] })),
-      api.get("/favorites").catch(() => ({ data: [] })),
+      api.get("/favorites", { params: { company_id: current.id } }).catch(() => ({ data: [] })),
       api.get("/activity", { params: { company_id: current.id, page_size: 8 } }).catch(() => ({ data: { results: [] } })),
       api.get(`/companies/${current.id}/obligations/instances`).catch(() => ({ data: [] })),
     ]).then(([statsRes, recentRes, favsRes, actRes, oblRes]) => {

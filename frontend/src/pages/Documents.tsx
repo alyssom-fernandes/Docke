@@ -2827,8 +2827,8 @@ export default function Documents() {
                         </td>
                         <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden sm:table-cell">—</td>
                         <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) text-right hidden sm:table-cell">—</td>
-                        <td className="px-3 py-2 hidden sm:table-cell" />
                         <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden md:table-cell">Pasta</td>
+                        <td className="px-3 py-2 hidden sm:table-cell" />
                         {resolvedFields.map((rf) => (
                           <td key={rf.custom_field_id} className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden sm:table-cell">—</td>
                         ))}

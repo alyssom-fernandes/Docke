@@ -2,7 +2,7 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from app.dependencies import get_current_user, get_db
@@ -22,11 +22,15 @@ class FavoriteCreate(BaseModel):
 
 @router.get("")
 async def list_favorites(
+    company_id: UUID | None = Query(None),
     conn: asyncpg.Connection = Depends(get_db),
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
-    """Lista favoritos do usuário. RLS garante que só retorna os próprios."""
-    rows = await FavoritesService.list_favorites(conn)
+    """Lista favoritos do usuário (RLS garante que só retorna os próprios).
+    Com company_id, só os itens daquela empresa — o frontend já enviava esse
+    parâmetro, mas ele era ignorado e os ancorados de todas as empresas
+    apareciam misturados (ex.: três pastas "Fiscal" no Painel da demo)."""
+    rows = await FavoritesService.list_favorites(conn, company_id)
     return [dict(r) for r in rows]
 
 
