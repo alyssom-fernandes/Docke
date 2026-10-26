@@ -80,3 +80,19 @@ app.include_router(retention_legal.router, prefix=PREFIX)
 @app.get("/health", tags=["health"])
 async def health_check():
     return {"status": "ok"}
+
+
+@app.get("/health/db", tags=["health"])
+async def health_db():
+    """
+    Toca o banco com uma consulta trivial. Usado pelo keep-alive diário
+    (.github/workflows/keep-alive.yml): o plano Free do Supabase pausa o
+    projeto depois de 7 dias com pouca atividade, e a demo cai junto.
+    """
+    from fastapi import HTTPException
+    from app.dependencies import _require_pool
+    try:
+        await _require_pool().fetchval("SELECT count(*) FROM public.companies")
+    except Exception:
+        raise HTTPException(status_code=503, detail="Banco indisponível.")
+    return {"status": "ok", "db": "ok"}
