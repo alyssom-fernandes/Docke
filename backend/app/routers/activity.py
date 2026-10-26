@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from app.dependencies import get_app_role, get_current_user, get_db, get_db_admin
 from app.services.activity_service import ActivityService, REVERSIBLE_ACTIONS
+from app.services.companies_service import CompaniesService
 
 router = APIRouter(prefix="/activity", tags=["activity"])
 
@@ -91,8 +92,11 @@ async def export_activity_csv(
 
 # ---------------------------------------------------------------------------
 # GET /activity/verify-integrity — recalcula a cadeia de hash e aponta onde
-# quebrou, se quebrou (Fase 2.9). Só admin/supremo — é uma ferramenta de
-# auditoria, não algo que qualquer membro da empresa precisa ver.
+# quebrou, se quebrou (Fase 2.9). Só admin DA EMPRESA ou supremo — é uma
+# ferramenta de auditoria, não algo que qualquer membro da empresa precisa ver.
+# O papel global 'admin' não basta: com ele, qualquer admin passava o
+# company_id de outra empresa e via o total de eventos e onde ela quebrava
+# (avaliação de 19/10/2026). Mesmo critério de _can_manage_company.
 # ---------------------------------------------------------------------------
 
 @router.get("/verify-integrity")
@@ -102,13 +106,15 @@ async def verify_activity_integrity(
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     role = await get_app_role(conn, claims)
-    if role not in ("admin", "supremo"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Só administradores podem verificar a integridade da trilha de auditoria.")
+    if role != "supremo" and not await CompaniesService.user_manages_company(conn, claims["sub"], company_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Só administradores da empresa podem verificar a integridade da trilha de auditoria.")
 
     rows = await ActivityService.verify_chain(conn, company_id=company_id)
+    # A linha de "Cadeia truncada" (eventos mais recentes apagados) não tem
+    # event_id: conta como quebra, mas não como evento verificado.
     broken = [dict(r) for r in rows if not r["ok"]]
     return {
-        "total_events": len(rows),
+        "total_events": sum(1 for r in rows if r["event_id"] is not None),
         "intact": len(broken) == 0,
         "broken_count": len(broken),
         "first_broken": broken[0] if broken else None,

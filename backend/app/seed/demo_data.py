@@ -73,6 +73,12 @@ DOCUMENTS = [
     ("Relatorio_{n}.pdf",            "pdf",  2),
 ]
 
+# Os primeiros documentos de cada empresa vão um para cada pasta raiz, sempre
+# em PDF: com o sorteio puro, às vezes uma pasta ficava vazia (RH, por exemplo)
+# e o E2E de preview (frontend/e2e/pdf-preview.spec.ts), que procura um PDF em
+# RH, falhava sem nada ter quebrado.
+PDF_BY_FOLDER = [[d for d in DOCUMENTS if d[2] == idx and d[1] == "pdf"] for idx in range(len(FOLDERS))]
+
 OCR_TEXTS = [
     "Nota fiscal eletrônica emitida em conformidade com a legislação vigente. "
     "CNPJ emitente: 12.345.678/0001-90. Valor total: R$ 1.250,00.",
@@ -490,7 +496,10 @@ async def _build_demo_data(
         docs_created: list[tuple[str, str]] = []  # (doc_id, name)
 
         for i in range(1, 18):  # ~17 docs por empresa → ~51 total
-            tmpl, ext, folder_idx = random.choice(DOCUMENTS)
+            if i <= len(FOLDERS):
+                tmpl, ext, folder_idx = random.choice(PDF_BY_FOLDER[i - 1])
+            else:
+                tmpl, ext, folder_idx = random.choice(DOCUMENTS)
             doc_name = tmpl.format(n=str(i).zfill(2))
             folder_id = folder_ids[folder_idx]
 

@@ -68,3 +68,42 @@ async def test_rls_company_isolation(admin, rls_pool, two_companies):
         await rls_pool.release(conn_b)
         # cleanup folders
         await admin.execute("DELETE FROM public.folders WHERE id IN ($1, $2)", folder_a, folder_b)
+
+
+@pytest.mark.asyncio
+async def test_user_cannot_change_own_role_or_active(rls_pool, two_companies):
+    """users_update_self limita a linha (id = auth.uid()); o GRANT por coluna
+    (migration 20261026000002) limita o resto: só full_name muda. Sem ele,
+    qualquer usuário se promovia a supremo direto no banco."""
+    user_a = two_companies["user_a"]
+    conn = await _rls_conn(rls_pool, user_a)
+    try:
+        await conn.execute("UPDATE public.users SET full_name = 'Nome Novo' WHERE id = $1", user_a)
+        for column, value in (("role", "supremo"), ("is_active", False)):
+            await conn.execute("SAVEPOINT tentativa")
+            with pytest.raises(asyncpg.InsufficientPrivilegeError):
+                await conn.execute(f"UPDATE public.users SET {column} = $2 WHERE id = $1", user_a, value)
+            await conn.execute("ROLLBACK TO SAVEPOINT tentativa")
+    finally:
+        await conn.execute("ROLLBACK")
+        await rls_pool.release(conn)
+
+
+@pytest.mark.asyncio
+async def test_activity_log_partition_not_readable_directly(admin, rls_pool, two_companies):
+    """RLS e GRANT de activity_log ficam no pai. Pelo pai a leitura continua;
+    pelo nome da partição, authenticated não tem privilégio nenhum."""
+    partition = await admin.fetchval(
+        "SELECT inhrelid::regclass::text FROM pg_inherits"
+        " WHERE inhparent = 'public.activity_log'::regclass ORDER BY 1 LIMIT 1"
+    )
+    conn = await _rls_conn(rls_pool, two_companies["user_a"])
+    try:
+        await conn.fetchval("SELECT count(*) FROM public.activity_log")
+        await conn.execute("SAVEPOINT particao")
+        with pytest.raises(asyncpg.InsufficientPrivilegeError):
+            await conn.fetchval(f"SELECT count(*) FROM {partition}")
+        await conn.execute("ROLLBACK TO SAVEPOINT particao")
+    finally:
+        await conn.execute("ROLLBACK")
+        await rls_pool.release(conn)

@@ -3,6 +3,7 @@ FastAPI dependencies — pool asyncpg + JWT → RLS.
 
 get_db       — conexão com JWT do usuário repassado ao Postgres via set_config.
 get_db_admin — conexão como superuser (bypassa RLS) para jobs administrativos.
+get_db_share_public — conexão das rotas públicas de link, no papel docke_share_public.
 get_current_user — valida JWT e retorna claims do usuário.
 """
 import json
@@ -232,6 +233,35 @@ async def get_db_admin(request: Request) -> AsyncGenerator[asyncpg.Connection, N
             await conn.execute("SELECT set_config('request.correlation_id', '', false)")
             await conn.execute("SELECT set_config('request.ip', '', false)")
             await conn.execute("SELECT set_config('request.user_agent', '', false)")
+
+
+async def get_db_share_public() -> AsyncGenerator[asyncpg.Connection, None]:
+    """
+    Conexão das rotas públicas de link (/s/{token}/...). Não há usuário logado
+    para o RLS por auth.uid(), mas também não precisa do superusuário: troca
+    para o papel docke_share_public (migration 20261026000002), que só alcança
+    as colunas que essas rotas leem ou gravam — shares, documents, folders,
+    document_versions, share_accesses e as notificações de link. Um erro de
+    escopo numa rota sem autenticação deixa de expor o resto do banco (chave
+    HMAC, usuários, trilha de auditoria).
+
+    Mesmo autocommit-por-statement de get_db_admin (o log de tentativa de senha
+    errada precisa ficar gravado mesmo com a resposta 401): por isso SET ROLE
+    de sessão e RESET ROLE no finally, antes de a conexão voltar ao pool. O
+    reset do pool (RESET ALL) não desfaz SET ROLE; se o RESET ROLE falhar, a
+    conexão é encerrada em vez de voltar ao pool presa neste papel.
+    """
+    pool = _require_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("SET ROLE docke_share_public")
+        try:
+            yield conn
+        finally:
+            try:
+                await conn.execute("RESET ROLE")
+            except BaseException:
+                conn.terminate()
+                raise
 
 
 async def get_app_role(conn: asyncpg.Connection, claims: dict[str, Any]) -> str:
