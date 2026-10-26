@@ -14,11 +14,24 @@ import logging
 import secrets
 
 import asyncpg
+import httpx
 
 from app.config import settings
 from app.seed.demo_data import DEMO_USER_EMAIL, DEMO_USER_PASSWORD, EXTRA_USERS, _build_demo_data, _ensure_auth_account
 
 logger = logging.getLogger("docke.demo_reset")
+
+
+async def _demo_password_works() -> bool:
+    """Testa a senha do Fly secret contra o Supabase Auth (login normal)."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{settings.SUPABASE_URL}/auth/v1/token?grant_type=password",
+            headers={"apikey": settings.SUPABASE_ANON_KEY, "Content-Type": "application/json"},
+            json={"email": DEMO_USER_EMAIL, "password": DEMO_USER_PASSWORD},
+            timeout=10.0,
+        )
+    return resp.status_code == 200
 
 
 async def reset_demo_data(conn: asyncpg.Connection) -> None:
@@ -32,7 +45,15 @@ async def reset_demo_data(conn: asyncpg.Connection) -> None:
         logger.warning("DEMO_PASSWORD não configurada — reset de demo abortado.")
         return
 
-    demo_user_id = await _ensure_auth_account(DEMO_USER_EMAIL, DEMO_USER_PASSWORD, reset_password=False)
+    # O Fly secret DEMO_PASSWORD é a única fonte da senha: se ela foi trocada
+    # (rotação), a conta demo no Auth é atualizada aqui, no próximo reset —
+    # sem precisar mexer também no painel do Supabase. Quando a senha já
+    # funciona, nada é alterado no Auth. _ensure_auth_account filtra pelo
+    # e-mail exato da conta demo; nenhuma outra conta é tocada.
+    password_ok = await _demo_password_works()
+    demo_user_id = await _ensure_auth_account(DEMO_USER_EMAIL, DEMO_USER_PASSWORD, reset_password=not password_ok)
+    if not password_ok:
+        logger.warning("Senha da conta demo sincronizada com DEMO_PASSWORD.")
 
     extra_user_ids: dict[str, str] = {}
     for email, _username, _full_name, _permission in EXTRA_USERS:

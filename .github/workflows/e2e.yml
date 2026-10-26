@@ -11,16 +11,16 @@ jobs:
   playwright:
     runs-on: ubuntu-24.04  # o ubuntu-latest passou a ser o 26.04, que o Playwright ainda não suporta
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
       - name: Instalar dependências do backend
         run: pip install -r backend/requirements.txt
 
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@v3
         with:
           version: latest
 
@@ -58,7 +58,7 @@ jobs:
           done
           curl -sf http://localhost:8000/health || (cat backend.log && exit 1)
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
           cache: "npm"
@@ -90,7 +90,7 @@ jobs:
 
       - name: Publicar relatório do Playwright (em caso de falha)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: frontend/playwright-report/
