@@ -340,6 +340,10 @@ async def _build_demo_data(
     )
     old_ids = [r["id"] for r in old_company_ids]
     if old_ids:
+        # shares.pin_to_version_id aponta para document_versions SEM cascata:
+        # um link fixado numa versão travava o DELETE de documents (e o reset
+        # inteiro) assim que algum visitante criasse um. Links saem primeiro.
+        await conn.execute("DELETE FROM public.shares WHERE company_id = ANY($1::uuid[])", old_ids)
         await conn.execute("DELETE FROM public.activity_log WHERE company_id = ANY($1::uuid[])", old_ids)
         await conn.execute("DELETE FROM public.documents WHERE company_id = ANY($1::uuid[])", old_ids)
         await conn.execute("DELETE FROM public.companies WHERE id = ANY($1::uuid[])", old_ids)

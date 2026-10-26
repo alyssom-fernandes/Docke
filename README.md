@@ -45,7 +45,7 @@ flowchart LR
 |---|---|
 | Frontend | React 18, TypeScript (strict), Vite, Tailwind CSS, pdf.js |
 | Backend | Python 3.11, FastAPI, asyncpg, python-jose |
-| Data | Supabase (Postgres + Auth), 34 SQL migrations |
+| Data | Supabase (Postgres + Auth), 35 SQL migrations |
 | Files | Cloudflare R2 (S3 API) |
 | Processing | Tesseract OCR, LibreOffice headless |
 | Hosting | Vercel (frontend), Fly.io (API) |
@@ -75,7 +75,7 @@ Without R2 credentials the API stores files on local disk (development mode).
 
 ## Tests
 
-- `backend/tests`: 7 pytest integration tests (RLS, permissions, OCR sync, folder move, and the audit chain catching an edited or deleted event) against a real local Supabase.
+- `backend/tests`: 8 pytest integration tests (RLS, permissions, OCR sync, folder move, permanent deletion with a version-pinned share link, and the audit chain catching an edited or deleted event) against a real local Supabase.
 - `frontend/e2e`: 4 Playwright specs (demo login, identity switch, PDF preview, search deep link).
 - CI runs both on every push to `main`.
 
