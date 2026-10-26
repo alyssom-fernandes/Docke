@@ -1,14 +1,17 @@
+const path = require("path");
+
 /** @type {import('tailwindcss').Config} */
+// Fonte única do tema do Tailwind. Antes havia uma segunda cópia inline em
+// vite.config.ts — era ela que valia no build, e esta aqui só servia ao editor
+// (as duas divergiam: raios, sombras, safelist). Esta é a cópia que valia.
+// As classes text-mac-* não são do Tailwind: ficam em src/styles/tokens.css.
 module.exports = {
   darkMode: "class",
+  // Caminhos absolutos: o dev server às vezes roda a partir da raiz do
+  // repositório (.claude/launch.json), e "./src" apontaria para o lugar errado.
   content: [
-    "./index.html",
-    "./src/**/*.{ts,tsx}",
-  ],
-  safelist: [
-    "text-mac-caption2", "text-mac-caption", "text-mac-footnote", "text-mac-body",
-    "text-mac-callout", "text-mac-title3", "text-mac-title2", "text-mac-title1", "text-mac-large",
-    "text-sm", "text-xs", "text-lg", "text-xl", "text-2xl",
+    path.join(__dirname, "index.html").replace(/\\/g, "/"),
+    path.join(__dirname, "src/**/*.{ts,tsx}").replace(/\\/g, "/"),
   ],
   theme: {
     extend: {
@@ -41,26 +44,13 @@ module.exports = {
         },
       },
       fontFamily: {
-        sans: ["-apple-system", "BlinkMacSystemFont", "Inter", "Segoe UI", "sans-serif"],
+        sans: ["Inter", "-apple-system", "BlinkMacSystemFont", "sans-serif"],
         mono: ["JetBrains Mono", "Consolas", "monospace"],
-      },
-      fontSize: {
-        "mac-caption2": ["10px", "12px"],
-        "mac-caption": ["11px", "14px"],
-        "mac-footnote": ["12px", "15px"],
-        "mac-body": ["13px", "16px"],
-        "mac-callout": ["14px", "18px"],
-        "mac-title3": ["15px", "19px"],
-        "mac-title2": ["17px", "22px"],
-        "mac-title1": ["22px", "28px"],
-        "mac-large": ["26px", "32px"],
       },
       borderRadius: {
         badge: "4px",
-        mac: "6px",
         sm: "8px",
         card: "12px",
-        dialog: "14px",
         stat: "16px",
       },
       transitionDuration: {
@@ -69,19 +59,14 @@ module.exports = {
         slow: "220ms",
       },
       transitionTimingFunction: {
-        // Sobrescreve o DEFAULT do Tailwind (cubic-bezier(0.4,0,0.2,1), a curva
-        // "standard" do Material Design) por um ease-out de verdade. Sem isso,
-        // toda classe transition-* sem ease-* explícito herdava uma curva que
-        // não é nem ease-out nem ease-in-out — apenas parecida com as duas.
-        // Aplica-se globalmente (nenhum componente sobrescreve com uma curva
-        // própria hoje), então corrige os 130+ usos de duration-fast/normal/slow
-        // de uma vez, sem tocar em cada arquivo.
+        // Ease-out de verdade, no lugar do DEFAULT do Tailwind
+        // (cubic-bezier(0.4,0,0.2,1), a curva "standard" do Material).
         DEFAULT: "cubic-bezier(0, 0, 0.2, 1)",
       },
       boxShadow: {
         card: "0 4px 12px rgba(0,0,0,0.06)",
-        dropdown: "var(--shadow-dropdown)",
-        modal: "var(--shadow-dialog)",
+        dropdown: "0 4px 16px rgba(0,0,0,0.10)",
+        modal: "0 8px 24px rgba(0,0,0,0.12)",
         drag: "0 12px 36px rgba(0,0,0,0.16)",
       },
     },
