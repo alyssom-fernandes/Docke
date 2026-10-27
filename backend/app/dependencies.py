@@ -6,7 +6,10 @@ get_db_admin — conexão como superuser (bypassa RLS) para jobs administrativos
 get_db_share_public — conexão das rotas públicas de link, no papel docke_share_public.
 get_current_user — valida JWT e retorna claims do usuário.
 """
+import asyncio
 import json
+import logging
+import time
 import uuid
 from typing import AsyncGenerator, Any
 
@@ -22,6 +25,11 @@ _bearer = HTTPBearer()
 _pool: asyncpg.Pool | None = None
 _admin_pool: asyncpg.Pool | None = None  # alias para o worker OCR (service_role, mesma pool)
 _jwks: dict | None = None  # JWKS do Supabase Auth (ES256)
+_jwks_lock = asyncio.Lock()  # uma busca sob demanda por vez (ver _refresh_jwks_on_demand)
+_jwks_last_on_demand: float | None = None  # time.monotonic() da última busca sob demanda
+_JWKS_ON_DEMAND_MIN_INTERVAL_SECS = 30
+
+logger = logging.getLogger("docke.auth")
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +97,8 @@ async def init_db_pool() -> None:
             await asyncio.sleep(1.5)
     # Se todas as tentativas falharem, _jwks permanece None e o fallback HS256
     # assume — correto pra ambientes que genuinamente não usam Supabase Auth.
+    # Onde há Supabase Auth, o primeiro token ES256 busca o JWKS de novo
+    # (_refresh_jwks_on_demand), sem esperar o ciclo de jwks_refresh_loop.
     _admin_pool = _pool  # mesma pool — worker usa service_role sem SET LOCAL role
 
 
@@ -145,6 +155,52 @@ def _decode_jwt(token: str) -> dict[str, Any]:
         )
 
 
+def _jwks_has_key(kid: Any) -> bool:
+    """O JWKS em memória tem a chave deste kid? Token sem kid: o jose tenta todas as chaves."""
+    if not _jwks:
+        return False
+    if kid is None:
+        return True
+    return any(key.get("kid") == kid for key in _jwks.get("keys", []))
+
+
+async def _refresh_jwks_on_demand(kid: Any) -> None:
+    """
+    Busca o JWKS de novo quando chega um token ES256 cuja chave não está em
+    memória: o JWKS faltou na partida (o Supabase estava fora do ar, como na
+    retomada do projeto em 26/10/2026) ou o Supabase Auth trocou a chave. Sem
+    isso, todo login dava 401 até o próximo ciclo de jwks_refresh_loop (1h).
+
+    O kid vem de um cabeçalho ainda não verificado, e um token forjado com kid
+    inventado não pode fazer a API martelar o Supabase: no máximo uma busca a
+    cada _JWKS_ON_DEMAND_MIN_INTERVAL_SECS. O lock faz requisições simultâneas
+    esperarem uma única busca.
+    """
+    global _jwks, _jwks_last_on_demand
+    async with _jwks_lock:
+        if _jwks_has_key(kid):
+            return  # outra requisição trouxe a chave enquanto esta esperava o lock
+        now = time.monotonic()
+        if _jwks_last_on_demand is not None and now - _jwks_last_on_demand < _JWKS_ON_DEMAND_MIN_INTERVAL_SECS:
+            return
+        _jwks_last_on_demand = now
+        logger.warning("JWKS sem a chave do token (kid=%r) — buscando de novo no Supabase Auth.", str(kid)[:64])
+        fresh = await _fetch_jwks()
+        if fresh is not None:
+            _jwks = fresh
+
+
+async def _decode_jwt_refreshing(token: str) -> dict[str, Any]:
+    """_decode_jwt, buscando antes o JWKS se a chave do token ES256 não estiver em memória."""
+    try:
+        header = jwt.get_unverified_header(token)
+    except JWTError:
+        header = {}  # token malformado: _decode_jwt responde 401
+    if header.get("alg") == "ES256" and not _jwks_has_key(header.get("kid")):
+        await _refresh_jwks_on_demand(header.get("kid"))
+    return _decode_jwt(token)
+
+
 # ---------------------------------------------------------------------------
 # Dependencies
 # ---------------------------------------------------------------------------
@@ -153,7 +209,7 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
 ) -> dict[str, Any]:
     """Valida JWT e retorna os claims. Usado por rotas que precisam do usuário mas não do banco."""
-    return _decode_jwt(credentials.credentials)
+    return await _decode_jwt_refreshing(credentials.credentials)
 
 
 def _client_ip(request: Request) -> str:
@@ -173,7 +229,7 @@ async def get_db(
     SET LOCAL e set_config(local=true) só persistem dentro de uma transação
     explícita — por isso toda a request é envolvida em uma transaction.
     """
-    claims = _decode_jwt(credentials.credentials)
+    claims = await _decode_jwt_refreshing(credentials.credentials)
     pool = _require_pool()
 
     async with pool.acquire() as conn:
