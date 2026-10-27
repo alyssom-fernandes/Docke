@@ -79,6 +79,21 @@ DOCUMENTS = [
 # RH, falhava sem nada ter quebrado.
 PDF_BY_FOLDER = [[d for d in DOCUMENTS if d[2] == idx and d[1] == "pdf"] for idx in range(len(FOLDERS))]
 
+# O quinto documento de cada empresa é sempre a NF-e (a primeira de DOCUMENTS):
+# a busca por "NF" do E2E (frontend/e2e/search-deep-link.spec.ts) precisa achar
+# algum resultado, e com o sorteio puro a NF-e às vezes nem saía.
+NFE_TEMPLATE = DOCUMENTS[0]
+
+
+def pick_template(i: int) -> tuple[str, str, int]:
+    """Modelo do i-ésimo documento da empresa (i começa em 1)."""
+    if i <= len(FOLDERS):
+        return random.choice(PDF_BY_FOLDER[i - 1])
+    if i == len(FOLDERS) + 1:
+        return NFE_TEMPLATE
+    return random.choice(DOCUMENTS)
+
+
 OCR_TEXTS = [
     "Nota fiscal eletrônica emitida em conformidade com a legislação vigente. "
     "CNPJ emitente: 12.345.678/0001-90. Valor total: R$ 1.250,00.",
@@ -496,10 +511,7 @@ async def _build_demo_data(
         docs_created: list[tuple[str, str]] = []  # (doc_id, name)
 
         for i in range(1, 18):  # ~17 docs por empresa → ~51 total
-            if i <= len(FOLDERS):
-                tmpl, ext, folder_idx = random.choice(PDF_BY_FOLDER[i - 1])
-            else:
-                tmpl, ext, folder_idx = random.choice(DOCUMENTS)
+            tmpl, ext, folder_idx = pick_template(i)
             doc_name = tmpl.format(n=str(i).zfill(2))
             folder_id = folder_ids[folder_idx]
 
