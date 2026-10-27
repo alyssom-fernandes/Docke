@@ -22,6 +22,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Sem buffer no stdout: o print() do seed da demo só aparecia no log da Fly
+# quando a requisição seguinte gravava a linha de acesso do uvicorn. Fica
+# depois do pip install para não invalidar o cache das camadas pesadas.
+ENV PYTHONUNBUFFERED=1
+
 EXPOSE 8000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
