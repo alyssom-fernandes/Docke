@@ -63,7 +63,7 @@ flowchart LR
 
 ## Rodar localmente
 
-Requisitos: Node 20+, Python 3.11+, Docker e o Supabase CLI.
+Requisitos: Node 22.12+, Python 3.11+, Docker e o Supabase CLI.
 
 ```bash
 supabase start                      # Postgres + Auth locais, aplica supabase/migrations
