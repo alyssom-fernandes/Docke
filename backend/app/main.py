@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -22,6 +23,14 @@ from app.routers import (
     trash,
     versions,
 )
+
+# Sem configuração, o Python descarta tudo abaixo de WARNING, e o que passa sai
+# sem nível nem nome: os logger.info de docke.* (fim do reset da demo, partida
+# do worker de OCR, purgas por retenção) nunca chegavam ao log da Fly. O uvicorn
+# configura só os loggers dele; aqui o root ganha um handler e o INFO fica
+# liberado só para o app — bibliotecas como o httpx seguem em WARNING.
+logging.basicConfig(format="%(levelname)s %(name)s: %(message)s")
+logging.getLogger("docke").setLevel(logging.INFO)
 
 
 @asynccontextmanager
