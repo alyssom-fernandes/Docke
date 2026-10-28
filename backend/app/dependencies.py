@@ -66,39 +66,61 @@ async def jwks_refresh_loop(interval_secs: int = 3600) -> None:
             fresh = await _fetch_jwks()
             if fresh is not None:
                 _jwks = fresh
+            else:
+                logger.warning(
+                    "Revalidação periódica do JWKS falhou; nova tentativa em %ds.",
+                    interval_secs,
+                )
         except asyncio.CancelledError:
             raise
         except Exception:
             pass  # mantém o _jwks anterior; tenta de novo no próximo ciclo
 
 
+def _jwks_key_count(jwks: Any) -> int:
+    """Quantas chaves o JWKS tem — só para log; 0 se a resposta não tiver o formato esperado."""
+    keys = jwks.get("keys") if isinstance(jwks, dict) else None
+    return len(keys) if isinstance(keys, list) else 0
+
+
+async def _load_jwks_at_startup(attempts: int = 3, retry_delay: float = 1.5) -> None:
+    """
+    Busca chaves públicas do Supabase Auth para verificar tokens ES256.
+    Algumas tentativas com espera curta: se o backend sobe antes do serviço
+    de Auth estar pronto (comum em `docker compose`/`supabase start` local,
+    onde os containers não têm ordem de prontidão garantida), uma falha na
+    primeira tentativa deixava _jwks preso em None pro resto da vida do
+    processo — todo token real (ES256) passava a ser rejeitado com "alg not
+    allowed" até o próximo restart, um bug intermitente difícil de notar.
+    """
+    global _jwks
+    for attempt in range(attempts):
+        fresh = await _fetch_jwks()
+        if fresh is not None:
+            _jwks = fresh
+            logger.info("JWKS carregado na partida: %d chave(s).", _jwks_key_count(fresh))
+            return
+        if attempt < attempts - 1:
+            await asyncio.sleep(retry_delay)
+    # Se todas as tentativas falharem, _jwks permanece None e o fallback HS256
+    # assume — correto pra ambientes que genuinamente não usam Supabase Auth.
+    # Onde há Supabase Auth, o primeiro token ES256 busca o JWKS de novo
+    # (_refresh_jwks_on_demand), sem esperar o ciclo de jwks_refresh_loop.
+    logger.warning(
+        "JWKS indisponível depois de %d tentativas na partida — o primeiro token ES256 vai buscá-lo de novo.",
+        attempts,
+    )
+
+
 async def init_db_pool() -> None:
-    global _pool, _admin_pool, _jwks
+    global _pool, _admin_pool
     _pool = await asyncpg.create_pool(
         settings.asyncpg_url,
         min_size=2,
         max_size=10,
         command_timeout=30,
     )
-    # Busca chaves públicas do Supabase Auth para verificar tokens ES256.
-    # Algumas tentativas com espera curta: se o backend sobe antes do serviço
-    # de Auth estar pronto (comum em `docker compose`/`supabase start` local,
-    # onde os containers não têm ordem de prontidão garantida), uma falha na
-    # primeira tentativa deixava _jwks preso em None pro resto da vida do
-    # processo — todo token real (ES256) passava a ser rejeitado com "alg not
-    # allowed" até o próximo restart, um bug intermitente difícil de notar.
-    import asyncio
-    for attempt in range(3):
-        fresh = await _fetch_jwks()
-        if fresh is not None:
-            _jwks = fresh
-            break
-        if attempt < 2:
-            await asyncio.sleep(1.5)
-    # Se todas as tentativas falharem, _jwks permanece None e o fallback HS256
-    # assume — correto pra ambientes que genuinamente não usam Supabase Auth.
-    # Onde há Supabase Auth, o primeiro token ES256 busca o JWKS de novo
-    # (_refresh_jwks_on_demand), sem esperar o ciclo de jwks_refresh_loop.
+    await _load_jwks_at_startup()
     _admin_pool = _pool  # mesma pool — worker usa service_role sem SET LOCAL role
 
 
@@ -186,8 +208,16 @@ async def _refresh_jwks_on_demand(kid: Any) -> None:
         _jwks_last_on_demand = now
         logger.warning("JWKS sem a chave do token (kid=%r) — buscando de novo no Supabase Auth.", str(kid)[:64])
         fresh = await _fetch_jwks()
-        if fresh is not None:
-            _jwks = fresh
+        if fresh is None:
+            logger.warning(
+                "Busca do JWKS sob demanda falhou; a próxima pode sair em %ds.", _JWKS_ON_DEMAND_MIN_INTERVAL_SECS
+            )
+            return
+        _jwks = fresh
+        if _jwks_has_key(kid):
+            logger.info("JWKS atualizado sob demanda: a chave do token chegou (%d chave(s)).", _jwks_key_count(fresh))
+        else:
+            logger.warning("JWKS atualizado sob demanda, mas ainda sem a chave do token (kid=%r).", str(kid)[:64])
 
 
 async def _decode_jwt_refreshing(token: str) -> dict[str, Any]:
