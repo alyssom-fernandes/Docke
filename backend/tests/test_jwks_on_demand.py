@@ -4,8 +4,13 @@ ES256 cuja chave não está em memória faz a API buscar o JWKS de novo na hora,
 em vez de responder 401 até o próximo ciclo de jwks_refresh_loop (1h). Foi o
 que derrubou todo login da demo depois da retomada do Supabase em 26/10/2026.
 Sem banco e sem rede: a chave EC é gerada aqui e _fetch_jwks vira um falso.
+
+O fim do arquivo confere as linhas de log da partida, da busca sob demanda e da
+revalidação periódica: antes, um JWKS que faltava só aparecia como 401 para
+quem tentava entrar.
 """
 import asyncio
+import logging
 import time
 
 import pytest
@@ -152,3 +157,99 @@ async def test_malformed_token_answers_401_without_fetching(monkeypatch):
 
     assert exc.value.status_code == 401
     assert fetch.calls == 0
+
+
+# ---------------------------------------------------------------------------
+# Linhas de log
+# ---------------------------------------------------------------------------
+
+def _auth_messages(caplog, level: int) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.name == "docke.auth" and r.levelno == level]
+
+
+@pytest.mark.asyncio
+async def test_startup_without_jwks_logs_warning(monkeypatch, caplog):
+    fetch = _FakeFetch(None)
+    monkeypatch.setattr(deps, "_fetch_jwks", fetch)
+
+    await deps._load_jwks_at_startup(retry_delay=0)
+
+    assert deps._jwks is None
+    assert fetch.calls == 3
+    assert any("depois de 3 tentativas" in m for m in _auth_messages(caplog, logging.WARNING))
+
+
+@pytest.mark.asyncio
+async def test_startup_with_jwks_logs_info(monkeypatch, caplog):
+    caplog.set_level(logging.INFO, logger="docke.auth")
+    _, public_jwk = _new_key("k1")
+    fetch = _FakeFetch({"keys": [public_jwk]})
+    monkeypatch.setattr(deps, "_fetch_jwks", fetch)
+
+    await deps._load_jwks_at_startup(retry_delay=0)
+
+    assert deps._jwks == {"keys": [public_jwk]}
+    assert fetch.calls == 1
+    assert any("JWKS carregado na partida: 1 chave(s)" in m for m in _auth_messages(caplog, logging.INFO))
+    assert not _auth_messages(caplog, logging.WARNING)
+
+
+@pytest.mark.parametrize("payload", [["nao", "e", "um", "jwks"], {"keys": "nao e lista"}, {}])
+def test_key_count_tolerates_unexpected_payloads(payload):
+    assert deps._jwks_key_count(payload) == 0
+
+
+@pytest.mark.asyncio
+async def test_on_demand_fetch_logs_when_the_key_arrives(monkeypatch, caplog):
+    caplog.set_level(logging.INFO, logger="docke.auth")
+    private_pem, public_jwk = _new_key("k1")
+    monkeypatch.setattr(deps, "_fetch_jwks", _FakeFetch({"keys": [public_jwk]}))
+
+    await _validate(_es256_token(private_pem, "k1"))
+
+    assert any("a chave do token chegou" in m for m in _auth_messages(caplog, logging.INFO))
+
+
+@pytest.mark.asyncio
+async def test_on_demand_fetch_failure_logs_warning(monkeypatch, caplog):
+    private_pem, _ = _new_key("k1")
+    monkeypatch.setattr(deps, "_fetch_jwks", _FakeFetch(None))
+
+    with pytest.raises(HTTPException):
+        await _validate(_es256_token(private_pem, "k1"))
+
+    assert any("sob demanda falhou" in m for m in _auth_messages(caplog, logging.WARNING))
+
+
+@pytest.mark.asyncio
+async def test_on_demand_fetch_without_the_key_logs_warning(monkeypatch, caplog):
+    private_pem, _ = _new_key("inventada")
+    _, other_jwk = _new_key("outra")
+    monkeypatch.setattr(deps, "_fetch_jwks", _FakeFetch({"keys": [other_jwk]}))
+
+    with pytest.raises(HTTPException):
+        await _validate(_es256_token(private_pem, "inventada"))
+
+    assert any("ainda sem a chave do token" in m for m in _auth_messages(caplog, logging.WARNING))
+
+
+@pytest.mark.asyncio
+async def test_periodic_refresh_failure_logs_warning(monkeypatch, caplog):
+    class _FailOnceThenStop:
+        """Falha na primeira volta do laço; na segunda, cancela para o teste terminar."""
+
+        def __init__(self):
+            self.calls = 0
+
+        async def __call__(self) -> dict | None:
+            self.calls += 1
+            if self.calls > 1:
+                raise asyncio.CancelledError
+            return None
+
+    monkeypatch.setattr(deps, "_fetch_jwks", _FailOnceThenStop())
+
+    with pytest.raises(asyncio.CancelledError):
+        await deps.jwks_refresh_loop(interval_secs=0)
+
+    assert any("Revalidação periódica do JWKS falhou" in m for m in _auth_messages(caplog, logging.WARNING))
