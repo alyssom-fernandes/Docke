@@ -62,9 +62,10 @@ async def reset_demo_data(conn: asyncpg.Connection) -> None:
     async with conn.transaction():
         await _build_demo_data(conn, demo_user_id, extra_user_ids)
 
-    # O reset recria as 3 empresas com IDs novos; sem atualizar a view agora,
-    # o painel da demo ficava sem contadores (/stats → 404) até o próximo
-    # ciclo do stats_refresh_loop, 15 min depois — e o reset roda em todo boot.
+    # O reset recria as 3 empresas e todo o conteúdo delas (com os mesmos IDs,
+    # ver demo_id); sem atualizar a view agora, o painel da demo ficava com os
+    # contadores de antes do reset até o próximo ciclo do stats_refresh_loop,
+    # 15 min depois — e o reset roda em todo boot.
     await conn.execute("SELECT public.refresh_company_stats()")
 
     logger.info("Reset de dados demo concluído (3 empresas restauradas).")

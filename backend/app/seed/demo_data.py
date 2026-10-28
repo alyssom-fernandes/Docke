@@ -148,6 +148,20 @@ def make_label() -> str:
     return "f" + str(int(datetime.now(timezone.utc).timestamp() * 1000)) + str(random.randint(1000, 9999))
 
 
+# IDs fixos para empresas, pastas e documentos da demo. O reset roda em todo
+# boot da API (a Fly desliga a máquina ociosa, e a visita seguinte a liga),
+# quase sempre com o visitante já dentro: com IDs novos a cada reset, a sessão
+# dele ficava apontando para empresas apagadas e mostrava pastas vazias até
+# recarregar. Com os mesmos IDs, o reset troca o conteúdo sem derrubar ninguém,
+# e as chaves no R2 se repetem em vez de deixar arquivos órfãos a cada boot.
+_DEMO_ID_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "https://github.com/alyssom-fernandes/Docke#demo")
+
+
+def demo_id(*parts: object) -> str:
+    """ID reprodutível de um registro da demo: o mesmo caminho dá sempre o mesmo UUID."""
+    return str(uuid.uuid5(_DEMO_ID_NAMESPACE, "/".join(str(p) for p in parts)))
+
+
 # ---------------------------------------------------------------------------
 # Geração de conteúdo real por tipo de arquivo (para os documentos poderem
 # ser de fato abertos/baixados/pré-visualizados no modo demo — sem isso, o
@@ -451,7 +465,7 @@ async def _build_demo_data(
         # ---------------------------------------------------------------
         # 2. Criar empresa
         # ---------------------------------------------------------------
-        company_id = str(uuid.uuid4())
+        company_id = demo_id(company_name)
         await conn.execute(
             "INSERT INTO public.companies (id, name) VALUES ($1::uuid, $2)",
             company_id,
@@ -488,7 +502,7 @@ async def _build_demo_data(
         # ---------------------------------------------------------------
         folder_ids: list[str] = []
         for folder_name in FOLDERS:
-            folder_id = str(uuid.uuid4())
+            folder_id = demo_id(company_name, folder_name)
             label = make_label()
             await conn.execute(
                 """
@@ -515,7 +529,7 @@ async def _build_demo_data(
             doc_name = tmpl.format(n=str(i).zfill(2))
             folder_id = folder_ids[folder_idx]
 
-            doc_id = str(uuid.uuid4())
+            doc_id = demo_id(company_name, "documento", i)
             ocr_text = random.choice(OCR_TEXTS)
 
             # 2 docs com OCR failed, 3 na lixeira (para os últimos docs)

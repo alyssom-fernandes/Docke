@@ -87,7 +87,7 @@ Without R2 credentials the API stores files on local disk (development mode).
 ## Tests
 
 - `backend/tests`: 13 pytest integration tests (RLS, including column limits on the user's own profile and the activity log partitions; permissions; OCR sync; folder move; share links, with permanent deletion of a version-pinned link and the public link role; and the audit chain catching an edited, deleted or truncated event and refusing a company the caller has no access to) against a real local Supabase.
-- `frontend/e2e`: 5 Playwright specs (demo login, identity switch, PDF preview, search deep link, and a cold start where the first API call is refused).
+- `frontend/e2e`: 6 Playwright specs (demo login, identity switch, PDF preview, search deep link, a cold start where the first API call is refused, and a demo reset with the session open).
 - CI runs both on every push to `main`.
 
 ## Status and limitations
