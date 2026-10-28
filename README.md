@@ -87,12 +87,12 @@ Without R2 credentials the API stores files on local disk (development mode).
 ## Tests
 
 - `backend/tests`: 13 pytest integration tests (RLS, including column limits on the user's own profile and the activity log partitions; permissions; OCR sync; folder move; share links, with permanent deletion of a version-pinned link and the public link role; and the audit chain catching an edited, deleted or truncated event and refusing a company the caller has no access to) against a real local Supabase.
-- `frontend/e2e`: 4 Playwright specs (demo login, identity switch, PDF preview, search deep link).
+- `frontend/e2e`: 5 Playwright specs (demo login, identity switch, PDF preview, search deep link, and a cold start where the first API call is refused).
 - CI runs both on every push to `main`.
 
 ## Status and limitations
 
-- The public demo runs on free or near-free tiers: the API on Fly.io stops when idle, so the first visit can take a few seconds while it starts. A daily job keeps the Supabase Free project from pausing.
+- The public demo runs on free or near-free tiers: the API on Fly.io stops when idle, so the first visit can take a few seconds while it starts. If a read or a sign-in does not reach the API while it starts, the app tries once more after 3 seconds. A daily job keeps the Supabase Free project from pausing.
 - The interface is in Brazilian Portuguese only.
 - The demo data is fictitious: company names are made up and the three CNPJs fail the check-digit validation, so they cannot belong to a real company.
 
