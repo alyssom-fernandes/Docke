@@ -15,6 +15,8 @@
 
 ![Docke sign-in page](.github/readme/login.png)
 
+**Case study:** [how it was built and why, with links to the code](https://alyssom-fernandes.github.io/portfolio/en/projetos/docke/) on my portfolio.
+
 ## In 30 seconds
 
 - **Several companies, one place.** Each company has its own folder tree; access is granted per company or per folder and enforced by Postgres Row Level Security, not only by the API.
