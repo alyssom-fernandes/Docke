@@ -8,7 +8,6 @@ Verifica que:
 """
 import uuid
 
-import asyncpg
 import pytest
 
 

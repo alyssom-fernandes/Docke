@@ -17,9 +17,7 @@ Retry e jobs travados (M3.3):
 """
 import asyncio
 import logging
-from datetime import datetime, timezone
 
-from app.config import settings
 from app.services import storage_service
 from app.services.ocr_service import get_provider
 

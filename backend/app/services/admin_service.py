@@ -4,7 +4,6 @@ admin/supremo. Usa a conexão admin (service role) deliberadamente: são
 consultas cross-empresa que a RLS por company_id nunca permitiria para um
 usuário comum, mesmo administrador de uma única empresa.
 """
-from typing import Any
 from uuid import UUID
 
 import asyncpg

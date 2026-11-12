@@ -300,8 +300,8 @@ def is_mock() -> bool:
 # seguintes pro mesmo documento reaproveitam o PDF já gerado.
 # ---------------------------------------------------------------------------
 
-import subprocess
-import uuid as _uuid
+import subprocess  # noqa: E402 (seção própria do módulo, de propósito)
+import uuid as _uuid  # noqa: E402
 
 _CONVERTIBLE_EXTENSIONS = {"docx", "doc", "xlsx", "xls"}
 

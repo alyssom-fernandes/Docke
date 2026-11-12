@@ -18,7 +18,6 @@ Após mover L2 para outro_root (L1b):
 """
 import uuid
 
-import asyncpg
 import pytest
 
 

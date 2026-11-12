@@ -27,7 +27,7 @@ from app.services.documents_service import DocumentsService
 from app.services.notification_service import notify_document_watchers
 
 logger = logging.getLogger("docke.versions")
-from app.services.versions_service import VersionsService
+from app.services.versions_service import VersionsService  # noqa: E402 (import depois do logger, de propósito)
 
 router = APIRouter(prefix="/documents", tags=["versions"])
 

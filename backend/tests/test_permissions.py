@@ -9,7 +9,6 @@ visualizador (só leitura) < operador (leitura+escrita escopada) < admin (tudo).
 """
 import uuid
 
-import asyncpg
 import pytest
 
 

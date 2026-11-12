@@ -4,7 +4,6 @@ Rotas autenticadas usam conn (RLS). Rotas públicas usam admin_conn — não há
 usuário logado nem JWT nessas chamadas, então não há contexto de RLS a aplicar.
 """
 from datetime import datetime
-from typing import Any
 from uuid import UUID
 
 import asyncpg
