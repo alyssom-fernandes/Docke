@@ -2,8 +2,10 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+import asyncpg
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.routers import (
@@ -62,6 +64,34 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+_MENSAGEM_BLOQUEIO = {
+    "legal_hold": (
+        'O documento "{nome}" está sob retenção legal (legal hold) e não pode ser excluído. '
+        "Para excluí-lo, libere o hold em Ajustes → Retenção."
+    ),
+    "retencao": (
+        'O documento "{nome}" tem retenção obrigatória (política travada) ainda em vigor e não pode '
+        "ser excluído antes do prazo. O prazo aparece em Detalhes → Retenção."
+    ),
+}
+
+
+@app.exception_handler(asyncpg.exceptions.RaiseError)
+async def exclusao_bloqueada_handler(request: Request, exc: asyncpg.exceptions.RaiseError):
+    """
+    Os triggers da migration 20261125000001 recusam excluir (ou mandar para a
+    lixeira) documento sob legal hold ou com retenção travada vigente, venha o
+    pedido de onde vier. Aqui o erro do banco vira 423 com um texto que diz o
+    que fazer; qualquer outro RAISE segue como erro interno.
+    """
+    mensagem = str(exc)
+    if not mensagem.startswith("DOCKE_EXCLUSAO_BLOQUEADA:"):
+        raise exc
+    _, motivo, nome = (mensagem.split(":", 2) + ["", ""])[:3]
+    texto = _MENSAGEM_BLOQUEIO.get(motivo, _MENSAGEM_BLOQUEIO["legal_hold"]).format(nome=nome or "selecionado")
+    return JSONResponse(status_code=423, content={"detail": texto, "code": "exclusao_bloqueada", "motivo": motivo})
+
 
 PREFIX = "/api/v1"
 

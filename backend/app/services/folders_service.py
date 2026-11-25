@@ -200,7 +200,17 @@ class FoldersService:
         Soft delete via service role (bypassa RLS para evitar o bloqueio implícito
         de UPDATE que torna a linha invisível ao próprio SELECT do usuário).
         trash_expires_at (ADR-025/030): retention_days da empresa no momento da exclusão.
+
+        As duas atualizações vão juntas numa transação: se algum documento da
+        subárvore estiver sob legal hold ou retenção travada, o trigger da
+        migration 20261125000001 recusa e nada vai para a lixeira (antes a
+        pasta podia sair e os documentos ficarem).
         """
+        async with admin_conn.transaction():
+            await FoldersService._soft_delete_folder_cascade_tx(admin_conn, path)
+
+    @staticmethod
+    async def _soft_delete_folder_cascade_tx(admin_conn: asyncpg.Connection, path: str) -> None:
         await admin_conn.execute(
             """
             UPDATE public.folders f

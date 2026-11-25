@@ -26,8 +26,8 @@ async def list_trash(
 ) -> dict[str, Any]:
     """
     Lista itens na lixeira da empresa.
-    Usa admin_conn (itens deleted_at IS NOT NULL são invisíveis ao authenticated via RLS).
-    Filtra apenas itens do usuário atual ou de pastas onde o usuário tem manager.
+    Usa admin_conn (itens deleted_at IS NOT NULL são invisíveis ao authenticated via RLS),
+    por isso cada item só aparece para quem tem acesso à pasta de origem dele.
     """
     user_id = claims["sub"]
     docs = await TrashService.list_deleted_documents(admin_conn, company_id, user_id)
@@ -104,14 +104,19 @@ async def restore_trash_item(
         if new_parent_id is not None and await TrashService.is_parent_deleted(admin_conn, new_parent_id):
             new_parent_id = None
 
-        await TrashService.restore_folder_cascade(
+        restored_documents = await TrashService.restore_folder_cascade(
             admin_conn, folder_id=item_id, new_parent_id=new_parent_id, path=str(folder["path"]),
+            deleted_at=folder["deleted_at"],
         )
         await TrashService.log_activity(
             admin_conn, user_id=user_id, company_id=str(folder["company_id"]),
             action="restore", item_type="folder", item_id=str(item_id), item_name=folder["name"],
         )
-        return {"item_type": "folder", "id": str(item_id), "name": folder["name"], "restored_parent_id": str(new_parent_id) if new_parent_id else None}
+        return {
+            "item_type": "folder", "id": str(item_id), "name": folder["name"],
+            "restored_parent_id": str(new_parent_id) if new_parent_id else None,
+            "restored_documents": restored_documents,
+        }
 
 
 # ---------------------------------------------------------------------------

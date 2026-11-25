@@ -13,6 +13,8 @@ import asyncio
 import logging
 import time
 
+import asyncpg
+
 from app.config import settings
 from app.services.obligations_service import (
     BLOCKING_LATERAL_SQL,
@@ -322,22 +324,19 @@ async def _purge_expired_trash(conn) -> None:
           ORDER BY created_at DESC LIMIT 1
         ) al ON true
         WHERE d.deleted_at IS NOT NULL AND d.trash_expires_at < now()
+          -- Sob legal hold ou com retenção travada vigente, o documento fica
+          -- na lixeira até o bloqueio acabar (achado X3-07); o banco também
+          -- recusaria o DELETE (migration 20261125000001).
+          AND public.document_deletion_block_reason(d.id) IS NULL
         """
     )
     for doc in expired_docs:
-        async with conn.transaction():
-            await conn.execute("DELETE FROM public.documents WHERE id = $1", doc["id"])
-            # activity_log.user_id é NOT NULL — só registra se soubermos quem excluiu originalmente
-            # (sempre deveria saber, já que soft-delete sempre loga; defensivo contra dado legado).
-            if doc["deleted_by"] is not None:
-                await conn.execute(
-                    """
-                    INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, metadata)
-                    VALUES ($1, $2, 'delete', 'document', $3, $4, '{"auto_purge": true}'::jsonb)
-                    """,
-                    doc["deleted_by"], doc["company_id"], doc["id"], doc["name"],
-                )
-            await expire_shares_for_resource(conn, "document", doc["id"])
+        try:
+            await _purge_document(conn, doc, expire_shares_for_resource)
+        except asyncpg.exceptions.RaiseError:
+            # O bloqueio pode ter começado entre a consulta e a exclusão.
+            logger.warning("Purga automática pulou o documento %s: exclusão bloqueada por hold ou retenção.", doc["id"])
+            continue
 
         if doc["storage_path"]:
             try:
@@ -346,6 +345,26 @@ async def _purge_expired_trash(conn) -> None:
                 logger.warning("Falha ao remover objeto do storage para documento %s — pode ficar órfão.", doc["id"])
         logger.info("Purga automática — documento %s (%s) removido por retenção.", doc["id"], doc["name"])
 
+    await _purge_expired_folders(conn, expire_shares_for_resource)
+
+
+async def _purge_document(conn, doc, expire_shares_for_resource) -> None:
+    async with conn.transaction():
+        await conn.execute("DELETE FROM public.documents WHERE id = $1", doc["id"])
+        # activity_log.user_id é NOT NULL — só registra se soubermos quem excluiu originalmente
+        # (sempre deveria saber, já que soft-delete sempre loga; defensivo contra dado legado).
+        if doc["deleted_by"] is not None:
+            await conn.execute(
+                """
+                INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, metadata)
+                VALUES ($1, $2, 'delete', 'document', $3, $4, '{"auto_purge": true}'::jsonb)
+                """,
+                doc["deleted_by"], doc["company_id"], doc["id"], doc["name"],
+            )
+        await expire_shares_for_resource(conn, "document", doc["id"])
+
+
+async def _purge_expired_folders(conn, expire_shares_for_resource) -> None:
     # Pastas vazias (sem documentos remanescentes) que também passaram do prazo
     expired_folders = await conn.fetch(
         """
