@@ -470,12 +470,28 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
           content_type: file.type || "application/octet-stream",
         });
 
-        const putResp = await fetch(data.upload_url, {
-          method: "PUT",
-          body: file,
-          headers: { "Content-Type": file.type || "application/octet-stream" },
-        });
-        if (!putResp.ok) throw new Error(`Storage PUT falhou: ${putResp.status}`);
+        // O tipo enviado tem de ser o mesmo da assinatura da URL (vem da
+        // extensão): o Chrome chama XML de "text/xml" e a URL foi assinada
+        // com "application/xml" — o envio de NF-e falhava com 403.
+        let putResp: Response;
+        try {
+          putResp = await fetch(data.upload_url, {
+            method: "PUT",
+            body: file,
+            headers: { "Content-Type": data.content_type ?? (file.type || "application/octet-stream") },
+          });
+        } catch {
+          putResp = new Response(null, { status: 0 });
+        }
+        if (!putResp.ok) {
+          // Sem isso sobrava um registro provisório ocupando o nome do arquivo.
+          api.post(`/documents/${data.document_id}/abort-upload`).catch(() => {});
+          throw new Error(
+            putResp.status === 0
+              ? "A conexão caiu durante o envio. Confira a internet e tente de novo."
+              : `O armazenamento recusou o arquivo (HTTP ${putResp.status}). Tente de novo; se continuar, avise o administrador.`,
+          );
+        }
 
         await api.post(`/documents/${data.document_id}/confirm`);
         documentId = data.document_id;

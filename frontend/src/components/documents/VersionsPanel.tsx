@@ -173,9 +173,17 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
       });
       const putResp = await fetch(data.upload_url, {
         method: "PUT", body: file,
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-      });
-      if (!putResp.ok) throw new Error("Falha no upload para o storage.");
+        // Mesmo tipo da assinatura da URL (ver Documents.tsx: XML falhava com 403).
+        headers: { "Content-Type": data.content_type ?? (file.type || "application/octet-stream") },
+      }).catch(() => new Response(null, { status: 0 }));
+      if (!putResp.ok) {
+        api.delete(`/documents/${documentId}/versions/${data.version_id}`).catch(() => {});
+        throw new Error(
+          putResp.status === 0
+            ? "A conexão caiu durante o envio. Confira a internet e tente de novo."
+            : `O armazenamento recusou o arquivo (HTTP ${putResp.status}). Tente de novo.`,
+        );
+      }
       await api.post(`/documents/${documentId}/versions/${data.version_id}/confirm`);
       updateTask(taskId, { status: "done" });
       success(`Versão ${data.version_number} enviada.`);

@@ -64,6 +64,12 @@ BEGIN
     RETURN NEW;
   END IF;
 
+  -- Envio que nunca se completou (sem hash do conteúdo): é só o registro
+  -- provisório do upload, sem documento de verdade a proteger.
+  IF OLD.content_hash IS NULL THEN
+    RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+  END IF;
+
   motivo := public.document_deletion_block_reason(OLD.id);
   IF motivo IS NOT NULL THEN
     RAISE EXCEPTION 'DOCKE_EXCLUSAO_BLOQUEADA:%:%', motivo, OLD.name
