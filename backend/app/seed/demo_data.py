@@ -401,6 +401,10 @@ async def _build_demo_data(
     #    companies) resolve. documents também cascadeia pra ocr_jobs/
     #    favorites/document_versions/share_accesses (via shares).
     # ------------------------------------------------------------------
+    # As empresas fictícias saem inteiras, inclusive documentos que um
+    # visitante tenha posto sob legal hold: o desvio da trava de exclusão
+    # (migration 20261125000001) vale só nesta transação.
+    await conn.execute("SELECT set_config('docke.bypass_retencao', 'on', true)")
     old_company_ids = await conn.fetch(
         "SELECT id FROM public.companies WHERE name = ANY($1::text[])",
         [c[0] for c in COMPANIES],
@@ -420,11 +424,17 @@ async def _build_demo_data(
     # 1. Criar/atualizar usuário demo + usuários de equipe extras em
     #    public.users (mesmos ids das contas de Auth já garantidas)
     # ------------------------------------------------------------------
+    # Papel GLOBAL 'usuario': a conta demo é pública (sem senha digitada) e só
+    # administra as 3 empresas fictícias, pela concessão em user_company_access.
+    # Com o papel global 'admin' ela passava nas rotas /admin/* e alcançava as
+    # empresas reais do mesmo banco (achado A9-40). O ON CONFLICT reafirma o
+    # papel a cada reset, para nenhuma alteração manual sobreviver a ele.
     await conn.execute(
         """
         INSERT INTO public.users (id, username, full_name, role)
-        VALUES ($1::uuid, $2, $3, 'admin')
-        ON CONFLICT (id) DO UPDATE SET username = EXCLUDED.username, full_name = EXCLUDED.full_name
+        VALUES ($1::uuid, $2, $3, 'usuario')
+        ON CONFLICT (id) DO UPDATE
+          SET username = EXCLUDED.username, full_name = EXCLUDED.full_name, role = 'usuario'
         """,
         demo_user_id,
         DEMO_USER_USERNAME,
@@ -438,7 +448,8 @@ async def _build_demo_data(
             """
             INSERT INTO public.users (id, username, full_name, role)
             VALUES ($1::uuid, $2, $3, 'usuario')
-            ON CONFLICT (id) DO UPDATE SET username = EXCLUDED.username, full_name = EXCLUDED.full_name
+            ON CONFLICT (id) DO UPDATE
+              SET username = EXCLUDED.username, full_name = EXCLUDED.full_name, role = 'usuario'
             """,
             user_id,
             username,

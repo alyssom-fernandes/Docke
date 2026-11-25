@@ -1,8 +1,9 @@
 """
-AdminService — listagens e mutações globais (todas as empresas), restritas a
-admin/supremo. Usa a conexão admin (service role) deliberadamente: são
-consultas cross-empresa que a RLS por company_id nunca permitiria para um
-usuário comum, mesmo administrador de uma única empresa.
+AdminService — listagens e mutações administrativas. Usa a conexão admin
+(service role) deliberadamente: algumas consultas são cross-empresa e a RLS
+por company_id nunca as permitiria. Por isso quem chama (routers/admin.py)
+confere antes o alcance: sistema inteiro só para o Supremo, uma empresa só
+para o admin dela (achado A9-40).
 """
 from typing import Any
 from uuid import UUID
@@ -58,18 +59,38 @@ class AdminService:
         )
 
     @staticmethod
+    async def folder_path_in_company(admin_conn: asyncpg.Connection, company_id: UUID, folder_path: str) -> bool:
+        """O caminho de pasta existe nesta empresa? (concessão só vale para pasta da própria empresa)."""
+        try:
+            return bool(await admin_conn.fetchval(
+                "SELECT EXISTS (SELECT 1 FROM public.folders WHERE company_id = $1 AND path = $2::ltree)",
+                company_id, folder_path,
+            ))
+        except asyncpg.PostgresError:
+            return False  # caminho malformado para ltree
+
+    @staticmethod
     async def upsert_permission(
-        admin_conn: asyncpg.Connection, *, user_id: UUID, company_id: UUID, permission_level: str, folder_path: str | None,
+        admin_conn: asyncpg.Connection, *, user_id: UUID, company_id: UUID, permission_level: str,
+        folder_path: str | None, granted_by: str,
     ) -> asyncpg.Record:
+        # Os índices únicos são parciais (migration 20260722000014): um para a
+        # concessão da empresa toda (folder_path IS NULL) e outro por pasta. O
+        # ON CONFLICT só encontra um índice parcial com o mesmo WHERE dele.
+        conflict = (
+            "(user_id, company_id) WHERE folder_path IS NULL"
+            if folder_path is None
+            else "(user_id, company_id, folder_path) WHERE folder_path IS NOT NULL"
+        )
         return await admin_conn.fetchrow(
-            """
-            INSERT INTO public.user_company_access (user_id, company_id, permission_level, folder_path)
-            VALUES ($1, $2, $3, $4::ltree)
-            ON CONFLICT (user_id, company_id, folder_path)
-            DO UPDATE SET permission_level = EXCLUDED.permission_level
+            f"""
+            INSERT INTO public.user_company_access (user_id, company_id, permission_level, folder_path, granted_by)
+            VALUES ($1, $2, $3, $4::ltree, $5::uuid)
+            ON CONFLICT {conflict}
+            DO UPDATE SET permission_level = EXCLUDED.permission_level, granted_by = EXCLUDED.granted_by
             RETURNING id::text, user_id::text, company_id::text, permission_level, folder_path::text, created_at
             """,
-            user_id, company_id, permission_level, folder_path,
+            user_id, company_id, permission_level, folder_path, granted_by,
         )
 
     @staticmethod

@@ -130,12 +130,23 @@ async def create_company(
     Cria uma nova empresa e concede acesso 'admin' ao criador.
     Usa get_db_admin (service role) pois INSERT em companies requer permissão
     administrativa — authenticated não tem INSERT direto em companies.
+
+    Só o Supremo cria empresas (achado A1-22): antes qualquer usuário logado,
+    inclusive a conta demo pública, criava empresas no banco de produção.
     """
     user_id = claims.get("sub")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido.")
+    if await get_app_role(admin_conn, claims) != "supremo":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Só o administrador geral do sistema cria empresas.",
+        )
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Informe o nome da empresa.")
 
-    company = await CompaniesService.create_company(admin_conn, name=body.name, user_id=user_id)
+    company = await CompaniesService.create_company(admin_conn, name=name, user_id=user_id)
     return dict(company)
 
 
