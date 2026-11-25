@@ -75,10 +75,36 @@ async def _run_once() -> None:
     async with _admin_pool.acquire() as conn:
         await _notify_trash_expiring_soon(conn)
         await _purge_expired_trash(conn)
+        await _cleanup_stale_pending_uploads(conn)
         await _notify_obligation_alerts(conn)
         await _notify_retention_expiring_soon(conn)
         await _scan_retention_expirations(conn)
         await _reset_demo_data_if_due(conn)
+
+
+async def _cleanup_stale_pending_uploads(conn) -> None:
+    """
+    Registros provisórios de upload (sem hash) com mais de 6 horas: o envio
+    nunca se completou (aba fechada, rede caiu). Saem do banco e do storage,
+    para não ocupar o nome do arquivo nem aparecer como documento.
+    """
+    from app.services import storage_service
+
+    rows = await conn.fetch(
+        """
+        DELETE FROM public.documents
+        WHERE content_hash IS NULL AND created_at < now() - interval '6 hours'
+        RETURNING id, storage_path
+        """
+    )
+    for row in rows:
+        if row["storage_path"]:
+            try:
+                storage_service.delete_object(row["storage_path"])
+            except Exception:
+                pass
+    if rows:
+        logger.info("Limpeza: %d envio(s) incompleto(s) removido(s).", len(rows))
 
 
 async def _scan_retention_expirations(conn) -> None:
@@ -343,6 +369,7 @@ async def _purge_expired_trash(conn) -> None:
                 storage_service.delete_object(doc["storage_path"])
             except Exception:
                 logger.warning("Falha ao remover objeto do storage para documento %s — pode ficar órfão.", doc["id"])
+            storage_service.delete_derivatives(doc["storage_path"])
         logger.info("Purga automática — documento %s (%s) removido por retenção.", doc["id"], doc["name"])
 
     await _purge_expired_folders(conn, expire_shares_for_resource)

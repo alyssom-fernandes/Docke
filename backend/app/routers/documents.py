@@ -115,25 +115,52 @@ async def create_upload_url(
     key = storage_service.storage_key(str(body.company_id), str(document_id), ext)
     user_id = claims["sub"]
 
+    # O tipo vem da extensão, não do navegador: o Chrome chama XML de
+    # "text/xml" e o mapa diz "application/xml". A URL é assinada com este
+    # tipo e o cliente precisa mandar exatamente ele no PUT (por isso volta
+    # na resposta) — antes, o XML de NF-e falhava com 403 (achado X2-03).
+    content_type = _MIME_MAP.get(ext, body.content_type)
     row = await DocumentsService.insert_pending_document(
         admin_conn,
         document_id=document_id, folder_id=body.folder_id, company_id=body.company_id,
-        name=final_name, mime_type=_MIME_MAP.get(ext, body.content_type), file_type=ext,
+        name=final_name, mime_type=content_type, file_type=ext,
         size_bytes=body.size_bytes, storage_path=key, uploaded_by=user_id,
     )
 
-    upload_url, expires_at = storage_service.generate_upload_url(
-        key=key,
-        content_type=_MIME_MAP.get(ext, body.content_type),
-    )
+    upload_url, expires_at = storage_service.generate_upload_url(key=key, content_type=content_type)
 
     return {
         "document_id": row["id"],
         "upload_url": upload_url,
+        "content_type": content_type,
+        "name": final_name,
         "expires_at": expires_at.isoformat(),
         "storage_key": key,
         "mock_mode": storage_service.is_mock(),
     }
+
+
+# ---------------------------------------------------------------------------
+# POST /documents/:id/abort-upload — desiste de um envio que não se completou
+# ---------------------------------------------------------------------------
+
+@router.post("/{document_id}/abort-upload", status_code=status.HTTP_204_NO_CONTENT)
+async def abort_upload(
+    document_id: UUID,
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> None:
+    """
+    O envio direto ao storage falhou: apaga o registro provisório (sem hash),
+    para não sobrar um "documento fantasma" ocupando o nome (achado X2-03).
+    Idempotente; documento já confirmado não é tocado.
+    """
+    doc = await DocumentsService.get_document_for_confirm(admin_conn, document_id, claims["sub"])
+    if doc is None:
+        return
+    if doc["permission"] not in ("admin", "operador"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para este envio.")
+    await DocumentsService.delete_pending_document(admin_conn, document_id)
 
 
 # ---------------------------------------------------------------------------
@@ -511,6 +538,75 @@ async def mock_download_file(safe_key: str, filename: str = "") -> Response:
 # GET /documents/:id/download-url — URL pré-assinada para download unitário
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Texto dos documentos (OCR) por empresa: situação e nova leitura em lote
+# ---------------------------------------------------------------------------
+
+class ReprocessTextRequest(BaseModel):
+    company_id: UUID
+
+
+_SEM_TEXTO_SQL = """
+    company_id = $1 AND deleted_at IS NULL
+    AND (ocr_status = 'failed' OR (ocr_status = 'done' AND coalesce(ocr_text, '') = '' AND ocr_completed_at IS NULL))
+"""
+
+
+async def _require_company_admin(conn: asyncpg.Connection, claims: dict[str, Any], company_id: UUID) -> None:
+    from app.dependencies import get_app_role
+    from app.services.companies_service import CompaniesService
+
+    if await get_app_role(conn, claims) == "supremo":
+        return
+    if not await CompaniesService.user_manages_company(conn, claims["sub"], company_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
+
+
+@router.get("/text-status")
+async def text_status(
+    company_id: UUID = Query(...),
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Quantos documentos da empresa estão com o texto pronto, na fila, com falha
+    ou "prontos sem texto" pelo OCR antigo (até 25/11/2026 o OCR de produção
+    devolvia texto vazio para todo PDF; ocr_completed_at nulo marca esses).
+    """
+    await _require_company_admin(conn, claims, company_id)
+    row = await admin_conn.fetchrow(
+        f"""
+        SELECT
+          count(*) FILTER (WHERE ocr_status = 'done' AND coalesce(ocr_text, '') <> '') AS com_texto,
+          count(*) FILTER (WHERE ocr_status IN ('pending', 'processing')) AS na_fila,
+          count(*) FILTER (WHERE {_SEM_TEXTO_SQL}) AS a_reler
+        FROM public.documents
+        WHERE company_id = $1 AND deleted_at IS NULL
+        """,
+        company_id,
+    )
+    return dict(row)
+
+
+@router.post("/reprocess-text", status_code=status.HTTP_202_ACCEPTED)
+async def reprocess_text(
+    body: ReprocessTextRequest,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Põe de novo na fila de leitura de texto os documentos com falha ou sem texto (admin da empresa)."""
+    await _require_company_admin(conn, claims, body.company_id)
+    async with admin_conn.transaction():
+        ids = [r["id"] for r in await admin_conn.fetch(
+            f"SELECT id FROM public.documents WHERE {_SEM_TEXTO_SQL} FOR UPDATE", body.company_id,
+        )]
+        for document_id in ids:
+            await DocumentsService.enqueue_ocr(admin_conn, document_id)
+    return {"enqueued": len(ids)}
+
+
 @router.get("/{document_id}/download-url")
 async def get_download_url(
     document_id: UUID,
@@ -786,6 +882,12 @@ async def get_preview_url(
             storage_service.put_object_bytes(derivative_key, pdf_bytes, "application/pdf")
         preview_key = derivative_key
         preview_mime = "application/pdf"
+    elif preview_mime == "application/pdf":
+        # PDF escaneado que passou pelo OCR: a prévia usa a versão com a camada
+        # de texto (dá para selecionar e copiar o texto, como no Quick Look).
+        ocr_key = storage_service.ocr_pdf_key(doc["storage_path"])
+        if storage_service.head_object(ocr_key) is not None:
+            preview_key = ocr_key
 
     preview_url, expires_at = storage_service.generate_preview_url(
         key=preview_key,
@@ -1009,3 +1111,4 @@ async def retry_ocr(
     await DocumentsService.retry_ocr_transaction(admin_conn, document_id)
 
     return {"document_id": str(document_id), "name": doc["name"], "ocr_status": "pending", "message": "Job de OCR criado com sucesso."}
+

@@ -153,7 +153,7 @@ class VersionsService:
     @staticmethod
     async def get_version_for_download(conn: asyncpg.Connection, version_id: UUID, document_id: UUID) -> asyncpg.Record | None:
         return await conn.fetchrow(
-            "SELECT storage_key, mime_type, version_number FROM public.document_versions WHERE id = $1 AND document_id = $2",
+            "SELECT storage_key, mime_type, version_number, ocr_text FROM public.document_versions WHERE id = $1 AND document_id = $2",
             version_id, document_id,
         )
 

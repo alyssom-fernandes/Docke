@@ -127,6 +127,7 @@ async def create_version_upload_url(
         "version_id": str(version_id),
         "version_number": next_number,
         "upload_url": upload_url,
+        "content_type": content_type,  # o PUT precisa mandar exatamente este tipo (X2-03)
         "expires_at": expires_at.isoformat(),
         "mock_mode": storage_service.is_mock(),
     }
@@ -282,13 +283,15 @@ async def get_version_content(
     document_id: UUID,
     version_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
 ) -> dict[str, Any]:
     """
-    Só disponível pra arquivos de texto puro (txt/csv/xml) — o conteúdo é lido
-    direto do storage, sem precisar de OCR (o valor já é texto). PDF/imagem
-    dependeriam de OCR por versão, que a Fase 3.2 nunca implementou (só a
-    versão ATUAL tem texto extraído — document_versions.ocr_text existe no
-    schema desde a Fase v2, mas nunca foi populado por nenhum worker).
+    Texto de uma versão, para a comparação entre versões.
+    - TXT, CSV e XML: o próprio conteúdo, lido do storage.
+    - PDF, DOCX, XLSX, imagem e afins: o texto extraído da versão. A versão
+      atual já o recebe do worker de OCR; uma versão antiga sem texto é lida
+      agora (até 10 páginas escaneadas) e o resultado fica guardado.
+    Antes, só arquivos de texto puro podiam ser comparados (achado A5-51).
     """
     doc = await VersionsService.get_document_for_download(conn, document_id)
     if doc is None:
@@ -298,19 +301,51 @@ async def get_version_content(
     if version is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Versão não encontrada.")
 
-    if version["mime_type"] not in _TEXT_MIME_TYPES:
-        return {"available": False, "text": None, "reason": "Comparação de texto disponível só para arquivos .txt, .csv ou .xml."}
+    if version["mime_type"] in _TEXT_MIME_TYPES:
+        raw = storage_service.read_object(version["storage_key"])
+        if raw is None:
+            return {"available": False, "text": None, "reason": "O arquivo desta versão não foi encontrado no armazenamento."}
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text = raw.decode("latin-1", errors="replace")
+        return {"available": True, "text": text[:200_000], "reason": None, "source": "arquivo"}
 
-    raw = storage_service.read_object(version["storage_key"])
-    if raw is None:
-        return {"available": False, "text": None, "reason": "Arquivo não encontrado no storage."}
+    text = version["ocr_text"]
+    if not text:
+        from app.services.ocr_service import UnsupportedFormat
+        from app.workers.ocr_worker import extract_document_text
 
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        text = raw.decode("latin-1", errors="replace")
+        try:
+            extraction = await extract_document_text(
+                _text_provider(), version["storage_key"], version["mime_type"], max_ocr_pages=10,
+            )
+        except UnsupportedFormat:
+            return {"available": False, "text": None, "reason": "Este formato não tem texto para comparar. Abra as duas versões lado a lado."}
+        except Exception:
+            logger.exception("Falha ao ler o texto da versão %s do documento %s", version_id, document_id)
+            return {"available": False, "text": None, "reason": "Não foi possível ler o texto desta versão agora. Tente de novo em instantes."}
+        text = extraction.text
+        await admin_conn.execute(
+            "UPDATE public.document_versions SET ocr_text = $2, ocr_status = 'done' WHERE id = $1",
+            version_id, text,
+        )
+    if not text:
+        return {"available": False, "text": None, "reason": "Esta versão não tem texto reconhecível (por exemplo, uma imagem sem escrita)."}
+    return {"available": True, "text": text[:200_000], "reason": None, "source": "texto_extraido"}
 
-    return {"available": True, "text": text[:200_000], "reason": None}
+
+_provider_cache = None
+
+
+def _text_provider():
+    """O mesmo provedor do worker (com Tesseract em produção), criado uma vez."""
+    global _provider_cache
+    if _provider_cache is None:
+        from app.services.ocr_service import get_provider
+
+        _provider_cache = get_provider()
+    return _provider_cache
 
 
 # ---------------------------------------------------------------------------
