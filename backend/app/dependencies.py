@@ -273,6 +273,14 @@ async def get_db(
             # Troca o role para que o RLS se aplique (LOCAL = apenas nesta transação)
             await conn.execute("SET LOCAL role TO authenticated")
 
+            # Conta desativada pelo admin (achado A9-16): o token de acesso ainda
+            # vale até 1 h, então a checagem é por requisição, não só no login.
+            if await conn.fetchval("SELECT is_active FROM public.users WHERE id = auth.uid()") is False:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Esta conta foi desativada. Fale com o administrador da sua empresa.",
+                )
+
             # Fase 2.2: contexto da requisição pra activity_log — nenhum service
             # precisa saber disso, o trigger de INSERT lê daqui sozinho
             # (current_setting). correlation_id é o do header, se o chamador

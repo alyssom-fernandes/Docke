@@ -21,8 +21,8 @@ export default function SessionExpiredOverlay() {
 
   useEffect(() => {
     return onSessionExpired(() => {
-      // Only show if there's a known user to re-authenticate
-      if (!(localStorage.getItem("docke_token") || localStorage.getItem("docke_user"))) return;
+      // Só faz sentido com alguém para reautenticar.
+      if (!localStorage.getItem("docke_user")) return;
 
       if (user?.email === DEMO_EMAIL) {
         loginDemo().catch(() => {
@@ -70,7 +70,7 @@ export default function SessionExpiredOverlay() {
           </div>
           <h2 className="text-mac-callout font-semibold text-(--text-primary)">Sessão expirada</h2>
           <p className="text-mac-body text-(--text-secondary) mt-1">
-            Digite sua senha para continuar como <span className="font-medium text-(--text-primary)">@{user.username}</span>.
+            Digite sua senha para continuar como <span className="font-medium text-(--text-primary)">@{user.username}</span>. O que você estava fazendo é concluído em seguida.
           </p>
         </div>
 

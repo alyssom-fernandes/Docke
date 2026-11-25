@@ -25,6 +25,8 @@ const Security = lazy(() => import("@/pages/Settings/Security"));
 const Preferences = lazy(() => import("@/pages/Settings/Preferences"));
 const Retention = lazy(() => import("@/pages/Settings/Retention"));
 const AdminHome = lazy(() => import("@/pages/Settings/AdminHome"));
+const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
+import ErrorBoundary from "@/components/shared/ErrorBoundary";
 import Onboarding, { isOnboardingComplete } from "@/components/shared/Onboarding";
 import SessionExpiredOverlay from "@/components/shared/SessionExpiredOverlay";
 const PublicShare = lazy(() => import("@/pages/PublicShare"));
@@ -65,7 +67,8 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
 
 function ProtectedRoutes() {
   const { user, isLoading } = useAuthContext();
-  const { pathname } = useLocation();
+  const location = useLocation();
+  const { pathname } = location;
 
   if (isLoading) {
     return (
@@ -76,7 +79,8 @@ function ProtectedRoutes() {
     );
   }
 
-  if (!user) return isAppRoute(pathname) ? <Navigate to="/login" replace /> : <NotFound standalone />;
+  // Guarda o endereço pedido: depois de entrar, a pessoa volta para ele (achado A1-02).
+  if (!user) return isAppRoute(pathname) ? <Navigate to="/login" replace state={{ from: location }} /> : <NotFound standalone />;
 
   return (
     <CompanyProvider enabled={!!user}>
@@ -117,14 +121,23 @@ function ProtectedRoutes() {
   );
 }
 
+// O link de recuperação do Supabase pode cair em qualquer endereço do site
+// (o "Site URL" configurado no painel); onde cair, leva para a tela certa.
+if (typeof window !== "undefined" && /(^|[#&])type=recovery(&|$)/.test(window.location.hash) && window.location.pathname !== "/redefinir-senha") {
+  window.history.replaceState(null, "", "/redefinir-senha" + window.location.hash);
+}
+
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/s/:token" element={<Suspense fallback={<PageFallback />}><PublicShare /></Suspense>} />
-        <Route path="/*" element={<ProtectedRoutes />} />
-      </Routes>
-    </BrowserRouter>
+    <ErrorBoundary root>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/redefinir-senha" element={<Suspense fallback={<PageFallback />}><ResetPassword /></Suspense>} />
+          <Route path="/s/:token" element={<Suspense fallback={<PageFallback />}><PublicShare /></Suspense>} />
+          <Route path="/*" element={<ProtectedRoutes />} />
+        </Routes>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }

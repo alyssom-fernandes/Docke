@@ -97,9 +97,21 @@ html, body {
      (mesmo princípio do systemGray4 do macOS/iOS, que também não é sutil). */
   --border-default: rgba(0,0,0,0.15);
   --text-primary: rgba(0,0,0,0.84);
-  --text-secondary: rgba(0,0,0,0.56);
-  --text-tertiary: rgba(0,0,0,0.48);
-  --text-placeholder: rgba(0,0,0,0.22);
+  /* Contraste medido (WCAG 2.2 AA, texto pequeno ≥ 4,5:1) sobre o card
+     branco e sobre o fundo #E9E9E3: secundário 6,2/5,8; terciário 5,3/5,0;
+     placeholder 4,8/4,5. Antes o terciário dava 3,7:1 e o placeholder 1,6:1. */
+  --text-secondary: rgba(0,0,0,0.62);
+  --text-tertiary: rgba(0,0,0,0.58);
+  --text-placeholder: rgba(0,0,0,0.55);
+  /* Borda de campo e de controle (1.4.11: ≥ 3:1 contra o fundo): 3,4:1.
+     --border-default segue sutil, só para divisórias e painéis. */
+  --border-control: rgba(0,0,0,0.45);
+  /* Anel de foco: teal-600, 4,5:1 sobre o branco e 3,7:1 sobre o fundo. */
+  --focus-ring: #0B8578;
+  --text-danger: #DC2626;
+  --text-warning: #B45309;
+  --text-success: #15803D;
+  --text-accent: #086B61;
   --afn-brand: #6b1f2a;
   --afn-brand-stroke: rgba(107,31,42,0.4);
   --afn-muted: rgba(0,0,0,0.40);
@@ -165,9 +177,17 @@ html, body {
   --bg-hover: rgba(255,255,255,0.06);
   --border-default: rgba(255,255,255,0.10);
   --text-primary: rgba(255,255,255,0.84);
-  --text-secondary: rgba(255,255,255,0.55);
-  --text-tertiary: rgba(255,255,255,0.48);
-  --text-placeholder: rgba(255,255,255,0.18);
+  /* Medido sobre #282828 / #1E1E1E / #323232: secundário 6,6/7,2/6,0;
+     terciário 5,5/5,9/5,1; placeholder 4,9/5,2/4,5. */
+  --text-secondary: rgba(255,255,255,0.62);
+  --text-tertiary: rgba(255,255,255,0.55);
+  --text-placeholder: rgba(255,255,255,0.50);
+  --border-control: rgba(255,255,255,0.38);
+  --focus-ring: #3FBFA8;
+  --text-danger: #F87171;
+  --text-warning: #FBBF24;
+  --text-success: #4ADE80;
+  --text-accent: #7DD4C0;
   /* #c44a5a (guia AFN) dava 3,56:1 sobre #1E1E1E — abaixo do AA em texto
      pequeno. Tom mais claro da mesma família: ~5,8:1. */
   --afn-brand: #e07a88;
@@ -422,9 +442,9 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
-/* ─── Focus visible: ring accent ─── */
+/* ─── Focus visible: anel de foco com contraste ≥ 3:1 nos dois temas ─── */
 :focus-visible {
-  outline: 3px solid #3FBFA8;
+  outline: 3px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -561,6 +581,14 @@ input[type="number"] {
 }
 .login-chain > li:last-child::before { background: #15A18E; box-shadow: 0 0 0 4px rgba(21,161,142,0.18); }
 @keyframes login-rail { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+/* Entrada da tela de login: apresentação, cartão e trilha em sequência curta
+   (até 300 ms cada); mensagens que surgem no cartão deslizam 4 px. */
+@keyframes login-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.login-enter { animation: login-enter 300ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.login-enter-2 { animation-delay: 70ms; }
+.login-enter-3 { animation-delay: 140ms; }
+@keyframes reveal { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.login-reveal, .reveal { animation: reveal 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 @keyframes login-node { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
   .login-chain::before, .login-chain > li { animation: none !important; }

@@ -6,6 +6,9 @@ import App from "./App";
 import "@fontsource/inter/400.css";
 import "@fontsource/inter/500.css";
 import "@fontsource/inter/600.css";
+// 700: os títulos (Title1/Title2/Large) pedem negrito; sem este arquivo o
+// navegador engrossava o 600 por conta própria (negrito falso).
+import "@fontsource/inter/700.css";
 import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/700.css";
 import "./styles/tokens.css";

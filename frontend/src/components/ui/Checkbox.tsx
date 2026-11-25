@@ -20,16 +20,16 @@ const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(
         ref={ref}
         type="checkbox"
         checked={checked}
-        className="peer absolute -inset-2 opacity-0 cursor-pointer"
+        className="peer absolute -inset-2 pointer-coarse:-inset-3.5 opacity-0 cursor-pointer"
         {...props}
       />
       <span
         aria-hidden="true"
         className={`w-4 h-4 rounded-[5px] border flex items-center justify-center transition-colors duration-fast pointer-events-none
-          peer-focus-visible:outline-solid peer-focus-visible:outline-2 peer-focus-visible:outline-teal-400 peer-focus-visible:outline-offset-1
+          peer-focus-visible:outline-solid peer-focus-visible:outline-[3px] peer-focus-visible:outline-(--focus-ring) peer-focus-visible:outline-offset-1
           ${checked
             ? "bg-teal-500 border-teal-500"
-            : "bg-(--bg-card) border-(--border-default)"
+            : "bg-(--bg-card) border-(--border-control)"
           }`}
       >
         {checked && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
