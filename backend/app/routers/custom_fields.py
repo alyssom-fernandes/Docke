@@ -332,6 +332,24 @@ async def get_bulk_document_field_values(
     return [dict(r) for r in rows]
 
 
+class FieldValuesQuery(BaseModel):
+    document_ids: list[UUID]
+
+
+@router.post("/documents/field-values/query")
+async def query_document_field_values(
+    body: FieldValuesQuery,
+    conn: asyncpg.Connection = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """Mesmo que GET /documents/field-values, com os ids no corpo (até 1.000)."""
+    if len(body.document_ids) > 1000:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Máximo de 1.000 documentos por consulta.")
+    if not body.document_ids:
+        return []
+    rows = await CustomFieldsService.get_values_for_documents(conn, list(body.document_ids))
+    return [dict(r) for r in rows]
+
+
 @router.get("/documents/{document_id}/field-values")
 async def get_document_field_values(
     document_id: UUID,

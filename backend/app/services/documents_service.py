@@ -395,14 +395,33 @@ class DocumentsService:
         )
 
     @staticmethod
-    async def list_by_folder(conn: asyncpg.Connection, folder_id: UUID, company_id: UUID) -> list[asyncpg.Record]:
-        return await conn.fetch(
-            """
+    async def list_by_folder(
+        conn: asyncpg.Connection, folder_id: UUID, company_id: UUID, *,
+        limit: int | None = None, offset: int = 0, sort: str = "name", direction: str = "asc", q: str | None = None,
+    ) -> tuple[list[asyncpg.Record], int]:
+        """
+        Documentos da pasta, paginados (achado A4-12: pasta com 5.000 documentos
+        voltava inteira, com dois subselects por linha). Sem limit, devolve tudo
+        (compatível com quem já usava). Envios incompletos (sem hash) não entram.
+        """
+        order = {
+            "name": "lower(d.name)", "size": "d.size_bytes", "created_at": "d.created_at",
+            "updated_at": "d.updated_at", "kind": "d.file_type", "ocr": "d.ocr_status",
+        }.get(sort, "lower(d.name)")
+        direction = "DESC" if direction == "desc" else "ASC"
+        where = """
+            d.folder_id = $1 AND d.company_id = $2 AND d.deleted_at IS NULL AND d.content_hash IS NOT NULL
+            AND ($3::text IS NULL OR d.name ILIKE '%' || $3 || '%')
+        """
+        total = await conn.fetchval(f"SELECT count(*) FROM public.documents d WHERE {where}", folder_id, company_id, q)
+        rows = await conn.fetch(
+            f"""
             SELECT
               d.id::text, d.name, d.folder_id::text, d.company_id::text,
               d.mime_type, d.file_type, d.size_bytes, d.storage_path, d.content_hash,
               d.sector, d.competencia, d.tipo_fiscal, d.ocr_status,
               d.uploaded_by::text, d.created_at, d.updated_at,
+              u.full_name AS uploaded_by_name,
               EXISTS (
                 SELECT 1 FROM public.favorites f
                 WHERE f.document_id = d.id AND f.user_id = auth.uid()
@@ -414,13 +433,14 @@ class DocumentsService:
                   AND (s.expires_at IS NULL OR s.expires_at > now())
               ) AS active_share_count
             FROM public.documents d
-            WHERE d.folder_id = $1
-              AND d.company_id = $2
-              AND d.deleted_at IS NULL
-            ORDER BY d.name
+            LEFT JOIN public.users u ON u.id = d.uploaded_by
+            WHERE {where}
+            ORDER BY {order} {direction}, d.id
+            LIMIT $4 OFFSET $5
             """,
-            folder_id, company_id,
+            folder_id, company_id, q, limit, offset,
         )
+        return rows, total
 
     @staticmethod
     async def get_document_detail(conn: asyncpg.Connection, document_id: UUID) -> asyncpg.Record | None:
@@ -437,6 +457,19 @@ class DocumentsService:
             """,
             document_id,
         )
+
+    @staticmethod
+    async def name_taken_in_folder(conn: asyncpg.Connection, document_id: UUID, name: str) -> bool:
+        return bool(await conn.fetchval(
+            """
+            SELECT EXISTS (
+              SELECT 1 FROM public.documents o
+              JOIN public.documents d ON d.id = $1
+              WHERE o.folder_id = d.folder_id AND o.id <> d.id AND o.deleted_at IS NULL AND lower(o.name) = lower($2)
+            )
+            """,
+            document_id, name,
+        ))
 
     @staticmethod
     async def patch_metadata(

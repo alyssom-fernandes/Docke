@@ -22,7 +22,8 @@ from app.services.notification_service import notify_folder_favoriters
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 _ALLOWED_EXT = set(settings.ALLOWED_EXTENSIONS)
-_BULK_LIMIT = 50  # máximo de arquivos por lote
+_BULK_LIMIT = 1000  # máximo de documentos por lote (mover, excluir, restaurar) — antes 50 (achado A4-26)
+_BULK_DOWNLOAD_LIMIT = 200  # ZIP montado em memória; para mais, a exportação completa
 # Fase 6.2: preview igualado ao limite de upload — o limite de 10MB era
 # artificial (URL é presigned direto pro R2, o navegador baixa sozinho,
 # o backend nunca vê o arquivo). Manter os dois amarrados evita a mesma
@@ -682,10 +683,10 @@ async def bulk_download(
     """
     if not body.document_ids:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Lista de documentos vazia.")
-    if len(body.document_ids) > _BULK_LIMIT:
+    if len(body.document_ids) > _BULK_DOWNLOAD_LIMIT:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Máximo de {_BULK_LIMIT} documentos por lote.",
+            detail=f"Máximo de {_BULK_DOWNLOAD_LIMIT} documentos por lote.",
         )
 
     rows = await DocumentsService.fetch_documents_for_bulk_download(conn, [str(did) for did in body.document_ids])
@@ -811,6 +812,24 @@ async def bulk_delete(
     if not deletable_ids:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para deletar nenhum dos documentos informados.")
 
+    # Sob legal hold ou com retenção travada vigente: ficam de fora e voltam na
+    # resposta com o motivo (o banco também recusaria — migration 20261125000001).
+    blocked = [dict(r) for r in await admin_conn.fetch(
+        """
+        SELECT id::text, name, public.document_deletion_block_reason(id) AS motivo
+        FROM public.documents WHERE id = ANY($1::uuid[])
+        """,
+        deletable_ids,
+    ) if r["motivo"]]
+    if blocked:
+        blocked_ids = {b["id"] for b in blocked}
+        deletable_ids = [i for i in deletable_ids if i not in blocked_ids]
+    if not deletable_ids:
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail="Nenhum dos documentos pode ser excluído: estão sob legal hold ou com retenção obrigatória em vigor.",
+        )
+
     # Pastas de origem, coletadas ANTES do soft delete (pra notificar quem favoritou).
     source_folders = await DocumentsService.fetch_source_folders(conn, deletable_ids)
 
@@ -831,7 +850,55 @@ async def bulk_delete(
         "deleted": len(deleted),
         "document_ids": [r["id"] for r in deleted],
         "skipped": len(body.document_ids) - len(deletable_ids),
+        "blocked": blocked,
     }
+
+
+class BulkRestoreRequest(BaseModel):
+    document_ids: list[UUID]
+
+
+@router.post("/bulk-restore")
+async def bulk_restore(
+    body: BulkRestoreRequest,
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Tira da lixeira vários documentos de uma vez, cada um para a pasta de onde
+    saiu (ou a primeira pasta raiz, se ela também foi excluída). É o "Desfazer"
+    da exclusão em lote e do Ctrl+Z (achado A4-61).
+    """
+    if not body.document_ids or len(body.document_ids) > _BULK_LIMIT:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Informe de 1 a {_BULK_LIMIT} documentos.")
+    user_id = claims["sub"]
+    restored, failed = [], []
+    for document_id in body.document_ids:
+        doc = await DocumentsService.get_trashed_document(admin_conn, document_id)
+        if doc is None:
+            failed.append(str(document_id))
+            continue
+        original = doc["deleted_original_folder_id"] or doc["folder_id"]
+        target = await DocumentsService.find_folder_by_id(admin_conn, original) or await DocumentsService.find_root_folder(
+            admin_conn, doc["company_id"]
+        )
+        if target is None:
+            failed.append(str(document_id))
+            continue
+        permission = await DocumentsService.check_permission_for_path(admin_conn, user_id, str(target["path"]), target["company_id"])
+        if permission not in ("admin", "operador"):
+            failed.append(str(document_id))
+            continue
+        row = await DocumentsService.restore_single(admin_conn, document_id, target["id"])
+        await admin_conn.execute(
+            """
+            INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot)
+            VALUES ($1::uuid, $2::uuid, 'restore', 'document', $3::uuid, $4)
+            """,
+            user_id, row["company_id"], row["id"], row["name"],
+        )
+        restored.append(row["id"])
+    return {"restored": len(restored), "document_ids": restored, "failed": failed}
 
 
 # ---------------------------------------------------------------------------
@@ -999,11 +1066,21 @@ async def list_recent_documents(
 
 @router.get("")
 async def list_documents(
+    response: Response,
     folder_id: UUID = Query(...),
     company_id: UUID = Query(...),
+    limit: int | None = Query(None, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    sort: str = Query("name"),
+    dir: str = Query("asc"),
+    q: str | None = Query(None, max_length=200),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> list[dict[str, Any]]:
-    rows = await DocumentsService.list_by_folder(conn, folder_id, company_id)
+    """Documentos da pasta; com limit, paginados (total no cabeçalho X-Total-Count)."""
+    rows, total = await DocumentsService.list_by_folder(
+        conn, folder_id, company_id, limit=limit, offset=offset, sort=sort, direction=dir, q=(q or "").strip() or None,
+    )
+    response.headers["X-Total-Count"] = str(total)
     return [dict(r) for r in rows]
 
 
@@ -1035,12 +1112,33 @@ async def patch_document(
     if all(v is None for v in [body.name, body.sector, body.competencia, body.tipo_fiscal]):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nenhum campo para atualizar.")
 
+    old = await DocumentsService.get_document_detail(conn, document_id)
+    if old is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+    if body.name is not None:
+        from app.services.names import clean_name
+
+        body.name = clean_name(body.name, kind="documento")
+        if body.name != old["name"] and await DocumentsService.name_taken_in_folder(conn, document_id, body.name):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f'Já existe um documento "{body.name}" nesta pasta.')
+
     row = await DocumentsService.patch_metadata(
         conn, document_id,
         name=body.name, sector=body.sector, competencia=body.competencia, tipo_fiscal=body.tipo_fiscal,
     )
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+    if body.name is not None and body.name != old["name"]:
+        # Trilha completa (achado X2-13): renomear também gera evento.
+        import json as _json
+        await conn.execute(
+            """
+            INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, metadata)
+            VALUES (auth.uid(), $1::uuid, 'rename', 'document', $2::uuid, $3, $4::jsonb)
+            """,
+            row["company_id"], str(document_id), row["name"],
+            _json.dumps({"de": old["name"], "para": row["name"]}, ensure_ascii=False),
+        )
     return dict(row)
 
 

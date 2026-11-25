@@ -88,6 +88,9 @@ async def create_folder(
     Path filho: parent.path || label_filho
     """
     user_id = claims["sub"]
+    from app.services.names import clean_name
+
+    body.name = clean_name(body.name)
 
     # Busca path do parent (se houver) e valida acesso
     if body.parent_id is not None:
@@ -117,6 +120,9 @@ async def create_folder(
     if permission not in ("admin", "operador"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para criar pasta aqui.")
 
+    if await FoldersService.sibling_name_taken(conn, company_id=body.company_id, parent_id=body.parent_id, name=body.name):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f'Já existe uma pasta "{body.name}" aqui. Escolha outro nome.')
+
     row = await FoldersService.insert_folder(
         conn, company_id=body.company_id, parent_id=body.parent_id, path=new_path, name=body.name, created_by=user_id,
     )
@@ -143,7 +149,35 @@ async def rename_folder(
     if permission != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para renomear esta pasta.")
 
-    row = await FoldersService.rename_folder(conn, folder_id, body.name)
+    from app.services.names import clean_name
+
+    name = clean_name(body.name)
+    if name == folder["name"]:
+        return {"id": str(folder_id), "name": name}
+    if await FoldersService.sibling_name_taken(
+        conn, company_id=folder["company_id"], parent_id=folder["parent_id"], name=name, exclude_id=folder_id,
+    ):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f'Já existe uma pasta "{name}" aqui. Escolha outro nome.')
+
+    row = await FoldersService.rename_folder(conn, folder_id, name)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada.")
+    # Trilha completa (achado X2-13): renomear também gera evento.
+    import json as _json
+    await FoldersService.log_activity(
+        conn, folder_id=folder_id, company_id=folder["company_id"], action="rename", name=name,
+        metadata=_json.dumps({"de": folder["name"], "para": name}, ensure_ascii=False),
+    )
+    return dict(row)
+
+
+@router.get("/{folder_id}/summary")
+async def folder_summary(
+    folder_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Subpastas e documentos abaixo da pasta (o que vai junto ao excluir ou mover)."""
+    row = await FoldersService.summary(conn, folder_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada.")
     return dict(row)
@@ -191,6 +225,16 @@ async def move_folder(
     if target_permission != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para mover pastas para o destino escolhido.")
 
+    if str(folder["parent_id"] or "") == str(body.parent_id or ""):
+        return {"id": str(folder_id), "parent_id": str(body.parent_id) if body.parent_id else None, "unchanged": True}
+    if await FoldersService.sibling_name_taken(
+        conn, company_id=company_id, parent_id=body.parent_id, name=folder["name"], exclude_id=folder_id,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f'Já existe uma pasta "{folder["name"]}" no destino. Renomeie uma delas antes de mover.',
+        )
+
     old_nlevel = old_path.count(".") + 1
 
     await FoldersService.move_folder_atomic(
@@ -200,6 +244,12 @@ async def move_folder(
     )
 
     row = await FoldersService.get_folder_after_move(conn, folder_id)
+    import json as _json
+    await FoldersService.log_activity(
+        conn, folder_id=folder_id, company_id=company_id, action="move", name=folder["name"],
+        metadata=_json.dumps({"de_pasta": str(folder["parent_id"]) if folder["parent_id"] else None,
+                              "para_pasta": str(body.parent_id) if body.parent_id else None}),
+    )
     return dict(row)
 
 
