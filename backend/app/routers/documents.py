@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -49,6 +49,32 @@ class UploadUrlRequest(BaseModel):
     name: str
     size_bytes: int
     content_type: str
+    # Migração (achado X2-07): data em que o documento entrou no sistema antigo.
+    # Só o admin da empresa toda pode informar; vira a data do documento no
+    # Docke (inclusive para a retenção contada "da data de envio").
+    original_created_at: datetime | None = None
+
+
+async def _original_date_allowed(
+    conn: asyncpg.Connection, claims: dict[str, Any], company_id: UUID, value: datetime | None,
+) -> datetime | None:
+    if value is None:
+        return None
+    from app.dependencies import get_app_role
+    from app.services.companies_service import CompaniesService
+
+    if await get_app_role(conn, claims) != "supremo" and not await CompaniesService.user_manages_company(
+        conn, claims["sub"], company_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Só o admin da empresa informa a data original (usada na migração de outro sistema).",
+        )
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    if value > datetime.now(timezone.utc):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A data original não pode estar no futuro.")
+    return value
 
 
 class DocumentPatch(BaseModel):
@@ -120,11 +146,12 @@ async def create_upload_url(
     # tipo e o cliente precisa mandar exatamente ele no PUT (por isso volta
     # na resposta) — antes, o XML de NF-e falhava com 403 (achado X2-03).
     content_type = _MIME_MAP.get(ext, body.content_type)
+    original = await _original_date_allowed(conn, claims, body.company_id, body.original_created_at)
     row = await DocumentsService.insert_pending_document(
         admin_conn,
         document_id=document_id, folder_id=body.folder_id, company_id=body.company_id,
         name=final_name, mime_type=content_type, file_type=ext,
-        size_bytes=body.size_bytes, storage_path=key, uploaded_by=user_id,
+        size_bytes=body.size_bytes, storage_path=key, uploaded_by=user_id, created_at=original,
     )
 
     upload_url, expires_at = storage_service.generate_upload_url(key=key, content_type=content_type)
@@ -357,6 +384,7 @@ class MultipartCreateRequest(BaseModel):
     name: str
     size_bytes: int
     content_type: str
+    original_created_at: datetime | None = None  # ver UploadUrlRequest
 
 
 @router.post("/multipart/create", status_code=status.HTTP_201_CREATED)
@@ -402,12 +430,13 @@ async def create_multipart_upload(
     key = storage_service.storage_key(str(body.company_id), str(document_id), ext)
     user_id = claims["sub"]
     content_type = _MIME_MAP.get(ext, body.content_type)
+    original = await _original_date_allowed(conn, claims, body.company_id, body.original_created_at)
 
     await DocumentsService.insert_pending_document(
         admin_conn,
         document_id=document_id, folder_id=body.folder_id, company_id=body.company_id,
         name=final_name, mime_type=content_type, file_type=ext,
-        size_bytes=body.size_bytes, storage_path=key, uploaded_by=user_id,
+        size_bytes=body.size_bytes, storage_path=key, uploaded_by=user_id, created_at=original,
     )
 
     upload_id = storage_service.create_multipart_upload(key, content_type)

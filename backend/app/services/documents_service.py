@@ -75,16 +75,18 @@ class DocumentsService:
         admin_conn: asyncpg.Connection,
         *, document_id: UUID, folder_id: UUID, company_id: UUID, name: str,
         mime_type: str, file_type: str, size_bytes: int, storage_path: str, uploaded_by: str,
+        created_at=None,
     ) -> asyncpg.Record:
         return await admin_conn.fetchrow(
             """
             INSERT INTO public.documents
               (id, folder_id, company_id, name, mime_type, file_type,
-               size_bytes, storage_path, uploaded_by, ocr_status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending')
+               size_bytes, storage_path, uploaded_by, ocr_status, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', COALESCE($10, now()))
             RETURNING id::text, name, storage_path, created_at
             """,
             document_id, folder_id, company_id, name, mime_type, file_type, size_bytes, storage_path, uploaded_by,
+            created_at,
         )
 
     # -- confirm (fase 2) -----------------------------------------------------
