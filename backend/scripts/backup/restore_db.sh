@@ -29,8 +29,6 @@ gunzip -c "$DUMP" | psql "$DB_URL" --single-transaction -v ON_ERROR_STOP=1 -q \
   -f - \
   -c "SET session_replication_role = origin;"
 
-psql "$DB_URL" -q -v ON_ERROR_STOP=1 -c "SELECT public.refresh_company_stats();" >/dev/null || true
-
 if [ -n "$COUNTS" ]; then
   FAIL=0
   while read -r TABLE EXPECTED; do
@@ -41,6 +39,10 @@ if [ -n "$COUNTS" ]; then
     fi
   done < "$COUNTS"
   [ "$FAIL" = 0 ] && echo "Conferência: todas as $(wc -l < "$COUNTS") tabelas com a mesma contagem do backup."
-  exit "$FAIL"
 fi
+
+# Estatísticas do painel recalculadas depois da conferência (a atualização
+# grava uma linha de controle, que não estava no backup).
+psql "$DB_URL" -q -v ON_ERROR_STOP=1 -c "SELECT public.refresh_company_stats();" >/dev/null || true
+[ "${FAIL:-0}" = 0 ] || exit 1
 echo "Restauração concluída."
