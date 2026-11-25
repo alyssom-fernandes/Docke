@@ -24,6 +24,7 @@ import asyncio
 import logging
 
 from app.services import storage_service
+from app.services.busy import busy
 from app.services.ocr_service import Extraction, UnsupportedFormat, get_provider, legacy_office_extension
 
 logger = logging.getLogger("docke.ocr_worker")
@@ -119,7 +120,8 @@ async def _process_one_job(provider) -> bool:
             )
 
     try:
-        extraction = await extract_document_text(provider, job["storage_path"], job["mime_type"])
+        with busy():
+            extraction = await extract_document_text(provider, job["storage_path"], job["mime_type"])
     except (UnsupportedFormat, _MissingFile) as exc:
         await _mark_failed(job["id"], job["document_id"], str(exc))
         return True

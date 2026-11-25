@@ -85,6 +85,17 @@ def put_object_bytes(key: str, data: bytes, content_type: str) -> None:
     mock_save(key, data)
 
 
+def upload_file(key: str, path: str, content_type: str) -> int:
+    """Sobe um arquivo do disco (multipart automático no R2). Devolve o tamanho."""
+    size = os.path.getsize(path)
+    if _r2_configured:
+        _s3.upload_file(path, settings.R2_BUCKET_NAME, key, ExtraArgs={"ContentType": content_type})
+        return size
+    with open(path, "rb") as f:
+        mock_save(key, f.read())
+    return size
+
+
 def generate_upload_url(
     key: str,
     content_type: str,

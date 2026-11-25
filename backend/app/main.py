@@ -47,6 +47,10 @@ async def lifespan(app: FastAPI):
     from app.workers.maintenance_worker import maintenance_worker_loop, stats_refresh_loop
     asyncio.create_task(maintenance_worker_loop())
     asyncio.create_task(stats_refresh_loop())
+    from app.workers.export_worker import export_worker_loop
+    asyncio.create_task(export_worker_loop())
+    from app.services.busy import keepalive_loop
+    asyncio.create_task(keepalive_loop())
     yield
     await close_db_pool()
 

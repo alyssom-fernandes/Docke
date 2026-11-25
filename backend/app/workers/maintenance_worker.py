@@ -76,6 +76,8 @@ async def _run_once() -> None:
         await _notify_trash_expiring_soon(conn)
         await _purge_expired_trash(conn)
         await _cleanup_stale_pending_uploads(conn)
+        from app.workers.export_worker import purge_expired_exports
+        await purge_expired_exports(conn)
         await _notify_obligation_alerts(conn)
         await _notify_retention_expiring_soon(conn)
         await _scan_retention_expirations(conn)

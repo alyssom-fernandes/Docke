@@ -770,3 +770,74 @@ async def update_retention(
         admin_conn, company_id=company_id, retention_days=body.retention_days, carencia_dias=carencia_dias,
     )
     return {"retention_days": body.retention_days, "carencia_dias": carencia_dias}
+
+
+# ---------------------------------------------------------------------------
+# Exportação completa (achado X2-16): pedir e listar, só admin da empresa
+# ---------------------------------------------------------------------------
+
+@router.post("/{company_id}/exports", status_code=status.HTTP_202_ACCEPTED)
+async def request_export(
+    company_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Põe na fila uma exportação de todos os documentos, pastas, metadados e trilha."""
+    role = await get_app_role(conn, claims)
+    if not await _can_manage_company(conn, claims["sub"], company_id, role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Só o admin da empresa exporta os documentos dela.")
+    em_andamento = await admin_conn.fetchval(
+        "SELECT id FROM public.company_exports WHERE company_id = $1 AND status IN ('pending', 'processing')",
+        company_id,
+    )
+    if em_andamento:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Já há uma exportação desta empresa em andamento.")
+    export_id = await admin_conn.fetchval(
+        "INSERT INTO public.company_exports (company_id, requested_by) VALUES ($1, $2) RETURNING id",
+        company_id, claims["sub"],
+    )
+    return {"id": str(export_id), "status": "pending"}
+
+
+@router.get("/{company_id}/exports")
+async def list_exports(
+    company_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> list[dict[str, Any]]:
+    """As 10 últimas exportações, com links de download (1 h) das que estão prontas."""
+    import json as _json
+
+    role = await get_app_role(conn, claims)
+    if not await _can_manage_company(conn, claims["sub"], company_id, role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Só o admin da empresa exporta os documentos dela.")
+    rows = await admin_conn.fetch(
+        """
+        SELECT e.id::text, e.status, e.parts, e.document_count, e.total_bytes, e.hash_mismatches,
+               e.error_message, e.created_at, e.finished_at, e.expires_at, u.full_name AS requested_by_name
+        FROM public.company_exports e
+        LEFT JOIN public.users u ON u.id = e.requested_by
+        WHERE e.company_id = $1
+        ORDER BY e.created_at DESC
+        LIMIT 10
+        """,
+        company_id,
+    )
+    out = []
+    for r in rows:
+        item = dict(r)
+        parts = item["parts"] if isinstance(item["parts"], list) else _json.loads(item["parts"] or "[]")
+        if item["status"] == "done":
+            for part in parts:
+                part["download_url"], _exp = storage_service.generate_download_url(
+                    key=part["key"], filename=part["name"], content_type="application/zip",
+                )
+                part.pop("key", None)
+        else:
+            for part in parts:
+                part.pop("key", None)
+        item["parts"] = parts
+        out.append(item)
+    return out

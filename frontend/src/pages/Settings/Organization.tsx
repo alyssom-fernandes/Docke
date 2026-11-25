@@ -12,6 +12,7 @@ import EmptyState from "@/components/shared/EmptyState";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import Portal from "@/components/ui/Portal";
 import Dropdown from "@/components/ui/Dropdown";
+import DataSection from "@/components/settings/DataSection";
 
 interface Org {
   id: string;
@@ -266,6 +267,7 @@ export default function Organization() {
   return (
     <div className="space-y-4">
       {current && <FiscalProfileSection companyId={current.id} companyName={current.name} isAdmin={isCurrentAdmin} />}
+      {current && isCurrentAdmin && <DataSection companyId={current.id} companyName={current.name} />}
 
       <div className="flex items-center justify-between gap-3 pt-1">
         <h2 className="text-mac-body font-semibold text-(--text-primary)">Todas as empresas da organização</h2>
