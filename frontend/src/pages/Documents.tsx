@@ -3574,6 +3574,7 @@ export default function Documents() {
       {previewDoc && (
         <PreviewModal
           doc={previewDoc}
+          docs={visibleDocuments.some((d) => d.id === previewDoc.id) ? visibleDocuments : undefined}
           onClose={() => setPreviewDoc(null)}
         />
       )}

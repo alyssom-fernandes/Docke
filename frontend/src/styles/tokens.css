@@ -623,4 +623,35 @@ input[type="number"] {
   .login-chain::before, .login-chain > li { animation: none !important; }
 }
 
+/* ─── PDF: camada de texto (pdf.js TextLayer) — texto selecionável, lido pelo
+   leitor de tela e realce da busca (achados A5-44, A5-60). Regras essenciais
+   do pdf_viewer.css do pdf.js, sem importar o visualizador inteiro. ─── */
+.pdf-text-layer {
+  position: absolute; text-align: initial; inset: 0; overflow: clip; line-height: 1;
+  letter-spacing: normal; word-spacing: normal; text-size-adjust: none; forced-color-adjust: none;
+  transform-origin: 0 0; z-index: 1;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+.pdf-text-layer span, .pdf-text-layer br {
+  color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; user-select: text;
+}
+.pdf-text-layer > :not(.markedContent), .pdf-text-layer .markedContent span:not(.markedContent) {
+  z-index: 1; --font-height: 0; font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1; --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+.pdf-text-layer .markedContent { display: contents; }
+.pdf-text-layer ::selection { background: rgba(21, 161, 142, 0.35); color: transparent; }
+.pdf-text-layer br::selection { background: transparent; }
+.pdf-text-layer .endOfContent { display: block; position: absolute; inset: 100% 0 0; z-index: 0; cursor: default; user-select: none; }
+.pdf-text-layer span.pdf-hit { background: rgba(250, 204, 21, 0.5); border-radius: 2px; }
+
+/* ─── Impressão: só a área marcada (DANFE) sai no papel (achado A5-51) ─── */
+@media print {
+  body.imprimindo-area > *:not(.area-impressao) { display: none !important; }
+  body.imprimindo-area .area-impressao { position: static !important; inset: auto !important; }
+}
+
 } /* fim de @layer utilities */

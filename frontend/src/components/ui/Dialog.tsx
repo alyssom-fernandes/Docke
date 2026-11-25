@@ -26,7 +26,7 @@ export interface DialogProps {
   description?: ReactNode;
   children?: ReactNode;
   footer?: ReactNode;
-  size?: "sm" | "md" | "lg" | "xl";
+  size?: "sm" | "md" | "lg" | "xl" | "full";
   /** Elemento que recebe o foco ao abrir (padrão: primeiro campo ou o próprio diálogo). */
   initialFocusRef?: RefObject<HTMLElement | null>;
   /** Enquanto true, Esc e clique fora não fecham (operação em andamento). */
@@ -35,15 +35,21 @@ export interface DialogProps {
   hideTitle?: boolean;
   /** Botão X no canto (padrão: sim). */
   showClose?: boolean;
+  /** Cabeçalho próprio no lugar do título padrão (o título continua ligado ao diálogo). */
+  header?: ReactNode;
   className?: string;
   bodyClassName?: string;
 }
 
-const WIDTH = { sm: "sm:max-w-[400px]", md: "sm:max-w-[480px]", lg: "sm:max-w-[640px]", xl: "sm:max-w-[880px]" };
+const WIDTH = {
+  sm: "sm:max-w-[400px]", md: "sm:max-w-[480px]", lg: "sm:max-w-[640px]", xl: "sm:max-w-[880px]",
+  // Visualizador: ocupa a tela (até 1400 px) — em 1440/1920 o PDF não fica pequeno.
+  full: "sm:max-w-[min(1400px,96vw)] h-[94dvh] sm:h-[min(92dvh,1100px)]",
+};
 
 export default function Dialog({
   onClose, title, description, children, footer, size = "md", initialFocusRef, busy = false,
-  hideTitle = false, showClose = true, className = "", bodyClassName = "",
+  hideTitle = false, showClose = true, className = "", bodyClassName = "", header,
 }: DialogProps) {
   const id = useId();
   const titleId = `${id}-titulo`;
@@ -116,8 +122,10 @@ export default function Dialog({
         e.preventDefault(); first.focus();
       }
     }
-    document.addEventListener("keydown", onKey, true);
-    return () => document.removeEventListener("keydown", onKey, true);
+    // Fase de bolha: um campo dentro do diálogo pode tratar o Esc antes
+    // (ex.: fechar a busca interna) e parar a propagação.
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
   }, [id, requestClose]);
 
   return createPortal(
@@ -140,9 +148,11 @@ export default function Dialog({
             ${WIDTH[size]} ${leaving ? "dialog-panel-out" : "dialog-panel-in"} ${className}`}
         >
           <div className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-(--border-control) sm:hidden" aria-hidden />
-          <div className={`flex items-start gap-3 px-5 pt-4 sm:pt-5 ${hideTitle ? "sr-only" : ""}`}>
+          {header && <h2 id={titleId} className="sr-only">{title}</h2>}
+          {header}
+          <div className={`flex items-start gap-3 px-5 pt-4 sm:pt-5 ${hideTitle || header ? "sr-only" : ""}`}>
             <div className="min-w-0 flex-1">
-              <h2 id={titleId} className="text-mac-title3 text-(--text-primary)">{title}</h2>
+              {!header && <h2 id={titleId} className="text-mac-title3 text-(--text-primary)">{title}</h2>}
               {description && (
                 <div id={descId} className="mt-1.5 text-mac-body leading-[19px] text-(--text-secondary)">{description}</div>
               )}
