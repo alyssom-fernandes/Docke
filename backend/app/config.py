@@ -44,7 +44,9 @@ class Settings(BaseSettings):
     # detectou a senha commitada quando ela estava direto no .tsx/.py).
     DEMO_EMAIL: str = "demo@docke.app"
     DEMO_PASSWORD: str = ""
-    DEMO_RESET_INTERVAL_HOURS: int = 24
+    # A demo volta ao padrão quando a última restauração tem mais que isso
+    # (conferido no banco a cada hora; ver maintenance_worker._reset_demo_data_if_due).
+    DEMO_RESET_INTERVAL_HOURS: int = 6
 
     @property
     def cors_origins_list(self) -> list[str]:

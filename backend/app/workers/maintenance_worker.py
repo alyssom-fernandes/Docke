@@ -150,7 +150,12 @@ async def _notify_retention_expiring_soon(conn) -> None:
     aviso por janela conforme o tempo passa (90 dias antes, depois 30, depois 7),
     nunca duas vezes a mesma janela.
     """
-    for days in _RETENTION_WARNING_DAYS:
+    # Só a janela mais próxima: um documento a 25 dias do prazo recebe o aviso
+    # de 30 dias, não o de 90 e o de 30 juntos (achado X3-09 — com a máquina
+    # desligada por dias, as três janelas chegavam de uma vez).
+    janelas = sorted(_RETENTION_WARNING_DAYS)
+    for i, days in enumerate(janelas):
+        anterior = janelas[i - 1] if i > 0 else -1
         notif_type = f"retention_expiring_{days}"
         rows = await conn.fetch(
             """
@@ -161,13 +166,14 @@ async def _notify_retention_expiring_soon(conn) -> None:
               AND info.expires_at IS NOT NULL
               AND info.expires_at >= CURRENT_DATE
               AND info.expires_at <= CURRENT_DATE + ($1::int * interval '1 day')
+              AND ($3::int < 0 OR info.expires_at > CURRENT_DATE + ($3::int * interval '1 day'))
               AND NOT public.document_is_under_hold(d.id)
               AND NOT EXISTS (
                 SELECT 1 FROM public.notifications n
                 WHERE n.type = $2 AND n.resource_id = d.id
               )
             """,
-            days, notif_type,
+            days, notif_type, anterior,
         )
         for row in rows:
             recipients = await conn.fetch(
@@ -262,16 +268,38 @@ async def _notify_obligation_alerts(conn) -> None:
 
 
 async def _reset_demo_data_if_due(conn) -> None:
+    """
+    Restaura a demo quando a última restauração (a data de criação das
+    empresas fictícias, guardada no banco) passou de DEMO_RESET_INTERVAL_HOURS.
+    Antes, toda partida da máquina restaurava a demo: quem ficava alguns
+    minutos parado (auto_stop) voltava para uma demo nova, com IDs diferentes,
+    e via 404 no que estava aberto. A senha da conta demo continua sendo
+    conferida na partida: se o segredo DEMO_PASSWORD mudou, restaura na hora
+    (o reset sincroniza a senha no Auth).
+    """
     global _last_demo_reset_at
-    interval_secs = settings.DEMO_RESET_INTERVAL_HOURS * 3600
-    now = time.monotonic()
-    if _last_demo_reset_at is not None and now - _last_demo_reset_at < interval_secs:
+    if not settings.DEMO_PASSWORD:
         return
+    from app.seed.demo_data import COMPANIES
+    from app.seed.demo_reset_service import _demo_password_works, reset_demo_data
 
-    from app.seed.demo_reset_service import reset_demo_data
+    force = False
+    if _last_demo_reset_at is None:  # primeira passada desde a partida
+        _last_demo_reset_at = time.monotonic()
+        try:
+            force = not await _demo_password_works()
+        except Exception:
+            force = False
+    if not force:
+        ultima = await conn.fetchval(
+            "SELECT min(created_at) FROM public.companies WHERE name = ANY($1::text[])", [c[0] for c in COMPANIES]
+        )
+        if ultima is not None and await conn.fetchval(
+            "SELECT $1::timestamptz > now() - ($2 || ' hours')::interval", ultima, str(settings.DEMO_RESET_INTERVAL_HOURS)
+        ):
+            return
     try:
         await reset_demo_data(conn)
-        _last_demo_reset_at = now
     except Exception:
         logger.exception("Falha no reset periódico de dados demo — tenta de novo no próximo ciclo.")
 
