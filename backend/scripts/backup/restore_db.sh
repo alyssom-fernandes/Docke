@@ -15,7 +15,7 @@ DB_URL="${2:?informe a DATABASE_URL de destino}"
 COUNTS="${3:-}"
 
 TRUNCATE_SQL="$(psql "$DB_URL" -At -v ON_ERROR_STOP=1 -c "
-  SELECT 'TRUNCATE ' || string_agg(format('%I.%I', n.nspname, c.relname), ', ') || ' RESTART IDENTITY CASCADE;'
+  SELECT 'TRUNCATE ' || string_agg(format('%I.%I', n.nspname, c.relname), ', ') || ' CASCADE;'
   FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
   WHERE c.relkind IN ('r', 'p') AND NOT c.relispartition
     AND (n.nspname = 'public' OR (n.nspname = 'auth' AND c.relname IN ('users', 'identities')))")"
