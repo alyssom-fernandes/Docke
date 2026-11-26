@@ -349,7 +349,7 @@ async def share_content(
         download_url, expires_at = storage_service.generate_preview_url(key=version["storage_key"], content_type=version["mime_type"])
         await _log_access(conn, request, share["id"], True)
         return {"type": "document", "name": doc["name"], "mime_type": version["mime_type"], "preview_url": download_url,
-                "allow_download": share["allow_download"]}
+                "allow_download": share["allow_download"], "document_id": str(share["resource_id"])}
 
     # resource_type == "folder" — navegação somente leitura dentro da árvore compartilhada
     root_folder = await SharesService.get_folder_for_content(conn, share["resource_id"])

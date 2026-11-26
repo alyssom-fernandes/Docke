@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Lock, Download, FolderOpen, AlertCircle, ChevronRight } from "lucide-react";
 import { getFileStyle } from "@/lib/fileType";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
+
+const PdfViewer = lazy(() => import("@/components/documents/PdfViewer"));
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? "http://localhost:8000") + "/api/v1";
 
@@ -174,17 +176,21 @@ export default function PublicShare() {
               {content.mime_type.startsWith("image/") ? (
                 <img src={content.preview_url} alt={content.name} className="max-w-full max-h-[400px] mx-auto rounded-(--radius-control) mb-4" />
               ) : content.mime_type === "application/pdf" ? (
-                <iframe src={content.preview_url} className="w-full h-[400px] border border-(--border-default) rounded-(--radius-control) mb-4" title={content.name} />
+                <div className="h-[min(70vh,640px)] mb-4 rounded-(--radius-control) border border-(--border-default) overflow-hidden text-left">
+                  <Suspense fallback={<div className="h-full flex items-center justify-center text-mac-body text-(--text-secondary)">Abrindo o PDF…</div>}>
+                    <PdfViewer url={content.preview_url} />
+                  </Suspense>
+                </div>
               ) : null}
               {(content as any).allow_download !== false ? (
-                <a
-                  href={content.preview_url}
-                  download={content.name}
-                  className="inline-flex items-center gap-1.5 h-9 pointer-coarse:h-11 px-4 bg-teal-600 text-white text-mac-body font-medium rounded-full hover:bg-teal-700 transition-colors duration-fast"
+                <button
+                  type="button"
+                  onClick={() => { const id = (content as any).document_id; if (id) downloadDoc(id); }}
+                  className="inline-flex items-center gap-1.5 h-9 pointer-coarse:h-11 px-4 bg-teal-600 text-white text-mac-body font-medium rounded-full hover:bg-teal-700 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
                 >
                   <Download className="w-3.5 h-3.5" aria-hidden />
                   Baixar
-                </a>
+                </button>
               ) : (
                 <p className="text-mac-caption text-(--text-secondary)">Quem enviou permitiu só visualizar este documento.</p>
               )}
