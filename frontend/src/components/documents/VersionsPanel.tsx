@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { History, Upload, Download, RotateCcw, Trash2, ChevronDown, ChevronUp, GitCompare, X, Loader2 } from "lucide-react";
+import { History, Upload, Download, RotateCcw, Trash2, ChevronDown, ChevronUp, GitCompare, Loader2 } from "lucide-react";
 import api from "@/lib/api";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useToast } from "@/lib/toast";
 import { useTaskCenter } from "@/lib/TaskContext";
 import { relativeDate } from "@/lib/date";
-import Portal from "@/components/ui/Portal";
+import Dialog from "@/components/ui/Dialog";
 
 interface Version {
   id: string;
@@ -76,52 +76,34 @@ function DiffModal({ documentId, versionA, versionB, onClose }: {
       .finally(() => setLoading(false));
   }, [documentId, older.id, newer.id]);
 
+  const added = diff?.filter((l) => l.type === "add").length ?? 0;
+  const removed = diff?.filter((l) => l.type === "remove").length ?? 0;
+  // Comparação de versões (A5-72..A5-76): Dialog acessível, resumo do que
+  // mudou e marcas "+"/"−" com texto para leitor de tela, não só cor.
   return (
-    <Portal>
-      <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-        <div className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-2xl flex flex-col" style={{ height: "min(80vh, 640px)" }}>
-          <div className="flex items-center justify-between px-5 py-4 border-b border-(--border-default) shrink-0">
-            <h2 className="text-mac-body font-semibold text-(--text-primary) flex items-center gap-2">
-              <GitCompare className="w-4 h-4 text-teal-500" />
-              v{older.version_number} → v{newer.version_number}
-            </h2>
-            <button onClick={onClose} className="p-1 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover)">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="flex-1 overflow-auto">
-            {loading ? (
-              <div className="h-full flex items-center justify-center">
-                <Loader2 className="w-6 h-6 text-(--text-placeholder) animate-spin" />
+    <Dialog onClose={onClose} size="lg" title={`Versão ${older.version_number} → versão ${newer.version_number}`}
+      description={diff && !unavailableReason ? `${added} ${added === 1 ? "linha entrou" : "linhas entraram"} e ${removed} ${removed === 1 ? "saiu" : "saíram"}.` : undefined}
+      bodyClassName="p-0">
+      <div className="h-[min(65vh,560px)] overflow-auto">
+        {loading ? (
+          <div className="h-full flex items-center justify-center" aria-label="Carregando"><Loader2 className="w-6 h-6 text-(--text-secondary) animate-spin" aria-hidden="true" /></div>
+        ) : unavailableReason ? (
+          <div className="h-full flex items-center justify-center px-8 text-center"><p className="text-mac-body text-(--text-secondary)">{unavailableReason}</p></div>
+        ) : diff && diff.every((l) => l.type === "same") ? (
+          <div className="h-full flex items-center justify-center px-8 text-center"><p className="text-mac-body text-(--text-secondary)">Nenhuma diferença de texto entre estas duas versões.</p></div>
+        ) : (
+          <pre className="p-4 text-mac-caption font-mono leading-relaxed whitespace-pre-wrap break-words">
+            {diff?.map((line, i) => (
+              <div key={i} className={line.type === "add" ? "bg-emerald-500/15 text-(--text-primary)" : line.type === "remove" ? "bg-red-500/15 text-(--text-primary) line-through decoration-1" : "text-(--text-secondary)"}>
+                <span aria-hidden="true">{line.type === "add" ? "+ " : line.type === "remove" ? "− " : "  "}</span>
+                {line.type !== "same" && <span className="sr-only">{line.type === "add" ? "Entrou: " : "Saiu: "}</span>}
+                {line.text}
               </div>
-            ) : unavailableReason ? (
-              <div className="h-full flex items-center justify-center px-8 text-center">
-                <p className="text-mac-body text-(--text-secondary)">{unavailableReason}</p>
-              </div>
-            ) : diff && diff.every((l) => l.type === "same") ? (
-              <div className="h-full flex items-center justify-center px-8 text-center">
-                <p className="text-mac-body text-(--text-secondary)">Nenhuma diferença de texto entre estas duas versões.</p>
-              </div>
-            ) : (
-              <pre className="p-4 text-mac-caption font-mono leading-relaxed">
-                {diff?.map((line, i) => (
-                  <div
-                    key={i}
-                    className={
-                      line.type === "add" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" :
-                      line.type === "remove" ? "bg-red-500/15 text-red-700 dark:text-red-400 line-through decoration-1" :
-                      "text-(--text-secondary)"
-                    }
-                  >
-                    {line.type === "add" ? "+ " : line.type === "remove" ? "- " : "  "}{line.text}
-                  </div>
-                ))}
-              </pre>
-            )}
-          </div>
-        </div>
+            ))}
+          </pre>
+        )}
       </div>
-    </Portal>
+    </Dialog>
   );
 }
 
