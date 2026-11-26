@@ -8,6 +8,8 @@ import tempfile
 import zipfile
 from urllib.parse import quote
 
+import asyncio
+
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
@@ -276,7 +278,7 @@ async def _finalize_confirmed_upload(
     """
     key = doc["storage_path"]
 
-    meta = storage_service.head_object(key)
+    meta = await asyncio.to_thread(storage_service.head_object, key)
     if meta is None:
         raise HTTPException(
             status_code=status.HTTP_424_FAILED_DEPENDENCY,
@@ -289,7 +291,7 @@ async def _finalize_confirmed_upload(
         # um arquivo maior direto pro storage (a URL pré-assinada não impõe
         # limite). Remove o objeto e o registro pendente em vez de deixar lixo.
         try:
-            storage_service.delete_object(key)
+            await asyncio.to_thread(storage_service.delete_object, key)
         except Exception:
             pass
         await DocumentsService.delete_pending_document(admin_conn, document_id)
@@ -315,7 +317,7 @@ async def _finalize_confirmed_upload(
     duplicate = await DocumentsService.find_duplicate_by_hash(admin_conn, doc["company_id"], content_hash, document_id)
     if duplicate is not None:
         try:
-            storage_service.delete_object(key)
+            await asyncio.to_thread(storage_service.delete_object, key)
         except Exception:
             pass  # melhor esforço — mesmo padrão de trash.py; o dedup não deve travar por isso
         await DocumentsService.delete_pending_document(admin_conn, document_id)
@@ -994,8 +996,8 @@ async def get_preview_url(
     # storage sob derivatives/{...}.pdf; reaproveitado em previews seguintes).
     if ext in ("docx", "doc", "xlsx", "xls"):
         derivative_key = storage_service.derivative_pdf_key(doc["storage_path"])
-        if storage_service.head_object(derivative_key) is None:
-            pdf_bytes = storage_service.convert_office_to_pdf(doc["storage_path"], ext)
+        if await asyncio.to_thread(storage_service.head_object, derivative_key) is None:
+            pdf_bytes = await asyncio.to_thread(storage_service.convert_office_to_pdf, doc["storage_path"], ext)
             if pdf_bytes is None:
                 return {
                     "inline": False,
@@ -1004,14 +1006,14 @@ async def get_preview_url(
                     "size_bytes": doc["size_bytes"],
                     "message": "Não foi possível gerar a pré-visualização deste arquivo. Use o download.",
                 }
-            storage_service.put_object_bytes(derivative_key, pdf_bytes, "application/pdf")
+            await asyncio.to_thread(storage_service.put_object_bytes, derivative_key, pdf_bytes, "application/pdf")
         preview_key = derivative_key
         preview_mime = "application/pdf"
     elif preview_mime == "application/pdf":
         # PDF escaneado que passou pelo OCR: a prévia usa a versão com a camada
         # de texto (dá para selecionar e copiar o texto, como no Quick Look).
         ocr_key = storage_service.ocr_pdf_key(doc["storage_path"])
-        if storage_service.head_object(ocr_key) is not None:
+        if await asyncio.to_thread(storage_service.head_object, ocr_key) is not None:
             preview_key = ocr_key
 
     preview_url, expires_at = storage_service.generate_preview_url(

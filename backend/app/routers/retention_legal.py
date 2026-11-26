@@ -19,6 +19,8 @@ import logging
 from typing import Any
 from uuid import UUID
 
+import asyncio
+
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field, field_validator
@@ -686,7 +688,7 @@ async def execute_purge(
     # e a evidência (certificado) já foi emitida; só vira log, não bloqueia.
     if result["storage_path"]:
         try:
-            storage_service.delete_object(result["storage_path"])
+            await asyncio.to_thread(storage_service.delete_object, result["storage_path"])
         except Exception:
             logger.exception(
                 "Falha ao remover objeto do storage após execução de descarte (certificado=%s, key=%s) — objeto pode ter ficado órfão.",

@@ -2,6 +2,8 @@ import logging
 from typing import Any
 from uuid import UUID
 
+import asyncio
+
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -172,7 +174,7 @@ async def permanent_delete(
         # do banco antes, então uma falha aqui só vira log, não bloqueia o usuário).
         if doc["storage_path"]:
             try:
-                storage_service.delete_object(doc["storage_path"])
+                await asyncio.to_thread(storage_service.delete_object, doc["storage_path"])
             except Exception:
                 logger.exception(
                     "Falha ao remover objeto do storage após exclusão permanente do documento %s (key=%s) — objeto pode ter ficado órfão.",

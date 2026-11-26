@@ -16,6 +16,8 @@ import logging
 from typing import Any
 from uuid import UUID, uuid4
 
+import asyncio
+
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -151,7 +153,7 @@ async def confirm_version(
     if version is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Versão não encontrada.")
 
-    meta = storage_service.head_object(version["storage_key"])
+    meta = await asyncio.to_thread(storage_service.head_object, version["storage_key"])
     if meta is None:
         raise HTTPException(
             status_code=status.HTTP_424_FAILED_DEPENDENCY,
@@ -164,7 +166,7 @@ async def confirm_version(
     real_size_bytes = meta.get("ContentLength")
     if real_size_bytes is not None and real_size_bytes > settings.MAX_FILE_SIZE_BYTES:
         try:
-            storage_service.delete_object(version["storage_key"])
+            await asyncio.to_thread(storage_service.delete_object, version["storage_key"])
         except Exception:
             pass
         await VersionsService.delete_pending_version(admin_conn, version_id)
@@ -395,7 +397,7 @@ async def delete_version(
     # mesma chave (acontece quando uma restauração cloneou o storage_key).
     if not await VersionsService.storage_key_still_referenced(admin_conn, version["storage_key"]):
         try:
-            storage_service.delete_object(version["storage_key"])
+            await asyncio.to_thread(storage_service.delete_object, version["storage_key"])
         except Exception:
             logger.exception(
                 "Falha ao remover objeto do storage após excluir versão %s do documento %s (key=%s) — objeto pode ter ficado órfão.",
