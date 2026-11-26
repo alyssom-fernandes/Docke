@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Tags, Plus, Archive, FolderTree, Copy, Trash2 } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import { friendlyError } from "@/lib/errors";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
@@ -384,8 +385,8 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
       await api.post(`/custom-fields/${archiving.id}/archive`);
       success("Campo arquivado.");
       load();
-    } catch {
-      showError("Erro ao arquivar campo.");
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível arquivar o campo. Tente de novo."));
     } finally {
       setArchiving(null);
     }
@@ -398,7 +399,7 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
       success(`"${deleting.label}" excluído.`);
       load();
     } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Erro ao excluir campo.");
+      showError(friendlyError(e, "Não foi possível excluir o campo. Se ele já foi preenchido em algum documento, arquive em vez de excluir."));
     } finally {
       setDeleting(null);
     }
@@ -535,7 +536,7 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
     }).catch(() => {
       setFolders([]);
       setAllFields([]);
-      showError("Não foi possível carregar as pastas ou os campos.");
+      showError("Não foi possível carregar as pastas ou os campos. Recarregue a página para tentar de novo.");
     });
   }, [companyId]);
 
@@ -578,8 +579,8 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
         default_value: rule.default_value,
       });
       load();
-    } catch {
-      showError("Erro ao atualizar o campo.");
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível atualizar o campo. Tente de novo."));
     }
   }
 
@@ -595,8 +596,8 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
         default_value: trimmed || null,
       });
       load();
-    } catch {
-      showError("Erro ao salvar o valor padrão.");
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível salvar o valor padrão. Confira o formato do campo e tente de novo."));
     }
   }
 
@@ -608,8 +609,8 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
       });
       success("Herança removida nesta pasta.");
       load();
-    } catch {
-      showError("Erro ao remover herança.");
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível deixar de herdar o campo aqui. Tente de novo."));
     }
   }
 
@@ -619,8 +620,8 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
       await api.delete(`/folder-fields/${removing.id}`, { params: { company_id: companyId } });
       success("Regra removida — volta a herdar do ancestral, se houver.");
       load();
-    } catch {
-      showError("Erro ao remover a regra.");
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível remover a regra. Tente de novo."));
     } finally {
       setRemoving(null);
     }

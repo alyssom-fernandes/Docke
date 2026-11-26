@@ -1709,7 +1709,7 @@ export default function Documents() {
       }));
     } catch {
       setExpandedFolders((prev) => { const next = { ...prev }; delete next[folderId]; return next; });
-      showError("Não foi possível expandir a pasta.");
+      showError("Não foi possível expandir a pasta. Clique de novo na seta para tentar outra vez.");
     }
   }
 
@@ -1781,7 +1781,10 @@ export default function Documents() {
       toastWithUndo(`Renomeado para "${newName}".`, `renomear "${oldName}"`, async () => { await save(oldName); });
     } catch (e: any) {
       apply(oldName);
-      showError(friendlyError(e, "Não foi possível renomear."));
+      // Rollback com motivo e caminho de volta (A2-34): o campo reabre com o
+      // nome tentado, pronto para corrigir e confirmar de novo.
+      setRenaming({ kind, id, value: trimmed });
+      showError(`${friendlyError(e, "Não foi possível renomear.")} O nome voltou para edição.`);
     }
   }
 
@@ -2243,7 +2246,7 @@ export default function Documents() {
       setDetailDoc(null);
       setFocusedId(null);
     } catch {
-      showError("Não foi possível abrir a pasta.");
+      showError("Não foi possível abrir a pasta. Ela pode ter sido movida ou excluída. Atualize a página e tente de novo.");
     }
   }
 
@@ -2489,7 +2492,7 @@ export default function Documents() {
     const url = `${window.location.origin}/documents?folder_id=${doc.folder_id ?? currentFolderId}&doc=${doc.id}`;
     navigator.clipboard?.writeText(url).then(
       () => success("Link copiado. Quem tiver acesso à pasta abre direto no documento."),
-      () => showError("Não foi possível copiar o link."),
+      () => showError("Não foi possível copiar o link. Abra o documento e copie o endereço da barra do navegador."),
     );
   }
 
