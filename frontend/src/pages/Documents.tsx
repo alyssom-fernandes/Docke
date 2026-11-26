@@ -1913,49 +1913,68 @@ export default function Documents() {
     if (dragHoverTimerRef.current) { clearTimeout(dragHoverTimerRef.current); dragHoverTimerRef.current = null; }
   }
 
+  // Laço (A4-29, A4-30): com mouse funciona sempre, a partir de área vazia; a
+  // seleção acompanha o retângulo enquanto ele é desenhado. Clique simples em
+  // área vazia limpa a seleção (Finder). No celular, só no modo de seleção.
   function handleBodyMouseDown(e: React.MouseEvent) {
-    if (!selectionMode) return;
-    if ((e.target as HTMLElement).closest("tr, button, input, a")) return;
+    if (e.button !== 0) return;
+    // Com mouse (ponteiro fino), sempre; no toque, só no modo de seleção.
+    if (!selectionMode && !window.matchMedia("(pointer: fine)").matches) return;
+    if ((e.target as HTMLElement).closest("tr, button, input, a, [role=option], [role=menu], [role=dialog]")) return;
     const container = scrollBodyRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
     const startX = e.clientX - rect.left + container.scrollLeft;
     const startY = e.clientY - rect.top + container.scrollTop;
     const additive = e.shiftKey || e.metaKey || e.ctrlKey;
-    setDragBox({ x1: startX, y1: startY, x2: startX, y2: startY });
+    const base = additive ? new Set(selected) : new Set<string>();
+    let moved = false;
+    let frame = 0;
+
+    function hits(x2: number, y2: number) {
+      const r = container!.getBoundingClientRect();
+      const left = Math.min(startX, x2), right = Math.max(startX, x2);
+      const top = Math.min(startY, y2), bottom = Math.max(startY, y2);
+      const out: string[] = [];
+      rowRefs.current.forEach((el, id) => {
+        const er = el.getBoundingClientRect();
+        const rowTop = er.top - r.top + container!.scrollTop;
+        const rowLeft = er.left - r.left + container!.scrollLeft;
+        if (rowTop + er.height >= top && rowTop <= bottom && rowLeft + er.width >= left && rowLeft <= right
+          && (documents.some((d) => d.id === id) || folders.some((f) => f.id === id))) out.push(id);
+      });
+      return out;
+    }
 
     function handleMove(ev: MouseEvent) {
       const r = container!.getBoundingClientRect();
       const x = ev.clientX - r.left + container!.scrollLeft;
       const y = ev.clientY - r.top + container!.scrollTop;
+      if (!moved && Math.abs(x - startX) < 4 && Math.abs(y - startY) < 4) return;
+      moved = true;
       setDragBox({ x1: startX, y1: startY, x2: x, y2: y });
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const next = new Set(base);
+        hits(x, y).forEach((id) => next.add(id));
+        setSelected(next);
+      });
     }
 
     function handleUp(ev: MouseEvent) {
       document.removeEventListener("mousemove", handleMove);
       document.removeEventListener("mouseup", handleUp);
-      const r = container!.getBoundingClientRect();
-      const endX = ev.clientX - r.left + container!.scrollLeft;
-      const endY = ev.clientY - r.top + container!.scrollTop;
-      const left = Math.min(startX, endX);
-      const right = Math.max(startX, endX);
-      const top = Math.min(startY, endY);
-      const bottom = Math.max(startY, endY);
-      const hitIds: string[] = [];
-      rowRefs.current.forEach((el, id) => {
-        const er = el.getBoundingClientRect();
-        const rowTop = er.top - r.top + container!.scrollTop;
-        const rowBottom = rowTop + er.height;
-        const rowLeft = er.left - r.left + container!.scrollLeft;
-        const rowRight = rowLeft + er.width;
-        if (rowBottom >= top && rowTop <= bottom && rowRight >= left && rowLeft <= right && (documents.some((d) => d.id === id) || folders.some((f) => f.id === id))) hitIds.push(id);
-      });
-      if (hitIds.length) {
-        setSelected((prev) => {
-          const next = additive ? new Set(prev) : new Set<string>();
-          hitIds.forEach((id) => next.add(id));
-          return next;
-        });
+      if (frame) cancelAnimationFrame(frame);
+      if (moved) {
+        // Resultado final calculado na hora (não depende de um quadro pendente).
+        const r = container!.getBoundingClientRect();
+        const next = new Set(base);
+        hits(ev.clientX - r.left + container!.scrollLeft, ev.clientY - r.top + container!.scrollTop).forEach((id) => next.add(id));
+        setSelected(next);
+      } else if (!additive && selected.size) {
+        setSelected(new Set());
+        if (isDesktop) setDetailDoc(null);
       }
       setDragBox(null);
     }
@@ -2019,27 +2038,63 @@ export default function Documents() {
   const PAGE = 200;
   // Com mais de uma página, o filtro e a ordenação vão para o servidor.
   const [serverQuery, setServerQuery] = useState("");
+
+  // Pré-carga ao pairar sobre uma pasta (A4-06): quando ela abre, o conteúdo
+  // já está a caminho (ou pronto) e a troca acontece sem esqueleto.
+  type FolderContent = { folders: Folder[]; docs: Document[]; total: number };
+  const prefetchRef = useRef(new Map<string, { at: number; p: Promise<FolderContent> }>());
+  const fetchFolderContent = useCallback((companyId: string, folderId: string | null, sk: string, sd: string, q: string): Promise<FolderContent> => {
+    const foldersParams: Record<string, string> = { company_id: companyId };
+    if (folderId) foldersParams.parent_id = folderId;
+    return Promise.all([
+      api.get<Folder[]>("/folders", { params: foldersParams }),
+      folderId
+        ? api.get<Document[]>("/documents", { params: { company_id: companyId, folder_id: folderId, limit: PAGE, offset: 0, sort: sk, dir: sd, q: q || undefined } })
+        : Promise.resolve({ data: [] as Document[], headers: {} as Record<string, string> }),
+    ]).then(([fRes, dRes]) => {
+      const docs = Array.isArray(dRes.data) ? dRes.data : [];
+      return {
+        folders: Array.isArray(fRes.data) ? fRes.data : [],
+        docs,
+        total: Number((dRes.headers as Record<string, string>)?.["x-total-count"] ?? docs.length) || docs.length,
+      };
+    });
+  }, []);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function prefetchFolder(folderId: string) {
+    if (!current) return;
+    const pref = loadFolderPref(folderId).sort;
+    const key = `${current.id}:${folderId}:${pref.key}:${pref.dir}`;
+    const hit = prefetchRef.current.get(key);
+    if (hit && Date.now() - hit.at < 20_000) return;
+    const p = fetchFolderContent(current.id, folderId, pref.key, pref.dir, "");
+    p.catch(() => prefetchRef.current.delete(key));
+    prefetchRef.current.set(key, { at: Date.now(), p });
+  }
+  function hoverFolder(folderId: string) {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = setTimeout(() => prefetchFolder(folderId), 120);
+  }
+  function leaveFolder() {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+  }
+
   const load = useCallback(async () => {
     if (!current) return;
     setLoading(true);
     setLoadError(null);
     setSelected(new Set());
 
-    const foldersParams: Record<string, string> = { company_id: current.id };
-    if (currentFolderId) foldersParams.parent_id = currentFolderId;
     try {
-      const [fRes, dRes] = await Promise.all([
-        api.get<Folder[]>("/folders", { params: foldersParams }),
-        currentFolderId
-          ? api.get<Document[]>("/documents", {
-              params: { company_id: current.id, folder_id: currentFolderId, limit: PAGE, offset: 0, sort: sort.key, dir: sort.dir, q: serverQuery || undefined },
-            })
-          : Promise.resolve({ data: [] as Document[], headers: {} as Record<string, string> }),
-      ]);
-      const docs = Array.isArray(dRes.data) ? dRes.data : [];
-      setFolders(Array.isArray(fRes.data) ? fRes.data : []);
-      setDocuments(docs);
-      setTotal(Number((dRes.headers as Record<string, string>)?.["x-total-count"] ?? docs.length) || docs.length);
+      const key = `${current.id}:${currentFolderId}:${sort.key}:${sort.dir}`;
+      const hit = !serverQuery && currentFolderId ? prefetchRef.current.get(key) : undefined;
+      if (hit) prefetchRef.current.delete(key); // usa uma vez; a próxima abertura busca de novo
+      const r = hit && Date.now() - hit.at < 20_000
+        ? await hit.p
+        : await fetchFolderContent(current.id, currentFolderId, sort.key, sort.dir, serverQuery);
+      setFolders(r.folders);
+      setDocuments(r.docs);
+      setTotal(r.total);
     } catch (e: any) {
       setFolders([]);
       setDocuments([]);
@@ -2048,7 +2103,7 @@ export default function Documents() {
     } finally {
       setLoading(false);
     }
-  }, [current?.id, currentFolderId, sort.key, sort.dir, serverQuery]);
+  }, [current?.id, currentFolderId, sort.key, sort.dir, serverQuery, fetchFolderContent]);
 
   async function loadMore() {
     if (!current || !currentFolderId || loadingMore || documents.length >= total) return;
@@ -2325,6 +2380,17 @@ export default function Documents() {
       `excluir ${plural(done.length, "pasta", "pastas")}`,
       async () => { for (const f of done) await api.post(`/trash/${f.id}/restore`, null, { params: { item_type: "folder" } }); },
     );
+  }
+
+  // Ler o texto de novo direto da linha (A4-19).
+  async function retryOcr(d: Document) {
+    try {
+      await api.post(`/documents/${d.id}/retry-ocr`);
+      setDocuments((prev) => prev.map((x) => (x.id === d.id ? { ...x, ocr_status: "pending" } : x)));
+      success(`"${d.name}" voltou para a fila de leitura do texto.`);
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível pedir a leitura de novo. Tente pelo painel de detalhes."));
+    }
   }
 
   async function moveFoldersTo(list: Folder[], target: PickedFolder) {
@@ -3018,7 +3084,7 @@ export default function Documents() {
               )}
             </div>
           ) : viewMode === "grid" ? (
-            <div role="listbox" aria-multiselectable="true" aria-label={`Conteúdo de ${breadcrumbs[breadcrumbs.length - 1].name}`} className="p-4 space-y-4">
+            <div key={`grade-${currentFolderId}`} role="listbox" aria-multiselectable="true" aria-label={`Conteúdo de ${breadcrumbs[breadcrumbs.length - 1].name}`} className="p-4 space-y-4 page-enter">
               {(["folder", "document"] as const).map((sec) => {
                 const lista = items.filter((it) => it.kind === sec);
                 if (!lista.length) return null;
@@ -3050,6 +3116,8 @@ export default function Documents() {
                       onClick={(e) => selectDocClick(e, f.id)}
                       onDoubleClick={() => openFolder(f)}
                       onContextMenu={(e) => openContextMenu(e, "folder", f)}
+                      onMouseEnter={() => hoverFolder(f.id)}
+                      onMouseLeave={leaveFolder}
                       onTouchStart={(e) => handleTouchStart(e, f.id)}
                       onTouchMove={handleTouchMove}
                       onTouchEnd={handleTouchEnd}
@@ -3189,7 +3257,7 @@ export default function Documents() {
           ) : (
             // overflow-x-auto: com colunas redimensionáveis (table-fixed) a soma das
             // larguras pode passar do viewport no mobile — rola em vez de cortar/quebrar.
-            <div className="overflow-x-auto">
+            <div key={`lista-${currentFolderId}`} className="overflow-x-auto page-enter">
             <table
               role="grid"
               aria-label={`Conteúdo de ${breadcrumbs[breadcrumbs.length - 1].name}`}
@@ -3277,6 +3345,8 @@ export default function Documents() {
                         onClick={(e) => selectDocClick(e, f.id)}
                         onDoubleClick={() => openFolder(f)}
                         onContextMenu={(e) => openContextMenu(e, "folder", f)}
+                        onMouseEnter={() => hoverFolder(f.id)}
+                        onMouseLeave={leaveFolder}
                         onTouchStart={(e) => handleTouchStart(e, f.id)}
                         onTouchMove={handleTouchMove}
                         onTouchEnd={handleTouchEnd}
@@ -3373,7 +3443,12 @@ export default function Documents() {
                       </tr>
                       {expanded === "loading" && (
                         <tr className="border-b border-(--border-default)">
-                          <td colSpan={nestedColSpan} className="px-3 py-2 pl-10 text-mac-caption text-(--text-tertiary)">Carregando…</td>
+                          <td colSpan={nestedColSpan} className="px-3 py-2 pl-10" aria-label="Carregando o conteúdo da pasta">
+                            <div className="space-y-2" aria-hidden>
+                              <div className="h-3.5 w-48 rounded bg-(--bg-hover) animate-pulse" />
+                              <div className="h-3.5 w-36 rounded bg-(--bg-hover) animate-pulse" />
+                            </div>
+                          </td>
                         </tr>
                       )}
                       {expanded && expanded !== "loading" && expanded.folders.length === 0 && expanded.documents.length === 0 && (
@@ -3384,7 +3459,7 @@ export default function Documents() {
                       {expanded && expanded !== "loading" && expanded.folders.map((nf) => (
                         <tr
                           key={`nested-folder-${nf.id}`}
-                          className="border-b border-(--border-default) odd:bg-black/4 dark:odd:bg-white/[0.035] hover:bg-(--bg-hover) transition-colors duration-fast cursor-pointer"
+                          className="reveal border-b border-(--border-default) odd:bg-black/4 dark:odd:bg-white/[0.035] hover:bg-(--bg-hover) transition-colors duration-fast cursor-pointer"
                           onClick={() => openFolder(nf)}
                         >
                           {selectionMode && <td className="px-4 py-2" />}
@@ -3409,7 +3484,7 @@ export default function Documents() {
                         return (
                           <tr
                             key={`nested-doc-${nd.id}`}
-                            className="border-b border-(--border-default) odd:bg-black/4 dark:odd:bg-white/[0.035] hover:bg-(--bg-hover) transition-colors duration-fast cursor-pointer"
+                            className="reveal border-b border-(--border-default) odd:bg-black/4 dark:odd:bg-white/[0.035] hover:bg-(--bg-hover) transition-colors duration-fast cursor-pointer"
                             onClick={() => setDetailDoc(nd)}
                           >
                             {selectionMode && <td className="px-4 py-2" />}
@@ -3509,6 +3584,16 @@ export default function Documents() {
                               <span className={`sm:hidden block text-mac-caption truncate ${isSelected ? "text-white/85" : "text-(--text-secondary)"}`}>
                                 {fmtDate(d.created_at)} · {fmtSize(d.size_bytes)}{d.ocr_status === "failed" ? " · texto não lido" : ""}
                               </span>
+                              {/* Falha de leitura chama atenção e oferece a ação na própria linha (A4-19). */}
+                              {d.ocr_status === "failed" && canWrite && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); retryOcr(d); }}
+                                  className={`hidden sm:inline-flex items-center gap-1 text-mac-caption hover:underline ${isSelected ? "text-white" : "text-(--text-danger)"}`}
+                                >
+                                  <AlertCircle className="w-3 h-3" aria-hidden /> Texto não lido · Ler de novo
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -3606,8 +3691,6 @@ export default function Documents() {
               "Carregando…"
             ) : loadError ? (
               "Não carregou"
-            ) : selected.size > 0 ? (
-              <span className="text-(--text-accent) font-medium">{selected.size} selecionado{selected.size !== 1 ? "s" : ""}</span>
             ) : sortedFolders.length === 0 && total === 0 ? (
               "Pasta vazia"
             ) : (

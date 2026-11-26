@@ -18,7 +18,7 @@ const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(
     useEffect(() => { if (inner.current) inner.current.indeterminate = indeterminate && !checked; }, [indeterminate, checked]);
     const on = checked || indeterminate;
     return (
-    <span className={`relative inline-flex w-4 h-4 shrink-0 ${className}`}>
+    <span className={`relative inline-flex w-4 h-4 pointer-coarse:w-5 pointer-coarse:h-5 shrink-0 ${className}`}>
       {/* Alvo de toque maior que o glifo visível (16px) — mesmo padrão do
           iOS/macOS: controle pequeno, área de clique maior por baixo. -inset-2
           estende a área clicável ~8px em cada lado sem alterar o layout, já
@@ -33,7 +33,7 @@ const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(
       />
       <span
         aria-hidden="true"
-        className={`w-4 h-4 rounded-[5px] border flex items-center justify-center transition-colors duration-fast pointer-events-none
+        className={`w-4 h-4 pointer-coarse:w-5 pointer-coarse:h-5 rounded-[5px] border flex items-center justify-center transition-colors duration-fast pointer-events-none
           peer-focus-visible:outline-solid peer-focus-visible:outline-[3px] peer-focus-visible:outline-(--focus-ring) peer-focus-visible:outline-offset-1
           ${on
             ? "bg-teal-600 border-teal-600"
