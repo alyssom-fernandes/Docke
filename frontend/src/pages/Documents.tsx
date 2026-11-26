@@ -280,7 +280,7 @@ function saveFolderPref(folderId: string | null, patch: Partial<FolderPref>) {
 
 const DEFAULT_COL_WIDTHS = { name: 320, kind: 150, size: 100, ocr: 70, created: 110 };
 
-function SortableHeader({ label, sortKey, sort, onSort, className = "", align = "left", onResizeStart, onResizeReset }: {
+function SortableHeader({ label, sortKey, sort, onSort, className = "", align = "left", onResizeStart, onResizeReset, onResizeNudge, width }: {
   label: string;
   sortKey: SortKey;
   sort: { key: SortKey; dir: "asc" | "desc" };
@@ -292,6 +292,9 @@ function SortableHeader({ label, sortKey, sort, onSort, className = "", align = 
   onResizeStart?: (e: React.MouseEvent) => void;
   /** Duplo-clique na borda reseta pro tamanho padrão (autofit simplificado) */
   onResizeReset?: () => void;
+  /** Teclado: setas ajustam a largura (X1-11). */
+  onResizeNudge?: (delta: number) => void;
+  width?: number;
 }) {
   const active = sort.key === sortKey;
   return (
@@ -313,13 +316,37 @@ function SortableHeader({ label, sortKey, sort, onSort, className = "", align = 
         ))}
       </button>
       {onResizeStart && (
-        <div
-          onMouseDown={onResizeStart}
-          onDoubleClick={(e) => { e.stopPropagation(); onResizeReset?.(); }}
-          className="absolute top-0 right-0 h-full w-2 cursor-col-resize select-none hover:bg-teal-400/40 active:bg-teal-400/60"
-        />
+        <ColumnResizeHandle label={label} width={width ?? 0} onMouseDown={onResizeStart}
+          onReset={() => onResizeReset?.()} onNudge={(d) => onResizeNudge?.(d)} />
       )}
     </th>
+  );
+}
+
+// Alça de largura de coluna (X1-11): arrastar com o mouse, setas ←/→ no
+// teclado (Shift = passo maior), Home volta ao padrão, duplo clique também.
+function ColumnResizeHandle({ label, width, onMouseDown, onReset, onNudge }: {
+  label: string; width: number; onMouseDown: (e: React.MouseEvent) => void; onReset: () => void; onNudge: (delta: number) => void;
+}) {
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`Largura da coluna ${label}`}
+      aria-valuenow={width}
+      aria-valuemin={60}
+      aria-valuemax={800}
+      tabIndex={0}
+      onMouseDown={onMouseDown}
+      onDoubleClick={(e) => { e.stopPropagation(); onReset(); }}
+      onKeyDown={(e) => {
+        const step = e.shiftKey ? 48 : 16;
+        if (e.key === "ArrowRight") { e.preventDefault(); onNudge(step); }
+        else if (e.key === "ArrowLeft") { e.preventDefault(); onNudge(-step); }
+        else if (e.key === "Home") { e.preventDefault(); onReset(); }
+      }}
+      className="absolute top-0 right-0 h-full w-2 cursor-col-resize select-none hover:bg-teal-400/40 active:bg-teal-400/60 focus-visible:outline-hidden focus-visible:bg-teal-500/60"
+    />
   );
 }
 
@@ -1521,6 +1548,14 @@ export default function Documents() {
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
   }
+  function nudgeColWidth(col: keyof typeof DEFAULT_COL_WIDTHS, delta: number) {
+    setColWidths((prev) => {
+      const next = { ...prev, [col]: Math.min(800, Math.max(60, prev[col] + delta)) };
+      localStorage.setItem("docke_col_widths", JSON.stringify(next));
+      return next;
+    });
+  }
+
   function resetColWidth(col: keyof typeof DEFAULT_COL_WIDTHS) {
     setColWidths((prev) => {
       const next = { ...prev, [col]: DEFAULT_COL_WIDTHS[col] };
@@ -2540,7 +2575,7 @@ export default function Documents() {
                         <button
                           key={crumb.id}
                           onClick={() => { navigateBreadcrumb(i + 1); setCrumbMenuOpen(false); }}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-left text-(--text-primary) hover:bg-teal-500 hover:text-white [&:hover_svg]:text-white transition-colors duration-fast"
+                          className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-left text-(--text-primary) hover:bg-teal-600 hover:text-white [&:hover_svg]:text-white transition-colors duration-fast"
                         >
                           <FolderOpen className="w-3.5 h-3.5 text-(--text-accent) shrink-0" />
                           <span className="truncate">{crumb.name}</span>
@@ -2629,28 +2664,28 @@ export default function Documents() {
                 <div className="popover-tail-right absolute top-full right-0 mt-1 w-52 glass-panel glass-blur-strong rounded-(--radius-popover) shadow-dropdown py-1 z-50">
                   <button
                     onClick={() => { setToolbarMenuOpen(false); setSelectionMode((v) => !v); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white transition-colors duration-fast"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-600 hover:text-white transition-colors duration-fast"
                   >
                     <ListChecks className="w-4 h-4" />
                     {selectionMode ? "Sair da seleção" : "Selecionar vários"}
                   </button>
                   <button
                     onClick={() => { setToolbarMenuOpen(false); setShowNewFolder(true); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white transition-colors duration-fast"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-600 hover:text-white transition-colors duration-fast"
                   >
                     <FolderPlus className="w-4 h-4" />
                     Nova pasta
                   </button>
                   <button
                     onClick={() => { setToolbarMenuOpen(false); toggleDensity(); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white transition-colors duration-fast"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-600 hover:text-white transition-colors duration-fast"
                   >
                     {density === "comfortable" ? <Rows3 className="w-4 h-4" /> : <Rows4 className="w-4 h-4" />}
                     {density === "comfortable" ? "Densidade compacta" : "Densidade confortável"}
                   </button>
                   <button
                     onClick={() => { setToolbarMenuOpen(false); setView(viewMode === "list" ? "grid" : "list"); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white transition-colors duration-fast"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-600 hover:text-white transition-colors duration-fast"
                   >
                     {viewMode === "list" ? <LayoutGrid className="w-4 h-4" /> : <List className="w-4 h-4" />}
                     {viewMode === "list" ? "Ver em grade" : "Ver em lista"}
@@ -2946,7 +2981,7 @@ export default function Documents() {
                   <SortableHeader
                     label="Nome" sortKey="name" sort={sort} onSort={toggleSort}
                     onResizeStart={(e) => startColResize("name", e)}
-                    onResizeReset={() => resetColWidth("name")}
+                    onResizeReset={() => resetColWidth("name")} onResizeNudge={(d) => nudgeColWidth("name", d)} width={colWidths.name}
                   />
                   {/* Ordem das colunas (regra da pesquisa): nome/tipo/data primeiro — o que
                       identifica o arquivo — badges de status (OCR, e futuramente
@@ -2955,30 +2990,24 @@ export default function Documents() {
                     label="Criado em" sortKey="created_at" sort={sort} onSort={toggleSort}
                     className="hidden sm:table-cell"
                     onResizeStart={(e) => startColResize("created", e)}
-                    onResizeReset={() => resetColWidth("created")}
+                    onResizeReset={() => resetColWidth("created")} onResizeNudge={(d) => nudgeColWidth("created", d)} width={colWidths.created}
                   />
                   <SortableHeader
                     label="Tamanho" sortKey="size" sort={sort} onSort={toggleSort}
                     className="hidden sm:table-cell"
                     align="right"
                     onResizeStart={(e) => startColResize("size", e)}
-                    onResizeReset={() => resetColWidth("size")}
+                    onResizeReset={() => resetColWidth("size")} onResizeNudge={(d) => nudgeColWidth("size", d)} width={colWidths.size}
                   />
                   <th className="relative px-3 py-2 text-mac-caption font-normal text-(--text-secondary) text-left hidden lg:table-cell">
                     Tipo
-                    <div
-                      onMouseDown={(e) => startColResize("kind", e)}
-                      onDoubleClick={() => resetColWidth("kind")}
-                      className="absolute top-0 right-0 h-full w-2 cursor-col-resize select-none hover:bg-teal-400/40 active:bg-teal-400/60"
-                    />
+                    <ColumnResizeHandle label="Tipo" width={colWidths.kind} onMouseDown={(e) => startColResize("kind", e)}
+                      onReset={() => resetColWidth("kind")} onNudge={(d) => nudgeColWidth("kind", d)} />
                   </th>
                   <th className="relative px-3 py-2 text-mac-caption font-normal text-(--text-secondary) text-left hidden sm:table-cell">
                     OCR
-                    <div
-                      onMouseDown={(e) => startColResize("ocr", e)}
-                      onDoubleClick={() => resetColWidth("ocr")}
-                      className="absolute top-0 right-0 h-full w-2 cursor-col-resize select-none hover:bg-teal-400/40 active:bg-teal-400/60"
-                    />
+                    <ColumnResizeHandle label="OCR" width={colWidths.ocr} onMouseDown={(e) => startColResize("ocr", e)}
+                      onReset={() => resetColWidth("ocr")} onNudge={(d) => nudgeColWidth("ocr", d)} />
                   </th>
                   {resolvedFields.map((f) => (
                     <th key={f.custom_field_id} className="px-3 py-2 text-mac-caption font-normal text-(--text-secondary) text-left truncate hidden sm:table-cell">

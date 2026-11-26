@@ -674,3 +674,23 @@ input[type="number"] {
 }
 
 } /* fim de @layer utilities */
+
+
+/* ─── Alto contraste e cores forçadas (X1-19) ─── */
+/* prefers-contrast: more — vidro vira fundo sólido, bordas e texto secundário mais fortes. */
+@media (prefers-contrast: more) {
+  .glass-panel, .glass-dialog, .glass-blur-panel, .glass-blur-strong, .glass-blur-card, .glass-blur-pill {
+    background: var(--bg-card) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid var(--text-primary) !important;
+  }
+  :root { --text-secondary: var(--text-primary); --border-default: var(--text-secondary); }
+}
+/* forced-colors (Alto Contraste do Windows): o sistema escolhe as cores; só
+   garantimos contorno visível no foco e nas superfícies sem borda. */
+@media (forced-colors: active) {
+  .glass-panel, .glass-dialog { border: 1px solid CanvasText; }
+  :focus-visible { outline: 2px solid Highlight !important; outline-offset: 2px; }
+  .brand-mark, .brand-wordmark { background-color: CanvasText; forced-color-adjust: none; }
+}

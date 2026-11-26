@@ -176,6 +176,8 @@ export default function CommandPalette() {
           <button type="button" onClick={close} className="sm:hidden -mr-2 min-h-11 px-3 text-mac-body font-medium text-(--text-accent)">Fechar</button>
         </div>
         <div className="flex flex-1 min-h-0 sm:flex-none sm:h-[min(60vh,440px)]">
+          {/* Quantos resultados há, para o leitor de tela (X1-15). */}
+          <p className="sr-only" aria-live="polite">{searching ? "Procurando…" : `${items.length} ${items.length === 1 ? "resultado" : "resultados"}`}</p>
           <ul ref={listRef} id="cmdk-lista" role="listbox" aria-label="Resultados" className="flex-1 min-w-0 overflow-y-auto p-2">
             {searchFailed && (
               <li role="alert" className="mx-1 mb-1 flex items-center gap-2 rounded-(--radius-control) bg-(--bg-hover) px-3 py-2 text-mac-caption text-(--text-warning)">
