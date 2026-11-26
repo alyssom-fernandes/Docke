@@ -59,6 +59,7 @@ import RequestFilesModal from "@/components/documents/RequestFilesModal";
 import { RequestAccessBanner } from "@/components/shared/AccessRequests";
 import CopyStructureModal from "@/components/documents/CopyStructureModal";
 import { SaveTemplateDialog, ApplyTemplateDialog, NewFromTemplateDialog } from "@/components/documents/Templates";
+import InboxPanel from "@/components/documents/InboxPanel";
 import FolderTree from "@/components/documents/FolderTree";
 import Dialog from "@/components/ui/Dialog";
 import Input from "@/components/ui/Input";
@@ -483,6 +484,7 @@ export default function Documents() {
       list.push({ label: "Copiar estrutura para…", icon: <Copy />, onSelect: () => setCopyingFolder(f) });
       list.push({ label: "Salvar como modelo…", icon: <LayoutTemplate />, onSelect: () => setSavingTemplate(f) });
       list.push({ label: "Aplicar modelo…", icon: <LayoutTemplate />, onSelect: () => setApplyingTemplate(f) });
+      list.push({ label: "Usar como pasta de triagem", icon: <Inbox />, onSelect: () => marcarComoTriagem(f) });
       list.push({ label: "Permissões desta pasta", icon: <Shield />, separatorBefore: true, onSelect: () => navigate(`/settings/users?folder=${f.id}`) });
       list.push({ label: "Metadados desta pasta", icon: <Tags />, onSelect: () => navigate(`/settings/metadata?tab=tree&folder=${f.id}`) });
       list.push({ label: "Retenção desta pasta", icon: <Archive />, onSelect: () => navigate(`/settings/retention?folder=${f.id}`) });
@@ -1597,6 +1599,16 @@ export default function Documents() {
     success(`${plural(ok, "documento ancorado", "documentos ancorados")}.`);
   }
 
+  async function marcarComoTriagem(f: Folder) {
+    if (!current) return;
+    try {
+      await api.put(`/companies/${current.id}/inbox`, { folder_id: f.id });
+      success(`"${f.name}" agora é a pasta de triagem: ao abrir, ela sugere o destino de cada documento.`);
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível definir a pasta de triagem.");
+    }
+  }
+
   async function toggleDocTemplate(doc: Document) {
     try {
       await api.put(`/documents/${doc.id}/template`, { is_template: !doc.is_template });
@@ -2094,6 +2106,8 @@ export default function Documents() {
           onScroll={handleTableScroll}
           onMouseDown={handleBodyMouseDown}
         >
+          {/* Triagem (B1.1.8): só aparece quando a pasta aberta é a "Entrada" da empresa. */}
+          {current && currentFolderId && !loading && <InboxPanel companyId={current.id} folderId={currentFolderId} onMoved={load} />}
           {loading ? (
             // Abaixo de 200ms não mostra nada (regra dos 200ms) — só depois
             // disso o skeleton aparece, já na forma exata do que vai substituir.
