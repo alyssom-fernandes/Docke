@@ -1905,6 +1905,8 @@ export default function Documents() {
   // Pastas também se arrastam e entram no lote (A4-14).
   const [dragFolderIds, setDragFolderIds] = useState<string[] | null>(null);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  // Pasta que acabou de receber itens: pulso curto de confirmação (A4-38).
+  const [droppedOn, setDroppedOn] = useState<string | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   // Spring-loaded folders: manter um documento arrastado sobre uma pasta por
   // um tempo abre a pasta automaticamente (padrão Finder/Explorer).
@@ -2418,7 +2420,7 @@ export default function Documents() {
     const fids = ids.filter((x) => !docIdSet.has(x));
     setDragDocIds(docs.length ? docs : null);
     setDragFolderIds(fids.length ? fids : null);
-    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.effectAllowed = fids.length ? "move" : "copyMove";
     if (docs.length) e.dataTransfer.setData("application/x-docke-document-ids", docs.join(","));
     if (fids.length === 1 && !docs.length) e.dataTransfer.setData("application/x-docke-folder-id", fids[0]);
     e.dataTransfer.setData("text/plain", ids.join(","));
@@ -2434,15 +2436,41 @@ export default function Documents() {
     setDragFolderIds(null);
     setDragOverFolderId(null);
   }
-  function dropOnFolder(f: Folder) {
-    if (dragDocIds) moveDocuments(dragDocIds, f.id, f.name);
-    if (dragFolderIds) {
-      const list = folders.filter((x) => dragFolderIds.includes(x.id) && x.id !== f.id);
-      if (list.length) moveFoldersTo(list, { id: f.id, name: f.name } as PickedFolder);
+  // Alt (Option) ao soltar copia em vez de mover (A4-38), como no Finder.
+  async function copyDocumentsTo(ids: string[], target: { id: string; name: string }) {
+    try {
+      const { data } = await api.post<{ copied: number; document_ids: string[] }>("/documents/bulk-copy", { document_ids: ids, target_folder_id: target.id });
+      const novos = data.document_ids ?? [];
+      if (target.id === currentFolderId) load();
+      toastWithUndo(
+        `${plural(data.copied, "cópia criada", "cópias criadas")} em "${target.name}".`,
+        `copiar ${plural(data.copied, "documento", "documentos")}`,
+        async () => { if (novos.length) await api.post("/documents/bulk-delete", { document_ids: novos }); if (target.id === currentFolderId) load(); },
+      );
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível copiar. Tente de novo."));
+    }
+  }
+
+  function dropOnTarget(target: { id: string | null; name: string }, copy: boolean) {
+    if (dragDocIds && target.id) {
+      if (copy) copyDocumentsTo(dragDocIds, { id: target.id, name: target.name });
+      else moveDocuments(dragDocIds, target.id, target.name);
+    }
+    if (dragFolderIds && !copy) {
+      const list = folders.filter((x) => dragFolderIds.includes(x.id) && x.id !== target.id);
+      if (list.length) moveFoldersTo(list, { id: target.id, name: target.name } as PickedFolder);
+    }
+    if (target.id) {
+      setDroppedOn(target.id);
+      window.setTimeout(() => setDroppedOn((v) => (v === target.id ? null : v)), 500);
     }
     setDragDocIds(null);
     setDragFolderIds(null);
     setDragOverFolderId(null);
+  }
+  function dropOnFolder(f: Folder, copy = false) {
+    dropOnTarget({ id: f.id, name: f.name }, copy);
   }
 
   async function moveDocuments(ids: string[], targetFolderId: string, targetFolderName: string) {
@@ -3112,7 +3140,7 @@ export default function Documents() {
                       onFocus={() => setFocusedId(f.id)}
                       className={`group relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-(--radius-control) cursor-pointer transition-colors duration-fast outline-none focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${
                         selected.has(f.id) ? "bg-teal-600" : "hover:bg-(--bg-hover)"
-                      } ${isDropTarget ? "spring-target bg-teal-500/10 outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""} ${dragFolderIds?.includes(f.id) ? "opacity-40" : ""}`}
+                      } ${isDropTarget ? "spring-target bg-teal-500/10 outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""} ${dragFolderIds?.includes(f.id) ? "opacity-40" : ""} ${droppedOn === f.id ? "drop-pulse" : ""}`}
                       onClick={(e) => selectDocClick(e, f.id)}
                       onDoubleClick={() => openFolder(f)}
                       onContextMenu={(e) => openContextMenu(e, "folder", f)}
@@ -3128,7 +3156,7 @@ export default function Documents() {
                         if (!dragDocIds && !dragFolderIds) return;
                         if (dragFolderIds?.includes(f.id)) return;
                         e.preventDefault();
-                        e.dataTransfer.dropEffect = "move";
+                        e.dataTransfer.dropEffect = e.altKey && !dragFolderIds ? "copy" : "move";
                         if (dragOverFolderId !== f.id) {
                           setDragOverFolderId(f.id);
                           clearDragHoverTimer();
@@ -3146,7 +3174,7 @@ export default function Documents() {
                       onDrop={(e) => {
                         e.preventDefault();
                         clearDragHoverTimer();
-                        dropOnFolder(f);
+                        dropOnFolder(f, e.altKey);
                       }}
                     >
                       <button
@@ -3341,7 +3369,7 @@ export default function Documents() {
                         onFocus={() => setFocusedId(f.id)}
                         className={`border-b border-(--border-default) transition-colors duration-fast group cursor-pointer outline-none focus-visible:shadow-[inset_3px_0_0_var(--focus-ring)] ${
                           isFolderSel ? "bg-teal-600" : "odd:bg-black/4 dark:odd:bg-white/[0.035] hover:bg-(--bg-hover) focus-visible:bg-teal-500/12"
-                        } ${isDropTarget ? "spring-target bg-teal-500/10 outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""} ${dragFolderIds?.includes(f.id) ? "opacity-40" : ""}`}
+                        } ${isDropTarget ? "spring-target bg-teal-500/10 outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""} ${dragFolderIds?.includes(f.id) ? "opacity-40" : ""} ${droppedOn === f.id ? "drop-pulse" : ""}`}
                         onClick={(e) => selectDocClick(e, f.id)}
                         onDoubleClick={() => openFolder(f)}
                         onContextMenu={(e) => openContextMenu(e, "folder", f)}
@@ -3357,7 +3385,7 @@ export default function Documents() {
                           if (!dragDocIds && !dragFolderIds) return;
                           if (dragFolderIds?.includes(f.id)) return;
                           e.preventDefault();
-                          e.dataTransfer.dropEffect = "move";
+                          e.dataTransfer.dropEffect = e.altKey && !dragFolderIds ? "copy" : "move";
                           if (dragOverFolderId !== f.id) {
                             setDragOverFolderId(f.id);
                             clearDragHoverTimer();
@@ -3378,7 +3406,7 @@ export default function Documents() {
                         onDrop={(e) => {
                           e.preventDefault();
                           clearDragHoverTimer();
-                          dropOnFolder(f);
+                          dropOnFolder(f, e.altKey);
                         }}
                       >
                         {selectionMode && (
@@ -3675,7 +3703,16 @@ export default function Documents() {
                 {idx > 0 && <ChevronRight className="w-3.5 h-3.5 text-(--text-tertiary)" />}
                 <button
                   onClick={() => navigateBreadcrumb(idx)}
-                  className={`text-mac-caption hover:text-(--text-accent) transition-colors duration-fast ${
+                  onDragOver={(e) => {
+                    if (idx === breadcrumbs.length - 1 || (!dragDocIds && !dragFolderIds)) return;
+                    if (idx === 0 && dragDocIds) return; // documento sempre fica numa pasta
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = e.altKey && !dragFolderIds ? "copy" : "move";
+                    setDragOverFolderId(`crumb-${idx}`);
+                  }}
+                  onDragLeave={() => setDragOverFolderId((v) => (v === `crumb-${idx}` ? null : v))}
+                  onDrop={(e) => { e.preventDefault(); dropOnTarget({ id: crumb.id ?? null, name: idx === 0 ? "Início" : crumb.name }, e.altKey); }}
+                  className={`text-mac-caption hover:text-(--text-accent) transition-colors duration-fast rounded-[4px] px-0.5 ${dragOverFolderId === `crumb-${idx}` ? "bg-teal-500/15 text-(--text-accent) outline-solid outline-1 outline-teal-400" : ""} ${
                     idx === breadcrumbs.length - 1
                       ? "text-(--text-primary) font-medium"
                       : "text-(--text-secondary)"
