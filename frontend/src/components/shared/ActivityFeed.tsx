@@ -64,6 +64,16 @@ export const ACTION_LABELS: Record<string, string> = {
   obligation_assign: "trocou o responsável de",
   obligation_dependency_add: "ligou uma dependência em",
   obligation_dependency_remove: "desligou uma dependência de",
+  retention_policy_create: "cadastrou o prazo de guarda",
+  retention_policy_update: "alterou o prazo de guarda",
+  retention_policy_archive: "arquivou o prazo de guarda",
+  retention_assign: "atribuiu o prazo",
+  retention_unassign: "removeu o prazo",
+  retention_hold_create: "bloqueou judicialmente",
+  retention_hold_release: "liberou o bloqueio de",
+  retention_queue_approved: "aprovou o descarte de",
+  retention_queue_rejected: "manteve",
+  retention_queue_deferred: "adiou a decisão sobre",
 };
 
 /** Verbo para o resumo de um grupo de eventos iguais ("enviou 5 documentos"). */
@@ -120,6 +130,7 @@ function clusterSummary(c: Cluster): { verbo: string; nomes: string } {
 
 /** Destino do deep-link, ou null se o item não existe mais. */
 export function activityTarget(ev: ActivityEvent): string | null {
+  if (ev.item_type === "retention") return "/settings/retention";
   if (ev.item_type === "obligation") {
     return ev.metadata?.tipo === "competencia" ? `/obligations?instancia=${ev.item_id}` : "/obligations?aba=configuracao";
   }

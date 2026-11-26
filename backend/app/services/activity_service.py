@@ -44,6 +44,16 @@ _ACTION_LABELS: dict[str, str] = {
     "obligation_assign": "Responsável trocado",
     "obligation_dependency_add": "Dependência criada",
     "obligation_dependency_remove": "Dependência removida",
+    "retention_policy_create": "Prazo de guarda cadastrado",
+    "retention_policy_update": "Prazo de guarda alterado",
+    "retention_policy_archive": "Prazo de guarda arquivado",
+    "retention_assign": "Prazo atribuído",
+    "retention_unassign": "Prazo removido",
+    "retention_hold_create": "Bloqueio judicial criado",
+    "retention_hold_release": "Bloqueio judicial liberado",
+    "retention_queue_approved": "Descarte aprovado",
+    "retention_queue_rejected": "Documento mantido",
+    "retention_queue_deferred": "Decisão adiada",
 }
 
 REVERSIBLE_ACTIONS = {"move", "rename", "delete", "favorite"}

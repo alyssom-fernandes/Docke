@@ -345,7 +345,7 @@ class RetentionService:
         )
         docs_without_policy = await conn.fetch(
             """
-            SELECT d.id, d.name, f.name AS folder_name
+            SELECT d.id, d.name, f.name AS folder_name, d.folder_id::text AS folder_id
             FROM public.documents d
             JOIN public.folders f ON f.id = d.folder_id
             WHERE d.company_id = $1 AND d.deleted_at IS NULL
