@@ -7,6 +7,8 @@ import { useToast } from "@/lib/toast";
 import api from "@/lib/api";
 import DangerZone from "@/components/shared/DangerZone";
 import Button from "@/components/ui/Button";
+import Switch from "@/components/ui/Switch";
+import { getReduceTransparency, setReduceTransparency } from "@/lib/theme";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 
 const THEME_OPTIONS = [
@@ -84,6 +86,11 @@ export default function Preferences() {
     localStorage.setItem("docke_table_density", value);
     setDensity(value);
   }
+  const [reduceTransparency, setReduce] = useState(getReduceTransparency);
+  function chooseReduceTransparency(v: boolean) {
+    setReduce(v);
+    setReduceTransparency(v);
+  }
 
   return (
     <div>
@@ -156,6 +163,16 @@ export default function Preferences() {
           <p className="text-mac-caption text-(--text-tertiary) mt-2">
             Aplica-se à listagem de documentos.
           </p>
+        </div>
+
+        <div className="pt-6 border-t border-(--border-default)">
+          <div className="flex items-center justify-between gap-4 max-w-[480px]">
+            <div>
+              <h3 className="text-mac-body font-medium text-(--text-primary)">Reduzir transparência</h3>
+              <p className="text-mac-caption text-(--text-tertiary) mt-0.5">Troca o vidro por fundos sólidos. Segue o sistema quando ele já pede isso.</p>
+            </div>
+            <Switch checked={reduceTransparency} onChange={chooseReduceTransparency} label="Reduzir transparência" />
+          </div>
         </div>
 
         {/* Só a própria conta demo vê isso — reset também roda sozinho a cada
