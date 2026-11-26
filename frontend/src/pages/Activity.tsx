@@ -12,8 +12,18 @@ import Menu from "@/components/ui/Menu";
 
 interface Member { user_id: string; full_name: string }
 
+// Relatórios prontos (FA-A6-07): grupos de ações que um auditor costuma pedir.
+const RELATORIOS: { value: string; label: string }[] = [
+  { value: "delete,version_delete,retention_queue_approved", label: "Exclusões e descartes" },
+  { value: "download", label: "Downloads" },
+  { value: "share_create,share_revoke,share_policy,upload_request", label: "Compartilhamentos" },
+  { value: "access_grant,access_revoke,access_role_change,member_remove,account_deactivate,account_activate,account_password_reset,mfa_reset,mfa_policy,sessions_end", label: "Acessos e permissões" },
+  { value: "audit_export,audit_verify,integrity_check", label: "Auditoria da trilha" },
+];
+
 const ACTION_GROUPS: { value: string; label: string }[] = [
   { value: "", label: "Todas as ações" },
+  ...RELATORIOS,
   { value: "upload", label: "Envios" },
   { value: "view", label: "Aberturas" },
   { value: "download", label: "Downloads" },
@@ -165,6 +175,16 @@ export default function Activity() {
             : `${integrity.broken_count} ${integrity.broken_count === 1 ? "registro não confere" : "registros não conferem"}. Detalhes em Ajustes → Segurança.`}
         </p>
       )}
+
+      <div role="group" aria-label="Relatórios prontos" className="flex flex-wrap items-center gap-1.5">
+        <span className="text-mac-caption font-medium text-(--text-secondary) mr-1">Relatórios prontos:</span>
+        {RELATORIOS.map((r) => (
+          <button key={r.value} type="button" aria-pressed={acao === r.value} onClick={() => setP({ acao: acao === r.value ? null : r.value })}
+            className={`h-8 pointer-coarse:h-10 px-3 text-mac-caption font-medium rounded-full border transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${acao === r.value ? "bg-teal-600 border-teal-600 text-white" : "border-(--border-control) text-(--text-primary) hover:bg-(--bg-hover)"}`}>
+            {r.label}
+          </button>
+        ))}
+      </div>
 
       <section aria-label="Filtros" className="grid grid-cols-2 lg:grid-cols-4 gap-2">
         <div><label id={`${uid}-p`} className="sr-only">Pessoa</label><Dropdown ariaLabelledby={`${uid}-p`} value={pessoa} onChange={(v) => setP({ pessoa: v })} options={memberOpts} /></div>

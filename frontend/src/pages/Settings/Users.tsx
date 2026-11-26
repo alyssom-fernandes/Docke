@@ -216,6 +216,52 @@ export default function Users() {
   );
 }
 
+interface Alcance { company_role: string | null; total_folders: number; sensitive_count: number; folders: { id: string; name: string; depth: number; role: string; sensitivity: string }[] }
+
+/** Busca reversa (FA-A9-07): todas as pastas que a pessoa acessa, com o papel que vale em cada uma. */
+function PersonReach({ companyId, userId, version }: { companyId: string; userId: string; version: number }) {
+  const [aberto, setAberto] = useState(false);
+  const [dados, setDados] = useState<Alcance | null | "erro">(null);
+  useEffect(() => {
+    if (!aberto) return;
+    setDados(null);
+    api.get<Alcance>(`/companies/${companyId}/people/${userId}/reach`).then((r) => setDados(r.data)).catch(() => setDados("erro"));
+  }, [aberto, companyId, userId, version]);
+  return (
+    <section className="space-y-2">
+      <button type="button" onClick={() => setAberto((v) => !v)} aria-expanded={aberto}
+        className="flex items-center gap-1.5 text-mac-body font-semibold text-(--text-primary) hover:text-(--text-accent)">
+        <ChevronRight className={`w-4 h-4 transition-transform duration-fast ${aberto ? "rotate-90" : ""}`} aria-hidden="true" /> Tudo o que esta pessoa acessa
+      </button>
+      {aberto && (
+        <div aria-live="polite">
+          {dados === null ? <div className="h-16 rounded-(--radius-control) bg-(--bg-hover) animate-pulse" />
+            : dados === "erro" ? <p className="text-mac-body text-(--text-danger)">Não foi possível carregar agora.</p>
+            : dados.folders.length === 0 ? <p className="text-mac-body text-(--text-secondary)">Nenhuma pasta.</p>
+            : (
+              <div className="space-y-1.5">
+                <p className="text-mac-caption text-(--text-secondary)">
+                  {dados.folders.length} de {dados.total_folders} {dados.total_folders === 1 ? "pasta" : "pastas"}
+                  {dados.company_role ? ` · ${ROLE_LABEL[dados.company_role] ?? dados.company_role} na empresa toda` : ""}
+                  {dados.sensitive_count ? ` · ${dados.sensitive_count} com dado pessoal ou sensível` : ""}
+                </p>
+                <ul className="max-h-64 overflow-y-auto rounded-(--radius-control) border border-(--border-default) divide-y divide-(--border-default)">
+                  {dados.folders.map((f) => (
+                    <li key={f.id} className="flex items-center gap-2 py-1.5 pr-3 text-mac-caption" style={{ paddingLeft: `${0.75 + (f.depth - 1) * 1}rem` }}>
+                      <span className="flex-1 min-w-0 truncate text-(--text-primary)">{f.name}</span>
+                      {f.sensitivity !== "normal" && <span className="text-(--text-warning)">{f.sensitivity === "sensivel" ? "sensível" : "pessoal"}</span>}
+                      <span className="text-(--text-secondary)">{ROLE_LABEL[f.role] ?? f.role}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function PersonDialog({ companyId, person, folders, isSelf, onClose, onChanged }: {
   companyId: string; person: Person; folders: FolderOption[]; isSelf: boolean; onClose: () => void; onChanged: () => void;
 }) {
@@ -324,6 +370,8 @@ function PersonDialog({ companyId, person, folders, isSelf, onClose, onChanged }
                 )}
             </div>
           </section>
+
+          <PersonReach companyId={companyId} userId={person.user_id} version={person.grants.length + person.via_groups.length} />
 
           {!isSelf && (
             <section aria-label="Conta" className="flex flex-wrap gap-2 border-t border-(--border-default) pt-4">

@@ -75,6 +75,21 @@ class SharePolicy(BaseModel):
     max_days: int | None = None
 
 
+async def _log_link(conn: asyncpg.Connection, user_id: str, company_id: Any, action: str, resource_type: str,
+                    resource_id: Any, meta: dict[str, Any]) -> None:
+    """Criar e desativar link público ficam na trilha de auditoria (B3.2.8, B3.3.1)."""
+    tabela = "documents" if resource_type == "document" else "folders"
+    nome = await conn.fetchval(f"SELECT name FROM public.{tabela} WHERE id = $1", resource_id) or "item"
+    await conn.execute(
+        """
+        INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, event_category, metadata)
+        VALUES ($1::uuid, $2::uuid, $3, $4, $5::uuid, $6, 'share', $7::jsonb)
+        """,
+        user_id, company_id, action, "document" if resource_type == "document" else "folder", resource_id, nome,
+        json.dumps({k: v for k, v in meta.items() if v is not None}),
+    )
+
+
 async def _politica(conn: asyncpg.Connection, company_id: Any) -> tuple[bool, int | None]:
     row = await conn.fetchrow(
         "SELECT share_require_password, share_max_days FROM public.companies WHERE id = $1", company_id,
@@ -170,6 +185,10 @@ async def create_share(
         pin_to_version_id=pin_to_version_id, created_by=user_id,
         max_views=body.max_views, allow_download=body.allow_download,
     )
+    await _log_link(conn, user_id, company_id, "share_create", body.resource_type, body.resource_id, {
+        "validade": expires_at.isoformat() if expires_at else None, "senha": password_hash is not None,
+        "limite_aberturas": body.max_views, "permite_baixar": body.allow_download,
+    })
     return {
         "id": row["id"],
         "token": token,  # só aparece nesta resposta — não é recuperável depois (só o hash é persistido)
@@ -355,6 +374,10 @@ async def revoke_share(
     row = await SharesService.revoke_share(conn, share_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link não encontrado.")
+    s = await conn.fetchrow("SELECT resource_type, resource_id, company_id FROM public.shares WHERE id = $1", share_id)
+    if s is not None:
+        uid = await conn.fetchval("SELECT auth.uid()::text")
+        await _log_link(conn, uid, s["company_id"], "share_revoke", s["resource_type"], s["resource_id"], {})
 
 
 # ---------------------------------------------------------------------------

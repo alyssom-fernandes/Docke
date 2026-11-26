@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Plus, Sparkles, AlertTriangle, RefreshCw, ShieldCheck, Pencil, Archive, ArchiveRestore, Pause, Play, GitBranch, Trash2,
-  ChevronRight, CalendarPlus, User,
+  ChevronRight, CalendarPlus, User, CalendarDays, FileSpreadsheet,
 } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
@@ -57,6 +57,7 @@ const cacheInstancias = new Map<string, Instance[]>();
 const cacheModelos = new Map<string, Template[]>();
 
 export default function Obligations() {
+  const { success: exportToast, error: exportErro } = useToast();
   usePageTitle("Obrigações");
   const { current, companies } = useCompany();
   const { user } = useAuthContext();
@@ -160,6 +161,20 @@ export default function Obligations() {
 
   const semModelos = templates.state === "ok" && activeTemplates.length === 0 && !grupo;
 
+  async function exportar(formato: "ics" | "csv") {
+    try {
+      const r = await api.get("/obligations/calendar", { params: { formato, company_id: grupo ? undefined : current?.id }, responseType: "blob" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(r.data as Blob);
+      a.download = `obrigacoes_${new Date().toISOString().slice(0, 10)}.${formato}`;
+      a.click();
+      window.setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      exportToast(formato === "ics" ? "Arquivo da agenda baixado: abra no Google Agenda, Outlook ou no celular. Cada obrigação avisa 3 dias antes." : "Planilha baixada.");
+    } catch {
+      exportErro("Não foi possível exportar agora. Tente de novo.");
+    }
+  }
+
   return (
     <div className="space-y-5 sm:space-y-6 max-w-[1440px] w-full mx-auto">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -168,6 +183,11 @@ export default function Obligations() {
           <p className="text-mac-caption text-(--text-secondary) mt-0.5">
             {grupo ? `Todas as ${companies.length} empresas que você acessa` : current.name} · o que precisa ser comprovado, até quando e por quem.
           </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {/* Calendário e exportação (B3.5.10): as abertas para a agenda do celular ou planilha. */}
+          <Button variant="ghost" size="sm" onClick={() => exportar("ics")}><CalendarDays className="w-4 h-4" aria-hidden="true" /> Para a agenda</Button>
+          <Button variant="ghost" size="sm" onClick={() => exportar("csv")}><FileSpreadsheet className="w-4 h-4" aria-hidden="true" /> Planilha</Button>
         </div>
         {isAdmin && !grupo && (
           <div className="flex flex-wrap gap-2">

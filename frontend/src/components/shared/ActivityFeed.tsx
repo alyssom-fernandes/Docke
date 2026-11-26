@@ -95,6 +95,8 @@ export const ACTION_LABELS: Record<string, string> = {
   mfa_reset: "zerou a verificação em duas etapas de",
   sessions_end: "encerrou as sessões de",
   upload_request: "pediu arquivos por link para a pasta",
+  share_create: "criou um link público para",
+  share_revoke: "desativou o link público de",
   audit_verify: "verificou a integridade da",
   field_rules_copy: "copiou regras de metadados para a pasta",
   field_rule_exclude: "tirou de uma pasta o campo",
