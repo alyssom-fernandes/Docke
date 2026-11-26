@@ -81,6 +81,11 @@ export const ACTION_LABELS: Record<string, string> = {
   account_deactivate: "desativou a conta de",
   account_activate: "reativou a conta de",
   account_password_reset: "gerou senha provisória para",
+  field_update: "alterou o campo",
+  field_archive: "arquivou o campo",
+  field_restore: "reativou o campo",
+  field_rule_apply: "aplicou o campo",
+  field_rule_exclude: "tirou de uma pasta o campo",
 };
 
 /** Verbo para o resumo de um grupo de eventos iguais ("enviou 5 documentos"). */
@@ -139,6 +144,7 @@ function clusterSummary(c: Cluster): { verbo: string; nomes: string } {
 export function activityTarget(ev: ActivityEvent): string | null {
   if (ev.item_type === "retention") return "/settings/retention";
   if (ev.item_type === "access") return "/settings/users";
+  if (ev.item_type === "config") return "/settings/metadata";
   if (ev.item_type === "obligation") {
     return ev.metadata?.tipo === "competencia" ? `/obligations?instancia=${ev.item_id}` : "/obligations?aba=configuracao";
   }

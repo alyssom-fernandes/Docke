@@ -61,6 +61,11 @@ _ACTION_LABELS: dict[str, str] = {
     "account_deactivate": "Conta desativada",
     "account_activate": "Conta reativada",
     "account_password_reset": "Senha provisória gerada",
+    "field_update": "Campo alterado",
+    "field_archive": "Campo arquivado",
+    "field_restore": "Campo reativado",
+    "field_rule_apply": "Campo aplicado em pasta",
+    "field_rule_exclude": "Campo tirado de pasta",
 }
 
 REVERSIBLE_ACTIONS = {"move", "rename", "delete", "favorite"}
