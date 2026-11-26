@@ -1204,7 +1204,14 @@ async def list_documents(
         conn, folder_id, company_id, limit=limit, offset=offset, sort=sort, direction=dir, q=(q or "").strip() or None,
     )
     response.headers["X-Total-Count"] = str(total)
-    return [dict(r) for r in rows]
+    from app.services.thumbnail_service import thumb_url
+    out = []
+    for r in rows:
+        d = dict(r)
+        # Miniatura da grade (A4-20): URL assinada por 1 h, só quando existe.
+        d["thumb_url"] = thumb_url(d["storage_path"]) if d.pop("has_thumb", False) else None
+        out.append(d)
+    return out
 
 
 # ---------------------------------------------------------------------------
