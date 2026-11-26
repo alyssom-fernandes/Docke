@@ -4,6 +4,7 @@ import {
   UserPlus, RefreshCw, Plus, Trash2, Check, AlertTriangle, Search, UsersRound, KeyRound, Ban, RotateCcw, Copy, ChevronRight, HelpCircle, Download, Smartphone, LogOut,
 } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import GroupPeopleDialog from "@/components/shared/GroupPeopleDialog";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
@@ -76,6 +77,7 @@ export default function Users() {
   const [estado, setEstado] = useState("ativas");
   const [open, setOpen] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [grupoTodo, setGrupoTodo] = useState(false);
   const [aba, setAba] = useState<"pessoas" | "grupos">("pessoas");
 
   function load() {
@@ -131,6 +133,7 @@ export default function Users() {
             {/* Revisão de acessos (A9-21): a lista de quem acessa o quê, para conferir à mão. */}
             <Button variant="secondary" onClick={exportAccessCsv}><Download className="w-4 h-4" aria-hidden="true" /> Exportar acessos (CSV)</Button>
             {/* A9-42: só o administrador geral cria contas. */}
+            {user?.role === "supremo" && <Button variant="secondary" onClick={() => setGrupoTodo(true)}><UsersRound className="w-4 h-4" aria-hidden="true" /> Todas as empresas</Button>}
             {user?.role === "supremo" && <Button onClick={() => setCreating(true)}><UserPlus className="w-4 h-4" aria-hidden="true" /> Nova pessoa</Button>}
           </div>
         )}
@@ -211,6 +214,7 @@ export default function Users() {
       )}
 
       {person && <PersonDialog companyId={current.id} person={person} folders={folders} isSelf={person.user_id === user?.id} onClose={() => setOpen(null)} onChanged={load} />}
+      {grupoTodo && <GroupPeopleDialog onClose={() => setGrupoTodo(false)} />}
       {creating && <NewPersonDialog companyId={current.id} folders={folders} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); load(); }} />}
     </div>
   );
