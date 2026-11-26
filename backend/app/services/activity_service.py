@@ -30,6 +30,7 @@ _ACTION_LABELS: dict[str, str] = {
     "update_metadata": "Metadado alterado",
     "version_delete": "Versão excluída",
     "integrity_check": "Integridade conferida",
+    "version_label": "Versão nomeada",
     "obligation_create": "Obrigação cadastrada",
     "obligation_update": "Obrigação alterada",
     "obligation_archive": "Obrigação arquivada",

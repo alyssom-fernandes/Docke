@@ -62,3 +62,30 @@ async def test_conferir_integridade_compara_com_o_hash_da_versao(api, admin, emp
     outro = str(uuid.uuid4())
     r = await api.post(API + f"/documents/{outro}/integrity", headers=h)
     assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_nomear_versao_e_abrir_inline(api, admin, empresa):  # noqa: F811
+    """A5-66: nome por versão e URL para abrir no visualizador."""
+    h = _token(empresa["user"])
+    doc = await _doc(admin, empresa, empresa["raiz"], "Aditivo.pdf", "aditivo")
+    versao = await admin.fetchval(
+        "INSERT INTO public.document_versions (document_id, version_number, storage_key, size_bytes, mime_type, uploaded_by)"
+        " VALUES ($1, 1, 'x', 10, 'application/pdf', $2) RETURNING id",
+        uuid.UUID(doc), empresa["user"],
+    )
+    await admin.execute("UPDATE public.documents SET current_version_id = $2 WHERE id = $1", uuid.UUID(doc), versao)
+
+    r = await api.patch(API + f"/documents/{doc}/versions/{versao}", json={"label": "  Aprovada pelo jurídico  "}, headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json()["label"] == "Aprovada pelo jurídico"
+    r = await api.get(API + f"/documents/{doc}/versions", headers=h)
+    assert r.json()[0]["label"] == "Aprovada pelo jurídico"
+    r = await api.patch(API + f"/documents/{doc}/versions/{versao}", json={"label": "x" * 81}, headers=h)
+    assert r.status_code == 422
+    r = await api.patch(API + f"/documents/{doc}/versions/{versao}", json={"label": ""}, headers=h)
+    assert r.json()["label"] is None
+
+    r = await api.get(API + f"/documents/{doc}/versions/{versao}/download-url", params={"inline": "true"}, headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json()["mime_type"] == "application/pdf"

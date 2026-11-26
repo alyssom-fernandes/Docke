@@ -36,7 +36,7 @@ class VersionsService:
             """
             SELECT
               v.id::text, v.version_number, v.size_bytes, v.mime_type, v.created_at,
-              u.full_name AS uploaded_by_name,
+              u.full_name AS uploaded_by_name, v.label,
               -- Impressão digital da versão (J1-08); a versão 1 usa o hash do envio.
               COALESCE(v.sha256, CASE WHEN v.version_number = 1 THEN d.content_hash END) AS sha256
             FROM public.document_versions v

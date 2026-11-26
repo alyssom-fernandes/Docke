@@ -19,7 +19,7 @@ from uuid import UUID, uuid4
 import asyncio
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from app.config import settings
@@ -49,6 +49,10 @@ _MIME_MAP: dict[str, str] = {
     "gif": "image/gif",
     "txt": "text/plain",
 }
+
+
+class VersionLabelRequest(BaseModel):
+    label: str | None = None
 
 
 class VersionUploadRequest(BaseModel):
@@ -242,7 +246,7 @@ async def restore_version(
         await DocumentsService.enqueue_ocr(admin_conn, document_id)
         await VersionsService.log_version_restore(
             admin_conn, document_id=document_id, user_id=user_id,
-            restored_version=next_number - 1, new_version=next_number,
+            restored_version=old_version["version_number"], new_version=next_number,
         )
         doc_row = await VersionsService.get_document_name_and_company(admin_conn, document_id)
         await notify_document_watchers(
@@ -257,10 +261,43 @@ async def restore_version(
 # GET /documents/:id/versions/:version_id/download-url — baixa versão específica
 # ---------------------------------------------------------------------------
 
+@router.patch("/{document_id}/versions/{version_id}")
+async def label_version(
+    document_id: UUID,
+    version_id: UUID,
+    body: VersionLabelRequest,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Dá nome a uma versão ("aprovada pelo jurídico") ou tira o nome (A5-66)."""
+    await _check_write_access(conn, document_id)
+    label = (body.label or "").strip() or None
+    if label is not None and len(label) > 80:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="O nome da versão vai até 80 caracteres.")
+    row = await admin_conn.fetchrow(
+        "UPDATE public.document_versions SET label = $3 WHERE id = $1 AND document_id = $2 RETURNING version_number",
+        version_id, document_id, label,
+    )
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Versão não encontrada.")
+    await admin_conn.execute(
+        """
+        INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, metadata)
+        SELECT $2::uuid, d.company_id, 'version_label', 'document', $1::uuid, d.name,
+               jsonb_build_object('version', $3::int, 'label', $4::text)
+        FROM public.documents d WHERE d.id = $1
+        """,
+        document_id, claims["sub"], row["version_number"], label,
+    )
+    return {"version_number": row["version_number"], "label": label}
+
+
 @router.get("/{document_id}/versions/{version_id}/download-url")
 async def get_version_download_url(
     document_id: UUID,
     version_id: UUID,
+    inline: bool = Query(False),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> dict[str, Any]:
     doc = await VersionsService.get_document_for_download(conn, document_id)
@@ -272,10 +309,16 @@ async def get_version_download_url(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Versão não encontrada.")
 
     filename = f"v{version['version_number']}_{doc['name']}"
-    download_url, expires_at = storage_service.generate_download_url(
-        key=version["storage_key"], filename=filename, content_type=version["mime_type"],
-    )
-    return {"download_url": download_url, "expires_at": expires_at.isoformat(), "name": filename}
+    if inline:
+        # Abrir uma versão antiga no visualizador, sem baixar (A5-66).
+        download_url, expires_at = storage_service.generate_preview_url(
+            key=version["storage_key"], content_type=version["mime_type"],
+        )
+    else:
+        download_url, expires_at = storage_service.generate_download_url(
+            key=version["storage_key"], filename=filename, content_type=version["mime_type"],
+        )
+    return {"download_url": download_url, "expires_at": expires_at.isoformat(), "name": filename, "mime_type": version["mime_type"]}
 
 
 # ---------------------------------------------------------------------------

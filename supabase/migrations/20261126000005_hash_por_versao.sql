@@ -14,3 +14,8 @@ ALTER TABLE public.document_versions
 
 COMMENT ON COLUMN public.document_versions.sha256 IS
   'SHA-256 (hex) do arquivo desta versão, calculado no servidor ao confirmar o envio.';
+
+-- Nome da versão (A5-66, B1.4.3): "v3 — aprovada pelo jurídico". Opcional.
+ALTER TABLE public.document_versions
+  ADD COLUMN IF NOT EXISTS label text
+    CHECK (label IS NULL OR char_length(label) BETWEEN 1 AND 80);
