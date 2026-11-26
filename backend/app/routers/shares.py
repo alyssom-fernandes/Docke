@@ -21,6 +21,9 @@ from app.services import rate_limit, storage_service
 from app.services.notification_service import notify_share_accessed, notify_share_blocked
 from app.services.shares_service import SharesService
 
+
+_BRT = timezone(timedelta(hours=-3))  # datas mostradas ao destinatário no horário de Brasília
+
 router = APIRouter(tags=["shares"])
 public_router = APIRouter(prefix="/s", tags=["shares-public"])
 
@@ -278,14 +281,16 @@ async def expire_shares_for_resource(admin_conn: asyncpg.Connection, resource_ty
 
 async def _resolve_share(conn: asyncpg.Connection, token: str) -> dict[str, Any]:
     row = await SharesService.resolve_share_by_token_hash(conn, _hash_token(token))
+    # Mensagens com a próxima ação (A1-14): o destinatário não tem conta e só
+    # pode pedir um novo link a quem enviou.
     if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link não encontrado.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link não encontrado. Confira se o endereço foi copiado inteiro ou peça um novo a quem enviou.")
     if row["revoked_at"] is not None:
-        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Este link foi revogado.")
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Quem enviou desativou este link. Peça um novo, se ainda precisar do arquivo.")
     if row["expired_at"] is not None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Este documento não está mais disponível.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="O arquivo deste link não está mais disponível. Peça um novo link a quem enviou.")
     if row["expires_at"] is not None and row["expires_at"] < datetime.now(timezone.utc):
-        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Este link expirou.")
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail=f"Este link venceu em {row['expires_at'].astimezone(_BRT).strftime('%d/%m/%Y')}. Peça um novo a quem enviou.")
     if row["max_views"] is not None and (row["view_count"] or 0) >= row["max_views"]:
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Este link já foi aberto o número máximo de vezes. Peça um novo a quem enviou.")
     return dict(row)
@@ -298,23 +303,31 @@ async def share_info(
 ) -> dict[str, Any]:
     share = await _resolve_share(conn, token)
 
+    size_bytes = None
     if share["resource_type"] == "document":
         doc = await SharesService.get_document_name(conn, share["resource_id"])
         if doc is None or doc["deleted_at"] is not None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Este documento não está mais disponível.")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Este documento não está mais disponível. Peça um novo link a quem enviou.")
         name = doc["name"]
+        size_bytes = doc["size_bytes"]
     else:
         folder = await SharesService.get_folder_name(conn, share["resource_id"])
         if folder is None or folder["deleted_at"] is not None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Esta pasta não está mais disponível.")
         name = folder["name"]
 
+    # Quem enviou, de qual empresa, até quando vale e o tamanho (A1-11).
+    ctx = await conn.fetchrow("SELECT company_name, sender_name FROM public.share_public_context($1)", share["id"])
     return {
         "resource_type": share["resource_type"],
         "name": name,
         "has_password": share["password_hash"] is not None,
         "allow_download": share["allow_download"],
         "views_left": (share["max_views"] - (share["view_count"] or 0)) if share["max_views"] else None,
+        "expires_at": share["expires_at"].isoformat() if share["expires_at"] else None,
+        "size_bytes": size_bytes,
+        "company_name": ctx["company_name"] if ctx else None,
+        "sender_name": ctx["sender_name"] if ctx else None,
     }
 
 

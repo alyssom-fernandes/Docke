@@ -98,7 +98,7 @@ class SharesService:
 
     @staticmethod
     async def get_document_name(admin_conn: asyncpg.Connection, document_id: UUID) -> asyncpg.Record | None:
-        return await admin_conn.fetchrow("SELECT name, deleted_at FROM public.documents WHERE id = $1", document_id)
+        return await admin_conn.fetchrow("SELECT name, size_bytes, deleted_at FROM public.documents WHERE id = $1", document_id)
 
     @staticmethod
     async def get_folder_name(admin_conn: asyncpg.Connection, folder_id: UUID) -> asyncpg.Record | None:
