@@ -148,12 +148,13 @@ export default function CommandPalette() {
   return createPortal(
     <div className="fixed inset-0 z-[75]" data-no-inert>
       <div aria-hidden className="dialog-scrim-in absolute inset-0 bg-(--overlay-scrim)" onClick={close} />
-      <div className="pointer-events-none absolute inset-x-0 top-[8vh] flex justify-center px-3">
+      {/* No celular, tela cheia (A2-24); a partir de sm, caixa a 8vh do topo. */}
+      <div className="pointer-events-none absolute inset-0 sm:bottom-auto sm:top-[8vh] flex justify-center sm:px-3">
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Comandos e busca rápida"
-        className="dialog-panel-in pointer-events-auto w-full max-w-[860px] glass-dialog glass-blur-strong shadow-modal rounded-(--radius-dialog) overflow-hidden"
+        className="dialog-panel-in pointer-events-auto w-full h-full sm:h-auto max-w-[860px] flex flex-col glass-dialog glass-blur-strong shadow-modal rounded-none sm:rounded-(--radius-dialog) overflow-hidden pt-[env(safe-area-inset-top)] sm:pt-0"
       >
         <div className="flex items-center gap-2.5 px-4 border-b border-(--border-default)">
           <Search className="w-4 h-4 text-(--text-secondary) shrink-0" aria-hidden />
@@ -172,8 +173,9 @@ export default function CommandPalette() {
             className="flex-1 h-12 pointer-coarse:h-14 bg-transparent text-mac-callout text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden"
           />
           <kbd className="hidden sm:inline text-mac-caption text-(--text-secondary) border border-(--border-default) rounded px-1.5">Esc</kbd>
+          <button type="button" onClick={close} className="sm:hidden -mr-2 min-h-11 px-3 text-mac-body font-medium text-(--text-accent)">Fechar</button>
         </div>
-        <div className="flex h-[min(60vh,440px)]">
+        <div className="flex flex-1 min-h-0 sm:flex-none sm:h-[min(60vh,440px)]">
           <ul ref={listRef} id="cmdk-lista" role="listbox" aria-label="Resultados" className="flex-1 min-w-0 overflow-y-auto p-2">
             {searchFailed && (
               <li role="alert" className="mx-1 mb-1 flex items-center gap-2 rounded-(--radius-control) bg-(--bg-hover) px-3 py-2 text-mac-caption text-(--text-warning)">
