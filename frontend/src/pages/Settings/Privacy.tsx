@@ -60,6 +60,21 @@ export default function Privacy() {
     URL.revokeObjectURL(a.href);
   }
 
+  // Relatório para o encarregado (B3.7.7): quem acessa dado pessoal/sensível, links ativos e consultas do titular.
+  async function relatorioDpo() {
+    if (!current) return;
+    try {
+      const r = await api.get(`/companies/${current.id}/privacy/report`, { responseType: "blob" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(r.data);
+      a.download = `privacidade_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      window.setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    } catch {
+      showError("Não foi possível gerar o relatório agora. Tente de novo.");
+    }
+  }
+
   async function baixarTodos() {
     if (!hits?.results.length) return;
     try {
@@ -78,6 +93,12 @@ export default function Privacy() {
     <div className="space-y-6">
       <section className="glass-panel rounded-(--radius-panel) p-5 space-y-3" aria-labelledby="lgpd-pastas">
         <h3 id="lgpd-pastas" className="flex items-center gap-2 text-mac-body font-semibold text-(--text-primary)"><FolderLock className="w-4 h-4 text-(--text-accent)" aria-hidden="true" /> Pastas com dado pessoal ou sensível</h3>
+        {current && ["admin", "supremo"].includes(current.permission_level) && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="secondary" onClick={relatorioDpo}><FileText className="w-3.5 h-3.5" aria-hidden="true" /> Relatório para o encarregado (CSV)</Button>
+            <span className="text-mac-caption text-(--text-secondary)">Quem acessa estas pastas, links públicos ativos para elas e as consultas de pedidos do titular. A emissão fica na trilha.</span>
+          </div>
+        )}
         <p className="text-mac-caption text-(--text-secondary)">
           Classifique pelo menu da pasta em Documentos (“Privacidade (LGPD)…”). Vale para as subpastas. Pasta com <b>dado sensível</b> (saúde, como ASO e exames; biometria) não aceita link público.
         </p>

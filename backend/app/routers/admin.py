@@ -1,3 +1,4 @@
+import json
 from typing import Any
 from uuid import UUID
 
@@ -175,3 +176,46 @@ async def reset_demo(
             status_code=status.HTTP_409_CONFLICT,
             detail="A demonstração já está sendo restaurada. Aguarde alguns segundos e recarregue a página.",
         )
+
+
+@router.get("/people")
+async def list_all_people(
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> list[dict[str, Any]]:
+    """
+    Visão do grupo (FA-A9-04): todas as pessoas de todas as empresas, com onde
+    cada uma tem acesso, situação da conta, verificação em duas etapas e
+    último acesso. Só o administrador geral.
+    """
+    await _require_supremo(admin_conn, claims)
+    rows = await admin_conn.fetch(
+        """
+        SELECT u.id::text AS user_id, u.full_name, u.username, u.role, u.is_active, au.email::text AS email,
+               au.last_sign_in_at,
+               EXISTS (SELECT 1 FROM auth.mfa_factors mf WHERE mf.user_id = u.id AND mf.status = 'verified') AS mfa_enabled,
+               COALESCE((
+                 SELECT json_agg(json_build_object('company_id', x.company_id::text, 'company_name', c.name, 'role', x.permission_level)
+                                 ORDER BY c.name)
+                 FROM (
+                   SELECT DISTINCT ON (company_id) company_id, permission_level
+                   FROM (
+                     SELECT company_id, permission_level FROM public.user_company_access WHERE user_id = u.id
+                     UNION ALL
+                     SELECT ga.company_id, ga.permission_level FROM public.group_access ga
+                     JOIN public.group_member gm ON gm.group_id = ga.group_id WHERE gm.user_id = u.id
+                   ) t
+                   ORDER BY company_id, CASE permission_level WHEN 'admin' THEN 0 WHEN 'operador' THEN 1 ELSE 2 END
+                 ) x JOIN public.companies c ON c.id = x.company_id
+               ), '[]') AS companies
+        FROM public.users u
+        LEFT JOIN auth.users au ON au.id = u.id
+        ORDER BY lower(u.full_name)
+        """
+    )
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["companies"] = json.loads(d["companies"]) if isinstance(d["companies"], str) else d["companies"]
+        out.append(d)
+    return out
