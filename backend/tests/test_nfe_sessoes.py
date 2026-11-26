@@ -134,6 +134,9 @@ async def test_demo_nao_encerra_sessoes(api, admin, base):  # noqa: F811
     h = _token_sessao(base["pessoa"], sid, email=settings.DEMO_EMAIL)
     r = await api.post(API + "/auth/sessions/end-others", headers=h)
     assert r.status_code == 403
+    # Nem lista: seriam IP e aparelho de outros visitantes.
+    r = await api.get(API + "/auth/sessions", headers=h)
+    assert r.json() == {"demo": True, "sessions": []}
 
 
 @pytest.mark.asyncio

@@ -589,6 +589,9 @@ async def list_sessions(
 ) -> dict[str, Any]:
     from app.services import mfa_service
 
+    # A conta demo é compartilhada: a lista mostraria IP e aparelho de outros visitantes.
+    if mfa_service.is_demo(claims):
+        return {"demo": True, "sessions": []}
     rows = await admin_conn.fetch(
         """
         SELECT id::text, created_at, coalesce(refreshed_at, updated_at, created_at) AS ultimo_uso,
