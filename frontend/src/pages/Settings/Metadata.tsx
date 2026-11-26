@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Tags, Plus, X, Archive, FolderTree, Copy, GripVertical, Trash2 } from "lucide-react";
+import { Tags, Plus, X, Archive, FolderTree, Copy, Trash2 } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
 import Button from "@/components/ui/Button";
-import Badge from "@/components/ui/Badge";
+import Input from "@/components/ui/Input";
+import Dialog from "@/components/ui/Dialog";
 import EmptyState from "@/components/shared/EmptyState";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import Switch from "@/components/ui/Switch";
@@ -278,13 +279,44 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
   const [showCopy, setShowCopy] = useState(false);
   const [archiving, setArchiving] = useState<CustomField | null>(null);
   const [deleting, setDeleting] = useState<CustomField | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [archived, setArchived] = useState<CustomField[]>([]);
+  const [renaming, setRenaming] = useState<CustomField | null>(null);
+  const [newLabel, setNewLabel] = useState("");
 
   function load() {
     setLoading(true);
-    api.get<CustomField[]>("/custom-fields", { params: { company_id: companyId } })
-      .then((r) => setFields(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setFields([]))
+    setFailed(false);
+    api.get<CustomField[]>("/custom-fields", { params: { company_id: companyId, include_archived: true } })
+      .then((r) => {
+        const all = Array.isArray(r.data) ? r.data : [];
+        setFields(all.filter((f: any) => !f.archived_at));
+        setArchived(all.filter((f: any) => f.archived_at));
+      })
+      .catch(() => setFailed(true))
       .finally(() => setLoading(false));
+  }
+
+  async function rename() {
+    if (!renaming || !newLabel.trim()) return;
+    try {
+      await api.patch(`/custom-fields/${renaming.id}`, { label: newLabel.trim() });
+      success("Nome do campo atualizado.");
+      setRenaming(null);
+      load();
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível renomear.");
+    }
+  }
+
+  async function restore(f: CustomField) {
+    try {
+      await api.post(`/custom-fields/${f.id}/restore`);
+      success(`“${f.label}” voltou ao catálogo e às pastas onde estava.`);
+      load();
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível reativar.");
+    }
   }
 
   useEffect(load, [companyId]);
@@ -339,34 +371,51 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
         <div className="space-y-2">
           {[0, 1, 2].map((i) => <div key={i} className="h-12 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />)}
         </div>
+      ) : failed ? (
+        <div role="alert" className="flex flex-wrap items-center gap-3 rounded-(--radius-control) border border-(--border-default) px-4 py-3">
+          <p className="flex-1 text-mac-body text-(--text-primary)">Não foi possível carregar os campos.</p>
+          <Button variant="secondary" size="sm" onClick={load}>Tentar de novo</Button>
+        </div>
       ) : fields.length === 0 ? (
         <EmptyState title="Nenhum campo personalizado ainda" description="Crie campos como CPF, competência ou instituição financeira." icon={<Tags className="w-6 h-6" />} />
       ) : (
         <ul className="border border-(--border-default) rounded-(--radius-control) divide-y divide-(--border-default) overflow-hidden">
           {fields.map((f) => (
-            <li key={f.id} className="flex items-center gap-3 px-4 py-3">
-              <div className="flex-1 min-w-0">
+            <li key={f.id} className="flex flex-wrap items-center gap-2 px-4 py-3">
+              <div className="flex-1 min-w-40">
                 <p className="text-mac-body text-(--text-primary)">{f.label}</p>
-                <p className="text-mac-caption text-(--text-tertiary)">{f.field_key}</p>
+                <p className="text-mac-caption text-(--text-secondary)">{TYPE_LABEL[f.type]}</p>
               </div>
-              <Badge variant="default">{TYPE_LABEL[f.type]}</Badge>
-              <button
-                onClick={() => setArchiving(f)}
-                title="Arquivar campo"
-                className="p-1.5 rounded-[6px] text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--bg-hover) transition-colors duration-fast"
-              >
-                <Archive className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setDeleting(f)}
-                title="Excluir campo (só se nunca foi preenchido)"
-                className="p-1.5 rounded-[6px] text-(--text-tertiary) hover:text-red-500 hover:bg-(--bg-hover) transition-colors duration-fast"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              <Button variant="ghost" size="sm" onClick={() => { setRenaming(f); setNewLabel(f.label); }} aria-label={`Renomear ${f.label}`}>Renomear</Button>
+              <Button variant="ghost" size="sm" onClick={() => setArchiving(f)} aria-label={`Arquivar ${f.label}`}><Archive className="w-3.5 h-3.5" aria-hidden="true" /> Arquivar</Button>
+              <Button variant="ghost" size="sm" onClick={() => setDeleting(f)} aria-label={`Excluir ${f.label}`}><Trash2 className="w-3.5 h-3.5 text-(--text-danger)" aria-hidden="true" /> Excluir</Button>
             </li>
           ))}
         </ul>
+      )}
+
+      {archived.length > 0 && !loading && !failed && (
+        <details className="mt-3">
+          <summary className="cursor-pointer text-mac-caption font-medium text-(--text-accent)">{archived.length} arquivado{archived.length > 1 ? "s" : ""}</summary>
+          <ul className="mt-2 space-y-1">
+            {archived.map((f) => (
+              <li key={f.id} className="flex items-center gap-2 text-mac-body text-(--text-secondary)">
+                <span className="flex-1">{f.label} · {TYPE_LABEL[f.type]}</span>
+                <Button variant="ghost" size="sm" onClick={() => restore(f)}>Reativar</Button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {renaming && (
+        <Dialog onClose={() => setRenaming(null)} title={`Renomear “${renaming.label}”`} size="sm"
+          description="O nome muda em todas as pastas e documentos; os valores já preenchidos continuam."
+          footer={<><Button variant="secondary" onClick={() => setRenaming(null)}>Cancelar</Button><Button disabled={!newLabel.trim()} onClick={rename}>Salvar</Button></>}>
+          <form onSubmit={(e) => { e.preventDefault(); rename(); }}>
+            <Input label="Nome do campo" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} maxLength={80} autoFocus />
+          </form>
+        </Dialog>
       )}
 
       {showNew && (
@@ -550,18 +599,18 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
                 const isOwn = ownFieldIds.has(f.custom_field_id);
                 const ownRule = rules.find((r) => r.custom_field_id === f.custom_field_id && r.mode === "apply");
                 return (
-                  <li key={f.custom_field_id} className="flex items-center gap-3 px-4 py-3">
-                    <GripVertical className="w-4 h-4 text-(--text-placeholder) shrink-0" />
-                    <div className="flex-1 min-w-0">
+                  <li key={f.custom_field_id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
+                    <div className="flex-1 min-w-40">
                       <p className="text-mac-body text-(--text-primary)">{f.label}</p>
-                      <p className="text-mac-caption text-(--text-tertiary)">
-                        {TYPE_LABEL[f.type]}{!isOwn && " · herdado"}
+                      <p className="text-mac-caption text-(--text-secondary)">
+                        {TYPE_LABEL[f.type]}{!isOwn && " · vem de uma pasta acima"}{(f as any).required ? " · obrigatório" : ""}{(f as any).default_value ? ` · padrão “${(f as any).default_value}”` : ""}
                       </p>
                     </div>
                     {isOwn && ownRule ? (
                       <>
                         <input
                           type="text"
+                          aria-label={`Valor padrão de ${f.label}`}
                           defaultValue={ownRule.default_value ?? ""}
                           placeholder="Valor padrão"
                           onBlur={(e) => saveDefaultValue(ownRule, e.target.value)}
@@ -635,6 +684,11 @@ export default function Metadata() {
   const [searchParams] = useSearchParams();
   const initialFolderId = searchParams.get("folder") ?? undefined;
   const [tab, setTab] = useState<"catalog" | "tree">(searchParams.get("tab") === "tree" ? "tree" : "catalog");
+  const [, setSearchParams] = useSearchParams();
+  function changeTab(t: "catalog" | "tree") {
+    setTab(t);
+    setSearchParams((p) => { const n = new URLSearchParams(p); n.set("tab", t); return n; }, { replace: true });
+  }
 
   if (!current) return null;
 
@@ -644,9 +698,11 @@ export default function Metadata() {
         {/* Controle segmentado (cápsula com o segmento ativo em destaque) —
             a Apple nunca usa abas sublinhadas de texto dentro de um painel
             de Settings, o padrão nativo é esse pill de segmentos. */}
-        <div className="inline-flex items-center gap-0.5 p-1 mb-6 rounded-full bg-(--bg-hover)">
+        <div role="tablist" aria-label="Metadados" className="inline-flex items-center gap-0.5 p-1 mb-6 rounded-full bg-(--bg-hover)">
           <button
-            onClick={() => setTab("catalog")}
+            role="tab"
+            aria-selected={tab === "catalog"}
+            onClick={() => changeTab("catalog")}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-mac-body transition-colors duration-fast ${
               tab === "catalog"
                 ? "bg-(--bg-card) text-(--text-primary) font-medium shadow-xs"
@@ -656,14 +712,16 @@ export default function Metadata() {
             <Tags className="w-4 h-4" /> Catálogo
           </button>
           <button
-            onClick={() => setTab("tree")}
+            role="tab"
+            aria-selected={tab === "tree"}
+            onClick={() => changeTab("tree")}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-mac-body transition-colors duration-fast ${
               tab === "tree"
                 ? "bg-(--bg-card) text-(--text-primary) font-medium shadow-xs"
                 : "text-(--text-secondary) hover:text-(--text-primary)"
             }`}
           >
-            <FolderTree className="w-4 h-4" /> Aplicação na árvore
+            <FolderTree className="w-4 h-4" aria-hidden="true" /> Por pasta
           </button>
         </div>
 
