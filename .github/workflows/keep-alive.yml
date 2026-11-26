@@ -14,3 +14,6 @@ jobs:
     steps:
       - name: Consultar o banco pela API
         run: curl -fsS --retry 5 --retry-delay 20 --retry-all-errors --max-time 90 https://docke-api.fly.dev/health/db
+      # A demo tem banco próprio (projeto docke-demo, separado da produção em 26/11).
+      - name: Consultar o banco da demo
+        run: curl -fsS --retry 5 --retry-delay 20 --retry-all-errors --max-time 90 https://docke-demo-api.fly.dev/health/db
