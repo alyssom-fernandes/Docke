@@ -89,3 +89,26 @@ async def test_nomear_versao_e_abrir_inline(api, admin, empresa):  # noqa: F811
     r = await api.get(API + f"/documents/{doc}/versions/{versao}/download-url", params={"inline": "true"}, headers=h)
     assert r.status_code == 200, r.text
     assert r.json()["mime_type"] == "application/pdf"
+
+
+@pytest.mark.asyncio
+async def test_excluir_de_vez_apaga_os_arquivos_de_todas_as_versoes(api, admin, empresa):  # noqa: F811
+    """X3-08: versões antigas não ficam órfãs no storage."""
+    if not storage_service.is_mock():
+        pytest.skip("precisa do storage simulado")
+    h = _token(empresa["user"])
+    doc = await _doc(admin, empresa, empresa["raiz"], "Contrato velho.pdf", "contrato")
+    chaves = [f"{empresa['co']}/orfa-{uuid.uuid4().hex}.pdf" for _ in range(2)]
+    for n, chave in enumerate(chaves, start=1):
+        storage_service.put_object_bytes(chave, f"%PDF-1.4 v{n}".encode(), "application/pdf")
+        await admin.execute(
+            "INSERT INTO public.document_versions (document_id, version_number, storage_key, size_bytes, mime_type, uploaded_by)"
+            " VALUES ($1, $2, $3, 10, 'application/pdf', $4)",
+            uuid.UUID(doc), n, chave, empresa["user"],
+        )
+    await admin.execute("UPDATE public.documents SET storage_path = $2 WHERE id = $1", uuid.UUID(doc), chaves[-1])
+
+    assert (await api.delete(API + f"/documents/{doc}", headers=h)).status_code in (200, 204)
+    r = await api.delete(API + f"/trash/{doc}/permanent", params={"item_type": "document", "confirm": "true"}, headers=h)
+    assert r.status_code == 204, r.text
+    assert all(storage_service.read_object(c) is None for c in chaves)

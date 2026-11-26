@@ -160,6 +160,11 @@ async def permanent_delete(
         if await RetentionService.document_is_under_hold(admin_conn, item_id):
             raise HTTPException(status_code=status.HTTP_423_LOCKED, detail="Documento bloqueado para exclusão — está sob retenção legal (legal hold).")
 
+        # Chaves de todas as versões, lidas antes de o DELETE em cascata apagar o histórico (X3-08).
+        version_keys = [r["storage_key"] for r in await admin_conn.fetch(
+            "SELECT DISTINCT storage_key FROM public.document_versions WHERE document_id = $1", item_id,
+        )]
+
         async with admin_conn.transaction():
             await TrashService.permanently_delete_document(admin_conn, item_id)
             await TrashService.log_activity(
@@ -172,17 +177,14 @@ async def permanent_delete(
         # Remove do storage após commit do banco (falha no storage não desfaz o DELETE —
         # I11: objeto nunca deve ficar órfão indefinidamente, mas o registro já sumiu
         # do banco antes, então uma falha aqui só vira log, não bloqueia o usuário).
-        if doc["storage_path"]:
-            try:
-                await asyncio.to_thread(storage_service.delete_object, doc["storage_path"])
-            except Exception:
-                logger.exception(
-                    "Falha ao remover objeto do storage após exclusão permanente do documento %s (key=%s) — objeto pode ter ficado órfão.",
-                    item_id, doc["storage_path"],
-                )
-            # Fase 12.1: limpa também os PDFs derivados (DOCX/XLSX→PDF e o do OCR) —
-            # melhor esforço, idempotente (delete_object silencioso se não existir).
-            storage_service.delete_derivatives(doc["storage_path"])
+        # Arquivo atual, versões antigas e derivados (PDF do Office e do OCR):
+        # melhor esforço e idempotente.
+        falhas = await asyncio.to_thread(storage_service.delete_document_objects, [doc["storage_path"], *version_keys])
+        if falhas:
+            logger.error(
+                "Exclusão permanente do documento %s: %d objeto(s) não saíram do storage e podem ter ficado órfãos: %s",
+                item_id, len(falhas), falhas,
+            )
 
     else:  # folder
         folder = await TrashService.get_folder_for_permanent_delete(admin_conn, item_id)

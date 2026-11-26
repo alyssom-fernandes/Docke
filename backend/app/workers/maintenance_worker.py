@@ -416,6 +416,9 @@ async def _purge_expired_trash(conn) -> None:
         """
     )
     for doc in expired_docs:
+        version_keys = [r["storage_key"] for r in await conn.fetch(
+            "SELECT DISTINCT storage_key FROM public.document_versions WHERE document_id = $1", doc["id"],
+        )]
         try:
             await _purge_document(conn, doc, expire_shares_for_resource)
         except asyncpg.exceptions.RaiseError:
@@ -423,12 +426,10 @@ async def _purge_expired_trash(conn) -> None:
             logger.warning("Purga automática pulou o documento %s: exclusão bloqueada por hold ou retenção.", doc["id"])
             continue
 
-        if doc["storage_path"]:
-            try:
-                storage_service.delete_object(doc["storage_path"])
-            except Exception:
-                logger.warning("Falha ao remover objeto do storage para documento %s — pode ficar órfão.", doc["id"])
-            storage_service.delete_derivatives(doc["storage_path"])
+        # Arquivo atual, versões antigas e derivados (X3-08), fora do laço assíncrono.
+        falhas = await asyncio.to_thread(storage_service.delete_document_objects, [doc["storage_path"], *version_keys])
+        if falhas:
+            logger.warning("Purga do documento %s: %d objeto(s) não saíram do storage: %s", doc["id"], len(falhas), falhas)
         logger.info("Purga automática — documento %s (%s) removido por retenção.", doc["id"], doc["name"])
 
     await _purge_expired_folders(conn, expire_shares_for_resource)

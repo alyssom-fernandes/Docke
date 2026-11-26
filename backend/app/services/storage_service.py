@@ -333,6 +333,22 @@ import uuid as _uuid  # noqa: E402
 _CONVERTIBLE_EXTENSIONS = {"docx", "doc", "xlsx", "xls"}
 
 
+def delete_document_objects(keys: list[str]) -> list[str]:
+    """
+    Apaga do storage o arquivo de cada versão e os derivados (PDF do Office e
+    PDF do OCR) — X3-08: antes só o arquivo atual saía e as versões antigas
+    ficavam órfãs. Devolve as chaves que não puderam ser apagadas.
+    """
+    falhas: list[str] = []
+    for key in dict.fromkeys(k for k in keys if k):
+        try:
+            delete_object(key)
+        except Exception:
+            falhas.append(key)
+        delete_derivatives(key)
+    return falhas
+
+
 def derivative_pdf_key(original_key: str) -> str:
     """derivatives/{mesmo caminho}.pdf — 1:1 com o objeto original."""
     return f"derivatives/{original_key}.pdf"

@@ -382,14 +382,20 @@ async def _build_demo_data(
     conn: asyncpg.Connection,
     demo_user_id: str,
     extra_user_ids: dict[str, str],
-) -> None:
+) -> list[str]:
     """
     Núcleo do seed — recebe uma conexão já aberta (própria ou do pool admin
     do app) e os ids das contas de Auth já garantidas. Chamado tanto pelo
     `run_seed()` (CLI) quanto por `demo_reset_service.reset_demo_data()`
     (worker periódico + endpoint de reset manual). Assume que o chamador já
     está dentro de uma transação.
+
+    Devolve as chaves de storage dos documentos antigos (todas as versões):
+    o chamador apaga depois do COMMIT (X3-08 — antes cada reset deixava ~51
+    objetos órfãos no R2; apagar antes do COMMIT perderia os arquivos se a
+    transação voltasse atrás).
     """
+    stale_keys: list[str] = []
     # ------------------------------------------------------------------
     # 0. Limpar dados de demo anteriores (idempotente) — mantém os usuários
     #    (mesmos ids do Auth), só limpa as empresas fictícias.
@@ -411,6 +417,15 @@ async def _build_demo_data(
     )
     old_ids = [r["id"] for r in old_company_ids]
     if old_ids:
+        stale_keys = [r["k"] for r in await conn.fetch(
+            """
+            SELECT d.storage_path AS k FROM public.documents d WHERE d.company_id = ANY($1::uuid[]) AND d.storage_path IS NOT NULL
+            UNION
+            SELECT v.storage_key FROM public.document_versions v JOIN public.documents d ON d.id = v.document_id
+            WHERE d.company_id = ANY($1::uuid[])
+            """,
+            old_ids,
+        )]
         # shares.pin_to_version_id aponta para document_versions SEM cascata:
         # um link fixado numa versão travava o DELETE de documents (e o reset
         # inteiro) assim que algum visitante criasse um. Links saem primeiro.
@@ -686,6 +701,8 @@ async def _build_demo_data(
         print(f"  ✔ {company_name}: {n_obrigacoes} obrigações, {len(docs_created)} docs, {len(folder_ids)} pastas, "
               f"{len(anchor_docs) + 1} favoritos, {len(share_docs)} links")
 
+    return stale_keys
+
 
 # Obrigações da demo (achados A3-25 e A7-36): cada empresa fictícia mostra a
 # conformidade funcionando — uma atrasada, uma vencendo, uma esperando
@@ -804,8 +821,9 @@ async def run_seed() -> None:
 
     try:
         await conn.execute("BEGIN")
-        await _build_demo_data(conn, demo_user_id, extra_user_ids)
+        stale_keys = await _build_demo_data(conn, demo_user_id, extra_user_ids)
         await conn.execute("COMMIT")
+        storage_service.delete_document_objects(stale_keys)
         print("\n✅ Seed concluído com sucesso!")
         print(f"   Login demo: {DEMO_USER_EMAIL} / {DEMO_USER_PASSWORD}")
         print("   Empresas: Comércio Alfa Modelo Ltda | Serviços Beta Referência SA | Indústria Gama Exemplo Ltda")

@@ -10,6 +10,7 @@ só via CLI.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import secrets
 
@@ -81,7 +82,13 @@ async def _reset_locked(conn: asyncpg.Connection) -> None:
         extra_user_ids[email] = await _ensure_auth_account(email, secrets.token_urlsafe(24))
 
     async with conn.transaction():
-        await _build_demo_data(conn, demo_user_id, extra_user_ids)
+        stale_keys = await _build_demo_data(conn, demo_user_id, extra_user_ids)
+
+    # Arquivos da demo anterior saem do storage só depois do COMMIT (X3-08).
+    from app.services import storage_service
+    falhas = await asyncio.to_thread(storage_service.delete_document_objects, stale_keys)
+    if falhas:
+        logger.warning("Reset da demo: %d objeto(s) antigos não saíram do storage.", len(falhas))
 
     # O reset recria as 3 empresas com IDs novos; sem atualizar a view agora,
     # o painel da demo ficava sem contadores (/stats → 404) até o próximo
