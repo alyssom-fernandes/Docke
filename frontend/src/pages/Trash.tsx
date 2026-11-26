@@ -135,7 +135,7 @@ export default function Trash() {
         <>
           <div className="flex flex-wrap items-center gap-2 min-h-9">
             <label className="inline-flex items-center gap-2 text-mac-body text-(--text-primary) mr-2">
-              <Checkbox checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(list.map(key)))} /> Todos ({list.length})
+              <Checkbox checked={allOn} indeterminate={sel.size > 0 && !allOn} onChange={() => setSel(allOn ? new Set() : new Set(list.map(key)))} /> Todos ({list.length})
             </label>
             {sel.size > 0 && (
               <div className="reveal flex flex-wrap items-center gap-2">
