@@ -3929,6 +3929,11 @@ export default function Documents() {
           doc={previewDoc}
           docs={visibleDocuments.some((d) => d.id === previewDoc.id) ? visibleDocuments : undefined}
           onClose={() => setPreviewDoc(null)}
+          origin={(() => {
+            // Quick Look cresce a partir do item clicado (A5-38).
+            const r = rowRefs.current.get(previewDoc.id)?.getBoundingClientRect();
+            return r && r.width ? { x: r.left + Math.min(r.width, 160) / 2, y: r.top + r.height / 2 } : null;
+          })()}
         />
       )}
 

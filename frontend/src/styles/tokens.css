@@ -730,3 +730,16 @@ input[type="number"] {
 }
 .drop-pulse { animation: drop-pulse 480ms var(--ease-standard) 1; }
 @media (prefers-reduced-motion: reduce) { .drop-pulse { animation: none; } }
+
+/* Quick Look (A5-38): a prévia cresce a partir do item clicado e volta para
+   ele ao fechar. --qo-x/--qo-y = deslocamento do centro da tela até o item. */
+@keyframes quicklook-in {
+  from { opacity: 0; transform: translate(var(--qo-x, 0), var(--qo-y, 0)) scale(0.18); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes quicklook-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translate(var(--qo-x, 0), var(--qo-y, 0)) scale(0.18); }
+}
+.quicklook-in { animation: quicklook-in 260ms var(--ease-standard) both; }
+.quicklook-out { animation: quicklook-out var(--dur-exit) var(--ease-exit) both; }
