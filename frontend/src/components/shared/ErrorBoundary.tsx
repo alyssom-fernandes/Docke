@@ -1,3 +1,4 @@
+import { reportError } from "@/lib/reportError";
 import { Component, ReactNode, createRef } from "react";
 import { RefreshCw, WifiOff } from "lucide-react";
 
@@ -34,6 +35,7 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error) {
+    if (!isChunkError(error)) reportError(error, "tela");
     if (isChunkError(error)) {
       const last = Number(sessionStorage.getItem(RELOAD_KEY) ?? 0);
       if (Date.now() - last > 60_000) {

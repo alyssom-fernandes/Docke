@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     # Sem as duas chaves, o envio fica desligado e a tela não oferece o recurso.
     VAPID_PUBLIC_KEY: str = ""
     VAPID_PRIVATE_KEY: str = ""
+    # Rastreio de erros (X3-11): DSN do projeto no Sentry (Fly secret). Vazio = desligado.
+    SENTRY_DSN: str = ""
     DEMO_PASSWORD: str = ""
     # A demo volta ao padrão quando a última restauração tem mais que isso
     # (conferido no banco a cada hora; ver maintenance_worker._reset_demo_data_if_due).
