@@ -892,3 +892,48 @@ async def obligations_calendar(
     ev.append("END:VCALENDAR")
     return Response("\r\n".join(ev) + "\r\n", media_type="text/calendar; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="obrigacoes_{hoje}.ics"'})
+
+
+@router.get("/obligations/matrix")
+async def obligations_matrix(
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Conformidade do grupo (FA-A7-04): matriz empresa × obrigação com a
+    situação da competência mais recente que já venceu ou vence até o fim do
+    mês corrente, em cada empresa que a pessoa acessa.
+    """
+    rows = [_instance_out(r) for r in await ObligationsService.list_group_open(conn, claims["sub"])]
+    hoje = datetime.date.today()
+    fim_mes = (hoje.replace(day=28) + datetime.timedelta(days=4)).replace(day=1) - datetime.timedelta(days=1)
+    escolha: dict[tuple[str, str], dict[str, Any]] = {}
+    for r in rows:
+        if r["due_date"] > fim_mes or r.get("effective_status") in ("cancelado",):
+            continue
+        k = (str(r["company_id"]), r["template_name"])
+        atual = escolha.get(k)
+        if atual is None or r["due_date"] > atual["due_date"]:
+            escolha[k] = r
+    empresas = sorted({(str(r["company_id"]), r["company_name"]) for r in rows}, key=lambda x: x[1] or "")
+    obrigacoes = sorted({r["template_name"] for r in escolha.values()})
+    celulas: dict[str, dict[str, Any]] = {}
+    for (cid, nome), r in escolha.items():
+        celulas.setdefault(cid, {})[nome] = {
+            "instance_id": str(r["id"]), "status": r.get("effective_status") or r.get("status"),
+            "period_label": r["period_label"], "due_date": r["due_date"], "owner_name": r.get("owner_name"),
+        }
+    resumo = {}
+    for cid, _ in empresas:
+        st = [c["status"] for c in celulas.get(cid, {}).values()]
+        relevantes = [s for s in st if s not in ("dispensado", "not_applicable")]
+        resumo[cid] = {
+            "em_dia": sum(1 for s in relevantes if s == "approved"),
+            "total": len(relevantes),
+            "atrasadas": sum(1 for s in relevantes if s in ("overdue", "expired")),
+        }
+    return {
+        "empresas": [{"company_id": c, "name": n, **resumo[c]} for c, n in empresas],
+        "obrigacoes": obrigacoes,
+        "celulas": celulas,
+    }
