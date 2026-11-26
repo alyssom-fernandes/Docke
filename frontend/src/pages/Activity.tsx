@@ -64,6 +64,9 @@ export default function Activity() {
   const pessoa = params.get("pessoa") ?? "";
   const tipo = params.get("tipo") ?? "";
   const periodo = params.get("periodo") ?? "";
+  // "Ver tudo na Atividade" a partir do documento (A5-28).
+  const item = params.get("item") ?? "";
+  const itemNome = params.get("nome") ?? "";
   const page = Math.max(1, Number(params.get("pagina") ?? 1) || 1);
 
   function setP(changes: Record<string, string | null>) {
@@ -85,7 +88,7 @@ export default function Activity() {
   const dateFrom = periodo === "hoje" ? daysAgo(0) : periodo ? daysAgo(Number(periodo)) : undefined;
   const filters = useMemo(() => ({ userId: pessoa || undefined, action: acao || undefined, itemType: tipo || undefined, dateFrom }), [pessoa, acao, tipo, dateFrom]);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const filtrado = !!(acao || pessoa || tipo || periodo);
+  const filtrado = !!(acao || pessoa || tipo || periodo || item);
 
   async function exportActivity(format: "csv" | "xlsx") {
     if (!current) return;
@@ -173,12 +176,13 @@ export default function Activity() {
       {filtrado && (
         <div className="flex flex-wrap items-center gap-2 text-mac-caption text-(--text-secondary)">
           <span aria-live="polite">{total.toLocaleString("pt-BR")} {total === 1 ? "registro" : "registros"} com estes filtros.</span>
-          <button onClick={() => setP({ acao: null, pessoa: null, tipo: null, periodo: null })} className="font-medium text-(--text-accent) hover:underline">Limpar filtros</button>
+          {item && <span className="rounded-full bg-(--bg-hover) px-2 py-0.5 text-(--text-primary)">Só {itemNome ? `“${itemNome}”` : "este item"}</span>}
+          <button onClick={() => setP({ acao: null, pessoa: null, tipo: null, periodo: null, item: null, nome: null })} className="font-medium text-(--text-accent) hover:underline">Limpar filtros</button>
         </div>
       )}
 
       {current && (
-        <ActivityFeed companyId={current.id} page={page} pageSize={PAGE_SIZE} onLoaded={setTotal} filters={filters}
+        <ActivityFeed companyId={current.id} itemId={item || undefined} page={page} pageSize={PAGE_SIZE} onLoaded={setTotal} filters={filters}
           emptyDescription={filtrado ? "Nada com estes filtros." : "As ações nos documentos aparecem aqui."} />
       )}
 

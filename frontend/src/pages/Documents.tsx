@@ -1038,6 +1038,8 @@ function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit, onClos
   const [favorited, setFavorited] = useState(doc.favorited ?? false);
   const [sharing, setSharing] = useState(false);
   const [shareCount, setShareCount] = useState(doc.active_share_count ?? 0);
+  // A âncora "cai" ao ancorar (A5-89): a animação anchor-drop que estava sem uso.
+  const [dropping, setDropping] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => { setFavorited(doc.favorited ?? false); setShareCount(doc.active_share_count ?? 0); }, [doc.id, doc.favorited, doc.active_share_count]);
@@ -1091,7 +1093,9 @@ function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit, onClos
       <div className="grid grid-cols-4 gap-1" role="group" aria-label="Ações do documento">
         <button onClick={onPreview} className={`${action} text-(--text-accent) font-medium`}><Eye className="w-4 h-4" aria-hidden />Abrir</button>
         <button onClick={download} className={action}><Download className="w-4 h-4" aria-hidden />Baixar</button>
-        <button onClick={toggleFavorite} aria-pressed={favorited} className={action}><Anchor className={`w-4 h-4 ${favorited ? "fill-current text-(--text-accent)" : ""}`} aria-hidden />{favorited ? "Ancorado" : "Ancorar"}</button>
+        <button onClick={() => { if (!favorited) { setDropping(true); window.setTimeout(() => setDropping(false), 340); } toggleFavorite(); }} aria-pressed={favorited} className={action}>
+          <Anchor className={`w-4 h-4 ${dropping ? "anchor-drop" : ""} ${favorited ? "fill-current text-(--text-accent)" : ""}`} aria-hidden />{favorited ? "Ancorado" : "Ancorar"}
+        </button>
         <button onClick={(e) => onMenu(e.currentTarget)} aria-haspopup="menu" className={action}><MoreHorizontal className="w-4 h-4" aria-hidden />Mais</button>
       </div>
       {canEdit && (
@@ -1122,6 +1126,9 @@ function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit, onClos
       <Disclosure icon={<Clock className="w-4 h-4" aria-hidden />} title="Atividade">
         <ActivityFeed companyId={companyId} itemId={doc.id} pageSize={20} groupByDay={false} emptyDescription="Nenhuma atividade registrada neste documento ainda." />
         <LinkAccesses documentId={doc.id} />
+        <Link to={`/activity?item=${doc.id}&nome=${encodeURIComponent(doc.name)}`} className="mt-2 inline-flex items-center gap-1 min-h-6 pointer-coarse:min-h-11 text-mac-caption font-medium text-(--text-accent) hover:underline">
+          Ver tudo na Atividade <ChevronRight className="w-3.5 h-3.5" aria-hidden />
+        </Link>
       </Disclosure>
     </div>
   );

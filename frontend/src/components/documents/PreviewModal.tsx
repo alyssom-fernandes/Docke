@@ -206,6 +206,7 @@ interface PreviewModalProps {
 export default function PreviewModal({ doc: initialDoc, docs, onClose }: PreviewModalProps) {
   const list = docs && docs.length ? docs : [initialDoc];
   const [index, setIndex] = useState(() => Math.max(0, list.findIndex((d) => d.id === initialDoc.id)));
+  const swipe = useRef<{ x: number; y: number; t: number } | null>(null);
   const doc = list[index] ?? initialDoc;
 
   const [url, setUrl] = useState<string | null>(null);
@@ -416,7 +417,18 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose }: Preview
           <button className={iconBtn} onClick={() => setActive((i) => (i + 1) % matches.length)} disabled={!matches.length} aria-label="Próximo resultado (Enter)"><ChevronDown className="w-4 h-4" aria-hidden /></button>
         </div>
       )}
-      <div className="relative flex-1 min-h-0" ref={bodyRef}>
+      {/* Deslizar para o lado troca de documento no toque (A5-39). */}
+      <div className="relative flex-1 min-h-0" ref={bodyRef}
+        onTouchStart={(e) => { if (e.touches.length === 1) swipe.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() }; }}
+        onTouchEnd={(e) => {
+          const st = swipe.current; swipe.current = null;
+          if (!st || e.changedTouches.length !== 1 || Date.now() - st.t > 600) return;
+          const dx = e.changedTouches[0].clientX - st.x, dy = e.changedTouches[0].clientY - st.y;
+          if (Math.abs(dx) < 70 || Math.abs(dy) > 50) return;
+          if (window.visualViewport && window.visualViewport.scale > 1.05) return;
+          if (dx < 0 && index < list.length - 1) setIndex(index + 1);
+          else if (dx > 0 && index > 0) setIndex(index - 1);
+        }}>
         {loading && (
           <div className="absolute inset-0 p-8" aria-label="Carregando pré-visualização">
             <div className="mx-auto max-w-[640px] aspect-[1/1.3] rounded-[4px] bg-(--bg-hover) animate-pulse" />
