@@ -41,19 +41,26 @@ async def lifespan(app: FastAPI):
     from app.dependencies import init_db_pool, close_db_pool, jwks_refresh_loop
     settings.assert_safe_for_production()
     await init_db_pool()
-    asyncio.create_task(jwks_refresh_loop())
+    # As tarefas de fundo ficam guardadas e são canceladas no desligamento
+    # (X3-15): antes ficavam soltas e o pool fechava com elas ainda rodando.
+    tasks = [asyncio.create_task(jwks_refresh_loop())]
     if settings.ENABLE_OCR_WORKER:
         from app.workers.ocr_worker import ocr_worker_loop
-        asyncio.create_task(ocr_worker_loop())
+        tasks.append(asyncio.create_task(ocr_worker_loop()))
     from app.workers.maintenance_worker import maintenance_worker_loop, stats_refresh_loop
-    asyncio.create_task(maintenance_worker_loop())
-    asyncio.create_task(stats_refresh_loop())
+    tasks.append(asyncio.create_task(maintenance_worker_loop()))
+    tasks.append(asyncio.create_task(stats_refresh_loop()))
     from app.workers.export_worker import export_worker_loop
-    asyncio.create_task(export_worker_loop())
+    tasks.append(asyncio.create_task(export_worker_loop()))
     from app.services.busy import keepalive_loop
-    asyncio.create_task(keepalive_loop())
-    yield
-    await close_db_pool()
+    tasks.append(asyncio.create_task(keepalive_loop()))
+    try:
+        yield
+    finally:
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await close_db_pool()
 
 
 app = FastAPI(

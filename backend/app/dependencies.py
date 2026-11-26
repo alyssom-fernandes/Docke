@@ -11,6 +11,7 @@ import json
 import logging
 import time
 import uuid
+from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Any
 
 import asyncpg
@@ -114,21 +115,51 @@ async def _load_jwks_at_startup(attempts: int = 3, retry_delay: float = 1.5) -> 
 
 async def init_db_pool() -> None:
     global _pool, _admin_pool
+    # Requisições (get_db e get_db_admin) e workers em pools separadas (X3-15):
+    # antes os laços de fundo disputavam as mesmas 10 conexões com as rotas.
     _pool = await asyncpg.create_pool(
         settings.asyncpg_url,
         min_size=2,
-        max_size=10,
+        max_size=12,
         command_timeout=30,
     )
+    _admin_pool = await asyncpg.create_pool(
+        settings.asyncpg_url,
+        min_size=1,
+        max_size=4,
+        command_timeout=120,  # OCR, purga e manutenção podem demorar mais que uma requisição
+    )
     await _load_jwks_at_startup()
-    _admin_pool = _pool  # mesma pool — worker usa service_role sem SET LOCAL role
 
 
 async def close_db_pool() -> None:
-    global _pool
-    if _pool:
-        await _pool.close()
-        _pool = None
+    global _pool, _admin_pool
+    for p in (_pool, _admin_pool):
+        if p is not None:
+            await p.close()
+    _pool = None
+    _admin_pool = None
+
+
+_ACQUIRE_TIMEOUT_SECS = 10
+
+
+@asynccontextmanager
+async def _acquire(pool: asyncpg.Pool) -> AsyncGenerator[asyncpg.Connection, None]:
+    """Pega uma conexão sem esperar para sempre (X3-15): com o pool cheio por
+    mais de 10 s, responde 503 com Retry-After em vez de travar a requisição."""
+    try:
+        conn = await pool.acquire(timeout=_ACQUIRE_TIMEOUT_SECS)
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="O servidor está ocupado agora. Tente de novo em alguns segundos.",
+            headers={"Retry-After": "3"},
+        ) from None
+    try:
+        yield conn
+    finally:
+        await pool.release(conn)
 
 
 def _require_pool() -> asyncpg.Pool:
@@ -262,7 +293,7 @@ async def get_db(
     claims = await _decode_jwt_refreshing(credentials.credentials)
     pool = _require_pool()
 
-    async with pool.acquire() as conn:
+    async with _acquire(pool) as conn:
         async with conn.transaction():
             # Replica o que o PostgREST faz internamente:
             # seta request.jwt.claims para que auth.uid() retorne claims['sub']
@@ -313,7 +344,7 @@ async def get_db_admin(request: Request) -> AsyncGenerator[asyncpg.Connection, N
     mesma conexão do pool.
     """
     pool = _require_pool()
-    async with pool.acquire() as conn:
+    async with _acquire(pool) as conn:
         request_id = str(uuid.uuid4())
         correlation_id = request.headers.get("x-correlation-id") or request_id
         await conn.execute("SELECT set_config('request.id', $1, false)", request_id)
@@ -346,7 +377,7 @@ async def get_db_share_public() -> AsyncGenerator[asyncpg.Connection, None]:
     conexão é encerrada em vez de voltar ao pool presa neste papel.
     """
     pool = _require_pool()
-    async with pool.acquire() as conn:
+    async with _acquire(pool) as conn:
         await conn.execute("SET ROLE docke_share_public")
         try:
             yield conn
