@@ -369,7 +369,27 @@ async def delete_version(
     if await VersionsService.is_current_version(admin_conn, document_id, version_id):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Não é possível excluir a versão atual.")
 
+    # Legal hold e retenção travada também protegem as versões (achado A5-65);
+    # o trigger do banco recusaria, aqui a mensagem já sai clara.
+    motivo = await admin_conn.fetchval("SELECT public.document_deletion_block_reason($1)", document_id)
+    if motivo:
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail="Este documento está sob legal hold ou retenção obrigatória: as versões antigas também ficam guardadas.",
+        )
+
+    doc_row = await admin_conn.fetchrow("SELECT name, company_id FROM public.documents WHERE id = $1", document_id)
     await VersionsService.delete_version_row(admin_conn, version_id)
+    # A exclusão entra na trilha de auditoria (antes não deixava rastro).
+    if doc_row is not None:
+        await admin_conn.execute(
+            """
+            INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, metadata)
+            VALUES ($1::uuid, $2::uuid, 'version_delete', 'document', $3::uuid, $4, $5::jsonb)
+            """,
+            claims["sub"], doc_row["company_id"], str(document_id), doc_row["name"],
+            f'{{"versao": {int(version["version_number"])}}}',
+        )
 
     # Só remove o objeto do storage se nenhuma outra versão ainda referencia a
     # mesma chave (acontece quando uma restauração cloneou o storage_key).

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { History, Upload, Download, RotateCcw, Trash2, ChevronDown, ChevronUp, GitCompare, X, Loader2 } from "lucide-react";
 import api from "@/lib/api";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useToast } from "@/lib/toast";
 import { useTaskCenter } from "@/lib/TaskContext";
 import { relativeDate } from "@/lib/date";
@@ -223,8 +224,11 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
     }
   }
 
+  const [confirmDelete, setConfirmDelete] = useState<Version | null>(null);
+
   async function deleteVersion(v: Version) {
     if (v.is_current) return;
+    setConfirmDelete(null);
     setBusyId(v.id);
     try {
       await api.delete(`/documents/${documentId}/versions/${v.id}`);
@@ -325,9 +329,10 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
                         <RotateCcw className="w-3.5 h-3.5" />
                       </button>
                       <button
-                        onClick={() => deleteVersion(v)}
+                        onClick={() => setConfirmDelete(v)}
                         disabled={busyId === v.id}
                         title="Excluir esta versão"
+                        aria-label={`Excluir a versão ${v.version_number}`}
                         className="p-1 rounded text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--bg-hover) disabled:opacity-50"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -346,6 +351,17 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
       {diffPair && (
         <DiffModal documentId={documentId} versionA={diffPair[0]} versionB={diffPair[1]} onClose={() => setDiffPair(null)} />
       )}
+      {confirmDelete && (
+        <ConfirmModal
+          title={`Excluir a versão ${confirmDelete.version_number}?`}
+          description="O arquivo desta versão é apagado de vez e a exclusão fica registrada na trilha. A versão atual não muda."
+          confirmLabel="Excluir versão"
+          danger
+          onConfirm={() => deleteVersion(confirmDelete)}
+          onClose={() => setConfirmDelete(null)}
+        />
+      )}
     </div>
   );
 }
+

@@ -76,7 +76,7 @@ class VersionsService:
     @staticmethod
     async def get_version(admin_conn: asyncpg.Connection, version_id: UUID, document_id: UUID) -> asyncpg.Record | None:
         return await admin_conn.fetchrow(
-            "SELECT id, storage_key, size_bytes, mime_type FROM public.document_versions WHERE id = $1 AND document_id = $2",
+            "SELECT id, storage_key, size_bytes, mime_type, version_number FROM public.document_versions WHERE id = $1 AND document_id = $2",
             version_id, document_id,
         )
 
