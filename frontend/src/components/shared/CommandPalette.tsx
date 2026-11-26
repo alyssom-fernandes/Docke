@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import {
   Search, FolderOpen, Folder, Upload, FolderPlus, LayoutDashboard, Anchor, Link2, Activity, CalendarClock, Trash2,
-  Settings, Sun, Moon, Building2, Users, Archive, Tags, CornerDownLeft, Keyboard, WifiOff,
+  Settings, Sun, Moon, Building2, Users, Archive, Tags, CornerDownLeft, Keyboard, WifiOff, Download, Copy, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { openKeyboardShortcuts } from "@/components/shared/KeyboardShortcuts";
 import { getFileStyle } from "@/lib/fileType";
@@ -30,6 +30,8 @@ interface Item {
 
 const fmtSize = (b: number) => (b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1).replace(".", ",")} KB` : `${(b / 1048576).toFixed(1).replace(".", ",")} MB`);
 const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+/** Filtro tolerante das ações do item: as letras na ordem, não precisam estar juntas ("bx" acha "Baixar"). */
+const subseq = (q: string, t: string) => { let i = 0; for (const c of t) if (c === q[i]) i++; return i === q.length; };
 
 /**
  * ⌘K como centro de comando (achados A2-20, A2-21): ações (enviar, nova
@@ -51,16 +53,21 @@ export default function CommandPalette() {
   const listRef = useRef<HTMLUListElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
   const cache = useRef(new Map<string, DocumentPreview>());
+  // Sub-paleta (B2.1.3): Tab ou → sobre um documento ou pasta mostra as ações dele.
+  const [acoesDe, setAcoesDe] = useState<QuickResult | null>(null);
+  const queryPrincipal = useRef("");
+  const [aviso, setAviso] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
     previousFocus.current = document.activeElement as HTMLElement | null;
-    setQuery(""); setResults([]); setActiveIdx(0); setPreview(null);
+    setQuery(""); setResults([]); setActiveIdx(0); setPreview(null); setAcoesDe(null); setAviso(null);
     const t = window.setTimeout(() => inputRef.current?.focus(), 0);
     return () => { window.clearTimeout(t); previousFocus.current?.focus?.(); };
   }, [isOpen]);
 
   useEffect(() => {
+    if (acoesDe) return;
     if (!isOpen || !current || query.trim().length < 2) { setResults([]); setSearching(false); setSearchFailed(false); return; }
     setSearching(true);
     const t = window.setTimeout(() => {
@@ -75,7 +82,35 @@ export default function CommandPalette() {
 
   function go(path: string) { close(); navigate(path); }
 
+  function linkDe(r: QuickResult) {
+    return r.type === "folder" ? `/documents?folder_id=${r.id}` : `/documents?folder_id=${r.folder_id ?? ""}&doc=${r.id}`;
+  }
+  function voltar() { setAcoesDe(null); setQuery(queryPrincipal.current); setAviso(null); }
+  function abrirAcoes(r: QuickResult) { queryPrincipal.current = query; setAcoesDe(r); setQuery(""); setActiveIdx(0); setAviso(null); }
+
   const items: Item[] = useMemo(() => {
+    if (acoesDe) {
+      const r = acoesDe;
+      const g = r.type === "folder" ? `Pasta: ${r.name}` : r.name;
+      const acoes: Item[] = [
+        { id: "x-abrir", group: g, label: r.type === "folder" ? "Abrir a pasta" : "Abrir", icon: FolderOpen, run: () => go(linkDe(r)) },
+        ...(r.type === "document" ? [{ id: "x-baixar", group: g, label: "Baixar", icon: Download, keywords: "download", run: () => {
+          api.get(`/documents/${r.id}/download-url`).then((x) => { const a = document.createElement("a"); a.href = x.data.download_url; a.download = r.name; a.click(); close(); })
+            .catch(() => setAviso("Não foi possível baixar agora."));
+        } } as Item] : []),
+        { id: "x-ancorar", group: g, label: "Ancorar", icon: Anchor, keywords: "favorito fixar", run: () => {
+          api.post("/favorites", r.type === "folder" ? { folder_id: r.id } : { document_id: r.id })
+            .then(() => { setAviso("Ancorado."); }).catch((e) => setAviso(e?.response?.status === 409 ? "Já estava ancorado." : "Não foi possível ancorar."));
+        } },
+        { id: "x-link", group: g, label: "Copiar o link interno", icon: Copy, keywords: "copiar endereço url", run: () => {
+          navigator.clipboard?.writeText(window.location.origin + linkDe(r)).then(() => setAviso("Link copiado: só quem tem acesso abre.")).catch(() => setAviso("Não foi possível copiar."));
+        } },
+        { id: "x-ativ", group: g, label: "Ver a atividade", icon: Activity, keywords: "histórico trilha quem", run: () => go(`/activity?item=${r.id}&nome=${encodeURIComponent(r.name)}`) },
+        { id: "x-voltar", group: g, label: "Voltar aos resultados", icon: ChevronLeft, hint: "←", run: voltar },
+      ];
+      const q = fold(query.trim());
+      return q ? acoes.filter((a) => subseq(q, fold(`${a.label} ${a.keywords ?? ""}`))) : acoes;
+    }
     const dark = document.documentElement.classList.contains("dark");
     const base: Item[] = [
       { id: "a-enviar", group: "Ações", label: "Enviar documentos", icon: Upload, keywords: "upload subir arquivo", run: () => go("/documents?acao=enviar") },
@@ -113,7 +148,7 @@ export default function CommandPalette() {
     const all = [...found, ...filtered];
     if (q.length >= 2) all.push({ id: "busca-total", group: "Busca", label: `Buscar "${query.trim()}" em todo o conteúdo`, icon: Search, run: () => go(`/search?q=${encodeURIComponent(query.trim())}`) });
     return all;
-  }, [query, results, companies, current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [query, results, companies, current?.id, acoesDe]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { setActiveIdx(0); }, [query, results.length]);
 
@@ -138,7 +173,11 @@ export default function CommandPalette() {
     if (e.key === "ArrowDown") { e.preventDefault(); setActiveIdx((i) => Math.min(items.length - 1, i + 1)); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setActiveIdx((i) => Math.max(0, i - 1)); }
     else if (e.key === "Enter") { e.preventDefault(); items[activeIdx]?.run(); }
-    else if (e.key === "Escape") { e.preventDefault(); close(); }
+    else if (e.key === "Escape") { e.preventDefault(); if (acoesDe) voltar(); else close(); }
+    else if ((e.key === "Tab" || (e.key === "ArrowRight" && (e.currentTarget as HTMLInputElement).selectionStart === query.length)) && !acoesDe && items[activeIdx]?.doc) {
+      e.preventDefault(); abrirAcoes(items[activeIdx].doc!);
+    }
+    else if ((e.key === "ArrowLeft" || e.key === "Backspace") && acoesDe && !query) { e.preventDefault(); voltar(); }
     else if (e.key === "Tab") e.preventDefault();
   }
 
@@ -169,7 +208,7 @@ export default function CommandPalette() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Ações, telas, empresas ou documentos…"
+            placeholder={acoesDe ? `Ações de “${acoesDe.name}”… (← volta)` : "Ações, telas, empresas ou documentos…"}
             className="flex-1 h-12 pointer-coarse:h-14 bg-transparent text-mac-callout text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden"
           />
           <kbd className="hidden sm:inline text-mac-caption text-(--text-secondary) border border-(--border-default) rounded px-1.5">Esc</kbd>
@@ -179,7 +218,10 @@ export default function CommandPalette() {
           {/* Quantos resultados há, para o leitor de tela (X1-15). */}
           <p className="sr-only" aria-live="polite">{searching ? "Procurando…" : `${items.length} ${items.length === 1 ? "resultado" : "resultados"}`}</p>
           <ul ref={listRef} id="cmdk-lista" role="listbox" aria-label="Resultados" className="flex-1 min-w-0 overflow-y-auto p-2">
-            {searchFailed && (
+            {aviso && (
+              <li role="status" className="mx-1 mb-1 rounded-(--radius-control) bg-(--bg-hover) px-3 py-2 text-mac-caption text-(--text-primary)">{aviso}</li>
+            )}
+            {searchFailed && !acoesDe && (
               <li role="alert" className="mx-1 mb-1 flex items-center gap-2 rounded-(--radius-control) bg-(--bg-hover) px-3 py-2 text-mac-caption text-(--text-warning)">
                 <WifiOff className="w-3.5 h-3.5 shrink-0" aria-hidden="true" /> Não deu para buscar agora (sem conexão ou servidor fora). As ações abaixo funcionam.
               </li>
@@ -208,6 +250,7 @@ export default function CommandPalette() {
                     <Icon className={`w-4 h-4 shrink-0 ${idx === activeIdx ? "text-white" : it.iconClass ?? "text-(--text-secondary)"}`} aria-hidden />
                     <span className="flex-1 truncate text-mac-body">{it.label}</span>
                     {it.hint && <span className={`text-mac-caption ${idx === activeIdx ? "text-white/80" : "text-(--text-secondary)"}`}>{it.hint}</span>}
+                    {it.doc && idx === activeIdx && <span className="hidden sm:inline-flex items-center text-mac-caption text-white/80" title="Ações (Tab)">Tab <ChevronRight className="w-3 h-3" aria-hidden /></span>}
                     {idx === activeIdx && <CornerDownLeft className="w-3.5 h-3.5 text-white/80" aria-hidden />}
                   </div>
                 </li>
@@ -226,6 +269,7 @@ export default function CommandPalette() {
             ) : (
               <div className="m-auto text-center text-mac-caption text-(--text-secondary) space-y-1">
                 <p>↑ ↓ para escolher, Enter para abrir.</p>
+                <p>Tab ou → num documento ou pasta mostra as ações dele.</p>
                 <p>Digite o nome de um documento para ver a prévia aqui.</p>
               </div>
             )}
