@@ -76,6 +76,8 @@ import { maskValue, validateValue, PLACEHOLDER, INPUT_MODE, type FieldType } fro
 import { SkeletonTableRow, SkeletonGridItem } from "@/components/shared/Skeleton";
 import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 import { prefetchPdfViewer } from "@/lib/prefetch";
+import { friendlyError } from "@/lib/errors";
+import IntegrityCheck from "@/components/documents/IntegrityCheck";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -152,14 +154,6 @@ function chunks<T>(list: T[], size: number): T[][] {
 
 const plural = (n: number, um: string, varios: string) => `${n.toLocaleString("pt-BR")} ${n === 1 ? um : varios}`;
 
-/** Mensagem que orienta, em vez do erro cru (achado A4-59). */
-function friendlyError(e: any, fallback: string): string {
-  const detail = e?.response?.data?.detail;
-  if (typeof detail === "string" && detail) return detail;
-  if (e?.response?.status === 413) return "O arquivo passa de 200 MB. Divida ou comprima antes de enviar.";
-  if (!e?.response) return "Sem conexão com o servidor. Confira a internet e tente de novo.";
-  return fallback;
-}
 
 /** Envia o arquivo direto ao armazenamento com progresso (fetch não informa). */
 function putWithProgress(url: string, body: Blob, contentType: string | null, onProgress: (pct: number) => void, signal?: AbortSignal): Promise<number> {
@@ -1120,6 +1114,7 @@ function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit, onClos
       )}
 
       <MetadataSection doc={doc} companyId={companyId} canEdit={canEdit} onSaved={(fid, v) => onFieldSaved(doc.id, fid, v)} />
+      <IntegrityCheck key={doc.id} documentId={doc.id} />
       <VersionsPanel documentId={doc.id} documentName={doc.name} onChanged={onChanged} />
       <DocumentRetentionSection docId={doc.id} />
       <DocumentObligations docId={doc.id} />

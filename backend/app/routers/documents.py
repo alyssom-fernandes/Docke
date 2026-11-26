@@ -976,6 +976,64 @@ async def mock_preview(safe_key: str) -> Response:
 # GET /documents/:id/preview-url — URL pré-assinada para preview inline
 # ---------------------------------------------------------------------------
 
+@router.post("/{document_id}/integrity")
+async def check_integrity(
+    document_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Confere se o arquivo guardado hoje é o mesmo que foi enviado (J1-08):
+    recalcula o SHA-256 do objeto no storage e compara com o registrado na
+    versão atual. Quem pode ver o documento pode conferir; a conferência entra
+    na trilha com o resultado.
+    """
+    doc = await conn.fetchrow(
+        "SELECT id, name, company_id, storage_path, current_version_id FROM public.documents WHERE id = $1 AND deleted_at IS NULL",
+        document_id,
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+    version = await admin_conn.fetchrow(
+        """
+        SELECT v.version_number, v.created_at,
+               COALESCE(v.sha256, CASE WHEN v.version_number = 1 THEN d.content_hash END) AS sha256
+        FROM public.documents d
+        LEFT JOIN public.document_versions v ON v.id = d.current_version_id
+        WHERE d.id = $1
+        """,
+        document_id,
+    )
+    expected = version["sha256"] if version else None
+    current = await asyncio.to_thread(storage_service.compute_sha256, doc["storage_path"])
+    if current is None:
+        resultado = "arquivo_ausente"
+    elif expected is None:
+        resultado = "sem_registro"
+    else:
+        resultado = "integro" if current == expected else "divergente"
+    try:
+        async with admin_conn.transaction():
+            await admin_conn.execute(
+                """
+                INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, metadata, severity)
+                VALUES ($1, $2, 'integrity_check', 'document', $3, $4, jsonb_build_object('resultado', $5::text), $6)
+                """,
+                claims["sub"], doc["company_id"], document_id, doc["name"], resultado,
+                "critical" if resultado in ("divergente", "arquivo_ausente") else "info",
+            )
+    except Exception:  # noqa: BLE001 — a conferência não depende da trilha
+        pass
+    return {
+        "resultado": resultado,
+        "sha256_registrado": expected,
+        "sha256_atual": current,
+        "versao": version["version_number"] if version else None,
+        "conferido_em": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.get("/{document_id}/preview-url")
 async def get_preview_url(
     document_id: UUID,

@@ -15,6 +15,8 @@ interface Version {
   created_at: string;
   uploaded_by_name: string | null;
   is_current: boolean;
+  /** Impressão digital (SHA-256) desta versão; nula nas enviadas antes do registro por versão. */
+  sha256?: string | null;
 }
 
 // Fase 12.4 — diff textual entre versões. Só funciona pra arquivos de texto
@@ -293,9 +295,14 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
                     <p className="font-medium text-(--text-primary)">
                       v{v.version_number} {v.is_current && <span className="text-(--text-accent)">· atual</span>}
                     </p>
-                    <p className="text-(--text-tertiary) truncate">
+                    <p className="text-(--text-secondary) truncate">
                       {fmtSize(v.size_bytes)} · {relativeDate(v.created_at)} {v.uploaded_by_name ? `· ${v.uploaded_by_name}` : ""}
                     </p>
+                    {v.sha256 && (
+                      <p className="font-mono text-mac-caption2 text-(--text-secondary)" title={`SHA-256 ${v.sha256}`}>
+                        SHA-256 {v.sha256.slice(0, 4)}…{v.sha256.slice(-4)}
+                      </p>
+                    )}
                   </div>
                   <button onClick={() => downloadVersion(v)} title="Baixar esta versão" className="p-1 rounded text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--bg-hover)">
                     <Download className="w-3.5 h-3.5" />

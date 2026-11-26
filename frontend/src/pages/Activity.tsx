@@ -23,6 +23,7 @@ const ACTION_GROUPS: { value: string; label: string }[] = [
   { value: "restore", label: "Restaurações" },
   { value: "update_metadata", label: "Metadados alterados" },
   { value: "version_delete", label: "Versões excluídas" },
+  { value: "integrity_check", label: "Integridade conferida" },
   { value: "obligation_link", label: "Documentos enviados para obrigações" },
   { value: "obligation_approve", label: "Obrigações aprovadas" },
   { value: "retention_hold_create", label: "Bloqueios judiciais" },

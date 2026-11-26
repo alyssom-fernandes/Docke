@@ -36,8 +36,11 @@ class VersionsService:
             """
             SELECT
               v.id::text, v.version_number, v.size_bytes, v.mime_type, v.created_at,
-              u.full_name AS uploaded_by_name
+              u.full_name AS uploaded_by_name,
+              -- Impressão digital da versão (J1-08); a versão 1 usa o hash do envio.
+              COALESCE(v.sha256, CASE WHEN v.version_number = 1 THEN d.content_hash END) AS sha256
             FROM public.document_versions v
+            JOIN public.documents d ON d.id = v.document_id
             LEFT JOIN public.users u ON u.id = v.uploaded_by
             WHERE v.document_id = $1
             ORDER BY v.version_number DESC
@@ -61,21 +64,26 @@ class VersionsService:
     @staticmethod
     async def insert_version(
         admin_conn: asyncpg.Connection, *, version_id: UUID, document_id: UUID, version_number: int,
-        storage_key: str, size_bytes: int, mime_type: str, uploaded_by: str,
+        storage_key: str, size_bytes: int, mime_type: str, uploaded_by: str, sha256: str | None = None,
     ) -> None:
         await admin_conn.execute(
             """
             INSERT INTO public.document_versions
-              (id, document_id, version_number, storage_key, size_bytes, mime_type, uploaded_by)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+              (id, document_id, version_number, storage_key, size_bytes, mime_type, uploaded_by, sha256)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             """,
-            version_id, document_id, version_number, storage_key, size_bytes, mime_type, uploaded_by,
+            version_id, document_id, version_number, storage_key, size_bytes, mime_type, uploaded_by, sha256,
         )
 
     @staticmethod
     async def get_version(admin_conn: asyncpg.Connection, version_id: UUID, document_id: UUID) -> asyncpg.Record | None:
         return await admin_conn.fetchrow(
-            "SELECT id, storage_key, size_bytes, mime_type, version_number FROM public.document_versions WHERE id = $1 AND document_id = $2",
+            """
+            SELECT v.id, v.storage_key, v.size_bytes, v.mime_type, v.version_number,
+                   COALESCE(v.sha256, CASE WHEN v.version_number = 1 THEN d.content_hash END) AS sha256
+            FROM public.document_versions v JOIN public.documents d ON d.id = v.document_id
+            WHERE v.id = $1 AND v.document_id = $2
+            """,
             version_id, document_id,
         )
 

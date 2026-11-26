@@ -170,11 +170,11 @@ class DocumentsService:
             version_id = await admin_conn.fetchval(
                 """
                 INSERT INTO public.document_versions
-                  (document_id, version_number, storage_key, size_bytes, mime_type, uploaded_by)
-                VALUES ($1, 1, $2, $3, $4, $5)
+                  (document_id, version_number, storage_key, size_bytes, mime_type, uploaded_by, sha256)
+                VALUES ($1, 1, $2, $3, $4, $5, $6)
                 RETURNING id
                 """,
-                document_id, row["storage_path"], row["size_bytes"], row["mime_type"], user_id,
+                document_id, row["storage_path"], row["size_bytes"], row["mime_type"], user_id, content_hash,
             )
             await admin_conn.execute(
                 "UPDATE public.documents SET current_version_id = $2 WHERE id = $1",

@@ -29,6 +29,7 @@ _ACTION_LABELS: dict[str, str] = {
     "copy": "Cópia de estrutura",
     "update_metadata": "Metadado alterado",
     "version_delete": "Versão excluída",
+    "integrity_check": "Integridade conferida",
     "obligation_create": "Obrigação cadastrada",
     "obligation_update": "Obrigação alterada",
     "obligation_archive": "Obrigação arquivada",

@@ -49,6 +49,7 @@ export const ACTION_LABELS: Record<string, string> = {
   copy: "copiou a estrutura de",
   update_metadata: "atualizou um campo de",
   version_delete: "excluiu uma versão de",
+  integrity_check: "conferiu a integridade de",
   obligation_create: "cadastrou a obrigação",
   obligation_update: "alterou a obrigação",
   obligation_archive: "arquivou a obrigação",
@@ -92,7 +93,7 @@ export const ACTION_LABELS: Record<string, string> = {
 const GROUP_VERB: Record<string, string> = {
   upload: "enviou", view: "abriu", move: "moveu", rename: "renomeou", delete: "excluiu",
   restore: "restaurou", download: "baixou", favorite: "ancorou", unfavorite: "desancorou",
-  update_metadata: "atualizou metadados de", version_delete: "excluiu versões de",
+  update_metadata: "atualizou metadados de", version_delete: "excluiu versões de", integrity_check: "conferiu a integridade de",
 };
 
 // Eventos consecutivos do mesmo usuário dentro dessa janela viram um item só.

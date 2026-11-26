@@ -175,12 +175,18 @@ async def confirm_version(
             detail=f"Arquivo excede o limite de {settings.MAX_FILE_SIZE_BYTES // 1_048_576}MB.",
         )
 
+    # Impressão digital desta versão (J1-08): calculada no servidor a partir
+    # do arquivo guardado, como no envio original.
+    sha256 = await asyncio.to_thread(storage_service.compute_sha256, version["storage_key"])
+
     async with admin_conn.transaction():
         await VersionsService.activate_version(
             admin_conn, document_id=document_id, version_id=version_id,
             storage_key=version["storage_key"], mime_type=version["mime_type"],
             size_bytes=real_size_bytes if real_size_bytes is not None else version["size_bytes"],
         )
+        if sha256:
+            await admin_conn.execute("UPDATE public.document_versions SET sha256 = $2 WHERE id = $1", version_id, sha256)
         await DocumentsService.enqueue_ocr(admin_conn, document_id)
         await VersionsService.log_version_upload(admin_conn, document_id=document_id, user_id=claims["sub"])
         doc_row = await VersionsService.get_document_name_and_company(admin_conn, document_id)
@@ -227,7 +233,7 @@ async def restore_version(
         await VersionsService.insert_version(
             admin_conn, version_id=new_version_id, document_id=document_id, version_number=next_number,
             storage_key=old_version["storage_key"], size_bytes=old_version["size_bytes"],
-            mime_type=old_version["mime_type"], uploaded_by=user_id,
+            mime_type=old_version["mime_type"], uploaded_by=user_id, sha256=old_version["sha256"],
         )
         await VersionsService.activate_version(
             admin_conn, document_id=document_id, version_id=new_version_id,
