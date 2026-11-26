@@ -7,6 +7,7 @@ sem RLS por usuário; usam get_db_share_public, no papel docke_share_public, que
 só alcança as colunas que essas rotas usam (migration 20261026000002).
 """
 import hashlib
+import json
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
@@ -16,7 +17,7 @@ import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel
 
-from app.dependencies import get_current_user, get_db, get_db_share_public
+from app.dependencies import get_current_user, get_db, get_db_admin, get_db_share_public
 from app.services import rate_limit, storage_service
 from app.services.notification_service import notify_share_accessed, notify_share_blocked
 from app.services.shares_service import SharesService
@@ -67,6 +68,30 @@ class ShareCreate(BaseModel):
     # Achado A5-77: limite de aberturas e "só visualizar" (sem botão de baixar).
     max_views: int | None = None
     allow_download: bool = True
+
+
+class SharePolicy(BaseModel):
+    require_password: bool = False
+    max_days: int | None = None
+
+
+async def _politica(conn: asyncpg.Connection, company_id: Any) -> tuple[bool, int | None]:
+    row = await conn.fetchrow(
+        "SELECT share_require_password, share_max_days FROM public.companies WHERE id = $1", company_id,
+    )
+    return (bool(row["share_require_password"]), row["share_max_days"]) if row else (False, None)
+
+
+def _validar_politica(req_senha: bool, max_dias: int | None, tem_senha: bool, expira: datetime | None) -> None:
+    """Política de links da empresa (FA-A5-08): senha obrigatória e validade máxima."""
+    if req_senha and not tem_senha:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="Esta empresa exige senha em todo link público. Marque Pedir senha e defina uma.")
+    if max_dias:
+        limite = datetime.now(timezone.utc) + timedelta(days=max_dias)
+        if expira is None or expira > limite + timedelta(days=1):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                detail=f"Nesta empresa um link vale no máximo {max_dias} dias. Escolha uma validade menor.")
 
 
 class ShareUpdate(BaseModel):
@@ -128,6 +153,9 @@ async def create_share(
         expires_at = (datetime.now(timezone.utc) + delta) if delta else None
     else:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="expires_in inválido.")
+
+    req_senha, max_dias = await _politica(conn, company_id)
+    _validar_politica(req_senha, max_dias, bool(body.password), expires_at)
 
     token = uuid4().hex + uuid4().hex  # 256 bits de entropia
     token_hash = _hash_token(token)
@@ -233,8 +261,15 @@ async def update_share(
     conn: asyncpg.Connection = Depends(get_db),
 ) -> dict[str, Any]:
     """Muda validade, senha, limite de aberturas ou download de um link ativo (RLS: quem pode revogar pode editar)."""
+    atual = await conn.fetchrow(
+        "SELECT company_id, password_hash IS NOT NULL AS tem_senha, expires_at FROM public.shares WHERE id = $1 AND revoked_at IS NULL",
+        share_id,
+    )
+    if atual is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link não encontrado ou já revogado.")
     sets: list[str] = []
     args: list[Any] = [share_id]
+    nova_expira = atual["expires_at"]
     if body.expires_in is not None:
         if body.expires_in == "custom":
             if body.custom_expires_at is None:
@@ -245,6 +280,7 @@ async def update_share(
             new_exp = (datetime.now(timezone.utc) + delta) if delta else None
         else:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Validade inválida.")
+        nova_expira = new_exp
         args.append(new_exp)
         sets.append(f"expires_at = ${len(args)}")
     if body.password is not None:
@@ -260,6 +296,10 @@ async def update_share(
         sets.append(f"allow_download = ${len(args)}")
     if not sets:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nada para alterar.")
+    tem_senha = atual["tem_senha"] if body.password is None else bool(body.password)
+    req_senha, max_dias = await _politica(conn, atual["company_id"])
+    # Só barra o que a edição piora: validade nova acima do limite ou tirar a senha.
+    _validar_politica(req_senha and body.password is not None, max_dias if body.expires_in is not None else None, tem_senha, nova_expira)
     row = await conn.fetchrow(
         f"UPDATE public.shares SET {', '.join(sets)} WHERE id = $1 AND revoked_at IS NULL "
         "RETURNING id::text, expires_at, password_hash IS NOT NULL AS has_password, max_views, allow_download, view_count",
@@ -268,6 +308,43 @@ async def update_share(
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link não encontrado ou já revogado.")
     return dict(row)
+
+
+@router.get("/companies/{company_id}/share-policy")
+async def get_share_policy(company_id: UUID, conn: asyncpg.Connection = Depends(get_db)) -> dict[str, Any]:
+    req_senha, max_dias = await _politica(conn, company_id)
+    return {"require_password": req_senha, "max_days": max_dias}
+
+
+@router.put("/companies/{company_id}/share-policy")
+async def put_share_policy(
+    company_id: UUID,
+    body: SharePolicy,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Política de links da empresa (FA-A5-08): só quem administra a empresa."""
+    from app.dependencies import get_app_role
+    from app.services.companies_service import CompaniesService
+
+    role = await get_app_role(conn, claims)
+    if role != "supremo" and not await CompaniesService.user_manages_company(conn, claims["sub"], company_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Só quem administra a empresa muda a política de links.")
+    if body.max_days is not None and not (1 <= body.max_days <= 3650):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A validade máxima vai de 1 a 3.650 dias.")
+    await admin_conn.execute(
+        "UPDATE public.companies SET share_require_password = $2, share_max_days = $3 WHERE id = $1",
+        company_id, body.require_password, body.max_days,
+    )
+    await conn.execute(
+        """
+        INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, event_category, metadata)
+        VALUES ($1::uuid, $2::uuid, 'share_policy', 'config', $2::uuid, 'Política de links', 'config', $3::jsonb)
+        """,
+        claims["sub"], company_id, json.dumps({"senha_obrigatoria": body.require_password, "validade_maxima_dias": body.max_days}),
+    )
+    return {"require_password": body.require_password, "max_days": body.max_days}
 
 
 @router.delete("/shares/{share_id}", status_code=status.HTTP_204_NO_CONTENT)

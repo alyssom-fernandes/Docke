@@ -71,6 +71,7 @@ _ACTION_LABELS: dict[str, str] = {
     "field_rule_apply": "Campo aplicado em pasta",
     "fields_copy": "Campos copiados de outra empresa",
     "audit_export": "Trilha de auditoria exportada",
+    "share_policy": "Política de links alterada",
     "audit_verify": "Integridade da trilha verificada",
     "field_rules_copy": "Regras de metadados copiadas de outra pasta",
     "field_rule_exclude": "Campo tirado de pasta",

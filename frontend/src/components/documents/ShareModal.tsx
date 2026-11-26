@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import { Copy, Check, Link2, Lock, Eye, EyeOff, Trash2, Pencil, AlertTriangle } from "lucide-react";
 import api from "@/lib/api";
+import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
 import Dialog from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
@@ -19,6 +20,9 @@ interface ShareLink {
   max_views?: number | null;
   allow_download?: boolean;
 }
+
+// Dias de cada validade (sem validade = infinito, fica de fora quando há limite).
+const DIAS: Record<string, number> = { "24h": 1, "7d": 7, "30d": 30 };
 
 const EXPIRY = [
   { value: "24h", label: "24 horas" },
@@ -57,6 +61,21 @@ export default function ShareModal({ resourceType, resourceId, name, onClose, on
   const [copied, setCopied] = useState(false);
   const [revoking, setRevoking] = useState<ShareLink | null>(null);
   const [editing, setEditing] = useState<ShareLink | null>(null);
+
+  // Política de links da empresa (FA-A5-08): senha obrigatória e validade máxima.
+  const { current } = useCompany();
+  const [pol, setPol] = useState<{ require_password: boolean; max_days: number | null }>({ require_password: false, max_days: null });
+  useEffect(() => {
+    if (!current) return;
+    api.get(`/companies/${current.id}/share-policy`).then((r) => {
+      setPol(r.data);
+      if (r.data?.require_password) setUsePassword(true);
+      const max = r.data?.max_days as number | null;
+      if (max) setExpiry((e) => (DIAS[e] !== undefined && DIAS[e] <= max ? e : max >= 7 ? "7d" : "24h"));
+    }).catch(() => {});
+  }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const expiryOpts = pol.max_days ? EXPIRY.filter((o) => o.value === "custom" || (DIAS[o.value] !== undefined && DIAS[o.value] <= pol.max_days!)) : EXPIRY;
+  const maxData = pol.max_days ? new Date(Date.now() + pol.max_days * 86400000).toISOString().slice(0, 10) : undefined;
 
   const active = (links ?? []).filter((l) => !l.revoked_at && (!l.expires_at || new Date(l.expires_at) > new Date()));
   const sensitive = SENSITIVE.test(name);
@@ -142,12 +161,13 @@ export default function ShareModal({ resourceType, resourceId, name, onClose, on
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <span id={`${uid}-val`} className="block text-mac-body font-medium text-(--text-secondary) mb-1.5">Validade</span>
-                  <Dropdown value={expiry} onChange={setExpiry} options={EXPIRY} ariaLabelledby={`${uid}-val`} />
+                  <Dropdown value={expiry} onChange={setExpiry} options={expiryOpts} ariaLabelledby={`${uid}-val`} />
+                  {pol.max_days && <p className="mt-1 text-mac-caption text-(--text-secondary)">A empresa permite no máximo {pol.max_days} {pol.max_days === 1 ? "dia" : "dias"}.</p>}
                 </div>
                 {expiry === "custom" && (
                   <div>
                     <label htmlFor={`${uid}-data`} className="block text-mac-body font-medium text-(--text-secondary) mb-1.5">Vale até</label>
-                    <input id={`${uid}-data`} type="date" min={new Date().toISOString().slice(0, 10)} value={customDate} onChange={(e) => setCustomDate(e.target.value)} className={field} />
+                    <input id={`${uid}-data`} type="date" min={new Date().toISOString().slice(0, 10)} max={maxData} value={customDate} onChange={(e) => setCustomDate(e.target.value)} className={field} />
                   </div>
                 )}
                 <div>
@@ -160,8 +180,8 @@ export default function ShareModal({ resourceType, resourceId, name, onClose, on
                 Só visualizar (sem botão de baixar)
               </label>
               <label className="flex items-center gap-2.5 min-h-8 pointer-coarse:min-h-11 cursor-pointer text-mac-body text-(--text-primary)">
-                <Checkbox checked={usePassword} onChange={(e) => setUsePassword(e.target.checked)} />
-                Pedir senha
+                <Checkbox checked={usePassword} disabled={pol.require_password} onChange={(e) => setUsePassword(e.target.checked)} />
+                Pedir senha{pol.require_password && <span className="text-mac-caption text-(--text-secondary)">(obrigatória nesta empresa)</span>}
               </label>
               {usePassword && (
                 <div className="reveal">
