@@ -49,7 +49,8 @@ class SearchService:
       d.company_id = $2
       AND d.deleted_at IS NULL AND d.content_hash IS NOT NULL
       AND (
-        dtv.tsv @@ sq.tsq
+        d.search_tsv @@ sq.tsq
+        OR to_tsvector('portuguese', public.immutable_unaccent(coalesce(ft.txt, ''))) @@ sq.tsq
         OR d.name ILIKE '%' || $3 || '%'
         OR d.ocr_text ILIKE '%' || $3 || '%'
         OR ft.txt ILIKE '%' || $3 || '%'
