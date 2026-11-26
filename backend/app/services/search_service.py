@@ -86,7 +86,7 @@ class SearchService:
         # Sinais de uso (B2.1.4): ancorado por quem busca e aberto por ela nos
         # últimos 90 dias sobem; o ganho é limitado para não passar na frente
         # de um resultado bem mais relevante.
-        "relevancia": "rank * (1 + uso.boost) DESC, d.created_at DESC",
+        "relevancia": "ts_rank_cd(dtv.tsv, sq.tsq, 4) * (1 + uso.boost) DESC, d.created_at DESC",
         "recentes": "d.created_at DESC",
         "antigos": "d.created_at ASC",
         "nome": "lower(d.name) ASC",
