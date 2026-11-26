@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
-  UserPlus, RefreshCw, Plus, Trash2, Check, AlertTriangle, Search, UsersRound, KeyRound, Ban, RotateCcw, Copy, ChevronRight, HelpCircle,
+  UserPlus, RefreshCw, Plus, Trash2, Check, AlertTriangle, Search, UsersRound, KeyRound, Ban, RotateCcw, Copy, ChevronRight, HelpCircle, Download,
 } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
@@ -102,13 +102,37 @@ export default function Users() {
 
   const person = people?.find((p) => p.user_id === open) ?? null;
 
+  function exportAccessCsv() {
+    if (!people || !current) return;
+    const papel: Record<string, string> = { admin: "Administrador", operador: "Operador", visualizador: "Visualizador" };
+    const linhas: string[][] = [["Pessoa", "E-mail", "Situação", "Último acesso", "Papel", "Onde", "Origem"]];
+    for (const p of people) {
+      const base = [p.full_name, p.email ?? "", p.is_active ? "Ativa" : "Desativada", p.last_sign_in_at ? new Date(p.last_sign_in_at).toLocaleString("pt-BR") : "Nunca entrou"];
+      for (const g of p.grants) linhas.push([...base, papel[g.role] ?? g.role, g.folder_name ?? "Empresa toda", "Direto"]);
+      for (const g of p.via_groups) linhas.push([...base, papel[g.role] ?? g.role, g.folder_name ?? "Empresa toda", `Grupo ${g.group_name}`]);
+      if (!p.grants.length && !p.via_groups.length) linhas.push([...base, "—", "—", "Sem acesso"]);
+    }
+    const csv = "\ufeff" + linhas.map((l) => l.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\r\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    a.download = `acessos_${current.name.replace(/[^\w]+/g, "-")}_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
   if (!current) return null;
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-mac-caption text-(--text-secondary) max-w-2xl">Quem acessa {current.name}, com que papel e onde. O acesso pode vir direto ou por um grupo.</p>
-        {state === "ok" && <Button onClick={() => setCreating(true)}><UserPlus className="w-4 h-4" aria-hidden="true" /> Nova pessoa</Button>}
+        {state === "ok" && (
+          <div className="flex flex-wrap gap-2">
+            {/* Revisão de acessos (A9-21): a lista de quem acessa o quê, para conferir à mão. */}
+            <Button variant="secondary" onClick={exportAccessCsv}><Download className="w-4 h-4" aria-hidden="true" /> Exportar acessos (CSV)</Button>
+            <Button onClick={() => setCreating(true)}><UserPlus className="w-4 h-4" aria-hidden="true" /> Nova pessoa</Button>
+          </div>
+        )}
       </div>
 
       <div role="tablist" aria-label="Pessoas ou grupos" className="flex items-center gap-0.5 p-0.5 rounded-full bg-(--bg-hover) w-fit">
