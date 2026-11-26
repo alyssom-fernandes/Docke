@@ -74,6 +74,9 @@ export default function AppShell({ children }: AppShellProps) {
           conteúdo na ordem do Tab (A2-15); a posição na tela é fixa. */}
       <BottomTabBar />
       <Dock />
+      {/* Degradê sob a navegação inferior (A2-02): o conteúdo que rola some
+          aos poucos em vez de passar nítido por trás do vidro do Dock. */}
+      <div aria-hidden="true" className="pointer-events-none fixed inset-x-0 bottom-0 z-20 h-24 md:h-28 bg-linear-to-t from-(--bg-page) via-(--bg-page)/70 to-transparent" />
 
       {/* pt: espaço pra TopBar fixa (56px + respiro). pb: espaço pro Dock/barra inferior flutuantes */}
       <main
