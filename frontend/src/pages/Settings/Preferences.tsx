@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Sliders, Sun, Moon, Monitor, Rows3, Rows4, RotateCcw } from "lucide-react";
+import { Palette, Sun, Moon, Monitor, Rows3, Rows4, Rows2, RotateCcw } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { getThemePreference, setThemePreference } from "@/lib/theme";
 import { useAuthContext } from "@/lib/AuthContext";
@@ -15,12 +15,37 @@ const THEME_OPTIONS = [
   { value: "system" as const, label: "Sistema", icon: Monitor },
 ];
 
-type Density = "comfortable" | "compact";
+type Density = "compact" | "comfortable" | "spacious";
 
 const DENSITY_OPTIONS = [
+  { value: "compact" as const, label: "Compacta", icon: Rows4 },
   { value: "comfortable" as const, label: "Confortável", icon: Rows3 },
-  { value: "compact" as const, label: "Compacto", icon: Rows4 },
+  { value: "spacious" as const, label: "Espaçosa", icon: Rows2 },
 ];
+
+// Miniatura de janela (A8-31): barra, lateral e linhas de conteúdo no tema,
+// no lugar do quadrado chapado com ícone.
+function JanelaTema({ tema }: { tema: "light" | "dark" }) {
+  const c = tema === "light"
+    ? { fundo: "#ECECE6", janela: "#FFFFFF", lado: "#F3F3EF", linha: "#D9D9D3", forte: "#0d9488" }
+    : { fundo: "#141414", janela: "#232323", lado: "#1B1B1B", linha: "#3A3A3A", forte: "#2dd4bf" };
+  return (
+    <svg viewBox="0 0 120 90" className="w-full h-full" aria-hidden="true">
+      <rect width="120" height="90" fill={c.fundo} />
+      <rect x="10" y="10" width="100" height="70" rx="6" fill={c.janela} />
+      <rect x="10" y="10" width="30" height="70" rx="6" fill={c.lado} />
+      <circle cx="17" cy="17" r="2" fill="#ff5f57" /><circle cx="23" cy="17" r="2" fill="#febc2e" /><circle cx="29" cy="17" r="2" fill="#28c840" />
+      <rect x="15" y="27" width="20" height="4" rx="2" fill={c.forte} />
+      <rect x="15" y="35" width="16" height="3" rx="1.5" fill={c.linha} />
+      <rect x="15" y="41" width="18" height="3" rx="1.5" fill={c.linha} />
+      <rect x="46" y="20" width="40" height="5" rx="2.5" fill={c.linha} />
+      <rect x="46" y="31" width="56" height="3" rx="1.5" fill={c.linha} />
+      <rect x="46" y="38" width="50" height="3" rx="1.5" fill={c.linha} />
+      <rect x="46" y="45" width="54" height="3" rx="1.5" fill={c.linha} />
+      <rect x="46" y="58" width="22" height="7" rx="3.5" fill={c.forte} />
+    </svg>
+  );
+}
 
 export default function Preferences() {
   usePageTitle("Preferências");
@@ -28,7 +53,7 @@ export default function Preferences() {
   const { success, error: showError } = useToast();
   const [theme, setTheme] = useState(getThemePreference());
   const [density, setDensity] = useState<Density>(
-    () => (localStorage.getItem("docke_table_density") as Density) || "comfortable"
+    () => (["compact", "comfortable", "spacious"].includes(localStorage.getItem("docke_table_density") ?? "") ? localStorage.getItem("docke_table_density") as Density : "comfortable")
   );
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -46,9 +71,13 @@ export default function Preferences() {
     }
   }
 
+  // Troca de tema com transição curta (A8-31) onde o navegador permite e sem
+  // movimento reduzido; senão, troca direta como antes.
   function choose(value: "light" | "dark" | "system") {
-    setThemePreference(value);
-    setTheme(value);
+    const aplicar = () => { setThemePreference(value); setTheme(value); };
+    const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
+    if (doc.startViewTransition && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) doc.startViewTransition(aplicar);
+    else aplicar();
   }
 
   function chooseDensity(value: Density) {
@@ -61,7 +90,7 @@ export default function Preferences() {
       <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-6 space-y-6">
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <Sliders className="w-4 h-4 text-(--text-accent)" />
+            <Palette className="w-4 h-4 text-(--text-accent)" aria-hidden />
             <h3 id="pref-tema" className="text-mac-body font-medium text-(--text-primary)">Tema</h3>
           </div>
           {/* Miniaturas visuais + radio embaixo — igual ao seletor de
@@ -76,17 +105,19 @@ export default function Preferences() {
                 className="flex flex-col items-center gap-2 group rounded-[12px] focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
               >
                 <span
-                  className={`w-full aspect-4/3 rounded-[10px] border-2 overflow-hidden flex items-center justify-center transition-colors duration-fast ${
+                  className={`relative w-full aspect-4/3 rounded-[10px] border-2 overflow-hidden transition-[border-color,transform] duration-fast group-active:scale-[0.98] ${
                     theme === opt.value ? "border-teal-500" : "border-transparent group-hover:border-(--border-default)"
                   }`}
-                  style={{
-                    background:
-                      opt.value === "light" ? "#E9E9E3" :
-                      opt.value === "dark" ? "#1E1E1E" :
-                      "linear-gradient(135deg, #E9E9E3 50%, #1E1E1E 50%)",
-                  }}
                 >
-                  <opt.icon className={`w-5 h-5 ${opt.value === "light" ? "text-(--text-warning)" : opt.value === "dark" ? "text-slate-300" : "text-(--text-accent)"}`} />
+                  {opt.value === "system" ? (
+                    <>
+                      <span className="absolute inset-0"><JanelaTema tema="light" /></span>
+                      <span className="absolute inset-0 [clip-path:polygon(100%_0,100%_100%,0_100%)]"><JanelaTema tema="dark" /></span>
+                    </>
+                  ) : <JanelaTema tema={opt.value} />}
+                  <span className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-black/35 flex items-center justify-center" aria-hidden="true">
+                    <opt.icon className="w-3 h-3 text-white" />
+                  </span>
                 </span>
                 <span className="flex items-center gap-1.5 text-mac-caption text-(--text-secondary)">
                   <span className={`w-3 h-3 rounded-full border flex items-center justify-center shrink-0 ${theme === opt.value ? "border-teal-500" : "border-(--border-default)"}`}>
@@ -104,7 +135,7 @@ export default function Preferences() {
             <Rows3 className="w-4 h-4 text-(--text-accent)" />
             <h3 id="pref-dens" className="text-mac-body font-medium text-(--text-primary)">Densidade das listas</h3>
           </div>
-          <div role="radiogroup" aria-labelledby="pref-dens" className="grid grid-cols-2 gap-2 max-w-[280px]">
+          <div role="radiogroup" aria-labelledby="pref-dens" className="grid grid-cols-3 gap-2 max-w-[380px]">
             {DENSITY_OPTIONS.map((opt) => (
               <button
                 key={opt.value}

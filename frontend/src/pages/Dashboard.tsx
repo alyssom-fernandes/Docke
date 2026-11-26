@@ -14,6 +14,7 @@ import { useToast } from "@/lib/toast";
 import EmptyState from "@/components/shared/EmptyState";
 import ActivityFeed from "@/components/shared/ActivityFeed";
 import TodayPanel from "@/components/dashboard/TodayPanel";
+import FirstSteps from "@/components/dashboard/FirstSteps";
 import Dialog from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
 import Checkbox from "@/components/ui/Checkbox";
@@ -344,6 +345,7 @@ export default function Dashboard() {
 
       {/* 1. O que fazer hoje — primeira coisa da tela (A3-01, A3-02). */}
       <TodayPanel />
+      {cid && s && <FirstSteps companyId={cid} folders={s.total_folders} documents={s.total_documents} isAdmin={["admin", "supremo"].includes(current?.permission_level ?? "")} />}
 
       {/* 2. Números, cada um leva à lista que conta. */}
       {shows("numeros") && (

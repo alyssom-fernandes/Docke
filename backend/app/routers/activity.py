@@ -49,6 +49,16 @@ async def list_activity(
 # GET /activity/export — exporta CSV (deve vir antes de /{event_id})
 # ---------------------------------------------------------------------------
 
+async def _log_auditoria(conn: asyncpg.Connection, user_id: str, company_id: UUID, action: str, meta: dict[str, Any]) -> None:
+    await conn.execute(
+        """
+        INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, event_category, metadata)
+        VALUES ($1::uuid, $2::uuid, $3, 'config', $2::uuid, 'Trilha de auditoria', 'config', $4::jsonb)
+        """,
+        user_id, company_id, action, json.dumps({k: v for k, v in meta.items() if v is not None}, default=str),
+    )
+
+
 @router.get("/export")
 async def export_activity_csv(
     company_id: UUID = Query(...),
@@ -59,6 +69,7 @@ async def export_activity_csv(
     date_to: date | None = Query(None),
     format: str = Query("csv", pattern="^(csv|xlsx)$"),
     conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
 ) -> Response:
     """
     Exporta eventos do activity_log como CSV (padrão) ou XLSX (?format=xlsx).
@@ -69,6 +80,10 @@ async def export_activity_csv(
         company_id=company_id, user_id=user_id, action=action, item_type=item_type,
         date_from=date_from, date_to=date_to,
     )
+    # Auditoria da auditoria (B3.3.8): quem exportou a trilha, com que filtro.
+    await _log_auditoria(conn, claims["sub"], company_id, "audit_export", {
+        "formato": format, "linhas": len(rows), "de": date_from, "ate": date_to, "acao": action, "pessoa": user_id,
+    })
 
     if format == "xlsx":
         xlsx_bytes = ActivityService.build_xlsx(rows)
@@ -118,6 +133,9 @@ async def verify_activity_integrity(
     first = summary["first_broken"]
     if isinstance(first, str):
         first = json.loads(first)
+    await _log_auditoria(conn, claims["sub"], company_id, "audit_verify", {
+        "eventos": summary["total_events"], "quebras": summary["broken_count"],
+    })
     return {
         "total_events": summary["total_events"],
         "intact": summary["broken_count"] == 0,

@@ -3,7 +3,7 @@ import XmlCode from "./XmlCode";
 import { X, Download, AlertCircle, Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Printer, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
 import { getFileStyle } from "@/lib/fileType";
 import api from "@/lib/api";
-import Dialog from "@/components/ui/Dialog";
+import Dialog, { DialogCloseButton } from "@/components/ui/Dialog";
 import Code128 from "./Code128";
 import type { PdfViewerHandle } from "./PdfViewer";
 
@@ -195,6 +195,10 @@ interface PreviewModalProps {
   /** Lista da pasta, para ir ao anterior/próximo com as setas (achado A5-34). */
   docs?: Doc[];
   onClose: () => void;
+  /** Centro do item clicado: a prévia cresce dali (A5-38). */
+  origin?: { x: number; y: number } | null;
+  /** Termo vindo da Busca: a busca interna já abre com ele (B2.6.6). */
+  initialQuery?: string | null;
 }
 
 /**
@@ -203,7 +207,7 @@ interface PreviewModalProps {
  * realça no próprio PDF e salta para a página (Ctrl+F abre a busca daqui),
  * imagem com zoom e girar, impressão do arquivo e DANFE com Code-128 real.
  */
-export default function PreviewModal({ doc: initialDoc, docs, onClose }: PreviewModalProps) {
+export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = null, initialQuery = null }: PreviewModalProps) {
   const list = docs && docs.length ? docs : [initialDoc];
   const [index, setIndex] = useState(() => Math.max(0, list.findIndex((d) => d.id === initialDoc.id)));
   const swipe = useRef<{ x: number; y: number; t: number } | null>(null);
@@ -220,8 +224,8 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose }: Preview
   const [watermarkLabel] = useState(getWatermarkLabel);
   const [ocrText, setOcrText] = useState<string | null>(null);
   const [pdfPages, setPdfPages] = useState<string[] | null>(null);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(!!initialQuery);
+  const [query, setQuery] = useState(initialQuery ?? "");
   const [active, setActive] = useState(0);
   const [imgZoom, setImgZoom] = useState(1);
   const [imgRotation, setImgRotation] = useState(0);
@@ -314,6 +318,9 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose }: Preview
     api.get<{ text: string }>(`/documents/${doc.id}/text`).then(({ data }) => setOcrText(data.text ?? "")).catch(() => setOcrText(""));
   }, [type, ocrText, doc.id]);
 
+  // Aberta já com um termo (vindo da Busca): imagem busca o texto lido na hora.
+  useEffect(() => { if (searchOpen && type === "image") ensureImageText(); }, [searchOpen, type, ensureImageText]);
+
   const openSearch = useCallback(() => {
     setSearchOpen(true);
     ensurePdfText();
@@ -392,13 +399,13 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose }: Preview
         <Download className="w-3.5 h-3.5" aria-hidden /> Baixar
       </button>
       <button className={`${iconBtn} sm:hidden`} onClick={download} aria-label="Baixar"><Download className="w-4 h-4" aria-hidden /></button>
-      <button className={iconBtn} onClick={onClose} aria-label="Fechar (Esc)"><X className="w-4 h-4" aria-hidden /></button>
+      <DialogCloseButton className={iconBtn} label="Fechar (Esc)"><X className="w-4 h-4" aria-hidden /></DialogCloseButton>
     </div>
   );
 
   return (
     // Fundo opaco (J1-05): no tema claro o vidro deixava a tela de trás aparecer em volta da página.
-    <Dialog onClose={onClose} title={`Pré-visualização de ${doc.name}`} size="full" header={header} className="bg-(--bg-card)!" bodyClassName="p-0! overflow-hidden! flex flex-col">
+    <Dialog onClose={onClose} origin={origin} title={`Pré-visualização de ${doc.name}`} size="full" header={header} className="bg-(--bg-card)!" bodyClassName="p-0! overflow-hidden! flex flex-col">
       {searchOpen && (
         <div className="reveal flex items-center gap-2 px-4 py-2 border-b border-(--border-default) shrink-0" role="search">
           <Search className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0" aria-hidden />

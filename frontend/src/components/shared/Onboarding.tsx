@@ -122,7 +122,17 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
   );
 
   return (
-    <Dialog onClose={() => {}} showClose={false} title={titles[step]} description={`Passo ${step + 1} de 4`} size="md" busy={loading} footer={footer}>
+    <Dialog onClose={() => {}} showClose={false} title={titles[step]} size="md" busy={loading} footer={footer}
+      description={
+        // Progresso em pontos (A1-26), com o texto para leitor de tela.
+        <span className="flex items-center gap-2">
+          <span className="flex gap-1.5" aria-hidden="true">
+            {titles.map((_, i) => <span key={i} className={`h-1.5 rounded-full transition-all duration-200 ${i === step ? "w-5 bg-teal-600" : i < step ? "w-1.5 bg-teal-600/60" : "w-1.5 bg-(--border-control)"}`} />)}
+          </span>
+          <span className="text-mac-caption">Passo {step + 1} de 4</span>
+        </span>
+      }>
+      <div key={step} className="panel-in">
       {step === 0 && (
         <p className="text-mac-body text-(--text-secondary)">Em três passos: o nome da empresa, as primeiras pastas e o que fazer em seguida. Tudo pode ser mudado depois.</p>
       )}
@@ -160,6 +170,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
           <li><Link to="/documents?acao=enviar" onClick={finish} className="flex items-center gap-2 text-mac-body text-(--text-accent) hover:underline"><FolderOpen className="w-4 h-4" aria-hidden="true" /> Enviar os primeiros documentos</Link></li>
         </ul>
       )}
+      </div>
     </Dialog>
   );
 }

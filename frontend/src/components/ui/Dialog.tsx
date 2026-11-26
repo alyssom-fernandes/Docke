@@ -1,4 +1,4 @@
-import { ReactNode, RefObject, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { ReactNode, RefObject, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, createContext, useContext, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
@@ -39,6 +39,16 @@ export interface DialogProps {
   header?: ReactNode;
   className?: string;
   bodyClassName?: string;
+  /** Ponto da tela de onde o diálogo cresce e para onde volta (Quick Look, A5-38). */
+  origin?: { x: number; y: number } | null;
+}
+
+// Fechar com a saída animada a partir de qualquer ponto de dentro do diálogo
+// (ex.: o X próprio do cabeçalho do visualizador, A5-38).
+const DialogCloseContext = createContext<(() => void) | null>(null);
+export function DialogCloseButton({ className, label, children }: { className?: string; label: string; children: ReactNode }) {
+  const close = useContext(DialogCloseContext);
+  return <button type="button" className={className} onClick={() => close?.()} aria-label={label}>{children}</button>;
 }
 
 const WIDTH = {
@@ -49,8 +59,12 @@ const WIDTH = {
 
 export default function Dialog({
   onClose, title, description, children, footer, size = "md", initialFocusRef, busy = false,
-  hideTitle = false, showClose = true, className = "", bodyClassName = "", header,
+  hideTitle = false, showClose = true, className = "", bodyClassName = "", header, origin = null,
 }: DialogProps) {
+  // Deslocamento do centro da tela até o item de origem, lido uma vez ao abrir.
+  const [qo] = useState(() => (origin && window.matchMedia("(min-width: 640px)").matches && !reducedMotion()
+    ? { "--qo-x": `${Math.round(origin.x - window.innerWidth / 2)}px`, "--qo-y": `${Math.round(origin.y - window.innerHeight / 2)}px` } as CSSProperties
+    : null));
   const id = useId();
   const titleId = `${id}-titulo`;
   const descId = `${id}-descricao`;
@@ -129,6 +143,7 @@ export default function Dialog({
   }, [id, requestClose]);
 
   return createPortal(
+    <DialogCloseContext.Provider value={requestClose}>
     <div ref={rootRef} className="fixed inset-0 z-[60]">
       <div
         aria-hidden
@@ -145,7 +160,8 @@ export default function Dialog({
           tabIndex={-1}
           className={`pointer-events-auto relative flex w-full max-h-[92dvh] flex-col glass-dialog glass-blur-strong shadow-modal
             rounded-t-[18px] sm:rounded-(--radius-dialog) pb-[env(safe-area-inset-bottom)] sm:pb-0 focus:outline-hidden
-            ${WIDTH[size]} ${leaving ? "dialog-panel-out" : "dialog-panel-in"} ${className}`}
+            ${WIDTH[size]} ${qo ? (leaving ? "quicklook-out" : "quicklook-in") : leaving ? "dialog-panel-out" : "dialog-panel-in"} ${className}`}
+          style={qo ?? undefined}
         >
           <div className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-(--border-control) sm:hidden" aria-hidden />
           {header && <h2 id={titleId} className="sr-only">{title}</h2>}
@@ -179,7 +195,8 @@ export default function Dialog({
           )}
         </div>
       </div>
-    </div>,
+    </div>
+    </DialogCloseContext.Provider>,
     document.body,
   );
 }

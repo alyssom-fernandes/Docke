@@ -51,6 +51,11 @@ const FILTERS: { value: string; label: string }[] = [
   { value: "todas", label: "Todas, inclusive fechadas" },
 ];
 
+// Cache entre visitas (A7-18): ao voltar para Obrigações, a última lista
+// aparece na hora e é atualizada por trás, sem esqueleto.
+const cacheInstancias = new Map<string, Instance[]>();
+const cacheModelos = new Map<string, Template[]>();
+
 export default function Obligations() {
   usePageTitle("Obrigações");
   const { current, companies } = useCompany();
@@ -80,9 +85,16 @@ export default function Obligations() {
   const canOperateIn = (companyId: string) => ["admin", "operador", "supremo"].includes(perm(companyId) ?? "");
   const isAdmin = current ? isAdminOf(current.id) : false;
 
-  const [instances, setInstances] = useState<Load<Instance[]>>({ state: "loading", data: [] });
+  const chaveInst = `${current?.id}:${grupo}:${mine}:${filtro === "todas"}`;
+  const [instances, setInstances] = useState<Load<Instance[]>>(() => {
+    const c = cacheInstancias.get(chaveInst);
+    return c ? { state: "ok", data: c } : { state: "loading", data: [] };
+  });
   const [empresas, setEmpresas] = useState<{ company_id: string; name: string; overdue: number; expired: number; at_risk: number; reviewing: number; approved: number; relevant: number }[]>([]);
-  const [templates, setTemplates] = useState<Load<Template[]>>({ state: "loading", data: [] });
+  const [templates, setTemplates] = useState<Load<Template[]>>(() => {
+    const c = current ? cacheModelos.get(current.id) : undefined;
+    return c ? { state: "ok", data: c } : { state: "loading", data: [] };
+  });
   const [deps, setDeps] = useState<Dependency[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
 
@@ -93,7 +105,12 @@ export default function Obligations() {
       ? api.get("/obligations/group", { params: { mine: mine || undefined } }).then((r) => { setEmpresas(r.data.empresas ?? []); return r.data.instancias as Instance[]; })
       : api.get<Instance[]>(`/companies/${current.id}/obligations/instances`, { params: { mine: mine || undefined, history: filtro === "todas" || undefined } }).then((r) => r.data);
     // Avisa a navegação para atualizar o contador de obrigações (A2-13).
-    req.then((data) => { setInstances({ state: "ok", data: Array.isArray(data) ? data : [] }); window.dispatchEvent(new Event("docke:obrigacoes")); })
+    req.then((data) => {
+      const lista = Array.isArray(data) ? data : [];
+      cacheInstancias.set(chaveInst, lista);
+      setInstances({ state: "ok", data: lista });
+      window.dispatchEvent(new Event("docke:obrigacoes"));
+    })
       .catch(() => setInstances((s) => ({ ...s, state: "error" })));
   }, [current?.id, grupo, mine, filtro === "todas"]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -101,7 +118,7 @@ export default function Obligations() {
     if (!current) return;
     setTemplates((s) => ({ ...s, state: s.data.length ? "ok" : "loading" }));
     api.get<Template[]>(`/companies/${current.id}/obligations/templates`, { params: { include_archived: true } })
-      .then((r) => setTemplates({ state: "ok", data: Array.isArray(r.data) ? r.data : [] }))
+      .then((r) => { const l = Array.isArray(r.data) ? r.data : []; cacheModelos.set(current.id, l); setTemplates({ state: "ok", data: l }); })
       .catch(() => setTemplates((s) => ({ ...s, state: "error" })));
     api.get<Dependency[]>(`/companies/${current.id}/obligations/dependencies`).then((r) => setDeps(r.data ?? [])).catch(() => setDeps([]));
     api.get<Member[]>(`/companies/${current.id}/members`).then((r) => setMembers(r.data ?? [])).catch(() => setMembers([]));
@@ -191,6 +208,8 @@ export default function Obligations() {
         </div>
       </div>
 
+      {/* Troca de aba com entrada suave (A7-22), em vez de corte seco. */}
+      <div key={`aba-${tab}`} className="page-enter">
       {semModelos && tab !== "configuracao" ? (
         <div className="glass-panel glass-blur-card rounded-(--radius-panel)">
           <EmptyState
@@ -282,6 +301,7 @@ export default function Obligations() {
           onReload={() => { loadConfig(); loadInstances(); }} onEdit={(t) => setShowTemplate(t)} onNewInstance={(t) => setNewInstance({ template: t })}
         />
       )}
+      </div>
 
       {aberta && (
         <InstanceDialog
@@ -453,8 +473,9 @@ function Calendar({ templates, instances, canOperate, onOpen, onCreate }: {
                       return (
                         <td key={m} className="px-1 py-1.5 text-center">
                           <button onClick={() => onOpen(inst.id)} aria-label={`${label}: ${S.label}`} title={`${label}: ${S.label}`}
-                            className={`inline-flex items-center justify-center w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 rounded-full hover:bg-(--bg-hover) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${S.tone}`}>
-                            <S.icon className="w-4 h-4" aria-hidden="true" />
+                            className={`inline-flex items-center justify-center w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 rounded-full transition-colors duration-fast hover:bg-(--bg-hover) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${S.tone}`}>
+                            {/* Célula anima quando o estado muda (A7-22). */}
+                            <span key={inst.effective_status} className="reveal inline-flex"><S.icon className="w-4 h-4" aria-hidden="true" /></span>
                           </button>
                         </td>
                       );
