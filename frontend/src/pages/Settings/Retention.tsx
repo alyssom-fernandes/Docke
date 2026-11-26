@@ -639,7 +639,7 @@ function WhereTab({ companyId, isAdmin, policies, folders, assignments, initialF
         </section>
       )}
 
-      {isAdmin && <HealthCheck companyId={companyId} />}
+      {isAdmin && <HealthCheck companyId={companyId} assinatura={assignments.map((a) => a.id).join(",")} />}
 
       {removing && (
         <ConfirmModal
@@ -660,17 +660,35 @@ function WhereTab({ companyId, isAdmin, policies, folders, assignments, initialF
   );
 }
 
-function HealthCheck({ companyId }: { companyId: string }) {
-  const [data, setData] = useState<{ policies_without_assignments: { id: string; name: string }[]; documents_without_policy_sample: { id: string; name: string; folder_name: string; folder_id: string }[]; documents_without_policy_has_more: boolean } | null>(null);
+type Saude = { policies_without_assignments: { id: string; name: string }[]; documents_without_policy_sample: { id: string; name: string; folder_name: string; folder_id: string }[]; documents_without_policy_has_more: boolean };
+// Conferência guardada por 5 min (A7-105): reabrir a tela não recalcula tudo;
+// muda a assinatura quando um prazo é atribuído ou removido.
+const cacheSaude = new Map<string, { at: number; data: Saude }>();
+
+function HealthCheck({ companyId, assinatura }: { companyId: string; assinatura: string }) {
+  const chave = `${companyId}:${assinatura}`;
+  const [data, setData] = useState<Saude | null>(() => { const c = cacheSaude.get(chave); return c && Date.now() - c.at < 300_000 ? c.data : null; });
+  const [at, setAt] = useState<number | null>(() => cacheSaude.get(chave)?.at ?? null);
   const [failed, setFailed] = useState(false);
-  const load = () => { setFailed(false); api.get(`/companies/${companyId}/retention/health-check`).then((r) => setData(r.data)).catch(() => setFailed(true)); };
-  useEffect(load, [companyId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [busy, setBusy] = useState(false);
+  const load = () => {
+    setFailed(false); setBusy(true);
+    api.get<Saude>(`/companies/${companyId}/retention/health-check`)
+      .then((r) => { const agora = Date.now(); cacheSaude.set(chave, { at: agora, data: r.data }); setData(r.data); setAt(agora); })
+      .catch(() => setFailed(true)).finally(() => setBusy(false));
+  };
+  useEffect(() => { if (!data) load(); }, [chave]); // eslint-disable-line react-hooks/exhaustive-deps
   if (failed) return <LoadError what="a conferência de cobertura" onRetry={load} />;
   if (!data) return null;
   const semPolitica = data.documents_without_policy_sample;
   return (
     <section aria-labelledby="saude" className="space-y-2">
-      <h2 id="saude" className="text-mac-body font-semibold text-(--text-primary)">O que está sem prazo</h2>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="saude" className="text-mac-body font-semibold text-(--text-primary)">O que está sem prazo</h2>
+        <p className="text-mac-caption text-(--text-secondary)">
+          {at ? `Conferido ${relativeDate(new Date(at).toISOString())}` : ""} · <button onClick={load} disabled={busy} className="font-medium text-(--text-accent) hover:underline disabled:opacity-(--opacity-disabled)">{busy ? "Conferindo…" : "Conferir de novo"}</button>
+        </p>
+      </div>
       {data.policies_without_assignments.length === 0 && semPolitica.length === 0 ? (
         <p className="text-mac-body text-(--text-secondary)">Todos os documentos têm prazo de guarda e todos os prazos estão em uso.</p>
       ) : (
