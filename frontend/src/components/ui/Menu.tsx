@@ -67,9 +67,16 @@ export default function Menu({ items, onClose, anchor, label, align = "start" }:
     if (active >= 0) itemRefs.current[active]?.focus({ preventScroll: true });
   }, [active, pos]);
 
+  const [leaving, setLeaving] = useState(false);
+  const closing = useRef(false);
   function close(restore = true) {
-    onClose();
+    if (closing.current) return;
+    closing.current = true;
     if (restore && previous.current && document.contains(previous.current)) previous.current.focus({ preventScroll: true });
+    // Saída animada (J1-06): some em 120 ms e só então desmonta.
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { onClose(); return; }
+    setLeaving(true);
+    window.setTimeout(onClose, sheet ? 150 : 120);
   }
 
   useEffect(() => {
@@ -124,8 +131,8 @@ export default function Menu({ items, onClose, anchor, label, align = "start" }:
       onContextMenu={(e) => e.preventDefault()}
       style={sheet ? undefined : pos ? { top: pos.top, left: pos.left } : { top: -9999, left: -9999 }}
       className={sheet
-        ? "sheet-in fixed z-[80] inset-x-0 bottom-0 max-h-[80dvh] overflow-y-auto pt-2 pb-[calc(8px+env(safe-area-inset-bottom))] glass-dialog glass-blur-strong rounded-t-(--radius-dialog) shadow-modal"
-        : `fixed z-[80] min-w-[220px] max-w-[300px] py-1.5 glass-dialog glass-blur-strong rounded-(--radius-popover) shadow-dropdown ${pos ? "menu-in" : ""}`}
+        ? `${leaving ? "sheet-out" : "sheet-in"} fixed z-[80] inset-x-0 bottom-0 max-h-[80dvh] overflow-y-auto pt-2 pb-[calc(8px+env(safe-area-inset-bottom))] glass-dialog glass-blur-strong rounded-t-(--radius-dialog) shadow-modal`
+        : `fixed z-[80] min-w-[220px] max-w-[300px] py-1.5 glass-dialog glass-blur-strong rounded-(--radius-popover) shadow-dropdown ${leaving ? "menu-out" : pos ? "menu-in" : ""}`}
     >
       {sheet && (
         <div className="px-5 pt-1 pb-2" aria-hidden="true">
@@ -173,7 +180,7 @@ export default function Menu({ items, onClose, anchor, label, align = "start" }:
   return createPortal(
     sheet ? (
       <>
-        <div aria-hidden="true" className="dialog-scrim-in fixed inset-0 z-[79] bg-(--overlay-scrim)" />
+        <div aria-hidden="true" className={`${leaving ? "dialog-scrim-out" : "dialog-scrim-in"} fixed inset-0 z-[79] bg-(--overlay-scrim)`} />
         {menu}
       </>
     ) : menu,

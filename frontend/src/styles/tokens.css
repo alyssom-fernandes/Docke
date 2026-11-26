@@ -587,6 +587,10 @@ input[type="number"] {
 /* ─── Menu e popover (Menu.tsx): aparecem 4 px acima do ponto, em 140 ms ─── */
 @keyframes menu-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
 .menu-in { animation: menu-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1) both; transform-origin: top left; }
+/* Saída dos popovers e menus (J1-06, A2-03): some em 120 ms, sem salto. */
+@keyframes menu-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-4px) scale(0.98); } }
+.menu-out { animation: menu-out 120ms ease-in both; transform-origin: top left; pointer-events: none; }
+.sheet-out { animation: sheet-out 150ms ease-in both; pointer-events: none; }
 
 /* ─── Anchor Drop animation ─── */
 @keyframes anchor-drop {

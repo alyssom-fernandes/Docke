@@ -369,7 +369,8 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose }: Preview
   );
 
   return (
-    <Dialog onClose={onClose} title={`Pré-visualização de ${doc.name}`} size="full" header={header} bodyClassName="p-0! overflow-hidden! flex flex-col">
+    // Fundo opaco (J1-05): no tema claro o vidro deixava a tela de trás aparecer em volta da página.
+    <Dialog onClose={onClose} title={`Pré-visualização de ${doc.name}`} size="full" header={header} className="bg-(--bg-card)!" bodyClassName="p-0! overflow-hidden! flex flex-col">
       {searchOpen && (
         <div className="reveal flex items-center gap-2 px-4 py-2 border-b border-(--border-default) shrink-0" role="search">
           <Search className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0" aria-hidden />

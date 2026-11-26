@@ -5,6 +5,7 @@ import { useTaskCenter, type Task, type TaskKind } from "@/lib/TaskContext";
 import { useCompany } from "@/lib/CompanyContext";
 import api from "@/lib/api";
 import { relativeDate, fullDate } from "@/lib/date";
+import { usePresence } from "@/hooks/usePresence";
 
 const KIND_ICON: Record<TaskKind, ElementType> = {
   upload: Upload,
@@ -118,6 +119,7 @@ export default function TaskCenter() {
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const presence = usePresence(open);
 
   const running = tasks.filter((t) => t.status === "running").length;
   const failed = tasks.filter((t) => t.status === "failed").length;
@@ -227,14 +229,14 @@ export default function TaskCenter() {
         )}
       </button>
 
-      {open && (
+      {presence.mounted && (
         <div
           ref={panelRef}
           id="central-tarefas"
           role="dialog"
           aria-label="Tarefas e avisos"
           tabIndex={-1}
-          className="menu-in glass-dialog glass-blur-strong shadow-dropdown fixed left-3 right-3 top-[76px] sm:absolute sm:left-auto sm:right-0 sm:top-full sm:w-[360px] sm:mt-1.5 rounded-(--radius-popover) z-50 overflow-hidden max-h-[calc(100dvh-160px)] sm:max-h-[70vh] flex flex-col focus:outline-hidden"
+          className={`${presence.leaving ? "menu-out" : "menu-in"} glass-dialog glass-blur-strong shadow-dropdown fixed left-3 right-3 top-[76px] sm:absolute sm:left-auto sm:right-0 sm:top-full sm:w-[360px] sm:mt-1.5 rounded-(--radius-popover) z-50 overflow-hidden max-h-[calc(100dvh-160px)] sm:max-h-[70vh] flex flex-col focus:outline-hidden`}
           style={{ transformOrigin: "top right" }}
         >
           <div className="overflow-y-auto overscroll-contain">

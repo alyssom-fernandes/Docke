@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Building2, ChevronsUpDown, Check, Search } from "lucide-react";
 import { useCompany } from "@/lib/CompanyContext";
+import { usePresence } from "@/hooks/usePresence";
 
 const RECENT_KEY = "docke_empresas_recentes";
 const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -25,6 +26,7 @@ export default function CompanySwitcher() {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const withSearch = companies.length > 5;
+  const presence = usePresence(open);
 
   const options = useMemo(() => {
     const q = fold(query.trim());
@@ -100,8 +102,8 @@ export default function CompanySwitcher() {
         <ChevronsUpDown className="w-3.5 h-3.5 shrink-0 text-(--text-secondary)" aria-hidden="true" />
       </button>
 
-      {open && (
-        <div className="menu-in absolute top-full left-0 mt-1.5 w-[min(320px,calc(100vw-24px))] glass-dialog glass-blur-strong rounded-(--radius-popover) shadow-dropdown z-50 overflow-hidden">
+      {presence.mounted && (
+        <div className={`${presence.leaving ? "menu-out" : "menu-in"} absolute top-full left-0 mt-1.5 w-[min(320px,calc(100vw-24px))] glass-dialog glass-blur-strong rounded-(--radius-popover) shadow-dropdown z-50 overflow-hidden`}>
           {withSearch && (
             <div className="flex items-center gap-2 px-3 border-b border-(--border-default)">
               <Search className="w-3.5 h-3.5 text-(--text-secondary) shrink-0" aria-hidden="true" />

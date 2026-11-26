@@ -3,6 +3,7 @@ import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import { MoreHorizontal, Sun, Moon, X, Upload } from "lucide-react";
 import { toggleTheme, useIsDark } from "@/lib/theme";
 import { NAV_ITEMS, useNavBadges } from "./navItems";
+import { usePresence } from "@/hooks/usePresence";
 
 // Quatro abas fixas; o resto na folha "Mais". Nomes e ícones vêm da mesma
 // lista do Dock (A2-18, A2-50).
@@ -18,6 +19,7 @@ export default function BottomTabBar() {
   const sheetRef = useRef<HTMLDivElement>(null);
   const moreButtonRef = useRef<HTMLButtonElement>(null);
   const badges = useNavBadges();
+  const presence = usePresence(moreOpen, 150);
 
   const moreActive = MORE_LINKS.some((l) => location.pathname.startsWith(l.match));
   const moreBadge = MORE_LINKS.map((l) => badges[l.to]).find(Boolean);
@@ -43,13 +45,13 @@ export default function BottomTabBar() {
 
   return (
     <>
-      {moreOpen && (
+      {presence.mounted && (
         <div
           ref={sheetRef}
           id="folha-mais"
           role="dialog"
           aria-label="Mais opções"
-          className="sheet-in glass-dialog glass-blur-strong glass-shadow glass-highlight-line fixed bottom-[calc(86px+env(safe-area-inset-bottom))] left-4 right-4 z-30 rounded-[18px] py-2 md:hidden"
+          className={`${presence.leaving ? "sheet-out" : "sheet-in"} glass-dialog glass-blur-strong glass-shadow glass-highlight-line fixed bottom-[calc(86px+env(safe-area-inset-bottom))] left-4 right-4 z-30 rounded-[18px] py-2 md:hidden`}
         >
           <div className="flex items-center justify-between pl-4 pr-2 py-1">
             <span className="text-mac-caption font-medium text-(--text-secondary)">Mais</span>

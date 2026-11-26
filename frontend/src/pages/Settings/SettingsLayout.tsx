@@ -189,7 +189,7 @@ export default function SettingsLayout() {
                     nos agrupamentos da sidebar de pastas (Ancorados/Locais em
                     Documents.tsx), só que sem disclosure: System Settings
                     real não recolhe grupos, só separa visualmente. */}
-                <p className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-(--text-tertiary)">{group}</p>
+                <p className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-(--text-secondary)">{group}</p>
                 <div className="space-y-0.5">
                   {filtered.filter((t) => t.group === group).map((tab) => (
                     <NavLink
@@ -198,15 +198,16 @@ export default function SettingsLayout() {
                       className={({ isActive }) =>
                         // Preenchimento sólido no item selecionado (não um tint sutil)
                         // — igual ao destaque de seleção real do System Settings.
-                        `flex items-center gap-2.5 h-9 px-2.5 rounded-sm text-mac-body whitespace-nowrap transition-colors duration-fast ${
+                        // teal-700 dá 5,4:1 com o branco (o 500 dava 3,2:1 — J1-11).
+                        `group flex items-center gap-2.5 h-9 pointer-coarse:h-11 px-2.5 rounded-sm text-mac-body whitespace-nowrap transition-colors duration-fast ${
                           isActive
-                            ? "bg-teal-500 text-white font-medium"
+                            ? "bg-teal-700 text-white font-medium"
                             : "text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)"
                         }`
                       }
                     >
-                      <span className={`w-5 h-5 rounded-[6px] flex items-center justify-center shrink-0 ${tab.color}`}>
-                        <tab.icon className="w-3 h-3 text-white" strokeWidth={2.25} />
+                      <span className={`w-5 h-5 rounded-[6px] flex items-center justify-center shrink-0 group-aria-[current=page]:ring-1 group-aria-[current=page]:ring-white/80 ${tab.color}`}>
+                        <tab.icon className="w-3 h-3 text-white" strokeWidth={2.25} aria-hidden="true" />
                       </span>
                       <span className="min-w-0 flex-1 truncate">
                         {tab.label}
