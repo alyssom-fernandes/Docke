@@ -44,8 +44,8 @@ bash "$HERE/restore_db.sh" "$DUMP" "$DB_URL" "$COUNTS"
 RESULT="$(psql "$DB_URL" -At -v ON_ERROR_STOP=1 -c "
   SELECT (SELECT count(*) FROM public.documents WHERE company_id = '$CO') || ' ' ||
          (SELECT count(*) FROM public.companies WHERE name = 'Criada depois do backup') || ' ' ||
-         (SELECT bool_and(ok) FROM public.activity_log_verify_chain('$CO')) || ' ' ||
+         (SELECT CASE WHEN bool_and(ok) THEN 'integra' ELSE 'quebrada' END FROM public.activity_log_verify_chain('$CO')) || ' ' ||
          (SELECT count(*) FROM public.legal_holds WHERE company_id = '$CO' AND released_at IS NULL)")"
 echo "Depois da restauração (documentos, empresas criadas depois, trilha íntegra, holds ativos): $RESULT"
-[ "$RESULT" = "25 0 t 1" ] || { echo "Ensaio de restauração FALHOU"; exit 1; }
+[ "$RESULT" = "25 0 integra 1" ] || { echo "Ensaio de restauração FALHOU"; exit 1; }
 echo "Ensaio de backup e restauração OK."

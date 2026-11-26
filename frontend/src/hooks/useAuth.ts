@@ -68,8 +68,8 @@ export function useAuth(): AuthState {
     })();
   }, []);
 
-  async function applySession(tokens: SessionTokens, remember?: boolean) {
-    saveSession(tokens, remember);
+  async function applySession(tokens: SessionTokens, remember?: boolean, keepChoice = false) {
+    saveSession(tokens, remember, keepChoice);
     const me = await api.get("/auth/me");
     const u = toUser(me.data);
     // Empresa selecionada pertence à identidade anterior — trocar de conta
@@ -102,7 +102,7 @@ export function useAuth(): AuthState {
   // segredo (Fly secret) e faz o login por trás via /auth/demo-login.
   async function loginDemo() {
     const res = await api.post("/auth/demo-login", undefined, { timeout: DEMO_LOGIN_TIMEOUT_MS });
-    await applySession(res.data, false);
+    await applySession(res.data, false, true);
   }
 
   function logout() {

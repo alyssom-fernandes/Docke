@@ -39,8 +39,12 @@ export function accessExpiresAt(): number | null {
   return Number.isFinite(v) && v > 0 ? v : null;
 }
 
-export function saveSession(tokens: SessionTokens, remember: boolean = rememberChoice()): void {
-  localStorage.setItem(REMEMBER, remember ? "1" : "0");
+/**
+ * `keepChoice`: a demo entra sem "manter conectado" mas não muda a escolha
+ * que a pessoa fez para a conta dela neste computador.
+ */
+export function saveSession(tokens: SessionTokens, remember: boolean = rememberChoice(), keepChoice = false): void {
+  if (!keepChoice) localStorage.setItem(REMEMBER, remember ? "1" : "0");
   const target = remember ? localStorage : sessionStorage;
   const other = remember ? sessionStorage : localStorage;
   for (const k of [ACCESS, REFRESH, EXPIRES]) other.removeItem(k);

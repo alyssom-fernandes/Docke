@@ -669,7 +669,7 @@ async def link_document(
         await admin_conn.execute(
             """
             INSERT INTO public.notifications (user_id, company_id, type, resource_type, resource_id, message)
-            SELECT DISTINCT uca.user_id, $1, 'obligation_review', 'obligation_instance', $2, $3
+            SELECT DISTINCT uca.user_id, $1::uuid, 'obligation_review', 'obligation_instance', $2::uuid, $3::text
             FROM public.user_company_access uca
             WHERE uca.company_id = $1 AND uca.folder_path IS NULL AND uca.permission_level = 'admin'
               AND uca.user_id <> $4::uuid

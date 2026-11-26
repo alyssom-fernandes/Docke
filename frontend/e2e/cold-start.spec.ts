@@ -32,5 +32,6 @@ test("sessão salva continua se a primeira chamada não chegar à API", async ({
   await expect.poll(() => calls.count, { timeout: 15_000 }).toBe(2);
   await expect(page).toHaveURL(/\/dashboard/);
   await expect(page.locator("header button").first()).not.toHaveText("Selecionar empresa", { timeout: 15_000 });
-  expect(await page.evaluate(() => localStorage.getItem("docke_token"))).not.toBeNull();
+  // A demo guarda a sessão só nesta aba (sessionStorage); conta real com "manter conectado", no localStorage.
+  expect(await page.evaluate(() => sessionStorage.getItem("docke_token") ?? localStorage.getItem("docke_token"))).not.toBeNull();
 });
