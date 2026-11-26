@@ -126,12 +126,12 @@ async def _process_one_job(provider) -> bool:
         with busy():
             extraction = await extract_document_text(provider, job["storage_path"], job["mime_type"])
     except (UnsupportedFormat, _MissingFile) as exc:
-        await _mark_failed(job["id"], job["document_id"], str(exc))
+        await _mark_failed(job["id"], job["document_id"], str(exc), job["storage_path"])
         return True
     except Exception as exc:
         logger.exception("Extração de texto falhou para doc %s (tentativa %d): %s", job["document_id"], new_attempts, exc)
         if new_attempts >= _MAX_ATTEMPTS:
-            await _mark_failed(job["id"], job["document_id"], "Não foi possível ler o texto deste arquivo.")
+            await _mark_failed(job["id"], job["document_id"], "Não foi possível ler o texto deste arquivo.", job["storage_path"])
         else:
             await _schedule_retry(job["id"], job["document_id"], new_attempts, str(exc))
         return True
@@ -149,15 +149,21 @@ async def _process_one_job(provider) -> bool:
 
     async with _admin_pool.acquire() as conn:
         async with conn.transaction():
-            await conn.execute(
+            # Só grava se o documento ainda aponta para o mesmo arquivo (X3-14):
+            # se uma versão nova chegou durante a leitura, este texto é da
+            # versão antiga e não pode sobrescrever o da nova (o job dela cuida).
+            updated = await conn.execute(
                 """
                 UPDATE public.documents
                 SET ocr_text = $2, ocr_status = 'done', ocr_completed_at = now(), updated_at = now()
-                WHERE id = $1
+                WHERE id = $1 AND storage_path = $3
                 """,
                 job["document_id"],
                 extraction.text,
+                job["storage_path"],
             )
+            if updated == "UPDATE 0":
+                logger.info("OCR do doc %s descartado: o arquivo mudou durante a leitura.", job["document_id"])
             # A versão atual (mesmo objeto no storage) guarda o próprio texto:
             # é o que a comparação de versões usa para PDF, DOCX e afins.
             await conn.execute(
@@ -205,15 +211,18 @@ async def _schedule_retry(job_id, document_id, attempts: int, error_message: str
     logger.warning("OCR do doc %s volta à fila em %d s (tentativa %d de %d).", document_id, delay, attempts, _MAX_ATTEMPTS)
 
 
-async def _mark_failed(job_id, document_id, error_message: str) -> None:
+async def _mark_failed(job_id, document_id, error_message: str, storage_path: str | None = None) -> None:
     from app.dependencies import _admin_pool
     if _admin_pool is None:
         return
     async with _admin_pool.acquire() as conn:
         async with conn.transaction():
+            # Falha de um arquivo que já foi trocado por versão nova não marca o documento (X3-14).
             await conn.execute(
-                "UPDATE public.documents SET ocr_status = 'failed', updated_at = now() WHERE id = $1",
+                "UPDATE public.documents SET ocr_status = 'failed', updated_at = now()"
+                " WHERE id = $1 AND ($2::text IS NULL OR storage_path = $2)",
                 document_id,
+                storage_path,
             )
             await conn.execute(
                 """

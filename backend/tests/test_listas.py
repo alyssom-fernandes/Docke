@@ -136,3 +136,15 @@ async def test_notificacao_traz_pasta_do_documento_e_lixeira(api, admin, empresa
         assert por_id[empresa["raiz"]]["folder_id"] is None
     finally:
         await admin.execute("DELETE FROM public.notifications WHERE user_id = $1", empresa["user"])
+
+
+@pytest.mark.asyncio
+async def test_busca_rapida_aceita_apostrofo_aspas_e_hifen(api, admin, empresa):  # noqa: F811
+    """X3-06: termos com apóstrofo, aspas ou hífen solto não derrubam a busca rápida."""
+    h, co = _token(empresa["user"]), empresa["co"]
+    await _doc(admin, empresa, empresa["raiz"], "Conta d'água março.pdf", "conta de agua")
+    for termo in ("d'água", '"', "-", "a-", "nf-e", "'", "conta d'"):
+        r = await api.get(API + "/search/quick", params={"q": termo, "company_id": co}, headers=h)
+        assert r.status_code == 200, (termo, r.text)
+    r = await api.get(API + "/search/quick", params={"q": "d'água", "company_id": co}, headers=h)
+    assert any("água" in x["name"] for x in r.json())

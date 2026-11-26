@@ -22,7 +22,7 @@ jobs:
           ruff check backend
 
       - name: Instalar dependências do backend
-        run: pip install -r backend/requirements.txt
+        run: pip install -r backend/requirements-dev.txt
 
       # O mesmo Tesseract da imagem de produção: o teste de PDF escaneado
       # (test_extracao_texto.py) só roda com ele.

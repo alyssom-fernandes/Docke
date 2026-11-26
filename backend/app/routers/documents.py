@@ -18,6 +18,7 @@ from app.dependencies import get_current_user, get_db, get_db_admin
 from app.config import settings
 from app.services import storage_service
 from app.services.documents_service import DocumentsService, _MIME_MAP
+from app.services.file_signature import content_matches_extension, describe as describe_ext
 from app.services.notification_service import notify_folder_favoriters
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -299,7 +300,22 @@ async def _finalize_confirmed_upload(
             detail=f"Arquivo excede o limite de {settings.MAX_FILE_SIZE_BYTES // 1_048_576}MB.",
         )
 
-    content_hash = storage_service.compute_sha256(key)
+    # O conteúdo tem de bater com a extensão (X3-18): um executável ou HTML
+    # com nome .pdf não entra.
+    head = await asyncio.to_thread(storage_service.read_head, key)
+    if head is not None and not content_matches_extension(doc["name"], head):
+        try:
+            await asyncio.to_thread(storage_service.delete_object, key)
+        except Exception:
+            pass
+        await DocumentsService.delete_pending_document(admin_conn, document_id)
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"O conteúdo de \"{doc['name']}\" não é de um arquivo {describe_ext(doc['name'])}: a extensão não bate com o conteúdo. Confira o arquivo e envie de novo.",
+        )
+
+    # Fora do laço assíncrono: ler um arquivo grande para o hash travava as outras requisições.
+    content_hash = await asyncio.to_thread(storage_service.compute_sha256, key)
     if content_hash is None:
         raise HTTPException(
             status_code=status.HTTP_424_FAILED_DEPENDENCY,

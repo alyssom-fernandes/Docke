@@ -25,7 +25,9 @@ import io
 import re
 import zipfile
 from dataclasses import dataclass
-from xml.etree import ElementTree
+from xml.etree import ElementTree  # noqa: F401 — ParseError usado por quem chama
+
+from app.services.file_signature import safe_xml_fromstring
 
 # Teto do texto guardado: o tsvector do Postgres aceita até 1 MB.
 MAX_TEXT_CHARS = 500_000
@@ -75,7 +77,7 @@ def _decode(data: bytes) -> str:
 
 def _xml_text(data: bytes) -> str:
     """Todo o texto dos elementos (valores da NF-e: CNPJ, nomes, produtos, chaves)."""
-    root = ElementTree.fromstring(data)
+    root = safe_xml_fromstring(data)
     parts = [t.strip() for t in root.itertext() if t and t.strip()]
     return "\n".join(parts)
 
@@ -90,7 +92,7 @@ def _docx_text(data: bytes) -> str:
         for name in names:
             if name not in z.namelist():
                 continue
-            root = ElementTree.fromstring(z.read(name))
+            root = safe_xml_fromstring(z.read(name))
             for p in root.iter(f"{ns}p"):
                 texto = "".join(t.text or "" for t in p.iter(f"{ns}t"))
                 if texto.strip():

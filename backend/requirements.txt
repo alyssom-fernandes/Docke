@@ -17,5 +17,3 @@ opencv-python-headless==5.0.0.93
 httpx==0.28.1
 openpyxl==3.1.5
 bcrypt==5.0.0
-pytest==9.1.1
-pytest-asyncio==1.4.0

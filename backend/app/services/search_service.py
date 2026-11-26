@@ -196,7 +196,11 @@ class SearchService:
     ) -> list[dict[str, Any]]:
         # Monta tsquery com prefix matching na última palavra:
         # "nota fiscal" → "nota & fiscal:*"
-        words = normalized.split()
+        # Só letras e números entram na sintaxe do to_tsquery (X3-06): aspas,
+        # apóstrofo ("d'água") ou hífen solto quebravam a consulta com erro 500.
+        words = re.findall(r"\w+", normalized, flags=re.UNICODE)
+        if not words:
+            return []
         if len(words) == 1:
             prefix_query = f"{words[0]}:*"
         else:

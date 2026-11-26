@@ -260,6 +260,22 @@ def read_object(key: str) -> bytes | None:
     return mock_read(key)
 
 
+def read_head(key: str, n: int = 1024) -> bytes | None:
+    """Primeiros bytes do objeto (assinatura do formato, X3-18). None se não existir."""
+    if _r2_configured:
+        try:
+            response = _s3.get_object(Bucket=settings.R2_BUCKET_NAME, Key=key, Range=f"bytes=0-{n - 1}")
+            return response["Body"].read()
+        except Exception:
+            return None
+    safe_key = _mock_key(key)
+    path = MOCK_DIR / safe_key
+    if not path.exists():
+        return None
+    with open(path, "rb") as f:
+        return f.read(n)
+
+
 def mock_read(key: str) -> bytes | None:
     """Lê arquivo do mock storage. Retorna None se não existir."""
     safe_key = _mock_key(key)

@@ -26,6 +26,7 @@ from app.config import settings
 from app.dependencies import get_current_user, get_db, get_db_admin
 from app.services import storage_service
 from app.services.documents_service import DocumentsService
+from app.services.file_signature import content_matches_extension, describe as describe_ext
 from app.services.notification_service import notify_document_watchers
 
 logger = logging.getLogger("docke.versions")
@@ -177,6 +178,20 @@ async def confirm_version(
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"Arquivo excede o limite de {settings.MAX_FILE_SIZE_BYTES // 1_048_576}MB.",
+        )
+
+    # O conteúdo da versão tem de bater com a extensão do documento (X3-18).
+    doc_name = await admin_conn.fetchval("SELECT name FROM public.documents WHERE id = $1", document_id)
+    head = await asyncio.to_thread(storage_service.read_head, version["storage_key"])
+    if doc_name and head is not None and not content_matches_extension(doc_name, head):
+        try:
+            await asyncio.to_thread(storage_service.delete_object, version["storage_key"])
+        except Exception:
+            pass
+        await VersionsService.delete_pending_version(admin_conn, version_id)
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"A nova versão precisa ser do mesmo tipo de \"{doc_name}\": o conteúdo enviado não é de um arquivo {describe_ext(doc_name)}.",
         )
 
     # Impressão digital desta versão (J1-08): calculada no servidor a partir

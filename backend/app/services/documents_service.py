@@ -8,6 +8,8 @@ Convenção: todo método recebe a conexão (conn ou admin_conn) explicitamente
 como primeiro argumento — nenhuma conexão é aberta aqui (I4/I9).
 """
 import xml.etree.ElementTree as ET
+
+from app.services.file_signature import safe_xml_fromstring
 from typing import Any
 from uuid import UUID
 
@@ -97,7 +99,7 @@ class DocumentsService:
         # explícito como argumento de user_has_access() em vez de usado implicitamente.
         return await admin_conn.fetchrow(
             """
-            SELECT d.id, d.storage_path, d.company_id, d.content_hash,
+            SELECT d.id, d.name, d.storage_path, d.company_id, d.content_hash,
                    public.user_has_access(
                      $2::uuid,
                      (SELECT f.path FROM public.folders f WHERE f.id = d.folder_id),
@@ -335,7 +337,7 @@ class DocumentsService:
         Retorna None se o XML não seguir o schema reconhecido (não é NFe).
         """
         try:
-            root = ET.fromstring(xml_bytes)
+            root = safe_xml_fromstring(xml_bytes)
         except ET.ParseError:
             return None
 

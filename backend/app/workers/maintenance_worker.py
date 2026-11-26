@@ -95,6 +95,13 @@ async def _run_once() -> None:
         await _notify_retention_expiring_soon(conn)
         await _scan_retention_expirations(conn)
         await _reset_demo_data_if_due(conn)
+        # Partições futuras da trilha (X3-13): cria as que faltam, 24 meses à frente.
+        try:
+            criadas = await conn.fetchval("SELECT public.ensure_activity_log_partitions(24)")
+            if criadas:
+                logger.info("Trilha: %d partição(ões) mensal(is) criada(s).", criadas)
+        except Exception as exc:  # noqa: BLE001 — não pode parar a manutenção
+            logger.exception("Falha ao garantir partições da trilha: %s", exc)
 
 
 async def _cleanup_stale_pending_uploads(conn) -> None:
