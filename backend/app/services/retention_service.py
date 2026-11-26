@@ -25,9 +25,17 @@ class RetentionService:
     # -------------------------------------------------------------------
     @staticmethod
     async def list_policies(conn: asyncpg.Connection, company_id: UUID, include_archived: bool = False) -> list[asyncpg.Record]:
-        clause = "" if include_archived else "AND archived_at IS NULL"
+        clause = "" if include_archived else "AND rp.archived_at IS NULL"
         return await conn.fetch(
-            f"SELECT * FROM public.retention_policies WHERE company_id = $1 {clause} ORDER BY name", company_id,
+            f"""
+            SELECT rp.*, cf.label AS trigger_field_label,
+                   (SELECT count(*) FROM public.retention_policy_assignments rpa WHERE rpa.policy_id = rp.id) AS assignment_count
+            FROM public.retention_policies rp
+            LEFT JOIN public.custom_field cf ON cf.id = rp.trigger_custom_field_id
+            WHERE rp.company_id = $1 {clause}
+            ORDER BY rp.archived_at NULLS FIRST, rp.name
+            """,
+            company_id,
         )
 
     @staticmethod
@@ -38,16 +46,68 @@ class RetentionService:
     async def create_policy(
         conn: asyncpg.Connection, *, company_id: UUID, name: str, legal_basis: str | None,
         trigger_type: str, trigger_custom_field_id: UUID | None, duration_months: int | None,
-        locked: bool, created_by: str,
+        locked: bool, created_by: str, start_rule: str = "data", notes: str | None = None, catalog_key: str | None = None,
     ) -> asyncpg.Record:
         return await conn.fetchrow(
             """
             INSERT INTO public.retention_policies
-              (company_id, name, legal_basis, trigger_type, trigger_custom_field_id, duration_months, locked, created_by)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+              (company_id, name, legal_basis, trigger_type, trigger_custom_field_id, duration_months, locked, created_by,
+               start_rule, notes, catalog_key)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING *
             """,
             company_id, name, legal_basis, trigger_type, trigger_custom_field_id, duration_months, locked, created_by,
+            start_rule, notes, catalog_key,
+        )
+
+    @staticmethod
+    async def update_policy(conn: asyncpg.Connection, policy_id: UUID, changes: dict[str, Any]) -> asyncpg.Record:
+        allowed = ("name", "legal_basis", "notes", "duration_months", "locked", "start_rule", "trigger_type", "trigger_custom_field_id")
+        cols = [c for c in allowed if c in changes]
+        if not cols:
+            return await RetentionService.get_policy(conn, policy_id)
+        sets = ", ".join(f"{c} = ${i + 2}" for i, c in enumerate(cols))
+        return await conn.fetchrow(
+            f"UPDATE public.retention_policies SET {sets} WHERE id = $1 RETURNING *",
+            policy_id, *[changes[c] for c in cols],
+        )
+
+    @staticmethod
+    async def existing_catalog_keys(conn: asyncpg.Connection, company_id: UUID) -> set[str]:
+        rows = await conn.fetch(
+            "SELECT catalog_key FROM public.retention_policies WHERE company_id = $1 AND catalog_key IS NOT NULL AND archived_at IS NULL",
+            company_id,
+        )
+        return {r["catalog_key"] for r in rows}
+
+    @staticmethod
+    async def winner_count(conn: asyncpg.Connection, company_id: UUID, policy_id: UUID, folder_path: str | None = None) -> int:
+        """Quantos documentos têm hoje o prazo definido por esta política (o que perde cobertura ao arquivar/remover)."""
+        return int(await conn.fetchval(
+            """
+            SELECT count(*) FROM public.documents d
+            JOIN public.folders f ON f.id = d.folder_id
+            CROSS JOIN LATERAL public.document_retention_info(d.id) w
+            WHERE d.company_id = $1 AND d.deleted_at IS NULL AND d.content_hash IS NOT NULL
+              AND w.policy_id = $2
+              AND ($3::ltree IS NULL OR f.path <@ $3::ltree)
+            """,
+            company_id, policy_id, folder_path,
+        ) or 0)
+
+    @staticmethod
+    async def log(
+        conn: asyncpg.Connection, *, user_id: str, company_id: UUID | str, action: str, item_id: UUID | str,
+        name: str, metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Ações de retenção entram na trilha (A7-03, A7-106)."""
+        await conn.execute(
+            """
+            INSERT INTO public.activity_log
+              (user_id, company_id, action, item_type, item_id, item_name_snapshot, event_category, metadata)
+            VALUES ($1::uuid, $2::uuid, $3, 'retention', $4::uuid, $5, 'retention', $6::jsonb)
+            """,
+            user_id, str(company_id), action, str(item_id), name, json.dumps(metadata or {}, default=str),
         )
 
     @staticmethod
@@ -61,13 +121,35 @@ class RetentionService:
     async def list_assignments(conn: asyncpg.Connection, company_id: UUID) -> list[asyncpg.Record]:
         return await conn.fetch(
             """
-            SELECT rpa.*, rp.name AS policy_name
+            SELECT rpa.*, rp.name AS policy_name, f.id::text AS folder_id,
+                   (SELECT string_agg(anc.name, ' / ' ORDER BY nlevel(anc.path))
+                      FROM public.folders anc
+                     WHERE anc.company_id = rpa.company_id AND anc.path @> rpa.folder_path) AS folder_label,
+                   (SELECT count(*) FROM public.documents d JOIN public.folders df ON df.id = d.folder_id
+                     WHERE d.company_id = rpa.company_id AND d.deleted_at IS NULL AND d.content_hash IS NOT NULL
+                       AND (rpa.folder_path IS NULL OR df.path <@ rpa.folder_path)) AS document_count
             FROM public.retention_policy_assignments rpa
             JOIN public.retention_policies rp ON rp.id = rpa.policy_id
+            LEFT JOIN public.folders f ON f.company_id = rpa.company_id AND f.path = rpa.folder_path AND f.deleted_at IS NULL
             WHERE rpa.company_id = $1
             ORDER BY rpa.folder_path NULLS FIRST
             """,
             company_id,
+        )
+
+    @staticmethod
+    async def get_assignment(conn: asyncpg.Connection, assignment_id: UUID) -> asyncpg.Record | None:
+        return await conn.fetchrow(
+            """
+            SELECT rpa.*, rp.name AS policy_name,
+                   (SELECT string_agg(anc.name, ' / ' ORDER BY nlevel(anc.path))
+                      FROM public.folders anc
+                     WHERE anc.company_id = rpa.company_id AND anc.path @> rpa.folder_path) AS folder_label
+            FROM public.retention_policy_assignments rpa
+            JOIN public.retention_policies rp ON rp.id = rpa.policy_id
+            WHERE rpa.id = $1
+            """,
+            assignment_id,
         )
 
     @staticmethod
@@ -92,29 +174,57 @@ class RetentionService:
     # -------------------------------------------------------------------
     @staticmethod
     async def list_holds(conn: asyncpg.Connection, company_id: UUID, active_only: bool = True) -> list[asyncpg.Record]:
-        clause = "AND released_at IS NULL" if active_only else ""
+        """Com o nome e o caminho do que está bloqueado (A7-107) e quem criou/liberou."""
+        clause = "AND h.released_at IS NULL" if active_only else ""
         return await conn.fetch(
-            f"SELECT * FROM public.legal_holds WHERE company_id = $1 {clause} ORDER BY created_at DESC", company_id,
+            f"""
+            SELECT h.*, cu.full_name AS created_by_name, ru.full_name AS released_by_name,
+                   COALESCE(d.name, f.name) AS resource_name,
+                   COALESCE(d.folder_id, f.id)::text AS folder_id,
+                   (SELECT string_agg(anc.name, ' / ' ORDER BY nlevel(anc.path))
+                      FROM public.folders anc
+                     WHERE anc.company_id = h.company_id AND anc.path @> COALESCE(df.path, f.path)) AS resource_path
+            FROM public.legal_holds h
+            LEFT JOIN public.documents d ON h.resource_type = 'document' AND d.id = h.resource_id
+            LEFT JOIN public.folders df ON df.id = d.folder_id
+            LEFT JOIN public.folders f ON h.resource_type = 'folder' AND f.id = h.resource_id
+            LEFT JOIN public.users cu ON cu.id = h.created_by
+            LEFT JOIN public.users ru ON ru.id = h.released_by
+            WHERE h.company_id = $1 {clause}
+            ORDER BY h.released_at NULLS FIRST, h.created_at DESC
+            """,
+            company_id,
         )
 
     @staticmethod
     async def create_hold(
         conn: asyncpg.Connection, *, company_id: UUID, resource_type: str, resource_id: UUID, reason: str, created_by: str,
+        process_number: str | None = None, review_date=None,
     ) -> asyncpg.Record:
         return await conn.fetchrow(
             """
-            INSERT INTO public.legal_holds (company_id, resource_type, resource_id, reason, created_by)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO public.legal_holds (company_id, resource_type, resource_id, reason, created_by, process_number, review_date)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
             """,
-            company_id, resource_type, resource_id, reason, created_by,
+            company_id, resource_type, resource_id, reason, created_by, process_number, review_date,
         )
 
     @staticmethod
-    async def release_hold(conn: asyncpg.Connection, hold_id: UUID, released_by: str) -> asyncpg.Record | None:
+    async def resource_name(conn: asyncpg.Connection, company_id: UUID, resource_type: str, resource_id: UUID) -> str | None:
+        table = "documents" if resource_type == "document" else "folders"
+        return await conn.fetchval(
+            f"SELECT name FROM public.{table} WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL", resource_id, company_id,
+        )
+
+    @staticmethod
+    async def release_hold(conn: asyncpg.Connection, hold_id: UUID, released_by: str, reason: str | None = None) -> asyncpg.Record | None:
         return await conn.fetchrow(
-            "UPDATE public.legal_holds SET released_at = now(), released_by = $2 WHERE id = $1 AND released_at IS NULL RETURNING *",
-            hold_id, released_by,
+            """
+            UPDATE public.legal_holds SET released_at = now(), released_by = $2, release_reason = $3
+            WHERE id = $1 AND released_at IS NULL RETURNING *
+            """,
+            hold_id, released_by, reason,
         )
 
     @staticmethod
@@ -137,108 +247,80 @@ class RetentionService:
         conn: asyncpg.Connection, *, company_id: UUID, policy_id: UUID, folder_path: str | None,
     ) -> dict[str, Any]:
         """
-        Fase 14.2 — antes de criar de verdade a atribuição (POST .../assignments),
-        mostra o impacto: quantos documentos no escopo (pasta + descendentes, ou
-        empresa toda) teriam a política EFETIVA mudada, comparando o vencedor
-        atual (só atribuições reais) contra o vencedor simulado (atribuições reais
-        + esta nova, hipotética). Documentos onde já vence outra política
-        travada, ou onde a nova política perderia mesmo assim, aparecem como
-        "sem mudança" — a simulação é sobre o resultado final, não só "está no escopo".
-
-        Simplificação conhecida: a regra "travada sempre vence não-travada"
-        (1º desempate de document_retention_info) não é replicada aqui — a
-        simulação usa só o 2º desempate (indeterminado > prazo finito > mais
-        tarde vence). Em cenários com política travada envolvida, o resultado
-        real após criar a atribuição pode divergir da prévia; útil como
-        estimativa, não como garantia — o Explain Access da 14.1, feito no
-        documento de verdade depois, sempre mostra o resultado exato.
+        Prévia antes de atribuir (A7-88): para cada documento do escopo
+        (pasta e subpastas, ou a empresa toda), o prazo de hoje (pela mesma
+        função que decide de verdade) contra o prazo da política nova. Como o
+        prazo mais longo prevalece, a nova só muda os documentos em que ela
+        guarda por mais tempo. Mostra a data nova e quantos entrariam já
+        vencidos na fila de revisão. Envios incompletos ficam de fora.
         """
         rows = await conn.fetch(
             """
             WITH scope_docs AS (
-              SELECT d.id, d.name, d.created_at, f.path AS folder_path
+              SELECT d.id, d.name, d.created_at
               FROM public.documents d
               JOIN public.folders f ON f.id = d.folder_id
-              WHERE d.company_id = $1 AND d.deleted_at IS NULL
+              WHERE d.company_id = $1 AND d.deleted_at IS NULL AND d.content_hash IS NOT NULL
                 AND ($3::ltree IS NULL OR f.path <@ $3::ltree)
             ),
-            new_policy AS (
-              SELECT id, name, locked, duration_months, trigger_type, trigger_custom_field_id
-              FROM public.retention_policies WHERE id = $2
-            ),
-            current_winner AS (
-              SELECT sd.id AS document_id, w.policy_id, w.policy_name, w.expires_at, w.is_indeterminate
+            np AS (SELECT * FROM public.retention_policies WHERE id = $2),
+            calc AS (
+              SELECT sd.id AS document_id, sd.name AS document_name,
+                     cur.policy_id AS before_policy_id, cur.policy_name AS before_policy,
+                     cur.expires_at AS before_expires_at, cur.is_indeterminate AS before_indeterminate,
+                     np.name AS new_policy, np.duration_months IS NULL AS new_indeterminate, st.start_date,
+                     CASE WHEN np.duration_months IS NULL OR st.start_date IS NULL THEN NULL ELSE (
+                       (CASE WHEN np.start_rule = 'ano_seguinte'
+                             THEN (date_trunc('year', st.start_date) + interval '1 year')::date
+                             ELSE st.start_date END)
+                       + (np.duration_months || ' months')::interval)::date END AS new_expires_at
               FROM scope_docs sd
+              CROSS JOIN np
+              LEFT JOIN LATERAL (SELECT * FROM public.document_retention_info(sd.id)) cur ON true
               CROSS JOIN LATERAL (
-                SELECT r.policy_id, r.policy_name, r.expires_at, r.is_indeterminate
-                FROM (
-                  SELECT
-                    rp.id AS policy_id, rp.name AS policy_name, rp.locked,
-                    rp.duration_months IS NULL AS is_indeterminate,
-                    CASE WHEN rp.duration_months IS NULL THEN NULL ELSE (
-                      (CASE rp.trigger_type WHEN 'upload_date' THEN sd.created_at::date
-                        WHEN 'custom_field' THEN (SELECT dfv.value_date FROM public.document_field_value dfv WHERE dfv.document_id = sd.id AND dfv.custom_field_id = rp.trigger_custom_field_id) END)
-                      + (rp.duration_months || ' months')::interval)::date END AS expires_at
-                  FROM public.retention_policy_assignments rpa
-                  JOIN public.retention_policies rp ON rp.id = rpa.policy_id
-                  WHERE rpa.company_id = $1 AND rp.active AND rp.archived_at IS NULL
-                    AND (rpa.folder_path IS NULL OR rpa.folder_path @> sd.folder_path)
-                ) r
-                WHERE r.expires_at IS NOT NULL OR r.is_indeterminate
-                ORDER BY r.is_indeterminate DESC NULLS LAST, r.expires_at DESC NULLS FIRST
-                LIMIT 1
-              ) w
-            ),
-            simulated_winner AS (
-              SELECT sd.id AS document_id, w.policy_id, w.policy_name, w.expires_at, w.is_indeterminate
-              FROM scope_docs sd
-              CROSS JOIN LATERAL (
-                SELECT r.policy_id, r.policy_name, r.expires_at, r.is_indeterminate
-                FROM (
-                  SELECT
-                    rp.id AS policy_id, rp.name AS policy_name, rp.locked,
-                    rp.duration_months IS NULL AS is_indeterminate,
-                    CASE WHEN rp.duration_months IS NULL THEN NULL ELSE (
-                      (CASE rp.trigger_type WHEN 'upload_date' THEN sd.created_at::date
-                        WHEN 'custom_field' THEN (SELECT dfv.value_date FROM public.document_field_value dfv WHERE dfv.document_id = sd.id AND dfv.custom_field_id = rp.trigger_custom_field_id) END)
-                      + (rp.duration_months || ' months')::interval)::date END AS expires_at
-                  FROM public.retention_policy_assignments rpa
-                  JOIN public.retention_policies rp ON rp.id = rpa.policy_id
-                  WHERE rpa.company_id = $1 AND rp.active AND rp.archived_at IS NULL
-                    AND (rpa.folder_path IS NULL OR rpa.folder_path @> sd.folder_path)
-                  UNION ALL
-                  SELECT
-                    np.id, np.name, np.locked,
-                    np.duration_months IS NULL,
-                    CASE WHEN np.duration_months IS NULL THEN NULL ELSE (
-                      (CASE np.trigger_type WHEN 'upload_date' THEN sd.created_at::date
-                        WHEN 'custom_field' THEN (SELECT dfv.value_date FROM public.document_field_value dfv WHERE dfv.document_id = sd.id AND dfv.custom_field_id = np.trigger_custom_field_id) END)
-                      + (np.duration_months || ' months')::interval)::date END
-                  FROM new_policy np
-                ) r
-                WHERE r.expires_at IS NOT NULL OR r.is_indeterminate
-                ORDER BY r.is_indeterminate DESC NULLS LAST, r.expires_at DESC NULLS FIRST
-                LIMIT 1
-              ) w
+                SELECT CASE np.trigger_type
+                         WHEN 'upload_date' THEN sd.created_at::date
+                         WHEN 'custom_field' THEN (SELECT dfv.value_date FROM public.document_field_value dfv
+                                                   WHERE dfv.document_id = sd.id AND dfv.custom_field_id = np.trigger_custom_field_id)
+                       END AS start_date
+              ) st
             )
-            SELECT
-              sd.id AS document_id, sd.name AS document_name,
-              cw.policy_name AS before_policy, cw.expires_at AS before_expires_at, cw.is_indeterminate AS before_indeterminate,
-              sw.policy_name AS after_policy, sw.expires_at AS after_expires_at, sw.is_indeterminate AS after_indeterminate,
-              (cw.policy_id IS DISTINCT FROM sw.policy_id) AS changed
-            FROM scope_docs sd
-            LEFT JOIN current_winner cw ON cw.document_id = sd.id
-            LEFT JOIN simulated_winner sw ON sw.document_id = sd.id
+            SELECT *,
+              (start_date IS NOT NULL OR new_indeterminate) AND (
+                before_policy_id IS NULL
+                OR (new_indeterminate AND NOT before_indeterminate)
+                OR (NOT new_indeterminate AND NOT COALESCE(before_indeterminate, false) AND new_expires_at > before_expires_at)
+              ) AS changed
+            FROM calc
+            ORDER BY document_name
             """,
             company_id, policy_id, folder_path,
         )
-        results = [dict(r) for r in rows]
+        import datetime as _dt
+
+        hoje = _dt.date.today()
+        results = []
+        for r in rows:
+            d = dict(r)
+            if d["changed"]:
+                d["after_policy"], d["after_expires_at"], d["after_indeterminate"] = d["new_policy"], d["new_expires_at"], d["new_indeterminate"]
+            else:
+                d["after_policy"], d["after_expires_at"], d["after_indeterminate"] = d["before_policy"], d["before_expires_at"], d["before_indeterminate"]
+            results.append(d)
         changed = [r for r in results if r["changed"]]
+        sem_data = [r for r in results if r["start_date"] is None and not r["new_indeterminate"]]
         return {
             "total_documents_in_scope": len(results),
             "changed_count": len(changed),
             "unchanged_count": len(results) - len(changed),
-            "sample": changed[:10],
+            "newly_covered_count": sum(1 for r in changed if r["before_policy_id"] is None),
+            "already_expired_count": sum(1 for r in changed if r["after_expires_at"] is not None and r["after_expires_at"] < hoje),
+            "missing_trigger_count": len(sem_data),
+            "sample": [
+                {k: r[k] for k in ("document_id", "document_name", "before_policy", "before_expires_at", "before_indeterminate",
+                                   "after_policy", "after_expires_at", "after_indeterminate", "changed")}
+                for r in changed[:10]
+            ],
         }
 
     @staticmethod
@@ -288,61 +370,21 @@ class RetentionService:
     @staticmethod
     async def explain_retention(conn: asyncpg.Connection, document_id: UUID) -> dict[str, Any]:
         """
-        Fase 14.1 — mesma resolução de public.document_retention_info(), mas
-        devolve TODOS os candidatos (não só o vencedor via LIMIT 1), cada um
-        marcado com is_winner — espelha o padrão do Explain Access (9.3)
-        aplicado à retenção: "por que essa política venceu, não aquela outra".
+        "Ver cálculo": todas as políticas que valem para o documento, cada uma
+        com a própria data, e qual define o prazo (a mais longa; a trava só
+        desempata e impede a exclusão até o prazo dela acabar).
         """
         rows = await conn.fetch(
             """
-            WITH doc AS (
-              SELECT d.id, d.company_id, d.created_at, f.path AS folder_path, f.name AS folder_name
-              FROM public.documents d
-              JOIN public.folders f ON f.id = d.folder_id
-              WHERE d.id = $1
-            ),
-            candidates AS (
-              SELECT
-                rp.id AS policy_id, rp.name AS policy_name, rp.locked, rp.duration_months,
-                rpa.folder_path AS assignment_folder_path,
-                CASE rp.trigger_type
-                  WHEN 'upload_date' THEN doc.created_at::date
-                  WHEN 'custom_field' THEN (
-                    SELECT dfv.value_date FROM public.document_field_value dfv
-                    WHERE dfv.document_id = doc.id AND dfv.custom_field_id = rp.trigger_custom_field_id
-                  )
-                END AS start_date
-              FROM public.retention_policy_assignments rpa
-              JOIN public.retention_policies rp ON rp.id = rpa.policy_id
-              CROSS JOIN doc
-              WHERE rpa.company_id = doc.company_id
-                AND rp.active AND rp.archived_at IS NULL
-                AND (rpa.folder_path IS NULL OR rpa.folder_path @> doc.folder_path)
-            ),
-            resolved AS (
-              SELECT
-                policy_id, policy_name, locked, assignment_folder_path,
-                duration_months IS NULL AS is_indeterminate,
-                CASE WHEN duration_months IS NULL OR start_date IS NULL THEN NULL
-                     ELSE (start_date + (duration_months || ' months')::interval)::date END AS expires_at
-              FROM candidates
-              WHERE start_date IS NOT NULL OR duration_months IS NULL
-            ),
-            ranked AS (
-              SELECT *, EXISTS (SELECT 1 FROM resolved r2 WHERE r2.locked) AS any_locked
-              FROM resolved
-            )
-            SELECT
-              r.policy_id, r.policy_name, r.locked, r.is_indeterminate, r.expires_at,
-              (r.assignment_folder_path IS NULL) AS company_wide,
-              (r.any_locked AND r.locked) OR (NOT r.any_locked) AS eligible
-            FROM ranked r
-            ORDER BY r.is_indeterminate DESC NULLS LAST, r.expires_at DESC NULLS FIRST
+            SELECT c.policy_id, c.policy_name, c.locked, c.is_indeterminate, c.expires_at,
+                   (c.assignment_folder_path IS NULL) AS company_wide, true AS eligible
+            FROM public.document_retention_candidates($1) c
+            ORDER BY c.is_indeterminate DESC, c.expires_at DESC NULLS LAST, c.locked DESC
             """,
             document_id,
         )
         candidates = [dict(r) for r in rows]
-        winner = next((c for c in candidates if c["eligible"]), None)
+        winner = candidates[0] if candidates else None
         for c in candidates:
             c["is_winner"] = c is winner
         return {"winner": winner, "candidates": candidates}
@@ -359,9 +401,12 @@ class RetentionService:
             conditions.append(f"q.status = ${len(params)}")
         return await conn.fetch(
             f"""
-            SELECT q.*, d.name AS document_name, d.deleted_at AS document_deleted_at
+            SELECT q.*, d.name AS document_name, d.deleted_at AS document_deleted_at, d.folder_id::text AS folder_id,
+                   f.name AS folder_name, ru.full_name AS reviewed_by_name
             FROM public.retention_review_queue q
             JOIN public.documents d ON d.id = q.document_id
+            LEFT JOIN public.folders f ON f.id = d.folder_id
+            LEFT JOIN public.users ru ON ru.id = q.reviewed_by
             WHERE {' AND '.join(conditions)}
             ORDER BY q.computed_expires_at
             """,
