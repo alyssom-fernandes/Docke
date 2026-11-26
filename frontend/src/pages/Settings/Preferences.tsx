@@ -60,16 +60,18 @@ export default function Preferences() {
         <div>
           <div className="flex items-center gap-2 mb-3">
             <Sliders className="w-4 h-4 text-teal-500" />
-            <h3 className="text-mac-body font-medium text-(--text-primary)">Tema</h3>
+            <h3 id="pref-tema" className="text-mac-body font-medium text-(--text-primary)">Tema</h3>
           </div>
           {/* Miniaturas visuais + radio embaixo — igual ao seletor de
               Appearance do System Settings real, em vez de só ícone+label. */}
-          <div className="grid grid-cols-3 gap-3 max-w-[420px]">
+          <div role="radiogroup" aria-labelledby="pref-tema" className="grid grid-cols-3 gap-3 max-w-[420px]">
             {THEME_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
+                role="radio"
+                aria-checked={theme === opt.value}
                 onClick={() => choose(opt.value)}
-                className="flex flex-col items-center gap-2 group"
+                className="flex flex-col items-center gap-2 group rounded-[12px] focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
               >
                 <span
                   className={`w-full aspect-4/3 rounded-[10px] border-2 overflow-hidden flex items-center justify-center transition-colors duration-fast ${
@@ -98,12 +100,14 @@ export default function Preferences() {
         <div className="pt-6 border-t border-(--border-default)">
           <div className="flex items-center gap-2 mb-3">
             <Rows3 className="w-4 h-4 text-teal-500" />
-            <h3 className="text-mac-body font-medium text-(--text-primary)">Densidade da tabela</h3>
+            <h3 id="pref-dens" className="text-mac-body font-medium text-(--text-primary)">Densidade das listas</h3>
           </div>
-          <div className="grid grid-cols-2 gap-2 max-w-[280px]">
+          <div role="radiogroup" aria-labelledby="pref-dens" className="grid grid-cols-2 gap-2 max-w-[280px]">
             {DENSITY_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
+                role="radio"
+                aria-checked={density === opt.value}
                 onClick={() => chooseDensity(opt.value)}
                 className={`flex flex-col items-center gap-1.5 py-3 rounded-(--radius-control) border text-mac-body transition-colors duration-fast ${
                   density === opt.value
