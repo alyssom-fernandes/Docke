@@ -112,6 +112,12 @@ html, body {
   --text-warning: #B45309;
   --text-success: #15803D;
   --text-accent: #086B61;
+  /* Gráficos (achado A3-23): cor da marca por token, não hexadecimal solto. */
+  --chart-line: #0F8A7A;
+  --chart-area: rgba(15,138,122,0.12);
+  --chart-bar: #14A08E;
+  --chart-bar-hover: #0F8A7A;
+  --chart-track: rgba(0,0,0,0.06);
   --afn-brand: #6b1f2a;
   --afn-brand-stroke: rgba(107,31,42,0.4);
   --afn-muted: rgba(0,0,0,0.40);
@@ -188,6 +194,11 @@ html, body {
   --text-warning: #FBBF24;
   --text-success: #4ADE80;
   --text-accent: #7DD4C0;
+  --chart-line: #4FC7B2;
+  --chart-area: rgba(79,199,178,0.16);
+  --chart-bar: #2FB39E;
+  --chart-bar-hover: #4FC7B2;
+  --chart-track: rgba(255,255,255,0.08);
   /* #c44a5a (guia AFN) dava 3,56:1 sobre #1E1E1E — abaixo do AA em texto
      pequeno. Tom mais claro da mesma família: ~5,8:1. */
   --afn-brand: #e07a88;

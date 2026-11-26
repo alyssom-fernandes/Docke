@@ -367,14 +367,45 @@ class DocumentsService:
     # -- listagem / detalhe / patch -----------------------------------------------
 
     @staticmethod
-    async def list_recent(conn: asyncpg.Connection, company_id: UUID, limit: int) -> list[asyncpg.Record]:
+    async def list_recent(
+        conn: asyncpg.Connection, company_id: UUID, limit: int, opened_by: str | None = None,
+    ) -> list[asyncpg.Record]:
+        """
+        Sem `opened_by`: os últimos enviados na empresa. Com `opened_by`: os
+        que essa pessoa abriu ou baixou por último (achado A3-33), a partir da
+        trilha de atividade — só documentos que ainda existem e que ela vê.
+        """
+        if opened_by:
+            return await conn.fetch(
+                """
+                SELECT d.id::text, d.name, d.folder_id::text, d.company_id::text,
+                       d.mime_type, d.file_type, d.size_bytes, d.ocr_status, d.created_at,
+                       f.name AS folder_name, a.last_at AS opened_at
+                FROM (
+                  SELECT item_id, max(created_at) AS last_at
+                  FROM public.activity_log
+                  WHERE user_id = $3::uuid AND company_id = $1 AND item_type = 'document'
+                    AND action IN ('view', 'download')
+                  GROUP BY item_id
+                  ORDER BY max(created_at) DESC
+                  LIMIT $2 * 3
+                ) a
+                JOIN public.documents d ON d.id = a.item_id AND d.deleted_at IS NULL
+                LEFT JOIN public.folders f ON f.id = d.folder_id
+                ORDER BY a.last_at DESC
+                LIMIT $2
+                """,
+                company_id, limit, opened_by,
+            )
         return await conn.fetch(
             """
             SELECT
               d.id::text, d.name, d.folder_id::text, d.company_id::text,
-              d.mime_type, d.file_type, d.size_bytes, d.ocr_status, d.created_at
+              d.mime_type, d.file_type, d.size_bytes, d.ocr_status, d.created_at,
+              f.name AS folder_name
             FROM public.documents d
-            WHERE d.company_id = $1 AND d.deleted_at IS NULL
+            LEFT JOIN public.folders f ON f.id = d.folder_id
+            WHERE d.company_id = $1 AND d.deleted_at IS NULL AND d.content_hash IS NOT NULL
             ORDER BY d.created_at DESC
             LIMIT $2
             """,

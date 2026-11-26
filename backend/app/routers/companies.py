@@ -185,6 +185,11 @@ async def company_stats(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem acesso a esta empresa.")
     if await CompaniesService.has_unscoped_access(conn, claims["sub"], company_id):
         row = await CompaniesService.get_stats(conn, company_id)
+        if row is not None and _stats_stale(row["refreshed_at"]) and rate_limit.check_and_record(
+            "stats-auto-refresh", max_count=1, window_seconds=60,
+        ):
+            await CompaniesService.refresh_stats(conn)
+            row = await CompaniesService.get_stats(conn, company_id)
         if row is None:
             # Empresa ainda fora da materialized view (criada depois do último
             # refresh): calcula ao vivo em vez de devolver 404 — o membro já
@@ -195,7 +200,12 @@ async def company_stats(
         # empresa inteira que a materialized view carrega — cai pro cálculo
         # ao vivo, que respeita RLS.
         row = await CompaniesService.get_stats_live(conn, company_id)
-    return dict(row)
+    return {**dict(row), **await CompaniesService.stats_context(conn, company_id)}
+
+
+def _stats_stale(refreshed_at: Any) -> bool:
+    from datetime import datetime, timedelta, timezone
+    return refreshed_at is None or datetime.now(timezone.utc) - refreshed_at > timedelta(minutes=15)
 
 
 @router.post("/{company_id}/stats/refresh")
@@ -221,7 +231,7 @@ async def refresh_company_stats(
             row = await CompaniesService.get_stats_live(conn, company_id)
     else:
         row = await CompaniesService.get_stats_live(conn, company_id)
-    return dict(row)
+    return {**dict(row), **await CompaniesService.stats_context(conn, company_id)}
 
 
 @router.get("/{company_id}/stats/charts")
@@ -229,6 +239,7 @@ async def company_stats_charts(
     company_id: UUID,
     days: int = Query(14, description="Janela do gráfico de uploads — filtro global do dashboard."),
     folder_id: UUID | None = Query(None, description="Filtro próprio do gráfico de pastas — desce um nível na árvore."),
+    only: str | None = Query(None, pattern="^(daily|folders)$", description="Só um dos dois gráficos."),
     conn: asyncpg.Connection = Depends(get_db),
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
@@ -241,7 +252,7 @@ async def company_stats_charts(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="days precisa ser 7, 14, 30 ou 90.")
     if not await CompaniesService.is_member(conn, claims["sub"], company_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem acesso a esta empresa.")
-    return await CompaniesService.get_dashboard_charts(conn, company_id, days=days, folder_id=folder_id)
+    return await CompaniesService.get_dashboard_charts(conn, company_id, days=days, folder_id=folder_id, only=only)
 
 
 @router.patch("/{company_id}")

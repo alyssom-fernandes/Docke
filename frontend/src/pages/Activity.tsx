@@ -3,7 +3,8 @@ import { Download, ChevronDown } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
-import ActivityFeed from "@/components/shared/ActivityFeed";
+import { useSearchParams } from "react-router-dom";
+import ActivityFeed, { ACTION_LABELS } from "@/components/shared/ActivityFeed";
 
 export default function Activity() {
   usePageTitle("Atividade");
@@ -13,6 +14,9 @@ export default function Activity() {
   const [exportOpen, setExportOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
   const PAGE_SIZE = 25;
+  // ?acao=upload vem do contador "Enviados em 7 dias" do Início.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const acao = searchParams.get("acao") ?? undefined;
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -71,7 +75,19 @@ export default function Activity() {
         </div>
       </div>
 
-      {current && <ActivityFeed companyId={current.id} page={page} pageSize={PAGE_SIZE} onLoaded={setTotal} />}
+      {acao && (
+        <p className="flex items-center gap-2 text-mac-caption text-(--text-secondary)">
+          Mostrando só: <strong className="text-(--text-primary)">{ACTION_LABELS[acao] ?? acao}</strong>
+          <button
+            onClick={() => { const n = new URLSearchParams(searchParams); n.delete("acao"); setSearchParams(n, { replace: true }); setPage(1); }}
+            className="font-medium text-(--text-accent) hover:underline"
+          >
+            Ver tudo
+          </button>
+        </p>
+      )}
+
+      {current && <ActivityFeed companyId={current.id} page={page} pageSize={PAGE_SIZE} onLoaded={setTotal} filters={{ action: acao }} />}
 
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-2">

@@ -26,6 +26,9 @@ _ACTION_LABELS: dict[str, str] = {
     "favorite": "Ancorado",
     "unfavorite": "Desancorado",
     "undo": "Desfeito",
+    "copy": "Cópia de estrutura",
+    "update_metadata": "Metadado alterado",
+    "version_delete": "Versão excluída",
 }
 
 REVERSIBLE_ACTIONS = {"move", "rename", "delete", "favorite"}
@@ -47,6 +50,7 @@ class ActivityService:
         date_to: date | None,
         page: int,
         page_size: int,
+        sem_acessos: bool = False,
     ) -> dict[str, Any]:
         offset = (page - 1) * page_size
         rows = await conn.fetch(
@@ -80,10 +84,11 @@ class ActivityService:
               AND ($5::date IS NULL OR al.created_at >= $5::date)
               AND ($6::date IS NULL OR al.created_at <  ($6 + interval '1 day')::date)
               AND ($9::uuid IS NULL OR al.item_id    = $9)
+              AND (NOT $10::boolean OR al.action NOT IN ('view', 'download'))
             ORDER BY al.created_at DESC
             LIMIT $7 OFFSET $8
             """,
-            company_id, user_id, action, item_type, date_from, date_to, page_size, offset, item_id,
+            company_id, user_id, action, item_type, date_from, date_to, page_size, offset, item_id, sem_acessos,
         )
         total = rows[0]["total_count"] if rows else 0
         results = []

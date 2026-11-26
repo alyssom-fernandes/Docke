@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Plus, X, FileText, Link2, Trash2, ShieldQuestion, GitBranch, Lock, List, LayoutGrid } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
@@ -138,6 +139,10 @@ export default function Obligations() {
   const [dependencies, setDependencies] = useState<Dependency[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("");
+  // Vindo do Início: ?prazo=vencidas|semana filtra, ?instancia=<id> destaca a linha.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const prazo = searchParams.get("prazo");
+  const destaque = searchParams.get("instancia");
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showInstanceModal, setShowInstanceModal] = useState<Template | null>(null);
   const [linkingInstance, setLinkingInstance] = useState<Instance | null>(null);
@@ -145,10 +150,24 @@ export default function Obligations() {
   const [view, setView] = useState<"list" | "matrix">("list");
   const [matrixInstanceModal, setMatrixInstanceModal] = useState<{ template: Template; period: string } | null>(null);
 
-  const filteredInstances = useMemo(
-    () => (statusFilter ? allInstances.filter((i) => i.effective_status === statusFilter) : allInstances),
-    [allInstances, statusFilter]
-  );
+  const filteredInstances = useMemo(() => {
+    let list = statusFilter ? allInstances.filter((i) => i.effective_status === statusFilter) : allInstances;
+    if (prazo) {
+      const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+      const limite = new Date(hoje); limite.setDate(limite.getDate() + 7);
+      const aberta = (i: Instance) => ["pending", "reviewing"].includes(i.status);
+      list = list.filter((i) => {
+        const due = new Date(`${i.due_date}T00:00:00`);
+        return aberta(i) && (prazo === "vencidas" ? due < hoje : due <= limite);
+      });
+    }
+    return list;
+  }, [allInstances, statusFilter, prazo]);
+
+  useEffect(() => {
+    if (!destaque || loading) return;
+    document.getElementById(`instancia-${destaque}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [destaque, loading]);
 
   function load() {
     if (!current) return;
@@ -318,6 +337,17 @@ export default function Obligations() {
           </div>
         </div>
 
+        {prazo && (
+          <p className="flex items-center gap-2 text-mac-caption text-(--text-secondary)">
+            Mostrando {prazo === "vencidas" ? "só as vencidas" : "as que vencem até daqui a 7 dias (e as vencidas)"}.
+            <button
+              onClick={() => { const n = new URLSearchParams(searchParams); n.delete("prazo"); setSearchParams(n, { replace: true }); }}
+              className="font-medium text-(--text-accent) hover:underline"
+            >
+              Ver todas
+            </button>
+          </p>
+        )}
         {loading ? (
           <div className="space-y-2">
             {[0, 1, 2].map((i) => (
@@ -338,12 +368,12 @@ export default function Obligations() {
             onEmptyCellClick={(template, period) => setMatrixInstanceModal({ template, period })}
           />
         ) : filteredInstances.length === 0 ? (
-          <p className="text-mac-caption text-(--text-tertiary) px-1">Nenhuma instância com esse status.</p>
+          <p className="text-mac-caption text-(--text-tertiary) px-1">{prazo ? "Nenhuma obrigação aberta nesse prazo." : "Nenhuma instância com esse status."}</p>
         ) : (
           <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
             <ul>
               {filteredInstances.map((inst) => (
-                <li key={inst.id} className="flex items-center gap-3 px-5 py-3 border-b border-(--border-default) last:border-0">
+                <li key={inst.id} id={`instancia-${inst.id}`} className={`flex items-center gap-3 px-5 py-3 border-b border-(--border-default) last:border-0 ${destaque === inst.id ? "bg-teal-500/10 ring-2 ring-inset ring-(--focus-ring)" : ""}`}>
                   <div className="flex-1 min-w-0">
                     <div className="text-mac-body text-(--text-primary) truncate">{inst.template_name} · {inst.period}</div>
                     <div className="text-mac-caption text-(--text-tertiary)">

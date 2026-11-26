@@ -22,6 +22,7 @@ from app.routers import (
     retention_legal,
     search,
     shares,
+    today,
     trash,
     versions,
 )
@@ -119,6 +120,7 @@ app.include_router(shares.public_router, prefix=PREFIX)
 app.include_router(notifications.router, prefix=PREFIX)
 app.include_router(obligations.router, prefix=PREFIX)
 app.include_router(retention_legal.router, prefix=PREFIX)
+app.include_router(today.router, prefix=PREFIX)
 
 
 @app.get("/health", tags=["health"])

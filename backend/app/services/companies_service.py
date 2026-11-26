@@ -231,6 +231,29 @@ class CompaniesService:
         )
 
     @staticmethod
+    async def stats_context(conn: asyncpg.Connection, company_id: UUID) -> dict[str, int]:
+        """
+        Contexto dos contadores, ao vivo e pela conexão do usuário (RLS):
+        envios desde a meia-noite de Brasília (não "últimas 24 h", achado
+        A3-12) e os 7 dias anteriores à última semana, para comparar (A3-11).
+        """
+        row = await conn.fetchrow(
+            """
+            SELECT
+              (SELECT count(*) FROM public.documents d
+                WHERE d.company_id = $1 AND d.deleted_at IS NULL
+                  AND d.created_at >= (date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo')
+                                       AT TIME ZONE 'America/Sao_Paulo')) AS documents_today,
+              (SELECT count(*) FROM public.documents d
+                WHERE d.company_id = $1 AND d.deleted_at IS NULL
+                  AND d.created_at >= now() - interval '14 days'
+                  AND d.created_at <  now() - interval '7 days') AS previous_uploads
+            """,
+            company_id,
+        )
+        return {k: int(v or 0) for k, v in dict(row).items()}
+
+    @staticmethod
     async def refresh_stats(conn: asyncpg.Connection) -> None:
         await conn.execute("SELECT public.refresh_company_stats()")
 
@@ -240,6 +263,7 @@ class CompaniesService:
         company_id: UUID,
         days: int = 14,
         folder_id: UUID | None = None,
+        only: str | None = None,
     ) -> dict[str, Any]:
         """
         Fase 3.2/3.4: dados dos dois gráficos do dashboard — sempre ao vivo
@@ -257,38 +281,70 @@ class CompaniesService:
         o gráfico de uploads ao lado, exatamente a distinção "filtro global
         vs filtro por widget" que a pesquisa pediu.
         """
+        out: dict[str, Any] = {}
+        if only in (None, "daily"):
+            out["daily_uploads"] = await CompaniesService._daily_uploads(conn, company_id, days)
+        if only in (None, "folders"):
+            out["by_folder"] = await CompaniesService._by_folder(conn, company_id, folder_id)
+        return out
+
+    @staticmethod
+    async def _daily_uploads(conn: asyncpg.Connection, company_id: UUID, days: int) -> list[dict[str, Any]]:
+        # Dia no fuso de Brasília, não UTC: um envio às 22h de segunda não
+        # pode aparecer na terça (achado A3-12).
         daily = await conn.fetch(
             """
             SELECT d::date AS day, coalesce(cnt, 0) AS count
-            FROM generate_series(current_date - ($2::int - 1) * interval '1 day', current_date, interval '1 day') AS d
+            FROM generate_series(
+                   (now() AT TIME ZONE 'America/Sao_Paulo')::date - ($2::int - 1),
+                   (now() AT TIME ZONE 'America/Sao_Paulo')::date, interval '1 day') AS d
             LEFT JOIN (
-              SELECT created_at::date AS day, count(*) AS cnt
+              SELECT (created_at AT TIME ZONE 'America/Sao_Paulo')::date AS day, count(*) AS cnt
               FROM public.documents
               WHERE company_id = $1 AND deleted_at IS NULL
-                AND created_at >= current_date - ($2::int - 1) * interval '1 day'
-              GROUP BY created_at::date
+                AND created_at >= now() - ($2::int + 1) * interval '1 day'
+              GROUP BY 1
             ) x ON x.day = d::date
             ORDER BY d
             """,
             company_id, days,
         )
-        by_folder = await conn.fetch(
+        return [{"date": r["day"].isoformat(), "count": r["count"]} for r in daily]
+
+    @staticmethod
+    async def _by_folder(conn: asyncpg.Connection, company_id: UUID, folder_id: UUID | None) -> list[dict[str, Any]]:
+        rows = await conn.fetch(
             """
-            SELECT f.id::text, f.name, count(d.id) AS document_count
+            SELECT f.id::text, f.name,
+                   (SELECT count(*) FROM public.documents d
+                      JOIN public.folders df ON df.id = d.folder_id AND df.deleted_at IS NULL
+                     WHERE df.path <@ f.path AND d.deleted_at IS NULL) AS document_count,
+                   EXISTS (SELECT 1 FROM public.folders s
+                            WHERE s.parent_id = f.id AND s.deleted_at IS NULL) AS has_children
             FROM public.folders f
-            LEFT JOIN public.documents d ON d.folder_id = f.id AND d.deleted_at IS NULL
             WHERE f.company_id = $1 AND f.deleted_at IS NULL
               AND f.parent_id IS NOT DISTINCT FROM $2::uuid
-            GROUP BY f.id, f.name
             ORDER BY document_count DESC, f.name
-            LIMIT 6
             """,
             company_id, folder_id,
         )
-        return {
-            "daily_uploads": [{"date": r["day"].isoformat(), "count": r["count"]} for r in daily],
-            "by_folder": [dict(r) for r in by_folder],
-        }
+        items = [dict(r) for r in rows if r["document_count"] > 0]
+        top, rest = items[:6], items[6:]
+        if rest:
+            top.append({
+                "id": None, "name": f"Outras {len(rest)} pastas", "kind": "outras",
+                "document_count": sum(r["document_count"] for r in rest), "has_children": False,
+            })
+        if folder_id is not None:
+            direct = await conn.fetchval(
+                "SELECT count(*) FROM public.documents WHERE folder_id = $1 AND deleted_at IS NULL", folder_id,
+            )
+            if direct:
+                top.append({
+                    "id": str(folder_id), "name": "Direto nesta pasta", "kind": "direto",
+                    "document_count": direct, "has_children": False,
+                })
+        return top
 
     @staticmethod
     async def update_company(

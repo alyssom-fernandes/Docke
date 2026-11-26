@@ -637,10 +637,37 @@ async def reprocess_text(
     return {"enqueued": len(ids)}
 
 
+async def _log_access(conn: asyncpg.Connection, user_id: str, document_id: UUID, action: str) -> None:
+    """
+    Registra na trilha quem abriu ou baixou o documento — antes nada disso
+    era gravado e a auditoria não respondia "quem viu este arquivo". A mesma
+    pessoa abrindo o mesmo documento várias vezes em 10 minutos conta uma
+    vez, para a trilha não virar ruído. Falha aqui nunca impede de abrir.
+    """
+    try:
+        async with conn.transaction():
+            await conn.execute(
+                """
+                INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot)
+                SELECT $1::uuid, d.company_id, $3, 'document', d.id, d.name
+                FROM public.documents d
+                WHERE d.id = $2 AND NOT EXISTS (
+                  SELECT 1 FROM public.activity_log a
+                  WHERE a.user_id = $1::uuid AND a.item_id = $2 AND a.action = $3
+                    AND a.created_at > now() - interval '10 minutes'
+                )
+                """,
+                user_id, document_id, action,
+            )
+    except asyncpg.PostgresError:
+        pass
+
+
 @router.get("/{document_id}/download-url")
 async def get_download_url(
     document_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     URL pré-assinada para download com Content-Disposition: attachment.
@@ -649,6 +676,7 @@ async def get_download_url(
     doc = await DocumentsService.get_document_for_download(conn, document_id)
     if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+    await _log_access(conn, claims["sub"], document_id, "download")
 
     download_url, expires_at = storage_service.generate_download_url(
         key=doc["storage_path"],
@@ -935,6 +963,7 @@ async def mock_preview(safe_key: str) -> Response:
 async def get_preview_url(
     document_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     Retorna URL pré-assinada para abrir o documento inline no browser.
@@ -989,6 +1018,7 @@ async def get_preview_url(
         key=preview_key,
         content_type=preview_mime,
     )
+    await _log_access(conn, claims["sub"], document_id, "view")
     return {
         "inline": True,
         "preview_url": preview_url,
@@ -1054,9 +1084,11 @@ async def get_documents_ocr_status(
 async def list_recent_documents(
     company_id: UUID = Query(...),
     limit: int = Query(10, ge=1, le=50),
+    mine: bool = Query(False, description="Os que eu abri por último, em vez dos últimos enviados."),
     conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
-    rows = await DocumentsService.list_recent(conn, company_id, limit)
+    rows = await DocumentsService.list_recent(conn, company_id, limit, opened_by=claims["sub"] if mine else None)
     return [dict(r) for r in rows]
 
 
