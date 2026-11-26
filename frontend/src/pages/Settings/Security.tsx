@@ -1,5 +1,5 @@
-import { useState, FormEvent } from "react";
-import { ShieldCheck, ShieldAlert, KeyRound, Laptop, type LucideIcon } from "lucide-react";
+import { useEffect, useState, FormEvent } from "react";
+import { ShieldCheck, ShieldAlert, KeyRound, Laptop, Smartphone, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
@@ -10,6 +10,9 @@ import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import Checkbox from "@/components/ui/Checkbox";
 import { rememberChoice } from "@/lib/session";
+import { friendlyError } from "@/lib/errors";
+import Dialog from "@/components/ui/Dialog";
+import { MfaEnroll } from "@/components/shared/MfaSetup";
 
 interface IntegrityResult {
   total_events: number;
@@ -37,6 +40,81 @@ function Cartao({ icon: Icon, cor, titulo, descricao, children, className = "" }
       </div>
       {children && <div className="mt-4">{children}</div>}
     </section>
+  );
+}
+
+interface MfaInfo { ativada: boolean; exigida: boolean; demo: boolean; fatores: { id: string; nome: string; criado_em: string }[] }
+
+// Verificação em duas etapas (decisão do dono, 26/11/2026).
+function MfaSection() {
+  const { completeMfa } = useAuthContext();
+  const { success, error: showError } = useToast();
+  const [info, setInfo] = useState<MfaInfo | null>(null);
+  const [falhou, setFalhou] = useState(false);
+  const [cadastrando, setCadastrando] = useState(false);
+  const [desligando, setDesligando] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  function load() {
+    setFalhou(false);
+    api.get<MfaInfo>("/auth/mfa").then((r) => setInfo(r.data)).catch(() => setFalhou(true));
+  }
+  useEffect(load, []);
+
+  async function desligar() {
+    if (!info?.fatores[0]) return;
+    setBusy(true);
+    try {
+      await api.delete(`/auth/mfa/${info.fatores[0].id}`);
+      success("Verificação em duas etapas desligada.");
+      setDesligando(false);
+      load();
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível desligar agora."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const desde = info?.fatores[0] ? new Date(info.fatores[0].criado_em).toLocaleDateString("pt-BR") : null;
+  return (
+    <Cartao icon={Smartphone} cor="bg-indigo-500" titulo="Verificação em duas etapas"
+      descricao="Além da senha, um código de 6 números do app autenticador do celular. Quem descobrir a sua senha não entra sem o celular.">
+      {falhou ? (
+        <div role="alert" className="flex items-center gap-3 text-mac-body text-(--text-secondary)">
+          Não foi possível ver a situação agora. <Button size="sm" variant="secondary" onClick={load}>Tentar de novo</Button>
+        </div>
+      ) : !info ? (
+        <div className="h-10 rounded-(--radius-control) bg-(--bg-hover) animate-pulse" />
+      ) : info.demo ? (
+        <p className="text-mac-body text-(--text-secondary) max-w-[520px]">A conta de demonstração é compartilhada pelos visitantes e não usa verificação em duas etapas.</p>
+      ) : info.ativada ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="flex items-center gap-2 text-mac-body text-(--text-primary)">
+            <ShieldCheck className="w-4 h-4 text-(--text-success)" aria-hidden="true" /> Ativada{desde ? ` desde ${desde}` : ""}.
+            {info.exigida && <span className="text-mac-caption text-(--text-secondary)">A sua empresa exige para o seu papel.</span>}
+          </p>
+          {!info.exigida && <Button size="sm" variant="secondary" onClick={() => setDesligando(true)}>Desligar</Button>}
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-mac-body text-(--text-secondary)">Desligada.</p>
+          <Button size="sm" onClick={() => setCadastrando(true)}><ShieldCheck className="w-4 h-4" aria-hidden="true" /> Ativar</Button>
+        </div>
+      )}
+      {cadastrando && (
+        <Dialog onClose={() => setCadastrando(false)} title="Ativar a verificação em duas etapas" size="sm">
+          <div className="@container">
+            <MfaEnroll onDone={async (t) => { await completeMfa(t); setCadastrando(false); success("Verificação em duas etapas ativada."); load(); }} />
+          </div>
+        </Dialog>
+      )}
+      {desligando && (
+        <Dialog onClose={() => setDesligando(false)} title="Desligar a verificação em duas etapas?" size="sm" busy={busy}
+          description="A sua conta volta a pedir só a senha. Dá para ativar de novo quando quiser."
+          footer={<><Button variant="ghost" onClick={() => setDesligando(false)}>Cancelar</Button><Button variant="danger" loading={busy} onClick={desligar}>Desligar</Button></>} />
+      )}
+    </Cartao>
   );
 }
 
@@ -196,6 +274,7 @@ export default function Security() {
         </form>
         )}
       </Cartao>
+      <MfaSection />
       <IntegritySection />
     </div>
   );

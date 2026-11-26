@@ -266,11 +266,57 @@ async def _decode_jwt_refreshing(token: str) -> dict[str, Any]:
 # Dependencies
 # ---------------------------------------------------------------------------
 
+async def _exigir_mfa(request: Request | None, conn: asyncpg.Connection | None, claims: dict[str, Any]) -> None:
+    """
+    Verificação em duas etapas (decisão do dono, 26/11/2026): quem tem app
+    autenticador cadastrado precisa ter digitado o código nesta sessão (aal2);
+    quem a política da empresa obriga e ainda não cadastrou só alcança /auth.
+    A resposta fica guardada na requisição (get_db e get_current_user podem
+    rodar juntas na mesma rota).
+    """
+    from app.services import mfa_service
+
+    if request is None or claims.get("aal") == "aal2" or not claims.get("sub") or mfa_service.rota_livre(request.url.path):
+        return
+    if mfa_service.is_demo(claims):
+        return
+    pend = getattr(request.state, "mfa_pendencia", "?")
+    if pend == "?":
+        try:
+            if conn is not None:
+                cadastrado, exigido = await mfa_service.estado(conn, claims["sub"])
+            else:
+                async with _acquire(_require_pool()) as c:
+                    cadastrado, exigido = await mfa_service.estado(c, claims["sub"])
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("Falha ao conferir a verificação em duas etapas; a requisição segue.")
+            return
+        pend = mfa_service.pendencia(claims, cadastrado, exigido)
+        request.state.mfa_pendencia = pend
+    if pend == "verificar":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Digite o código do app autenticador para continuar.",
+            headers={"X-Docke-Code": "mfa_verificar"},
+        )
+    if pend == "cadastrar":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Ative a verificação em duas etapas para continuar.",
+            headers={"X-Docke-Code": "mfa_cadastrar"},
+        )
+
+
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+    request: Request = None,  # type: ignore[assignment]  # o FastAPI injeta; chamadas diretas (testes) passam sem
 ) -> dict[str, Any]:
     """Valida JWT e retorna os claims. Usado por rotas que precisam do usuário mas não do banco."""
-    return await _decode_jwt_refreshing(credentials.credentials)
+    claims = await _decode_jwt_refreshing(credentials.credentials)
+    await _exigir_mfa(request, None, claims)
+    return claims
 
 
 def _client_ip(request: Request) -> str:
@@ -294,6 +340,8 @@ async def get_db(
     pool = _require_pool()
 
     async with _acquire(pool) as conn:
+        # Antes de trocar para o papel authenticated: a consulta lê auth.mfa_factors.
+        await _exigir_mfa(request, conn, claims)
         async with conn.transaction():
             # Replica o que o PostgREST faz internamente:
             # seta request.jwt.claims para que auth.uid() retorne claims['sub']

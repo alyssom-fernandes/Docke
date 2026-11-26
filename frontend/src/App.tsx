@@ -1,4 +1,5 @@
 import ForcePasswordChange from "@/components/shared/ForcePasswordChange";
+import MfaGate from "@/components/shared/MfaGate";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuthContext } from "@/lib/AuthContext";
@@ -97,6 +98,9 @@ function ProtectedRoutes() {
 
   // Guarda o endereço pedido: depois de entrar, a pessoa volta para ele (achado A1-02).
   if (!user) return isAppRoute(pathname) ? <Navigate to="/login" replace state={{ from: location }} /> : <NotFound standalone />;
+
+  // Falta o código do app autenticador (ou o cadastro dele): nada do app carrega antes.
+  if (user.mfa_pendente) return <MfaGate modo={user.mfa_pendente} />;
 
   return (
     <CompanyProvider enabled={!!user}>

@@ -228,6 +228,18 @@ async def reset_password(body: ResetPasswordRequest) -> dict[str, str]:
             json={"password": body.new_password},
             timeout=10.0,
         )
+    try:
+        corpo = resp.text.lower()
+    except Exception:
+        corpo = ""
+    # Conta com verificação em duas etapas: o Supabase só grava a senha nova
+    # depois do código do app autenticador (sessão aal2).
+    if resp.status_code in (401, 403) and "aal" in corpo:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Esta conta usa verificação em duas etapas: digite o código do app autenticador.",
+            headers={"X-Docke-Code": "mfa_verificar"},
+        )
     if resp.status_code == 401:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -266,6 +278,7 @@ async def demo_login(request: Request) -> LoginResponse:
 @router.get("/me")
 async def get_me(
     conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
@@ -278,7 +291,14 @@ async def get_me(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Usuário não encontrado no banco. Verifique se o cadastro foi sincronizado.",
         )
-    return dict(row)
+    from app.services import mfa_service
+
+    try:
+        cadastrado, exigido = await mfa_service.estado(admin_conn, claims["sub"])
+        pendente = mfa_service.pendencia(claims, cadastrado, exigido)
+    except Exception:
+        pendente = None
+    return dict(row) | {"mfa_pendente": pendente}
 
 
 # ---------------------------------------------------------------------------
@@ -384,4 +404,172 @@ async def change_password(
     # Senha provisória trocada: não pede mais no próximo acesso.
     me = await conn.fetchval("SELECT auth.uid()::text")
     await admin_conn.execute("UPDATE public.users SET must_change_password = false WHERE id = $1::uuid", me)
+    return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Verificação em duas etapas (TOTP do Supabase Auth) — decisão do dono em
+# 26/11/2026 (achados X2-12, FA-A1-02, FA-A8-01, B4.2.3). O app autenticador
+# (Google Authenticator, Microsoft Authenticator, 1Password…) gera o código.
+# ---------------------------------------------------------------------------
+
+_MFA_ATTEMPTS = 5
+_MFA_WINDOW_SECS = 60
+_MFA_LOCKOUT_SECS = 15 * 60
+
+
+def _gotrue_user_headers(token: str) -> dict[str, str]:
+    return {"apikey": settings.SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+
+async def _fatores(admin_conn: asyncpg.Connection, user_id: str) -> list[dict[str, Any]]:
+    rows = await admin_conn.fetch(
+        """
+        SELECT id::text, friendly_name, status::text, created_at
+        FROM auth.mfa_factors WHERE user_id = $1 AND factor_type = 'totp'
+        ORDER BY created_at
+        """,
+        user_id,
+    )
+    return [dict(r) for r in rows]
+
+
+@router.get("/mfa")
+async def mfa_status(
+    claims: dict[str, Any] = Depends(get_current_user),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+) -> dict[str, Any]:
+    """Situação da verificação em duas etapas da própria conta."""
+    from app.services import mfa_service
+
+    cadastrado, exigido = await mfa_service.estado(admin_conn, claims["sub"])
+    fatores = [f for f in await _fatores(admin_conn, claims["sub"]) if f["status"] == "verified"]
+    return {
+        "ativada": cadastrado,
+        "exigida": exigido and not mfa_service.is_demo(claims),
+        "pendente": mfa_service.pendencia(claims, cadastrado, exigido),
+        "sessao_verificada": claims.get("aal") == "aal2",
+        "fatores": [{"id": f["id"], "nome": f["friendly_name"], "criado_em": f["created_at"]} for f in fatores],
+        "demo": mfa_service.is_demo(claims),
+    }
+
+
+@router.post("/mfa/enroll")
+async def mfa_enroll(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+    claims: dict[str, Any] = Depends(get_current_user),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+) -> dict[str, Any]:
+    """Começa o cadastro do app autenticador: devolve o QR code e a chave para digitar à mão."""
+    from datetime import datetime, timezone
+
+    from app.services import mfa_service
+
+    if mfa_service.is_demo(claims):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="A conta de demonstração não usa verificação em duas etapas.")
+    fatores = await _fatores(admin_conn, claims["sub"])
+    if any(f["status"] == "verified" for f in fatores):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A verificação em duas etapas já está ativada nesta conta.")
+    async with httpx.AsyncClient() as client:
+        # Cadastro começado e abandonado: sai antes de começar outro.
+        for f in fatores:
+            await client.delete(f"{settings.SUPABASE_URL}/auth/v1/factors/{f['id']}",
+                                headers=_gotrue_user_headers(credentials.credentials), timeout=10.0)
+        resp = await client.post(
+            f"{settings.SUPABASE_URL}/auth/v1/factors",
+            headers=_gotrue_user_headers(credentials.credentials),
+            json={
+                "factor_type": "totp", "issuer": "Docke",
+                "friendly_name": f"App autenticador ({datetime.now(timezone.utc):%d/%m/%Y %H:%M:%S})",
+            },
+            timeout=10.0,
+        )
+    if resp.status_code not in (200, 201):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Não foi possível começar o cadastro agora. Tente de novo.")
+    data = resp.json()
+    totp = data.get("totp") or {}
+    return {"factor_id": data.get("id"), "qr_code": totp.get("qr_code"), "secret": totp.get("secret"), "uri": totp.get("uri")}
+
+
+class MfaVerifyRequest(BaseModel):
+    code: str
+    factor_id: str | None = None
+
+
+@router.post("/mfa/verify", response_model=LoginResponse)
+async def mfa_verify(
+    body: MfaVerifyRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+    claims: dict[str, Any] = Depends(get_current_user),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+) -> LoginResponse:
+    """
+    Confere o código de 6 dígitos e devolve a sessão verificada (aal2). Serve
+    para entrar (fator já ativo) e para terminar o cadastro (fator novo).
+    """
+    code = "".join(ch for ch in body.code if ch.isdigit())
+    if len(code) != 6:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="O código tem 6 números.")
+    chave = f"mfa:{claims['sub']}"
+    locked = rate_limit.is_locked_out(chave)
+    if locked:
+        raise HTTPException(status_code=status.HTTP_423_LOCKED,
+                            detail=f"Muitos códigos errados. Tente de novo em {int(locked // 60) + 1} minuto(s).")
+
+    fatores = await _fatores(admin_conn, claims["sub"])
+    if body.factor_id:
+        fator = next((f for f in fatores if f["id"] == body.factor_id), None)
+    else:
+        fator = next((f for f in fatores if f["status"] == "verified"), None) or (fatores[-1] if fatores else None)
+    if fator is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nenhum app autenticador cadastrado nesta conta.")
+
+    async with httpx.AsyncClient() as client:
+        ch = await client.post(f"{settings.SUPABASE_URL}/auth/v1/factors/{fator['id']}/challenge",
+                               headers=_gotrue_user_headers(credentials.credentials), json={}, timeout=10.0)
+        if ch.status_code not in (200, 201):
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Não foi possível conferir o código agora. Tente de novo.")
+        ver = await client.post(
+            f"{settings.SUPABASE_URL}/auth/v1/factors/{fator['id']}/verify",
+            headers=_gotrue_user_headers(credentials.credentials),
+            json={"challenge_id": ch.json().get("id"), "code": code},
+            timeout=10.0,
+        )
+    if ver.status_code != 200:
+        rate_limit.record_failed_attempt(chave, _MFA_ATTEMPTS, _MFA_WINDOW_SECS, _MFA_LOCKOUT_SECS)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Código incorreto ou vencido. Confira a hora do celular e use o código que aparece agora.")
+    data = ver.json()
+    if not await _account_is_active(claims["sub"]):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_CONTA_DESATIVADA)
+    return _login_response(data)
+
+
+@router.delete("/mfa/{factor_id}")
+async def mfa_remove(
+    factor_id: str,
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+    claims: dict[str, Any] = Depends(get_current_user),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+) -> dict[str, str]:
+    """Desliga a verificação em duas etapas da própria conta (precisa da sessão verificada)."""
+    from app.services import mfa_service
+
+    if claims.get("aal") != "aal2":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Digite o código do app autenticador antes de desligar.",
+                            headers={"X-Docke-Code": "mfa_verificar"})
+    fatores = await _fatores(admin_conn, claims["sub"])
+    if not any(f["id"] == factor_id for f in fatores):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="App autenticador não encontrado nesta conta.")
+    _, exigido = await mfa_service.estado(admin_conn, claims["sub"])
+    if exigido and sum(1 for f in fatores if f["status"] == "verified") <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A sua empresa exige a verificação em duas etapas para o seu papel. Se trocou de celular, peça ao administrador geral para zerar e cadastre de novo.",
+        )
+    async with httpx.AsyncClient() as client:
+        resp = await client.delete(f"{settings.SUPABASE_URL}/auth/v1/factors/{factor_id}",
+                                   headers=_gotrue_user_headers(credentials.credentials), timeout=10.0)
+    if resp.status_code not in (200, 204):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Não foi possível desligar agora. Tente de novo.")
     return {"status": "ok"}

@@ -114,3 +114,15 @@ async def test_cnpj_com_digito_errado_e_recusado(api, cenario):  # noqa: F811
     assert r.status_code == 422
     r = await api.patch(API + f"/companies/{co}", json={"cnpj": "11.222.333/0001-81"}, headers=h)
     assert r.status_code == 200, r.text
+
+
+@pytest.mark.asyncio
+async def test_so_administrador_geral_cria_contas(api, cenario):  # noqa: F811
+    """A9-42: o admin da empresa não cria conta nova (decisão do dono, 26/11/2026)."""
+    h, co = _token(cenario["gestora"]), cenario["co"]
+    r = await api.post(API + f"/companies/{co}/members", json={
+        "email": "nova@test.local", "password": "senha-longa-123", "username": "nova_pessoa",
+        "full_name": "Nova Pessoa", "permission_level": "visualizador",
+    }, headers=h)
+    assert r.status_code == 403, r.text
+    assert "administrador geral" in r.json()["detail"]

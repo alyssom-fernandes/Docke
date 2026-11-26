@@ -8,6 +8,7 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import SharePolicyCard from "@/components/shared/SharePolicyCard";
+import MfaPolicyCard from "@/components/shared/MfaPolicyCard";
 
 interface SensFolder { id: string; name: string; sensitivity: "pessoal" | "sensivel"; documentos: number }
 interface Hit { id: string; name: string; folder_id?: string; folder_path_label?: string; sensitivity?: string; snippet?: string }
@@ -98,6 +99,7 @@ export default function Privacy() {
       </section>
 
       {current && <SharePolicyCard companyId={current.id} canEdit={["admin", "supremo"].includes(current.permission_level)} />}
+      {current && ["admin", "supremo"].includes(current.permission_level) && <MfaPolicyCard companyId={current.id} />}
 
       <section className="glass-panel rounded-(--radius-panel) p-5 space-y-3" aria-labelledby="lgpd-titular">
         <h3 id="lgpd-titular" className="flex items-center gap-2 text-mac-body font-semibold text-(--text-primary)"><ShieldAlert className="w-4 h-4 text-(--text-accent)" aria-hidden="true" /> Pedido do titular</h3>

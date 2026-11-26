@@ -119,6 +119,11 @@ api.interceptors.response.use(
       return api.request(config);
     }
     const cfg = err.config as RetriableConfig | undefined;
+    // Falta o código do app autenticador: a tela de verificação assume.
+    const codigo = (err.response?.data as { code?: string } | undefined)?.code;
+    if (err.response?.status === 403 && (codigo === "mfa_verificar" || codigo === "mfa_cadastrar") && !cfg?.url?.startsWith("/auth/")) {
+      window.dispatchEvent(new CustomEvent("docke:mfa", { detail: codigo }));
+    }
     const isEntry = AUTH_ENTRY.some((p) => cfg?.url?.startsWith(p));
     if (err.response?.status !== 401 || !cfg || isEntry) return Promise.reject(err);
 

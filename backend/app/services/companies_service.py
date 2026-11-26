@@ -445,6 +445,7 @@ class CompaniesService:
             )
             SELECT u.id::text AS user_id, u.username, u.full_name, u.is_active, u.role,
                    u.must_change_password, au.email::text AS email, au.last_sign_in_at,
+                   EXISTS (SELECT 1 FROM auth.mfa_factors mf WHERE mf.user_id = u.id AND mf.status = 'verified') AS mfa_enabled,
                    COALESCE((
                      SELECT json_agg(json_build_object(
                        'access_id', a.id::text, 'role', a.permission_level, 'folder_id', f.id::text,

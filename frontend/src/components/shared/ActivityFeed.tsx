@@ -91,6 +91,8 @@ export const ACTION_LABELS: Record<string, string> = {
   fields_copy: "copiou campos de outra empresa para",
   audit_export: "exportou a",
   share_policy: "mudou a",
+  mfa_policy: "mudou a regra da",
+  mfa_reset: "zerou a verificação em duas etapas de",
   audit_verify: "verificou a integridade da",
   field_rules_copy: "copiou regras de metadados para a pasta",
   field_rule_exclude: "tirou de uma pasta o campo",
