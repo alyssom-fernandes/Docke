@@ -359,6 +359,32 @@ async def get_document_field_values(
     return [dict(r) for r in rows]
 
 
+class BulkFieldValues(BaseModel):
+    document_ids: list[UUID]
+    values: list[DocumentFieldValueSet]
+
+
+@router.put("/documents/field-values/batch")
+async def set_field_values_batch(
+    body: BulkFieldValues,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Edição de metadados em lote numa transação só (achado A5-29): ou todos os
+    documentos recebem os valores, ou nenhum — antes era um PUT por documento
+    e uma falha no meio deixava parte alterada. Mesma validação do formulário.
+    """
+    if not 1 <= len(body.document_ids) <= 1000:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Informe de 1 a 1.000 documentos.")
+    if not body.values:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nenhum campo para alterar.")
+    async with conn.transaction():
+        for document_id in body.document_ids:
+            await set_document_field_values(document_id, body.values, conn, claims)
+    return {"updated": len(body.document_ids)}
+
+
 @router.put("/documents/{document_id}/field-values")
 async def set_document_field_values(
     document_id: UUID,

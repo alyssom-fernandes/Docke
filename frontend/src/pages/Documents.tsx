@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useRef, useState, useCallback, useId, type ElementType, type ReactNode } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { relativeDate, fullDate } from "@/lib/date";
 import { getFileStyle } from "@/lib/fileType";
@@ -68,7 +67,6 @@ import ActivityFeed from "@/components/shared/ActivityFeed";
 import ShareModal from "@/components/documents/ShareModal";
 import CopyStructureModal from "@/components/documents/CopyStructureModal";
 import FolderTree from "@/components/documents/FolderTree";
-import Portal from "@/components/ui/Portal";
 import Dialog from "@/components/ui/Dialog";
 import Menu, { type MenuItem } from "@/components/ui/Menu";
 import FolderPickerDialog, { type PickedFolder } from "@/components/documents/FolderPickerDialog";
@@ -1132,100 +1130,96 @@ function BulkMetadataModal({
   documentIds, fields, fieldValues, companyId, onClose, onSaved,
 }: {
   documentIds: string[]; fields: ResolvedField[]; fieldValues: Record<string, Record<string, string>>;
-  companyId: string; onClose: () => void; onSaved: () => void;
+  companyId: string; onClose: () => void; onSaved: (applied: Record<string, string>) => void;
 }) {
   const { success, error: showError } = useToast();
-  const containerRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(containerRef);
   const [edited, setEdited] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const uid = useId();
 
-  function fieldSummary(fieldId: string): { varies: boolean; common: string } {
-    const values = documentIds.map((id) => fieldValues[id]?.[fieldId] ?? "");
-    const distinct = new Set(values.filter((v) => v !== ""));
+  function summary(fieldId: string): { varies: boolean; common: string } {
+    const distinct = new Set(documentIds.map((id) => fieldValues[id]?.[fieldId] ?? "").filter((v) => v !== ""));
     if (distinct.size === 0) return { varies: false, common: "" };
     if (distinct.size === 1) return { varies: false, common: [...distinct][0] };
     return { varies: true, common: "" };
   }
 
   async function save() {
-    const changedFieldIds = Object.keys(edited);
-    if (changedFieldIds.length === 0) { onClose(); return; }
+    const changed = Object.entries(edited).filter(([, v]) => v.trim() !== "");
+    if (!changed.length) { onClose(); return; }
+    const errs: Record<string, string> = {};
+    for (const [fid, v] of changed) {
+      const f = fields.find((x) => x.custom_field_id === fid);
+      const e = f ? validateValue(f.type as FieldType, v) : null;
+      if (e) errs[fid] = e;
+    }
+    setErrors(errs);
+    if (Object.keys(errs).length) return;
     setSaving(true);
-    const body = changedFieldIds.map((fieldId) => ({ custom_field_id: fieldId, value: edited[fieldId] }));
-    let failCount = 0;
-    for (const docId of documentIds) {
-      try {
-        await api.put(`/documents/${docId}/field-values`, body, { params: { company_id: companyId } });
-      } catch {
-        failCount++;
-      }
+    try {
+      await api.put("/documents/field-values/batch", {
+        document_ids: documentIds,
+        values: changed.map(([custom_field_id, value]) => ({ custom_field_id, value: value.trim() })),
+      }, { params: { company_id: companyId } });
+      success(`Metadados aplicados em ${plural(documentIds.length, "documento", "documentos")}.`);
+      onSaved(Object.fromEntries(changed.map(([k, v]) => [k, v.trim()])));
+      onClose();
+    } catch (e: any) {
+      showError(friendlyError(e, "Nada foi alterado: confira os valores e tente de novo."));
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    if (failCount === 0) {
-      success(`Metadados atualizados em ${documentIds.length} documento${documentIds.length > 1 ? "s" : ""}.`);
-    } else {
-      showError(`${failCount} de ${documentIds.length} documentos não foram atualizados — confira o formato dos valores.`);
-    }
-    onSaved();
-    onClose();
   }
 
   return (
-    <Portal>
-      <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-        <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[440px] max-h-[80vh] flex flex-col">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-(--border-default) shrink-0">
-            <h2 className="text-mac-body font-semibold text-(--text-primary)">
-              Editar metadados de {documentIds.length} documento{documentIds.length > 1 ? "s" : ""}
-            </h2>
-            <button onClick={onClose} className="p-1 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover)">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="p-5 space-y-4 overflow-y-auto">
-            {fields.length === 0 ? (
-              <p className="text-mac-caption text-(--text-tertiary)">Nenhum campo de metadado aplicado nesta pasta.</p>
-            ) : (
-              fields.map((f) => {
-                const { varies, common } = fieldSummary(f.custom_field_id);
-                const value = edited[f.custom_field_id] ?? "";
-                return (
-                  <div key={f.custom_field_id}>
-                    <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">{f.label}</label>
-                    {f.type === "selecao" ? (
-                      <Dropdown
-                        value={value}
-                        onChange={(v) => setEdited((e) => ({ ...e, [f.custom_field_id]: v }))}
-                        placeholder={varies ? "(varies)" : common || "—"}
-                        options={((f.format_config?.options as string[]) ?? []).map((o) => ({ value: o, label: o }))}
-                      />
-                    ) : (
-                      <input
-                        type="text"
-                        value={value}
-                        onChange={(e) => setEdited((prev) => ({ ...prev, [f.custom_field_id]: e.target.value }))}
-                        placeholder={varies ? "(varies)" : common || "—"}
-                        className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-                      />
-                    )}
-                  </div>
-                );
-              })
-            )}
-            {fields.length > 0 && (
-              <p className="text-mac-caption2 text-(--text-tertiary)">
-                Campos deixados como "(varies)" ou vazios não são alterados — só os que você preencher aqui são aplicados a todos os documentos selecionados.
-              </p>
-            )}
-          </div>
-          <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default) shrink-0">
-            <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
-            <Button size="sm" loading={saving} onClick={save} disabled={fields.length === 0}>Aplicar</Button>
-          </div>
+    <Dialog
+      onClose={onClose}
+      title={`Metadados de ${plural(documentIds.length, "documento", "documentos")}`}
+      description="Preencha só o que quer mudar em todos. Campos em branco ficam como estão em cada documento."
+      size="md"
+      busy={saving}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>Cancelar</Button>
+          <Button loading={saving} onClick={save} disabled={fields.length === 0 || !Object.values(edited).some((v) => v.trim())}>
+            Aplicar em {documentIds.length}
+          </Button>
+        </>
+      }
+    >
+      {fields.length === 0 ? (
+        <p className="text-mac-body text-(--text-secondary)">Esta pasta não tem campos de metadados. Crie em Ajustes → Metadados.</p>
+      ) : (
+        <div className="space-y-4">
+          {fields.map((f) => {
+            const { varies, common } = summary(f.custom_field_id);
+            const fid = `${uid}-${f.custom_field_id}`;
+            const err = errors[f.custom_field_id];
+            const hint = varies ? "Valores diferentes entre os documentos" : common ? `Hoje: ${common}` : "Vazio hoje";
+            return (
+              <div key={f.custom_field_id}>
+                <label htmlFor={fid} className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">
+                  {f.label}{f.required && <span className="text-(--text-danger)" aria-label="obrigatório"> *</span>}
+                </label>
+                {f.type === "selecao" ? (
+                  <Dropdown id={fid} ariaLabel={f.label} value={edited[f.custom_field_id] ?? ""} placeholder={hint}
+                    onChange={(v) => setEdited((e) => ({ ...e, [f.custom_field_id]: v }))}
+                    options={((f.format_config?.options as string[]) ?? []).map((o) => ({ value: o, label: o }))} />
+                ) : (
+                  <input id={fid} type="text" inputMode={INPUT_MODE[f.type as FieldType]} value={edited[f.custom_field_id] ?? ""}
+                    onChange={(e) => { const v = maskValue(f.type as FieldType, e.target.value); setEdited((prev) => ({ ...prev, [f.custom_field_id]: v })); setErrors((x) => { const n = { ...x }; delete n[f.custom_field_id]; return n; }); }}
+                    placeholder={PLACEHOLDER[f.type as FieldType] || hint}
+                    aria-invalid={err ? true : undefined} aria-describedby={`${fid}-dica`}
+                    className={`w-full h-9 pointer-coarse:h-11 px-3 text-mac-body pointer-coarse:text-[16px] bg-(--bg-card) border rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring) ${err ? "border-red-500" : "border-(--border-control)"}`} />
+                )}
+                <p id={`${fid}-dica`} className={`mt-1 text-mac-caption ${err ? "text-(--text-danger)" : "text-(--text-secondary)"}`}>{err ?? hint}</p>
+              </div>
+            );
+          })}
         </div>
-      </div>
-    </Portal>
+      )}
+    </Dialog>
   );
 }
 
@@ -3471,7 +3465,11 @@ export default function Documents() {
           fieldValues={fieldValues}
           companyId={current.id}
           onClose={() => setShowBulkMetadata(false)}
-          onSaved={load}
+          onSaved={(applied) => setFieldValues((prev) => {
+            const next = { ...prev };
+            for (const id of selected) next[id] = { ...(next[id] ?? {}), ...applied };
+            return next;
+          })}
         />
       )}
     </div>

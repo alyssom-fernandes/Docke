@@ -70,7 +70,7 @@ export function validateValue(type: FieldType, value: string): string | null {
       return Number(m[1]) >= 1 && Number(m[1]) <= 12 ? null : "O mês vai de 01 a 12.";
     }
     case "numero":
-      return /^-?\d{1,3}(\.\d{3})*(,\d+)?$|^-?\d+([.,]\d+)?$/.test(v) ? null : "Use só números (ex.: 1.234,56).";
+      return /^-?\d+([.,]\d+)?$/.test(v) ? null : "Use só números, com vírgula nos centavos (ex.: 1234,56).";
     default:
       return null;
   }
