@@ -219,6 +219,7 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
   const [failed, setFailed] = useState(false);
   const [archived, setArchived] = useState<CustomField[]>([]);
   const [renaming, setRenaming] = useState<CustomField | null>(null);
+  const [applying, setApplying] = useState<CustomField | null>(null);
   const [newLabel, setNewLabel] = useState("");
 
   function load() {
@@ -323,6 +324,7 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
                 <p className="text-mac-body text-(--text-primary)">{f.label}</p>
                 <p className="text-mac-caption text-(--text-secondary)">{TYPE_LABEL[f.type]}</p>
               </div>
+              <Button variant="ghost" size="sm" onClick={() => setApplying(f)} aria-label={`Aplicar ${f.label} em pastas`}>Aplicar em pastas…</Button>
               <Button variant="ghost" size="sm" onClick={() => { setRenaming(f); setNewLabel(f.label); }} aria-label={`Renomear ${f.label}`}>Renomear</Button>
               <Button variant="ghost" size="sm" onClick={() => setArchiving(f)} aria-label={`Arquivar ${f.label}`}><Archive className="w-3.5 h-3.5" aria-hidden="true" /> Arquivar</Button>
               <Button variant="ghost" size="sm" onClick={() => setDeleting(f)} aria-label={`Excluir ${f.label}`}><Trash2 className="w-3.5 h-3.5 text-(--text-danger)" aria-hidden="true" /> Excluir</Button>
@@ -344,6 +346,8 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
           </ul>
         </details>
       )}
+
+      {applying && <ApplyFieldDialog companyId={companyId} field={applying} onClose={() => setApplying(null)} />}
 
       {renaming && (
         <Dialog onClose={() => setRenaming(null)} title={`Renomear “${renaming.label}”`} size="sm"
@@ -679,5 +683,58 @@ export default function Metadata() {
         {tab === "catalog" ? <CatalogTab companyId={current.id} companies={companies} /> : <TreeTab companyId={current.id} initialFolderId={initialFolderId} />}
       </div>
     </div>
+  );
+}
+
+/**
+ * Aplicar um campo em várias pastas de uma vez (achado A8-13): antes era
+ * uma pasta por vez, indo e voltando entre abas.
+ */
+function ApplyFieldDialog({ companyId, field, onClose }: { companyId: string; field: CustomField; onClose: () => void }) {
+  const { success, error: showError } = useToast();
+  const [folders, setFolders] = useState<FolderOption[] | null>(null);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [required, setRequired] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(0);
+  useEffect(() => {
+    api.get<FolderOption[]>("/folders", { params: { company_id: companyId, flat: true } }).then((r) => setFolders(r.data ?? [])).catch(() => setFolders([]));
+  }, [companyId]);
+  const sorted = [...(folders ?? [])].sort((a, b) => a.path.localeCompare(b.path));
+  async function apply() {
+    setSaving(true);
+    let ok = 0;
+    const falhas: string[] = [];
+    for (const id of sel) {
+      try { await api.put("/folder-fields", { company_id: companyId, folder_id: id, custom_field_id: field.id, mode: "apply", required, display_order: 0 }); ok++; }
+      catch { falhas.push(sorted.find((f) => f.id === id)?.name ?? id); }
+      setDone((d) => d + 1);
+    }
+    setSaving(false);
+    if (!falhas.length) { success(`“${field.label}” aplicado em ${ok} ${ok === 1 ? "pasta" : "pastas"} (e nas subpastas delas).`); onClose(); }
+    else showError(`Aplicado em ${ok}. Falhou em: ${falhas.slice(0, 3).join(", ")}${falhas.length > 3 ? "…" : ""}`);
+  }
+  return (
+    <Dialog onClose={onClose} title={`Aplicar “${field.label}” em pastas`} size="md" busy={saving}
+      description="Marque as pastas: o campo vale nelas e nas subpastas. Onde já estava aplicado, a regra é atualizada."
+      footer={<><Button variant="secondary" onClick={onClose} disabled={saving}>Cancelar</Button><Button loading={saving} disabled={!sel.size} onClick={apply}>{saving ? `${done} de ${sel.size}…` : `Aplicar em ${sel.size}`}</Button></>}>
+      {!folders ? <div className="h-32 rounded bg-(--bg-hover) animate-pulse" /> : sorted.length === 0 ? <p className="text-mac-body text-(--text-secondary)">Nenhuma pasta nesta empresa.</p> : (
+        <div className="space-y-3">
+          <ul className="max-h-72 overflow-y-auto rounded-(--radius-control) border border-(--border-default) divide-y divide-(--border-default)">
+            {sorted.map((f) => (
+              <li key={f.id}>
+                <label className="flex items-center gap-2 px-3 min-h-10 pointer-coarse:min-h-11 cursor-pointer hover:bg-(--bg-hover)" style={{ paddingLeft: `${12 + (f.path.split(".").length - 1) * 16}px` }}>
+                  <Checkbox checked={sel.has(f.id)} onChange={() => setSel((s) => { const n = new Set(s); if (n.has(f.id)) n.delete(f.id); else n.add(f.id); return n; })} />
+                  <span className="text-mac-body text-(--text-primary) truncate">{f.name}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <label className="flex items-center gap-2 text-mac-body text-(--text-primary)">
+            <Checkbox checked={required} onChange={(e) => setRequired(e.target.checked)} /> Obrigatório nestas pastas
+          </label>
+        </div>
+      )}
+    </Dialog>
   );
 }
