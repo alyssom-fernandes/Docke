@@ -11,6 +11,7 @@ import Button from "@/components/ui/Button";
 import Checkbox from "@/components/ui/Checkbox";
 import { rememberChoice } from "@/lib/session";
 import { friendlyError } from "@/lib/errors";
+import { relativeDate } from "@/lib/date";
 import Dialog from "@/components/ui/Dialog";
 import { MfaEnroll } from "@/components/shared/MfaSetup";
 
@@ -40,6 +41,79 @@ function Cartao({ icon: Icon, cor, titulo, descricao, children, className = "" }
       </div>
       {children && <div className="mt-4">{children}</div>}
     </section>
+  );
+}
+
+interface Sessao { id: string; created_at: string; ultimo_uso: string; user_agent: string | null; ip: string | null; atual: boolean }
+
+/** "Chrome no Windows", "Safari no iPhone"… a partir do user agent. */
+function aparelho(ua: string | null): string {
+  if (!ua) return "Aparelho desconhecido";
+  const nav = /Edg\//.test(ua) ? "Edge" : /OPR\//.test(ua) ? "Opera" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : /python|httpx|curl/i.test(ua) ? "Programa" : "Navegador";
+  const so = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android" : /Windows/.test(ua) ? "Windows" : /Mac OS X|Macintosh/.test(ua) ? "Mac" : /Linux/.test(ua) ? "Linux" : "";
+  return so ? `${nav} no ${so}` : nav;
+}
+
+// Sessões ativas com encerramento remoto (FA-A8-02, B4.2.6).
+function SessionsSection() {
+  const { success, error: showError } = useToast();
+  const [data, setData] = useState<{ demo: boolean; sessions: Sessao[] } | null>(null);
+  const [falhou, setFalhou] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  function load() {
+    setFalhou(false);
+    api.get("/auth/sessions").then((r) => setData(r.data)).catch(() => setFalhou(true));
+  }
+  useEffect(load, []);
+
+  async function encerrar(id: string | "outras") {
+    setBusy(id);
+    try {
+      if (id === "outras") {
+        const r = await api.post("/auth/sessions/end-others");
+        success(r.data.encerradas ? `${r.data.encerradas} ${r.data.encerradas === 1 ? "sessão encerrada" : "sessões encerradas"}.` : "Não havia outras sessões.");
+      } else {
+        await api.delete(`/auth/sessions/${id}`);
+        success("Sessão encerrada.");
+      }
+      load();
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível encerrar agora."));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const outras = data?.sessions.filter((s) => !s.atual).length ?? 0;
+  return (
+    <Cartao icon={Laptop} cor="bg-sky-600" titulo="Onde sua conta está aberta"
+      descricao="Computadores e celulares com sessão aberta. Encerre a que você não reconhece ou que ficou aberta em outro lugar.">
+      {falhou ? (
+        <div role="alert" className="flex items-center gap-3 text-mac-body text-(--text-secondary)">
+          Não foi possível carregar. <Button size="sm" variant="secondary" onClick={load}>Tentar de novo</Button>
+        </div>
+      ) : !data ? (
+        <div className="h-16 rounded-(--radius-control) bg-(--bg-hover) animate-pulse" />
+      ) : data.demo ? (
+        <p className="text-mac-body text-(--text-secondary) max-w-[520px]">A conta de demonstração é usada por vários visitantes ao mesmo tempo, então as sessões dela não aparecem aqui.</p>
+      ) : (
+        <div className="space-y-3">
+          <ul className="divide-y divide-(--border-default)">
+            {data.sessions.map((s) => (
+              <li key={s.id} className="flex items-center gap-3 py-2.5">
+                <div className="flex-1 min-w-0">
+                  <p className="text-mac-body text-(--text-primary)">{aparelho(s.user_agent)}{s.atual && <span className="ml-2 text-mac-caption font-medium text-(--text-success)">esta sessão</span>}</p>
+                  <p className="text-mac-caption text-(--text-secondary)">Usada {relativeDate(s.ultimo_uso)} · aberta em {new Date(s.created_at).toLocaleDateString("pt-BR")}{s.ip ? ` · IP ${s.ip}` : ""}</p>
+                </div>
+                {!s.atual && <Button size="sm" variant="secondary" loading={busy === s.id} disabled={!!busy} onClick={() => encerrar(s.id)}>Encerrar</Button>}
+              </li>
+            ))}
+          </ul>
+          {outras > 0 && <Button size="sm" variant="ghost" loading={busy === "outras"} disabled={!!busy} onClick={() => encerrar("outras")}>Encerrar todas as outras</Button>}
+        </div>
+      )}
+    </Cartao>
   );
 }
 
@@ -275,6 +349,7 @@ export default function Security() {
         )}
       </Cartao>
       <MfaSection />
+      <SessionsSection />
       <IntegritySection />
     </div>
   );

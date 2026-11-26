@@ -28,6 +28,8 @@ interface SearchResponse {
   page_size: number;
   facets?: { sector: FacetValue[]; file_type: FacetValue[] };
   sem_texto?: number;
+  /** Sem resultado exato: são documentos com palavras parecidas (erro de digitação ou de OCR). */
+  aproximado?: boolean;
 }
 interface FolderOption { id: string; name: string; path: string }
 
@@ -308,10 +310,16 @@ export default function Search() {
           ) : (
             <>
               <div className="flex flex-wrap items-baseline justify-between gap-2">
+                {data.aproximado ? (
+                  <p role="status" className="text-mac-body text-(--text-secondary)">
+                    Nada exato para “{q}”. {total === 1 ? "Este documento tem" : `Estes ${total} documentos têm`} palavras parecidas (pode ser erro de digitação ou de leitura do texto).
+                  </p>
+                ) : (
                 <p className="text-mac-body text-(--text-secondary)">
                   {total.toLocaleString("pt-BR")} {total === 1 ? "resultado" : "resultados"} para “{q}”
                   {pages > 1 && ` · página ${pagina} de ${pages}`}
                 </p>
+                )}
                 {!!data.sem_texto && (
                   <p className="inline-flex items-center gap-1 text-mac-caption text-(--text-secondary)"><FileWarning className="w-3.5 h-3.5 text-(--text-warning)" aria-hidden="true" />
                     {data.sem_texto} sem texto lido só aparecem pelo nome</p>

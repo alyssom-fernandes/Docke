@@ -266,6 +266,38 @@ async def _decode_jwt_refreshing(token: str) -> dict[str, Any]:
 # Dependencies
 # ---------------------------------------------------------------------------
 
+async def _sessao_viva(request: Request | None, conn: asyncpg.Connection | None, claims: dict[str, Any]) -> None:
+    """
+    Sessão encerrada em Ajustes → Segurança (ou pelo administrador) deixa de
+    valer na hora, e não só quando o token de acesso vence (até 1 h): o token
+    traz o id da sessão, que precisa continuar em auth.sessions (FA-A8-02).
+    Tokens sem session_id (serviço, testes) não passam por aqui.
+    """
+    sid = claims.get("session_id")
+    if request is None or not sid:
+        return
+    viva = getattr(request.state, "sessao_viva", None)
+    if viva is None:
+        try:
+            if conn is not None:
+                viva = await conn.fetchval("SELECT EXISTS (SELECT 1 FROM auth.sessions WHERE id = $1::uuid)", sid)
+            else:
+                async with _acquire(_require_pool()) as c:
+                    viva = await c.fetchval("SELECT EXISTS (SELECT 1 FROM auth.sessions WHERE id = $1::uuid)", sid)
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("Falha ao conferir a sessão; a requisição segue.")
+            return
+        request.state.sessao_viva = viva
+    if not viva:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Esta sessão foi encerrada. Entre de novo.",
+            headers={"WWW-Authenticate": "Bearer", "X-Docke-Code": "sessao_encerrada"},
+        )
+
+
 async def _exigir_mfa(request: Request | None, conn: asyncpg.Connection | None, claims: dict[str, Any]) -> None:
     """
     Verificação em duas etapas (decisão do dono, 26/11/2026): quem tem app
@@ -315,6 +347,7 @@ async def get_current_user(
 ) -> dict[str, Any]:
     """Valida JWT e retorna os claims. Usado por rotas que precisam do usuário mas não do banco."""
     claims = await _decode_jwt_refreshing(credentials.credentials)
+    await _sessao_viva(request, None, claims)
     await _exigir_mfa(request, None, claims)
     return claims
 
@@ -340,7 +373,8 @@ async def get_db(
     pool = _require_pool()
 
     async with _acquire(pool) as conn:
-        # Antes de trocar para o papel authenticated: a consulta lê auth.mfa_factors.
+        # Antes de trocar para o papel authenticated: as consultas leem o esquema auth.
+        await _sessao_viva(request, conn, claims)
         await _exigir_mfa(request, conn, claims)
         async with conn.transaction():
             # Replica o que o PostgREST faz internamente:

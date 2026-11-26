@@ -54,7 +54,9 @@ class SearchService:
         OR d.name ILIKE '%' || $3 || '%'
         OR d.ocr_text ILIKE '%' || $3 || '%'
         OR ft.txt ILIKE '%' || $3 || '%'
-        OR ($4::text IS NOT NULL AND (d.name ~ $4 OR d.ocr_text ~ $4 OR ft.txt ~ $4))
+        OR ($4::text IS NOT NULL AND (d.name ~ $4 OR d.ocr_text ~ $4 OR ft.txt ~ $4
+              -- Chave de acesso da NF-e lida no envio, com ou sem espaços (B2.5.5).
+              OR EXISTS (SELECT 1 FROM public.document_nfe n WHERE n.document_id = d.id AND n.chave ~ $4)))
       )
       AND ($5::ltree IS NULL OR f.path <@ $5::ltree)
       AND ($6::date IS NULL OR d.created_at >= $6::date)
@@ -143,6 +145,41 @@ class SearchService:
         )
         total = rows[0]["total_count"] if rows else 0
 
+        # Tolerância a erro de digitação e de OCR (B2.2.3, B2.1.9): sem nenhum
+        # resultado exato, procura palavras parecidas por trigramas ("contrarto"
+        # acha "contrato"). Palavra curta pede semelhança maior.
+        aproximado = False
+        letras = re.sub(r"[^\w]", "", raw_term, flags=re.UNICODE)
+        if not rows and page == 1 and digits is None and len(letras) >= 4 and not letras.isdigit():
+            limiar = 0.75 if len(letras) <= 5 else 0.6 if len(letras) <= 7 else 0.5
+            await conn.execute(f"SET LOCAL pg_trgm.word_similarity_threshold = {limiar}")
+            rows = await conn.fetch(
+                """
+                SELECT
+                  d.id::text, d.name, d.file_type, d.size_bytes, d.sector, d.competencia, d.tipo_fiscal,
+                  d.ocr_status, d.folder_id::text, d.company_id::text, d.created_at, f.name AS folder_name,
+                  greatest(word_similarity($1, d.name), word_similarity($1, coalesce(d.ocr_text, ''))) AS rank,
+                  NULL::text AS snippet,
+                  (SELECT string_agg(anc.name, ' / ' ORDER BY nlevel(anc.path))
+                     FROM public.folders anc WHERE anc.company_id = d.company_id AND anc.path @> f.path) AS folder_path_label
+                FROM public.documents d
+                JOIN public.folders f ON f.id = d.folder_id
+                WHERE d.company_id = $2 AND d.deleted_at IS NULL AND d.content_hash IS NOT NULL
+                  AND ($1 <% d.name OR $1 <% d.ocr_text)
+                  AND ($3::ltree IS NULL OR f.path <@ $3::ltree)
+                  AND ($4::date IS NULL OR d.created_at >= $4::date)
+                  AND ($5::date IS NULL OR d.created_at < ($5::date + 1))
+                  AND ($6::uuid IS NULL OR d.folder_id = $6)
+                  AND ($7::text IS NULL OR d.sector = $7)
+                  AND ($8::text IS NULL OR d.file_type = $8)
+                ORDER BY rank DESC, d.created_at DESC
+                LIMIT $9
+                """,
+                raw_term, company_id, folder_path, date_from, date_to, exact_folder_id, sector, file_type, page_size,
+            )
+            aproximado = bool(rows)
+            total = len(rows)
+
         # Facetas: contagem por setor/tipo entre os que batem, ignorando o
         # filtro da própria dimensão.
         facet_rows = await conn.fetch(
@@ -178,6 +215,7 @@ class SearchService:
 
         return {
             "results": [{k: v for k, v in dict(r).items() if k != "total_count"} for r in rows],
+            "aproximado": aproximado,
             "total": total,
             "page": page,
             "page_size": page_size,

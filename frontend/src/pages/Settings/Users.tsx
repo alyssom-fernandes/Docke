@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
-  UserPlus, RefreshCw, Plus, Trash2, Check, AlertTriangle, Search, UsersRound, KeyRound, Ban, RotateCcw, Copy, ChevronRight, HelpCircle, Download, Smartphone,
+  UserPlus, RefreshCw, Plus, Trash2, Check, AlertTriangle, Search, UsersRound, KeyRound, Ban, RotateCcw, Copy, ChevronRight, HelpCircle, Download, Smartphone, LogOut,
 } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
@@ -330,6 +330,7 @@ function PersonDialog({ companyId, person, folders, isSelf, onClose, onChanged }
                 }}>
                 <KeyRound className="w-3.5 h-3.5" aria-hidden="true" /> Gerar senha provisória
               </Button>
+              <Button variant="secondary" size="sm" disabled={busy} onClick={() => act(() => api.post(`/companies/${companyId}/members/${person.user_id}/end-sessions`), "Sessões encerradas: a pessoa precisa entrar de novo.", "Não foi possível encerrar as sessões.")}><LogOut className="w-3.5 h-3.5" aria-hidden="true" /> Encerrar sessões</Button>
               {/* Celular perdido: só o administrador geral zera o app autenticador. */}
               {user?.role === "supremo" && person.mfa_enabled && (
                 <Button variant="secondary" size="sm" disabled={busy} onClick={() => setConfirm({ kind: "mfa" })}><Smartphone className="w-3.5 h-3.5" aria-hidden="true" /> Zerar verificação em duas etapas</Button>
