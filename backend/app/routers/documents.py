@@ -1284,6 +1284,10 @@ async def get_document(
     texto = d.pop("ocr_text", None) or ""
     d["ocr_excerpt"] = texto[:600]
     d["ocr_text_length"] = len(texto)
+    # NF-e lida no envio: dados da nota e outras cópias da mesma chave (B2.5.6).
+    from app.services import nfe_service
+
+    d["nfe"] = await nfe_service.da_nota(conn, document_id)
     return d
 
 

@@ -15,8 +15,7 @@ import {
   GitBranch,
   Archive,
   Lock,
-  Check,
-} from "lucide-react";
+  Check, Copy } from "lucide-react";
 import api from "@/lib/api";
 import { useToast } from "@/lib/toast";
 import Dropdown from "@/components/ui/Dropdown";
@@ -290,6 +289,67 @@ export function DocumentObligations({ docId }: { docId: string }) {
   );
 }
 
+interface NotaFiscal {
+  chave: string | null; modelo: string | null; numero: string | null; serie: string | null; data_emissao: string | null;
+  emitente_cnpj: string | null; emitente_nome: string | null; destinatario_doc: string | null; destinatario_nome: string | null;
+  valor_total: number | null; duplicatas: { id: string; name: string; folder_id: string; folder_name: string }[];
+}
+
+function fmtDoc(v: string | null) {
+  if (!v) return "";
+  if (v.length === 14) return v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+  if (v.length === 11) return v.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
+  return v;
+}
+
+/** NF-e lida no envio (FA-A4-12, B2.5.6): dados da nota e aviso quando a mesma chave já está no acervo. */
+export function DocumentNfe({ docId, name }: { docId: string; name: string }) {
+  const [nota, setNota] = useState<NotaFiscal | null>(null);
+  const [copiada, setCopiada] = useState(false);
+  const ehXml = /\.xml$/i.test(name);
+  useEffect(() => {
+    if (!ehXml) return;
+    let vivo = true;
+    setNota(null);
+    api.get(`/documents/${docId}`).then((r) => { if (vivo) setNota(r.data?.nfe ?? null); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [docId, ehXml]);
+  if (!ehXml || !nota) return null;
+  const chaveFmt = nota.chave ? nota.chave.replace(/(\d{4})(?=\d)/g, "$1 ") : null;
+  return (
+    <section aria-label="Nota fiscal" className="space-y-2 border-t border-(--border-default) pt-3">
+      <h3 className="text-mac-body font-semibold text-(--text-primary)">{nota.modelo === "65" ? "NFC-e" : "NF-e"} {nota.numero}{nota.serie ? ` · série ${nota.serie}` : ""}</h3>
+      {nota.duplicatas.length > 0 && (
+        <div role="status" className="rounded-(--radius-control) border border-(--border-default) bg-(--bg-hover) px-3 py-2 text-mac-caption text-(--text-primary)">
+          <p className="font-medium text-(--text-warning)">Esta nota já está no acervo {nota.duplicatas.length === 1 ? "em outro arquivo" : `em ${nota.duplicatas.length} outros arquivos`}:</p>
+          <ul className="mt-1 space-y-0.5">
+            {nota.duplicatas.map((d) => (
+              <li key={d.id}><Link to={`/documents?folder_id=${d.folder_id}&doc=${d.id}`} className="text-(--text-accent) hover:underline">{d.name}</Link> <span className="text-(--text-secondary)">em {d.folder_name}</span></li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-mac-caption">
+        {nota.emitente_nome && <><dt className="text-(--text-secondary)">Emitente</dt><dd className="text-(--text-primary) text-right break-words">{nota.emitente_nome}<br /><span className="tabular-nums text-(--text-secondary)">{fmtDoc(nota.emitente_cnpj)}</span></dd></>}
+        {nota.destinatario_nome && <><dt className="text-(--text-secondary)">Destinatário</dt><dd className="text-(--text-primary) text-right break-words">{nota.destinatario_nome}<br /><span className="tabular-nums text-(--text-secondary)">{fmtDoc(nota.destinatario_doc)}</span></dd></>}
+        {nota.valor_total != null && <><dt className="text-(--text-secondary)">Valor</dt><dd className="text-(--text-primary) text-right tabular-nums">{nota.valor_total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</dd></>}
+        {nota.data_emissao && <><dt className="text-(--text-secondary)">Emissão</dt><dd className="text-(--text-primary) text-right">{fmtDateFull(nota.data_emissao)}</dd></>}
+      </dl>
+      {chaveFmt && (
+        <div className="flex items-start gap-2">
+          <p className="flex-1 font-mono text-[11px] leading-4 text-(--text-secondary) break-all" aria-label="Chave de acesso">{chaveFmt}</p>
+          <button type="button" aria-label="Copiar a chave de acesso"
+            onClick={() => { navigator.clipboard?.writeText(nota.chave!).then(() => { setCopiada(true); window.setTimeout(() => setCopiada(false), 1500); }).catch(() => {}); }}
+            className="shrink-0 p-1.5 pointer-coarse:p-3 rounded-(--radius-control) text-(--text-secondary) hover:bg-(--bg-hover) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)">
+            <Copy className="w-3.5 h-3.5" aria-hidden />
+          </button>
+          <span aria-live="polite" className="sr-only">{copiada ? "Chave copiada" : ""}</span>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit, onClose, onFavorite, onPreview, onMenu, onChanged, onFieldSaved }: {
   doc: Document; companyId: string; variant?: "modal" | "panel"; path: string; canEdit: boolean;
   onClose: () => void; onFavorite: () => void; onPreview: () => void; onMenu: (el: HTMLElement) => void; onChanged: () => void;
@@ -389,6 +449,7 @@ export function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit,
         </button>
       )}
 
+      <DocumentNfe docId={doc.id} name={doc.name} />
       <MetadataSection doc={doc} companyId={companyId} canEdit={canEdit} onSaved={(fid, v) => onFieldSaved(doc.id, fid, v)} />
       <Disclosure icon={<Clock className="w-4 h-4" aria-hidden />} title="Atividade"
         summary={act ? (act.total ? `${act.total} ${act.total === 1 ? "evento" : "eventos"} · último ${relativeDate(act.last ?? "")}` : "sem eventos") : undefined}>

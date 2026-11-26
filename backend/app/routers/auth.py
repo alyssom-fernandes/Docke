@@ -1,4 +1,5 @@
 from typing import Any
+from uuid import UUID
 
 import asyncpg
 import httpx
@@ -573,3 +574,70 @@ async def mfa_remove(
     if resp.status_code not in (200, 204):
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Não foi possível desligar agora. Tente de novo.")
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Sessões ativas (FA-A8-02, B4.2.6, FA-A9-10): onde a conta está aberta, com
+# encerramento remoto. Encerrar apaga a sessão no Supabase Auth (o token de
+# renovação cai junto) e a API recusa o token de acesso dela na hora.
+# ---------------------------------------------------------------------------
+
+@router.get("/sessions")
+async def list_sessions(
+    claims: dict[str, Any] = Depends(get_current_user),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+) -> dict[str, Any]:
+    from app.services import mfa_service
+
+    rows = await admin_conn.fetch(
+        """
+        SELECT id::text, created_at, coalesce(refreshed_at, updated_at, created_at) AS ultimo_uso,
+               user_agent, host(ip) AS ip, aal::text
+        FROM auth.sessions
+        WHERE user_id = $1 AND (not_after IS NULL OR not_after > now())
+        ORDER BY coalesce(refreshed_at, updated_at, created_at) DESC
+        LIMIT 50
+        """,
+        claims["sub"],
+    )
+    atual = claims.get("session_id")
+    return {
+        "demo": mfa_service.is_demo(claims),
+        "sessions": [dict(r) | {"atual": r["id"] == atual} for r in rows],
+    }
+
+
+def _sem_demo(claims: dict[str, Any]) -> None:
+    from app.services import mfa_service
+
+    # A conta demo é compartilhada: encerrar "as outras" derrubaria visitantes.
+    if mfa_service.is_demo(claims):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="A conta de demonstração não encerra sessões.")
+
+
+@router.delete("/sessions/{session_id}")
+async def end_session(
+    session_id: UUID,
+    claims: dict[str, Any] = Depends(get_current_user),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+) -> dict[str, str]:
+    _sem_demo(claims)
+    if str(session_id) == claims.get("session_id"):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Para esta sessão, use Sair no menu da conta.")
+    res = await admin_conn.execute("DELETE FROM auth.sessions WHERE id = $1 AND user_id = $2", session_id, claims["sub"])
+    if res == "DELETE 0":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sessão não encontrada (talvez já tenha sido encerrada).")
+    return {"status": "ok"}
+
+
+@router.post("/sessions/end-others")
+async def end_other_sessions(
+    claims: dict[str, Any] = Depends(get_current_user),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+) -> dict[str, int]:
+    _sem_demo(claims)
+    atual = claims.get("session_id")
+    if not atual:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Não foi possível identificar esta sessão.")
+    res = await admin_conn.execute("DELETE FROM auth.sessions WHERE user_id = $1 AND id <> $2::uuid", claims["sub"], atual)
+    return {"encerradas": int(res.split()[-1])}

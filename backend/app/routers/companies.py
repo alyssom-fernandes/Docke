@@ -615,6 +615,8 @@ async def deactivate_member(
     # A API recusa conta inativa em toda chamada e na renovação do token:
     # as sessões abertas param na próxima ação da pessoa.
     await admin_conn.execute("UPDATE public.users SET is_active = false WHERE id = $1", member_id)
+    # Encerra também as sessões abertas: o corte vale na hora (FA-A9-10).
+    await admin_conn.execute("DELETE FROM auth.sessions WHERE user_id = $1", member_id)
     await CompaniesService.log_access(admin_conn, actor_id=claims["sub"], company_id=company_id, action="account_deactivate",
                                       target_id=member_id, target_name=nome)
     return {"user_id": str(member_id), "is_active": False}
@@ -1146,3 +1148,24 @@ async def reset_member_mfa(
     await CompaniesService.log_access(admin_conn, actor_id=claims["sub"], company_id=company_id, action="mfa_reset",
                                       target_id=member_id, target_name=nome)
     return {"user_id": str(member_id), "removidos": len(fatores)}
+
+
+@router.post("/{company_id}/members/{member_id}/end-sessions")
+async def end_member_sessions(
+    company_id: UUID,
+    member_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Encerra todas as sessões de alguém (celular perdido, saída da empresa) — FA-A8-02, FA-A9-10."""
+    role = await get_app_role(conn, claims)
+    nome = await _require_account_control(conn, admin_conn, claims["sub"], company_id, role, member_id)
+    email = await admin_conn.fetchval("SELECT email FROM auth.users WHERE id = $1", member_id)
+    if email and email.lower() == settings.DEMO_EMAIL.lower():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="A conta de demonstração não encerra sessões.")
+    res = await admin_conn.execute("DELETE FROM auth.sessions WHERE user_id = $1", member_id)
+    n = int(res.split()[-1])
+    await CompaniesService.log_access(admin_conn, actor_id=claims["sub"], company_id=company_id, action="sessions_end",
+                                      target_id=member_id, target_name=nome, metadata={"encerradas": n})
+    return {"user_id": str(member_id), "encerradas": n}
