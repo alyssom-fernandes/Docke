@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
-  UserPlus, RefreshCw, Plus, Trash2, Check, AlertTriangle, Search, UsersRound, KeyRound, Ban, RotateCcw, Copy, ChevronRight, HelpCircle, Download,
+  UserPlus, RefreshCw, Plus, Trash2, Check, AlertTriangle, Search, UsersRound, KeyRound, Ban, RotateCcw, Copy, ChevronRight, HelpCircle, Download, Smartphone,
 } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
@@ -21,7 +21,7 @@ interface DirectGrant { access_id: string; role: string; folder_id: string | nul
 interface GroupGrantRef { group_id: string; group_name: string; role: string; folder_id: string | null; folder_name: string | null }
 interface Person {
   user_id: string; username: string; full_name: string; email: string | null; is_active: boolean; role: string;
-  must_change_password: boolean; last_sign_in_at: string | null; grants: DirectGrant[]; via_groups: GroupGrantRef[]; company_count: number;
+  must_change_password: boolean; mfa_enabled?: boolean; last_sign_in_at: string | null; grants: DirectGrant[]; via_groups: GroupGrantRef[]; company_count: number;
 }
 interface FolderOption { id: string; name: string; path: string }
 interface GroupSummary { id: string; name: string; member_count: number; grant_count: number }
@@ -125,12 +125,13 @@ export default function Users() {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <p className="text-mac-caption text-(--text-secondary) max-w-2xl">Quem acessa {current.name}, com que papel e onde. O acesso pode vir direto ou por um grupo.</p>
+        <p className="text-mac-caption text-(--text-secondary) max-w-2xl">Quem acessa {current.name}, com que papel e onde. O acesso pode vir direto ou por um grupo.{user?.role !== "supremo" && " Contas novas são criadas pelo administrador geral."}</p>
         {state === "ok" && (
           <div className="flex flex-wrap gap-2">
             {/* Revisão de acessos (A9-21): a lista de quem acessa o quê, para conferir à mão. */}
             <Button variant="secondary" onClick={exportAccessCsv}><Download className="w-4 h-4" aria-hidden="true" /> Exportar acessos (CSV)</Button>
-            <Button onClick={() => setCreating(true)}><UserPlus className="w-4 h-4" aria-hidden="true" /> Nova pessoa</Button>
+            {/* A9-42: só o administrador geral cria contas. */}
+            {user?.role === "supremo" && <Button onClick={() => setCreating(true)}><UserPlus className="w-4 h-4" aria-hidden="true" /> Nova pessoa</Button>}
           </div>
         )}
       </div>
@@ -219,11 +220,12 @@ function PersonDialog({ companyId, person, folders, isSelf, onClose, onChanged }
   companyId: string; person: Person; folders: FolderOption[]; isSelf: boolean; onClose: () => void; onChanged: () => void;
 }) {
   const { success, error: showError } = useToast();
+  const { user } = useAuthContext();
   const uid = useId();
   const [busy, setBusy] = useState(false);
   const [newRole, setNewRole] = useState("visualizador");
   const [newFolder, setNewFolder] = useState("");
-  const [confirm, setConfirm] = useState<null | { kind: "revoke"; grant: DirectGrant } | { kind: "remove" } | { kind: "deactivate" }>(null);
+  const [confirm, setConfirm] = useState<null | { kind: "revoke"; grant: DirectGrant } | { kind: "remove" } | { kind: "deactivate" } | { kind: "mfa" }>(null);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [explainFolder, setExplainFolder] = useState("");
   const [explain, setExplain] = useState<ExplainResult | null | "erro">(null);
@@ -328,6 +330,10 @@ function PersonDialog({ companyId, person, folders, isSelf, onClose, onChanged }
                 }}>
                 <KeyRound className="w-3.5 h-3.5" aria-hidden="true" /> Gerar senha provisória
               </Button>
+              {/* Celular perdido: só o administrador geral zera o app autenticador. */}
+              {user?.role === "supremo" && person.mfa_enabled && (
+                <Button variant="secondary" size="sm" disabled={busy} onClick={() => setConfirm({ kind: "mfa" })}><Smartphone className="w-3.5 h-3.5" aria-hidden="true" /> Zerar verificação em duas etapas</Button>
+              )}
               <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirm({ kind: "remove" })}><Trash2 className="w-3.5 h-3.5 text-(--text-danger)" aria-hidden="true" /> Remover desta empresa</Button>
             </section>
           )}
@@ -351,6 +357,12 @@ function PersonDialog({ companyId, person, folders, isSelf, onClose, onChanged }
           description="Saem todos os acessos diretos e os grupos desta empresa. A conta continua (se ela acessa outras empresas) e o histórico fica."
           onClose={() => setConfirm(null)}
           onConfirm={async () => { if (await act(() => api.delete(`/companies/${companyId}/members/${person.user_id}`), "Removida da empresa.", "Não foi possível remover.")) { setConfirm(null); onClose(); } }} />
+      )}
+      {confirm?.kind === "mfa" && (
+        <ConfirmModal title={`Zerar a verificação em duas etapas de ${person.full_name}?`} loading={busy} confirmLabel="Zerar" danger
+          description="Use quando a pessoa perdeu ou trocou o celular. No próximo acesso ela cadastra o app de novo (se a regra da empresa exigir) ou entra só com a senha."
+          onClose={() => setConfirm(null)}
+          onConfirm={async () => { if (await act(() => api.post(`/companies/${companyId}/members/${person.user_id}/reset-mfa`), "Verificação zerada.", "Não foi possível zerar.")) setConfirm(null); }} />
       )}
       {tempPassword && <PasswordShown name={person.full_name} password={tempPassword} onClose={() => setTempPassword(null)} />}
     </>

@@ -29,8 +29,8 @@ API = "/api/v1"
 DB_URL = os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://")
 
 
-def _token(user_id: str) -> dict[str, str]:
-    claims = {"sub": user_id, "role": "authenticated", "aud": "authenticated"}
+def _token(user_id: str, aal: str = "aal2") -> dict[str, str]:
+    claims = {"sub": user_id, "role": "authenticated", "aud": "authenticated", "aal": aal}
     return {"Authorization": f"Bearer {jwt.encode(claims, settings.JWT_SECRET, algorithm='HS256')}"}
 
 

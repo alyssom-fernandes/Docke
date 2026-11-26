@@ -10,6 +10,8 @@ export interface AuthUser {
   role: string;
   /** Senha provisória dada por um admin: troca no primeiro acesso (A9-16). */
   must_change_password?: boolean;
+  /** Verificação em duas etapas: falta o código nesta sessão ou o cadastro do app. */
+  mfa_pendente?: "verificar" | "cadastrar" | null;
 }
 
 interface AuthState {
@@ -20,6 +22,7 @@ interface AuthState {
   logout: () => void;
   updateProfile: (fullName: string) => Promise<void>;
   passwordChanged: () => void;
+  completeMfa: (tokens: SessionTokens) => Promise<void>;
 }
 
 const LOGIN_TIMEOUT_MS = 20_000;
@@ -33,6 +36,7 @@ function toUser(data: any): AuthUser {
     full_name: data.full_name,
     role: data.role,
     must_change_password: !!data.must_change_password,
+    mfa_pendente: data.mfa_pendente ?? null,
   };
 }
 
@@ -46,6 +50,17 @@ export function useAuth(): AuthState {
     }
   });
   const [isLoading, setIsLoading] = useState(!!getAccessToken());
+
+  // A API recusou por falta do código (sessão renovada sem aal2, app ativado
+  // em outro aparelho): mostra a tela do código sem esperar recarregar.
+  useEffect(() => {
+    function onMfa(e: Event) {
+      const modo = (e as CustomEvent<string>).detail === "mfa_cadastrar" ? "cadastrar" : "verificar";
+      setUser((prev) => (prev && prev.mfa_pendente !== modo ? { ...prev, mfa_pendente: modo } : prev));
+    }
+    window.addEventListener("docke:mfa", onMfa);
+    return () => window.removeEventListener("docke:mfa", onMfa);
+  }, []);
 
   useEffect(() => {
     if (!getAccessToken()) { setIsLoading(false); return; }
@@ -132,6 +147,18 @@ export function useAuth(): AuthState {
     });
   }
 
+  // Código conferido: guarda a sessão verificada no mesmo lugar da atual
+  // ("manter conectado" ou não) e relê quem sou.
+  async function completeMfa(tokens: SessionTokens) {
+    saveSession(tokens, !!localStorage.getItem("docke_token"), true);
+    const me = await api.get("/auth/me");
+    const u = toUser(me.data);
+    setUser(u);
+    localStorage.setItem("docke_user", JSON.stringify(u));
+    scheduleRefresh();
+    resumeAfterReauth();
+  }
+
   function passwordChanged() {
     setUser((prev) => {
       if (!prev) return prev;
@@ -141,5 +168,5 @@ export function useAuth(): AuthState {
     });
   }
 
-  return { user, isLoading, login, loginDemo, logout, updateProfile, passwordChanged };
+  return { user, isLoading, login, loginDemo, logout, updateProfile, passwordChanged, completeMfa };
 }

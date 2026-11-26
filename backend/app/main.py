@@ -116,7 +116,7 @@ def _problema(status_code: int, detail: Any, headers: dict | None = None) -> JSO
         titulo = "Erro"
     corpo = {
         "type": "about:blank", "title": titulo, "status": status_code,
-        "code": _CODIGOS_HTTP.get(status_code, f"http_{status_code}"), "detail": detail,
+        "code": (headers or {}).get("X-Docke-Code") or _CODIGOS_HTTP.get(status_code, f"http_{status_code}"), "detail": detail,
     }
     return JSONResponse(status_code=status_code, content=corpo, headers=headers, media_type="application/problem+json")
 

@@ -4,6 +4,7 @@ import { CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import Button from "@/components/ui/Button";
+import { MfaCodeForm } from "@/components/shared/MfaSetup";
 
 /** Lê o que o link do e-mail de recuperação traz depois do # (fluxo do Supabase Auth). */
 function readRecoveryHash() {
@@ -18,7 +19,10 @@ function readRecoveryHash() {
 /** /redefinir-senha — destino do link de "Esqueci a senha" (achado A1-04). */
 export default function ResetPassword() {
   usePageTitle("Criar senha nova");
-  const { token, type, error: linkError } = useMemo(readRecoveryHash, []);
+  const { token: tokenDoLink, type, error: linkError } = useMemo(readRecoveryHash, []);
+  // Conta com verificação em duas etapas: o código do app troca o token do link por um verificado.
+  const [token, setToken] = useState(tokenDoLink);
+  const [pedirCodigo, setPedirCodigo] = useState(false);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [show, setShow] = useState(false);
@@ -30,21 +34,27 @@ export default function ResetPassword() {
   const mismatch = confirm.length > 0 && confirm !== password;
   const valid = token && type === "recovery";
 
+  async function gravar(tok: string | null) {
+    setLoading(true);
+    setError("");
+    try {
+      await api.post("/auth/reset-password", { access_token: tok, new_password: password });
+      window.history.replaceState(null, "", "/redefinir-senha");  // tira o token da barra de endereço
+      setPedirCodigo(false);
+      setDone(true);
+    } catch (err: any) {
+      if (err?.response?.data?.code === "mfa_verificar") setPedirCodigo(true);
+      else setError(err?.response?.data?.detail ?? "Não foi possível gravar a senha nova. Tente de novo.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (password.length < 8) { setError("A senha precisa ter pelo menos 8 caracteres."); return; }
     if (password !== confirm) { setError("As duas senhas não são iguais."); return; }
-    setLoading(true);
-    setError("");
-    try {
-      await api.post("/auth/reset-password", { access_token: token, new_password: password });
-      window.history.replaceState(null, "", "/redefinir-senha");  // tira o token da barra de endereço
-      setDone(true);
-    } catch (err: any) {
-      setError(err?.response?.data?.detail ?? "Não foi possível gravar a senha nova. Tente de novo.");
-    } finally {
-      setLoading(false);
-    }
+    await gravar(token);
   }
 
   const fieldClass =
@@ -54,7 +64,14 @@ export default function ResetPassword() {
     <main className="flex min-h-screen items-center justify-center px-5" style={{ background: "var(--wallpaper)" }}>
       <div className="login-enter glass-panel glass-blur-panel glass-shadow rounded-(--radius-dialog) w-full max-w-[420px] px-6 py-7 sm:p-8">
         <div className="brand-wordmark mb-6 block h-[30px] w-[104px]" role="img" aria-label="Docke" />
-        {done ? (
+        {pedirCodigo && !done ? (
+          <div className="flex flex-col gap-3">
+            <h1 className="text-mac-title2 font-bold text-(--text-primary)">Código do app autenticador</h1>
+            <p className="text-mac-body leading-[19px] text-(--text-secondary)">Esta conta usa verificação em duas etapas. Digite o código para gravar a senha nova.</p>
+            <MfaCodeForm token={token ?? undefined} submitLabel="Gravar a senha nova"
+              onDone={(t) => { setToken(t.access_token); gravar(t.access_token); }} />
+          </div>
+        ) : done ? (
           <div role="status" className="reveal flex flex-col gap-3">
             <CheckCircle2 className="w-7 h-7 text-(--text-success)" aria-hidden />
             <h1 className="text-mac-title2 font-bold text-(--text-primary)">Senha nova criada.</h1>

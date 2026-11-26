@@ -378,6 +378,13 @@ async def create_member(
     """
     user_id = claims["sub"]
     role = await get_app_role(conn, claims)
+    # A9-42 (decisão do dono, 26/11/2026): só o administrador geral cria contas.
+    # O admin da empresa continua ajustando os acessos de quem já tem conta.
+    if role != "supremo":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Só o administrador geral cria contas. Peça a ele a conta nova; depois você ajusta os acessos aqui.",
+        )
     if body.permission_level not in ("visualizador", "operador", "admin"):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="permission_level inválido.")
     if len(body.password) < 8:
@@ -1062,3 +1069,80 @@ async def list_exports(
         item["parts"] = parts
         out.append(item)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Verificação em duas etapas por empresa (decisão do dono, 26/11/2026)
+# ---------------------------------------------------------------------------
+
+_POLITICAS_MFA = ("desligada", "admins", "admins_sensiveis", "todos")
+
+
+class MfaPolicy(BaseModel):
+    policy: str
+
+
+@router.get("/{company_id}/mfa-policy")
+async def get_mfa_policy(
+    company_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    pol = await conn.fetchval("SELECT mfa_policy FROM public.companies WHERE id = $1", company_id)
+    if pol is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empresa não encontrada.")
+    return {"policy": pol, "can_edit": await get_app_role(conn, claims) == "supremo"}
+
+
+@router.put("/{company_id}/mfa-policy")
+async def put_mfa_policy(
+    company_id: UUID,
+    body: MfaPolicy,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Quem precisa da verificação em duas etapas nesta empresa. Só o administrador geral muda."""
+    if await get_app_role(conn, claims) != "supremo":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Só o administrador geral muda esta regra.")
+    if body.policy not in _POLITICAS_MFA:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Política inválida.")
+    antes = await admin_conn.fetchval("SELECT mfa_policy FROM public.companies WHERE id = $1", company_id)
+    if antes is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empresa não encontrada.")
+    await admin_conn.execute("UPDATE public.companies SET mfa_policy = $2 WHERE id = $1", company_id, body.policy)
+    await CompaniesService.log_access(admin_conn, actor_id=claims["sub"], company_id=company_id, action="mfa_policy",
+                                      target_id=company_id, target_name="Verificação em duas etapas",
+                                      metadata={"antes": antes, "depois": body.policy})
+    return {"policy": body.policy, "can_edit": True}
+
+
+@router.post("/{company_id}/members/{member_id}/reset-mfa")
+async def reset_member_mfa(
+    company_id: UUID,
+    member_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Celular perdido ou trocado: o administrador geral apaga o app autenticador
+    da pessoa, que cadastra de novo no próximo acesso (se a política exigir).
+    """
+    role = await get_app_role(conn, claims)
+    if role != "supremo":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Só o administrador geral zera a verificação em duas etapas.")
+    nome = await _require_account_control(conn, admin_conn, claims["sub"], company_id, role, member_id)
+    fatores = await admin_conn.fetch("SELECT id::text FROM auth.mfa_factors WHERE user_id = $1", member_id)
+    async with httpx.AsyncClient() as client:
+        for f in fatores:
+            resp = await client.delete(
+                f"{settings.SUPABASE_URL}/auth/v1/admin/users/{member_id}/factors/{f['id']}",
+                headers={"apikey": settings.SUPABASE_SERVICE_ROLE_KEY, "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}"},
+                timeout=10.0,
+            )
+            if resp.status_code not in (200, 204, 404):
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Não foi possível zerar agora. Tente de novo.")
+    await CompaniesService.log_access(admin_conn, actor_id=claims["sub"], company_id=company_id, action="mfa_reset",
+                                      target_id=member_id, target_name=nome)
+    return {"user_id": str(member_id), "removidos": len(fatores)}
