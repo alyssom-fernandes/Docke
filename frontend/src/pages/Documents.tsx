@@ -1942,6 +1942,18 @@ export default function Documents() {
     if (doc) setDetailDoc(doc);
   }, [documents, loading, pendingDocId]);
 
+  // Ações vindas do ⌘K (?acao=enviar | nova-pasta).
+  const acaoParam = searchParams.get("acao");
+  useEffect(() => {
+    if (!acaoParam || !current) return;
+    if (acaoParam === "enviar" && canWrite) setShowUpload(true);
+    if (acaoParam === "nova-pasta" && canWrite) setShowNewFolder(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("acao");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [acaoParam, current?.id]);
+
   // A pasta aberta fica no endereço (?pasta=): recarregar, voltar e copiar o
   // link levam à mesma pasta (achado A4-02).
   const pastaParam = searchParams.get("pasta");
@@ -2599,7 +2611,7 @@ export default function Documents() {
             ficar atrás da barra inferior mobile nem do Dock flutuante desktop */}
         <div
           ref={scrollBodyRef}
-          className="flex-1 overflow-y-auto pb-20 md:pb-0 lg:pb-24 relative"
+          className="flex-1 overflow-y-auto pb-20 md:pb-24 relative"
           onScroll={handleTableScroll}
           onMouseDown={handleBodyMouseDown}
         >
@@ -3418,7 +3430,7 @@ export default function Documents() {
         role="toolbar"
         aria-label="Ações para os documentos selecionados"
         inert={selected.size === 0}
-        className={`glass-panel glass-blur-pill fixed bottom-[calc(76px+env(safe-area-inset-bottom))] md:bottom-7 lg:bottom-[100px] left-1/2 flex items-center gap-1 rounded-[50px] pl-4 pr-1.5 py-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.45)] z-30 max-w-[calc(100vw-24px)] overflow-x-auto transition-[opacity,transform] duration-normal ${
+        className={`glass-panel glass-blur-pill fixed bottom-[calc(76px+env(safe-area-inset-bottom))] md:bottom-[100px] left-1/2 flex items-center gap-1 rounded-[50px] pl-4 pr-1.5 py-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.45)] z-30 max-w-[calc(100vw-24px)] overflow-x-auto transition-[opacity,transform] duration-normal ${
           selected.size > 0 ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
         style={{ transform: selected.size > 0 ? "translateX(-50%)" : "translateX(-50%) translateY(12px)" }}

@@ -56,7 +56,11 @@ export default function AppShell({ children }: AppShellProps) {
   }, [location.pathname]);
 
   return (
-    <div className="h-screen overflow-hidden relative" style={{ background: 'var(--wallpaper)' }}>
+    <div className="h-dvh overflow-hidden relative" style={{ background: 'var(--wallpaper)' }}>
+      {/* Pular direto para o conteúdo (achado A2-04). */}
+      <a href="#conteudo" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[90] focus:rounded-full focus:bg-teal-600 focus:px-4 focus:py-2 focus:text-mac-body focus:text-white">
+        Pular para o conteúdo
+      </a>
       {/* TopBar flutua fixa sobre o conteúdo — mesmo comportamento do Dock,
           não mais um bloco em fluxo normal acima do <main> */}
       <TopBar onUploadClick={() => navigate("/documents")} />
@@ -64,7 +68,9 @@ export default function AppShell({ children }: AppShellProps) {
       {/* pt: espaço pra TopBar fixa (56px + respiro). pb: espaço pro Dock/barra inferior flutuantes */}
       <main
         ref={mainRef}
-        className="h-full overlay-scroll px-3 md:px-5 pt-[84px] md:pt-[92px] pb-28 md:pb-8 lg:pb-28 flex flex-col"
+        id="conteudo"
+        tabIndex={-1}
+        className="h-full overlay-scroll px-3 md:px-5 pt-[84px] md:pt-[92px] pb-28 flex flex-col focus:outline-hidden"
       >
         <ErrorBoundary key={location.pathname}>
           {/* Só padding vertical aqui — o horizontal já vem do px-3/md:px-5 do

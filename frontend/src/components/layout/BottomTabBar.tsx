@@ -77,7 +77,7 @@ export default function BottomTabBar() {
         </div>
       )}
 
-      <nav className="glass-panel glass-blur-panel glass-shadow glass-highlight-line fixed bottom-4 left-4 right-4 z-30 flex items-center rounded-(--radius-panel) py-1.5 md:hidden">
+      <nav aria-label="Navegação principal" className="glass-panel glass-blur-panel glass-shadow glass-highlight-line fixed bottom-[calc(16px+env(safe-area-inset-bottom))] left-4 right-4 z-30 flex items-center rounded-(--radius-panel) py-1.5 md:hidden">
         {TABS.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}

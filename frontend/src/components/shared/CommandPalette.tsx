@@ -1,278 +1,226 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { KeyboardEvent, useEffect, useMemo, useRef, useState, type ElementType } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { Search, FolderOpen, Anchor } from "lucide-react";
+import {
+  Search, FolderOpen, Folder, Upload, FolderPlus, LayoutDashboard, Anchor, Link2, Activity, ShieldQuestion, Trash2,
+  Settings, Sun, Moon, Building2, Users, Archive, Tags, CornerDownLeft,
+} from "lucide-react";
 import { getFileStyle } from "@/lib/fileType";
-import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { relativeDate } from "@/lib/date";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useCommandPalette } from "@/hooks/useCommandPalette";
-import Portal from "@/components/ui/Portal";
+import { getTheme, toggleTheme } from "@/lib/theme";
 
-interface QuickResult {
+interface QuickResult { id: string; name: string; type: "document" | "folder"; folder_id?: string | null }
+interface DocumentPreview { id: string; name: string; size_bytes: number; ocr_text: string | null; created_at: string }
+
+interface Item {
   id: string;
-  name: string;
-  type: "document" | "folder";
-  folder_id?: string | null;
+  group: string;
+  label: string;
+  hint?: string;
+  icon: ElementType;
+  iconClass?: string;
+  keywords?: string;
+  run: () => void;
+  doc?: QuickResult;
 }
 
-interface DocumentPreview {
-  id: string;
-  name: string;
-  file_type: string;
-  size_bytes: number;
-  sector: string | null;
-  competencia: string | null;
-  tipo_fiscal: string | null;
-  ocr_text: string | null;
-  created_at: string;
-}
+const fmtSize = (b: number) => (b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1).replace(".", ",")} KB` : `${(b / 1048576).toFixed(1).replace(".", ",")} MB`);
+const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-function fmtSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
+/**
+ * ⌘K como centro de comando (achados A2-20, A2-21): ações (enviar, nova
+ * pasta, tema), ir para qualquer tela, trocar de empresa e achar documentos e
+ * pastas, com a prévia ao lado da lista (largura fixa, sem salto). Padrão
+ * combobox + listbox do WAI-ARIA: setas, Enter, Esc; o diálogo é modal.
+ */
 export default function CommandPalette() {
   const { isOpen, close } = useCommandPalette();
-  const { current } = useCompany();
+  const { current, companies, setCurrent } = useCompany() as ReturnType<typeof useCompany> & { companies: { id: string; name: string }[] };
   const navigate = useNavigate();
-
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<QuickResult[]>([]);
+  const [searching, setSearching] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
-  const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<DocumentPreview | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const previewCache = useRef<Map<string, DocumentPreview>>(new Map());
+  const listRef = useRef<HTMLUListElement>(null);
+  const previousFocus = useRef<HTMLElement | null>(null);
+  const cache = useRef(new Map<string, DocumentPreview>());
 
-  useFocusTrap(containerRef, isOpen);
-
-  // Reset on open
   useEffect(() => {
-    if (isOpen) {
-      setQuery("");
-      setResults([]);
-      setActiveIdx(0);
-      setPreview(null);
-      previewCache.current.clear();
-      setTimeout(() => inputRef.current?.focus(), 0);
-    }
+    if (!isOpen) return;
+    previousFocus.current = document.activeElement as HTMLElement | null;
+    setQuery(""); setResults([]); setActiveIdx(0); setPreview(null);
+    const t = window.setTimeout(() => inputRef.current?.focus(), 0);
+    return () => { window.clearTimeout(t); previousFocus.current?.focus?.(); };
   }, [isOpen]);
 
-  // Fase 7.4: preview lateral — busca os detalhes do documento em foco
-  // (setinha/hover), com debounce e cache pra não disparar uma request por
-  // tecla enquanto o usuário navega rápido pela lista.
   useEffect(() => {
-    const active = results[activeIdx];
-    if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current);
-    if (!active || active.type !== "document") { setPreview(null); return; }
-    const cached = previewCache.current.get(active.id);
-    if (cached) { setPreview(cached); return; }
-    setPreviewLoading(true);
-    previewDebounceRef.current = setTimeout(() => {
-      api
-        .get<DocumentPreview>(`/documents/${active.id}`)
-        .then((r) => {
-          previewCache.current.set(active.id, r.data);
-          setPreview(r.data);
-        })
-        .catch(() => setPreview(null))
-        .finally(() => setPreviewLoading(false));
-    }, 150);
-    return () => { if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeIdx, results]);
-
-  const search = useCallback(
-    (q: string) => {
-      if (!q.trim() || !current) { setResults([]); return; }
-      setLoading(true);
-      api
-        .get<QuickResult[]>("/search/quick", { params: { q: q.trim(), company_id: current.id } })
-        .then((r) => { setResults(Array.isArray(r.data) ? r.data : []); setActiveIdx(0); })
+    if (!isOpen || !current || query.trim().length < 2) { setResults([]); setSearching(false); return; }
+    setSearching(true);
+    const t = window.setTimeout(() => {
+      api.get<QuickResult[]>("/search/quick", { params: { q: query.trim(), company_id: current.id } })
+        .then((r) => setResults(Array.isArray(r.data) ? r.data.slice(0, 8) : []))
         .catch(() => setResults([]))
-        .finally(() => setLoading(false));
-    },
-    [current?.id]
-  );
+        .finally(() => setSearching(false));
+    }, 160);
+    return () => window.clearTimeout(t);
+  }, [query, isOpen, current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function handleChange(v: string) {
-    setQuery(v);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => search(v), 200);
-  }
+  function go(path: string) { close(); navigate(path); }
 
-  function select(r: QuickResult) {
-    close();
-    if (r.type === "folder") {
-      navigate(`/documents?folder_id=${r.id}`);
-    } else {
-      navigate(`/documents?folder_id=${r.folder_id ?? ""}&doc=${r.id}`);
+  const items: Item[] = useMemo(() => {
+    const dark = getTheme() === "dark";
+    const base: Item[] = [
+      { id: "a-enviar", group: "Ações", label: "Enviar documentos", icon: Upload, keywords: "upload subir arquivo", run: () => go("/documents?acao=enviar") },
+      { id: "a-pasta", group: "Ações", label: "Nova pasta", icon: FolderPlus, keywords: "criar pasta", run: () => go("/documents?acao=nova-pasta") },
+      { id: "a-tema", group: "Ações", label: dark ? "Usar o tema claro" : "Usar o tema escuro", icon: dark ? Sun : Moon, keywords: "tema escuro claro aparência", run: () => { toggleTheme(); close(); } },
+      { id: "n-inicio", group: "Ir para", label: "Início", icon: LayoutDashboard, keywords: "painel dashboard", run: () => go("/dashboard") },
+      { id: "n-docs", group: "Ir para", label: "Documentos", icon: FolderOpen, keywords: "pastas arquivos", run: () => go("/documents") },
+      { id: "n-busca", group: "Ir para", label: "Busca", icon: Search, run: () => go("/search") },
+      { id: "n-anc", group: "Ir para", label: "Ancorados", icon: Anchor, keywords: "favoritos", run: () => go("/favorites") },
+      { id: "n-links", group: "Ir para", label: "Links compartilhados", icon: Link2, run: () => go("/shares") },
+      { id: "n-ativ", group: "Ir para", label: "Atividade", icon: Activity, keywords: "trilha auditoria histórico", run: () => go("/activity") },
+      { id: "n-obr", group: "Ir para", label: "Obrigações", icon: ShieldQuestion, keywords: "prazos vencimento", run: () => go("/obligations") },
+      { id: "n-lix", group: "Ir para", label: "Lixeira", icon: Trash2, keywords: "excluídos restaurar", run: () => go("/trash") },
+      { id: "n-usu", group: "Ir para", label: "Usuários e permissões", icon: Users, keywords: "acesso membros", run: () => go("/settings/users") },
+      { id: "n-meta", group: "Ir para", label: "Metadados", icon: Tags, keywords: "campos", run: () => go("/settings/metadata") },
+      { id: "n-ret", group: "Ir para", label: "Retenção", icon: Archive, keywords: "legal hold descarte", run: () => go("/settings/retention") },
+      { id: "n-aj", group: "Ir para", label: "Ajustes", icon: Settings, keywords: "configurações perfil senha", run: () => go("/settings/profile") },
+    ];
+    for (const c of companies ?? []) {
+      if (c.id === current?.id) continue;
+      base.push({ id: `e-${c.id}`, group: "Trocar de empresa", label: c.name, icon: Building2, keywords: "empresa", run: () => { setCurrent(c as never); close(); } });
     }
-  }
+    const q = fold(query.trim());
+    const filtered = q ? base.filter((i) => fold(`${i.label} ${i.keywords ?? ""}`).includes(q)) : base.filter((i) => i.group !== "Trocar de empresa" || (companies?.length ?? 0) <= 6);
+    const found: Item[] = results.map((r) => {
+      const st = r.type === "document" ? getFileStyle(r.name) : null;
+      return {
+        id: `r-${r.id}`, group: "Documentos e pastas", label: r.name, doc: r,
+        icon: st ? st.icon : Folder, iconClass: st ? `${st.iconColor} ${st.fillColor}` : "text-teal-600 dark:text-teal-400",
+        hint: r.type === "folder" ? "Pasta" : "Documento",
+        run: () => go(r.type === "folder" ? `/documents?folder_id=${r.id}` : `/documents?folder_id=${r.folder_id ?? ""}&doc=${r.id}`),
+      };
+    });
+    const all = [...found, ...filtered];
+    if (q.length >= 2) all.push({ id: "busca-total", group: "Busca", label: `Buscar "${query.trim()}" em todo o conteúdo`, icon: Search, run: () => go(`/search?q=${encodeURIComponent(query.trim())}`) });
+    return all;
+  }, [query, results, companies, current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function handleKey(e: React.KeyboardEvent) {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setActiveIdx((i) => Math.min(i + 1, results.length - 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setActiveIdx((i) => Math.max(i - 1, 0));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      if (results[activeIdx]) select(results[activeIdx]);
-      else if (query.trim()) { close(); navigate(`/search?q=${encodeURIComponent(query.trim())}`); }
-    } else if (e.key === "Escape") {
-      close();
-    }
+  useEffect(() => { setActiveIdx(0); }, [query, results.length]);
+
+  // Prévia do documento em foco (com cache).
+  const active = items[activeIdx];
+  useEffect(() => {
+    const d = active?.doc;
+    if (!d || d.type !== "document") { setPreview(null); return; }
+    const hit = cache.current.get(d.id);
+    if (hit) { setPreview(hit); return; }
+    const t = window.setTimeout(() => {
+      api.get<DocumentPreview>(`/documents/${d.id}`).then((r) => { cache.current.set(d.id, r.data); setPreview(r.data); }).catch(() => setPreview(null));
+    }, 120);
+    return () => window.clearTimeout(t);
+  }, [active?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    listRef.current?.querySelector<HTMLElement>(`[data-idx="${activeIdx}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [activeIdx]);
+
+  function onKeyDown(e: KeyboardEvent) {
+    if (e.key === "ArrowDown") { e.preventDefault(); setActiveIdx((i) => Math.min(items.length - 1, i + 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setActiveIdx((i) => Math.max(0, i - 1)); }
+    else if (e.key === "Enter") { e.preventDefault(); items[activeIdx]?.run(); }
+    else if (e.key === "Escape") { e.preventDefault(); close(); }
+    else if (e.key === "Tab") e.preventDefault();
   }
 
   if (!isOpen) return null;
+  let lastGroup = "";
 
-  return (
-    <Portal>
-    <div
-      className="fixed inset-0 bg-(--overlay-scrim) flex items-start justify-center pt-[15vh] z-50 px-4"
-      onClick={(e) => { if (e.target === e.currentTarget) close(); }}
-    >
+  return createPortal(
+    <div className="fixed inset-0 z-[75]" data-no-inert>
+      <div aria-hidden className="dialog-scrim-in absolute inset-0 bg-(--overlay-scrim)" onClick={close} />
+      <div className="pointer-events-none absolute inset-x-0 top-[8vh] flex justify-center px-3">
       <div
-        ref={containerRef}
-        className={`modal-card glass-dialog glass-blur-strong rounded-[20px] shadow-modal w-full overflow-hidden flex flex-col transition-[max-width] duration-normal ${
-          preview ? "max-w-[860px]" : "max-w-[560px]"
-        }`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Comandos e busca rápida"
+        className="dialog-panel-in pointer-events-auto w-full max-w-[860px] glass-dialog glass-blur-strong shadow-modal rounded-(--radius-dialog) overflow-hidden"
       >
-        {/* Search input */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-(--border-default)">
-          <Search className="w-4 h-4 text-(--text-placeholder) shrink-0" />
+        <div className="flex items-center gap-2.5 px-4 border-b border-(--border-default)">
+          <Search className="w-4 h-4 text-(--text-secondary) shrink-0" aria-hidden />
           <input
             ref={inputRef}
-            type="text"
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="cmdk-lista"
+            aria-activedescendant={active ? `cmdk-${active.id}` : undefined}
+            aria-autocomplete="list"
+            aria-label="Digite um comando, uma tela ou o nome de um documento"
             value={query}
-            onChange={(e) => handleChange(e.target.value)}
-            onKeyDown={handleKey}
-            placeholder="Buscar documentos, pastas ou ações…"
-            className="flex-1 text-mac-body bg-transparent text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden"
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="Ações, telas, empresas ou documentos…"
+            className="flex-1 h-12 pointer-coarse:h-14 bg-transparent text-mac-callout text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden"
           />
+          <kbd className="hidden sm:inline text-mac-caption text-(--text-secondary) border border-(--border-default) rounded px-1.5">Esc</kbd>
         </div>
-
-        <div className="flex min-h-0">
-        {/* Results */}
-        <div className="max-h-[360px] overflow-y-auto flex-1 min-w-0">
-          {loading && (
-            <div className="py-3 px-4 space-y-2">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="h-9 bg-(--bg-hover) rounded animate-pulse" />
-              ))}
-            </div>
-          )}
-
-          {!loading && query.trim() && results.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-10 text-center">
-              <Anchor className="w-7 h-7 text-(--text-placeholder) mb-2" />
-              <p className="text-mac-body text-(--text-secondary)">Nenhum resultado para "{query}"</p>
-            </div>
-          )}
-
-          {!loading && !query.trim() && (
-            <div className="flex flex-col items-center justify-center py-10 text-center">
-              <Search className="w-7 h-7 text-(--text-placeholder) mb-2" />
-              <p className="text-mac-body text-(--text-secondary)">Digite para buscar</p>
-              <p className="text-mac-caption text-(--text-tertiary) mt-1">Documentos, pastas e ações do sistema</p>
-            </div>
-          )}
-
-          {!loading && results.length > 0 && (
-            <ul>
-              {results.map((r, i) => (
-                <li key={r.id}>
-                  <button
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors duration-fast ${
-                      i === activeIdx
-                        ? "bg-teal-500 text-white"
-                        : "text-(--text-primary) hover:bg-(--bg-hover)"
-                    }`}
-                    onClick={() => select(r)}
-                    onMouseEnter={() => setActiveIdx(i)}
+        <div className="flex h-[min(60vh,440px)]">
+          <ul ref={listRef} id="cmdk-lista" role="listbox" aria-label="Resultados" className="flex-1 min-w-0 overflow-y-auto p-2">
+            {items.length === 0 && (
+              <li className="px-3 py-8 text-center text-mac-body text-(--text-secondary)" role="presentation">
+                {searching ? "Procurando…" : "Nada com esse nome. Enter busca no conteúdo dos documentos."}
+              </li>
+            )}
+            {items.map((it, idx) => {
+              const header = it.group !== lastGroup ? it.group : null;
+              lastGroup = it.group;
+              const Icon = it.icon;
+              return (
+                <li key={it.id} role="presentation">
+                  {header && <p className="px-3 pt-2.5 pb-1 text-mac-caption font-semibold uppercase tracking-[0.06em] text-(--text-secondary)" aria-hidden>{header}</p>}
+                  <div
+                    id={`cmdk-${it.id}`}
+                    data-idx={idx}
+                    role="option"
+                    aria-selected={idx === activeIdx}
+                    onMouseMove={() => setActiveIdx(idx)}
+                    onClick={() => it.run()}
+                    className={`flex items-center gap-2.5 h-9 pointer-coarse:h-11 px-3 rounded-[8px] cursor-pointer select-none ${idx === activeIdx ? "bg-teal-600 text-white" : "text-(--text-primary)"}`}
                   >
-                    {r.type === "folder" ? (
-                      <FolderOpen className={`w-4 h-4 shrink-0 ${i === activeIdx ? "text-white" : "text-teal-500"}`} />
-                    ) : (
-                      (() => { const s = getFileStyle(r.name); const Icon = s.icon; return (
-                        <div className={`w-5 h-5 rounded-[3px] flex items-center justify-center shrink-0 ${i === activeIdx ? "" : s.bgColor}`}>
-                          <Icon className={`w-3 h-3 ${i === activeIdx ? "text-white fill-white/25" : `${s.iconColor} ${s.fillColor}`}`} />
-                        </div>
-                      ); })()
-                    )}
-                    <span className="flex-1 text-mac-body truncate">{r.name}</span>
-                    <span className={`text-mac-caption shrink-0 ${i === activeIdx ? "text-white/80" : "text-(--text-tertiary)"}`}>
-                      {r.type === "folder" ? "Pasta" : "Documento"}
-                    </span>
-                  </button>
+                    <Icon className={`w-4 h-4 shrink-0 ${idx === activeIdx ? "text-white" : it.iconClass ?? "text-(--text-secondary)"}`} aria-hidden />
+                    <span className="flex-1 truncate text-mac-body">{it.label}</span>
+                    {it.hint && <span className={`text-mac-caption ${idx === activeIdx ? "text-white/80" : "text-(--text-secondary)"}`}>{it.hint}</span>}
+                    {idx === activeIdx && <CornerDownLeft className="w-3.5 h-3.5 text-white/80" aria-hidden />}
+                  </div>
                 </li>
-              ))}
-            </ul>
-          )}
-
-          {/* Full search shortcut */}
-          {!loading && query.trim() && (
-            <div className="border-t border-(--border-default) px-4 py-2">
-              <button
-                onClick={() => { close(); navigate(`/search?q=${encodeURIComponent(query.trim())}`); }}
-                className="w-full flex items-center gap-2 text-mac-caption text-(--text-secondary) hover:text-teal-500 transition-colors duration-fast py-1"
-              >
-                <Search className="w-3.5 h-3.5" />
-                Busca avançada por "{query}"
-                <kbd className="ml-auto px-1 py-0.5 text-mac-caption bg-(--bg-hover) rounded border border-(--border-default)">↵</kbd>
-              </button>
-            </div>
-          )}
-        </div>
-        </div>
-
-        {/* Fase 7.4: preview lateral — mostra contexto do documento em foco
-            sem sair da paleta (setor, competência, tipo fiscal, tamanho e um
-            trecho do texto OCR). Só aparece quando há um documento em foco. */}
-        {preview && (
-          <div className="w-[300px] shrink-0 border-l border-(--border-default) px-4 py-3 max-h-[360px] overflow-y-auto">
-            {previewLoading ? (
-              <div className="space-y-2">
-                <div className="h-4 w-2/3 bg-(--bg-hover) rounded animate-pulse" />
-                <div className="h-3 w-1/2 bg-(--bg-hover) rounded animate-pulse" />
-                <div className="h-16 bg-(--bg-hover) rounded animate-pulse" />
+              );
+            })}
+          </ul>
+          <aside aria-label="Prévia" className="hidden md:flex w-[300px] shrink-0 flex-col border-l border-(--border-default) p-4">
+            {preview && active?.doc?.id === preview.id ? (
+              <div className="reveal space-y-2 min-h-0">
+                <p className="text-mac-body font-semibold text-(--text-primary) break-words">{preview.name}</p>
+                <p className="text-mac-caption text-(--text-secondary)">{fmtSize(preview.size_bytes)} · enviado {relativeDate(preview.created_at)}</p>
+                <p className="text-mac-caption text-(--text-secondary) line-clamp-[12] whitespace-pre-line border-t border-(--border-default) pt-2">
+                  {preview.ocr_text?.trim() ? preview.ocr_text.slice(0, 600) : "Sem texto reconhecido neste documento."}
+                </p>
               </div>
             ) : (
-              <>
-                <p className="text-mac-body font-medium text-(--text-primary) wrap-break-word">{preview.name}</p>
-                <dl className="mt-2 space-y-1 text-mac-caption text-(--text-secondary)">
-                  {preview.sector && (
-                    <div className="flex justify-between gap-2"><dt className="text-(--text-tertiary)">Setor</dt><dd>{preview.sector}</dd></div>
-                  )}
-                  {preview.tipo_fiscal && (
-                    <div className="flex justify-between gap-2"><dt className="text-(--text-tertiary)">Tipo fiscal</dt><dd>{preview.tipo_fiscal}</dd></div>
-                  )}
-                  {preview.competencia && (
-                    <div className="flex justify-between gap-2"><dt className="text-(--text-tertiary)">Competência</dt><dd>{preview.competencia}</dd></div>
-                  )}
-                  <div className="flex justify-between gap-2"><dt className="text-(--text-tertiary)">Tamanho</dt><dd>{fmtSize(preview.size_bytes)}</dd></div>
-                  <div className="flex justify-between gap-2"><dt className="text-(--text-tertiary)">Enviado</dt><dd>{relativeDate(preview.created_at)}</dd></div>
-                </dl>
-                {preview.ocr_text && (
-                  <p className="mt-3 text-mac-caption text-(--text-secondary) line-clamp-6">
-                    {preview.ocr_text.slice(0, 400)}
-                  </p>
-                )}
-              </>
+              <div className="m-auto text-center text-mac-caption text-(--text-secondary) space-y-1">
+                <p>↑ ↓ para escolher, Enter para abrir.</p>
+                <p>Digite o nome de um documento para ver a prévia aqui.</p>
+              </div>
             )}
-          </div>
-        )}
+          </aside>
+        </div>
       </div>
-    </div>
-    </Portal>
+      </div>
+    </div>,
+    document.body,
   );
 }

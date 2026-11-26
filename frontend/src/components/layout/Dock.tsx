@@ -26,23 +26,27 @@ function DockItem({ to, icon: Icon, label }: { to: string; icon: ElementType; la
     <NavLink
       to={to}
       aria-label={label}
-      title={label}
       className={({ isActive }) =>
-        `shrink-0 flex items-center justify-center w-10 h-10 rounded-[10px] transition-colors duration-fast ${
+        `group relative shrink-0 flex items-center justify-center w-10 h-10 pointer-coarse:w-11 pointer-coarse:h-11 rounded-[10px] transition-[background-color,color,transform] duration-150 active:scale-95 motion-reduce:active:scale-100 ${
           isActive
-            ? "text-teal-500 bg-teal-500/10"
+            ? "text-(--text-accent) bg-teal-500/12"
             : "text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-hover)"
         }`
       }
     >
-      <Icon className="w-5 h-5" strokeWidth={1.5} />
+      <Icon className="w-5 h-5" strokeWidth={1.5} aria-hidden />
+      {/* Rótulo como no Dock do macOS: aparece no hover e também no foco do teclado. */}
+      <span aria-hidden className="pointer-events-none absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full glass-panel glass-blur-strong shadow-dropdown px-2.5 py-1 text-mac-caption text-(--text-primary) opacity-0 translate-y-1 transition-[opacity,transform] duration-150 group-hover:opacity-100 group-hover:translate-y-0 group-focus-visible:opacity-100 group-focus-visible:translate-y-0">
+        {label}
+      </span>
     </NavLink>
   );
 }
 
 export default function Dock() {
   return (
-    <nav className="hidden lg:flex fixed bottom-5 left-1/2 -translate-x-1/2 z-30 items-center gap-1 px-2 py-1.5 rounded-(--radius-panel) glass-panel glass-blur-panel glass-shadow glass-highlight-line">
+    // A partir de 768 px (antes só ≥1024 px: no tablet não havia navegação — A2-01).
+    <nav data-dock aria-label="Navegação principal" className="hidden md:flex fixed bottom-5 left-1/2 -translate-x-1/2 z-30 items-center gap-1 px-2 py-1.5 rounded-(--radius-panel) glass-panel glass-blur-panel glass-shadow glass-highlight-line">
       {ITEMS.map((item) => (
         <DockItem key={item.to} {...item} />
       ))}
