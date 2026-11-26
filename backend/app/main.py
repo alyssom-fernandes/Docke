@@ -39,6 +39,7 @@ from app.routers import (
     employees,
     version_compare,
     inbox,
+    push,
 )
 
 # Sem configuração, o Python descarta tudo abaixo de WARNING, e o que passa sai
@@ -63,9 +64,10 @@ async def lifespan(app: FastAPI):
         tasks.append(asyncio.create_task(ocr_worker_loop()))
         from app.workers.thumbnail_worker import thumbnail_worker_loop
         tasks.append(asyncio.create_task(thumbnail_worker_loop()))
-    from app.workers.maintenance_worker import maintenance_worker_loop, stats_refresh_loop
+    from app.workers.maintenance_worker import maintenance_worker_loop, push_worker_loop, stats_refresh_loop
     tasks.append(asyncio.create_task(maintenance_worker_loop()))
     tasks.append(asyncio.create_task(stats_refresh_loop()))
+    tasks.append(asyncio.create_task(push_worker_loop()))
     from app.workers.export_worker import export_worker_loop
     tasks.append(asyncio.create_task(export_worker_loop()))
     from app.services.busy import keepalive_loop
@@ -188,6 +190,7 @@ app.include_router(comments.router, prefix=PREFIX)
 app.include_router(employees.router, prefix=PREFIX)
 app.include_router(version_compare.router, prefix=PREFIX)
 app.include_router(inbox.router, prefix=PREFIX)
+app.include_router(push.router, prefix=PREFIX)
 
 
 @app.get("/health", tags=["health"])

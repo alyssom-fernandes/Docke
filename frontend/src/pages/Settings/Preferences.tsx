@@ -8,6 +8,7 @@ import api from "@/lib/api";
 import DangerZone from "@/components/shared/DangerZone";
 import Button from "@/components/ui/Button";
 import Switch from "@/components/ui/Switch";
+import PushPreference from "@/components/shared/PushPreference";
 import { getReduceTransparency, setReduceTransparency } from "@/lib/theme";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 
@@ -174,6 +175,8 @@ export default function Preferences() {
             <Switch checked={reduceTransparency} onChange={chooseReduceTransparency} label="Reduzir transparência" />
           </div>
         </div>
+
+        <PushPreference />
 
         {/* Só a própria conta demo vê isso — reset também roda sozinho a cada
             24h (ver app/workers/maintenance_worker.py), este botão é só pra

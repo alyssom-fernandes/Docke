@@ -52,6 +52,29 @@ async def maintenance_worker_loop() -> None:
         await asyncio.sleep(_CHECK_INTERVAL_SECS)
 
 
+async def push_worker_loop() -> None:
+    """Envia os avisos novos da central para os celulares inscritos (Web Push, B4.4.5)."""
+    import httpx
+
+    from app.routers.push import enviar_pendentes
+    from app.services.heartbeat import beat
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        while True:
+            beat("avisos")
+            try:
+                from app.dependencies import _admin_pool
+                if _admin_pool is not None:
+                    async with _admin_pool.acquire() as conn:
+                        await enviar_pendentes(conn, client)
+            except asyncio.CancelledError:
+                logger.info("Push worker cancelado.")
+                break
+            except Exception as exc:
+                logger.exception("Erro no envio de avisos push: %s", exc)
+            await asyncio.sleep(20)
+
+
 async def stats_refresh_loop() -> None:
     """
     Loop separado do maintenance_worker_loop principal (que roda de hora em

@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     # secret — nunca hardcoded em código-fonte (incidente real: GitGuardian
     # detectou a senha commitada quando ela estava direto no .tsx/.py).
     DEMO_EMAIL: str = "demo@docke.app"
+    # Avisos no celular (Web Push, B4.4.5): par VAPID em base64url (Fly secrets).
+    # Sem as duas chaves, o envio fica desligado e a tela não oferece o recurso.
+    VAPID_PUBLIC_KEY: str = ""
+    VAPID_PRIVATE_KEY: str = ""
     DEMO_PASSWORD: str = ""
     # A demo volta ao padrão quando a última restauração tem mais que isso
     # (conferido no banco a cada hora; ver maintenance_worker._reset_demo_data_if_due).
