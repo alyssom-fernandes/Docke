@@ -1,9 +1,9 @@
 import { useEffect, useState, FormEvent } from "react";
-import { Lock } from "lucide-react";
 import { onSessionExpired } from "@/lib/sessionEvents";
 import { useAuthContext } from "@/lib/AuthContext";
 import Button from "@/components/ui/Button";
-import Portal from "@/components/ui/Portal";
+import Dialog from "@/components/ui/Dialog";
+import Input from "@/components/ui/Input";
 
 // Conta do modo demo — sem senha conhecida pelo usuário, então o token
 // expirado é renovado automaticamente em vez de pedir senha (ver ADR do
@@ -59,47 +59,20 @@ export default function SessionExpiredOverlay() {
     }
   }
 
+  // Sessão expirada (A1-28): Dialog com role=dialog, aria-modal, foco preso
+  // e rótulo no campo; não fecha por fora (a saída é entrar de novo ou sair).
   return (
-    <Portal>
-    <div className="fixed inset-0 z-200 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="modal-card glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal w-full max-w-[360px]">
-        {/* Header */}
-        <div className="flex flex-col items-center text-center px-8 pt-8 pb-6">
-          <div className="w-12 h-12 bg-amber-50 dark:bg-amber-900/20 rounded-card flex items-center justify-center mb-4">
-            <Lock className="w-6 h-6 text-amber-600 dark:text-amber-400" />
-          </div>
-          <h2 className="text-mac-callout font-semibold text-(--text-primary)">Sessão expirada</h2>
-          <p className="text-mac-body text-(--text-secondary) mt-1">
-            Digite sua senha para continuar como <span className="font-medium text-(--text-primary)">@{user.username}</span>. O que você estava fazendo é concluído em seguida.
-          </p>
-        </div>
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="px-8 pb-6 space-y-3">
-          <input
-            type="password"
-            autoFocus
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Senha"
-            className="w-full h-10 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-          />
-          {error && (
-            <p className="text-mac-caption text-red-600 dark:text-red-400">{error}</p>
-          )}
-          <Button type="submit" loading={loading} disabled={!password} className="w-full">
-            Continuar
-          </Button>
-          <button
-            type="button"
-            onClick={logout}
-            className="w-full text-mac-body text-(--text-tertiary) hover:text-(--text-secondary) transition-colors duration-fast"
-          >
-            Sair da conta
-          </button>
-        </form>
-      </div>
-    </div>
-    </Portal>
+    <Dialog onClose={() => {}} showClose={false} title="Sessão expirada" size="sm"
+      description={`Digite sua senha para continuar como @${user.username}. O que você estava fazendo é concluído em seguida.`}>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <Input label="Senha" type="password" autoFocus autoComplete="current-password" value={password}
+          onChange={(e) => setPassword(e.target.value)} error={error || undefined} />
+        <Button type="submit" loading={loading} disabled={!password} className="w-full">Continuar</Button>
+        <button type="button" onClick={logout}
+          className="w-full min-h-9 text-mac-body text-(--text-secondary) hover:text-(--text-primary) transition-colors duration-fast rounded-[6px] focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)">
+          Sair da conta
+        </button>
+      </form>
+    </Dialog>
   );
 }
