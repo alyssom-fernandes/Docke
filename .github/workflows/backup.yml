@@ -38,13 +38,12 @@ jobs:
       BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
       BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
       RCLONE_CONFIG_DESTINO_TYPE: s3
-      RCLONE_CONFIG_DESTINO_PROVIDER: Other
+      RCLONE_CONFIG_DESTINO_PROVIDER: Cloudflare  # o destino hoje é um bucket R2; outro S3: troque para Other
       RCLONE_CONFIG_DESTINO_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
       RCLONE_CONFIG_DESTINO_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
       RCLONE_CONFIG_DESTINO_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
       DESTINO_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
-      # Chave com permissão só nos objetos (sem criar bucket): sem isto, toda primeira
-      # tentativa de envio voltava 501 do R2 e só a repetição passava (26/11/2026).
+      # A chave do destino só tem permissão nos objetos: não tentar conferir/criar o bucket.
       RCLONE_CONFIG_DESTINO_NO_CHECK_BUCKET: "true"
       RCLONE_CONFIG_ORIGEM_TYPE: s3
       RCLONE_CONFIG_ORIGEM_PROVIDER: Cloudflare
@@ -111,13 +110,12 @@ jobs:
     env:
       BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
       RCLONE_CONFIG_DESTINO_TYPE: s3
-      RCLONE_CONFIG_DESTINO_PROVIDER: Other
+      RCLONE_CONFIG_DESTINO_PROVIDER: Cloudflare  # o destino hoje é um bucket R2; outro S3: troque para Other
       RCLONE_CONFIG_DESTINO_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
       RCLONE_CONFIG_DESTINO_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
       RCLONE_CONFIG_DESTINO_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
       DESTINO_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
-      # Chave com permissão só nos objetos (sem criar bucket): sem isto, toda primeira
-      # tentativa de envio voltava 501 do R2 e só a repetição passava (26/11/2026).
+      # A chave do destino só tem permissão nos objetos: não tentar conferir/criar o bucket.
       RCLONE_CONFIG_DESTINO_NO_CHECK_BUCKET: "true"
     steps:
       - name: Só aos domingos (ou quando pedido à mão)
