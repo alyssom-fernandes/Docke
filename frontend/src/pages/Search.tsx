@@ -231,7 +231,7 @@ export default function Search() {
 
   return (
     <div className="space-y-5 max-w-[1280px] w-full mx-auto">
-      <h1 className="text-mac-title2 font-semibold text-(--text-primary)">Busca</h1>
+      <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Busca</h1>
 
       <form role="search" onSubmit={(e) => { e.preventDefault(); setP({ q: text.trim() || null }); }} className="relative">
         <label htmlFor={`${uid}-q`} className="sr-only">Buscar no nome, no texto e nos metadados dos documentos</label>

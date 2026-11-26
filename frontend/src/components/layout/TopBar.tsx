@@ -90,7 +90,7 @@ export default function TopBar({ onUploadClick }: TopBarProps) {
             aria-current={location.pathname.startsWith("/favorites") ? "page" : undefined}
             className={`hidden md:flex lg:hidden w-7 h-7 items-center justify-center rounded-full transition-colors duration-fast ${
               location.pathname.startsWith("/favorites")
-                ? "text-(--text-accent) bg-teal-500/10"
+                ? "text-(--text-accent) bg-(--tint-accent)"
                 : "text-(--text-secondary) hover:bg-black/5 dark:hover:bg-white/10"
             }`}
           >
@@ -105,7 +105,7 @@ export default function TopBar({ onUploadClick }: TopBarProps) {
             aria-current={location.pathname.startsWith("/settings") ? "page" : undefined}
             className={`hidden md:flex lg:hidden w-7 h-7 items-center justify-center rounded-full transition-colors duration-fast ${
               location.pathname.startsWith("/settings")
-                ? "text-(--text-accent) bg-teal-500/10"
+                ? "text-(--text-accent) bg-(--tint-accent)"
                 : "text-(--text-secondary) hover:bg-black/5 dark:hover:bg-white/10"
             }`}
           >

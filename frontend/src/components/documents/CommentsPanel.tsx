@@ -67,7 +67,7 @@ export default function CommentsPanel({ docId, comentarios, setComentarios, pont
       <ol className="flex-1 overflow-auto p-3 space-y-2">
         {comentarios.length === 0 && <li className="text-mac-caption text-(--text-tertiary)">Sem comentários. Escreva abaixo{podeAnotar ? " ou use “Marcar na página” para prender a nota num ponto do documento" : ""}.</li>}
         {comentarios.map((c) => (
-          <li key={c.id} className={`rounded-(--radius-control) border p-2.5 ${ativo === c.id ? "border-amber-500 bg-amber-500/10" : "border-(--border-default)"} ${c.resolved_at ? "opacity-60" : ""}`}>
+          <li key={c.id} className={`rounded-(--radius-control) border p-2.5 ${ativo === c.id ? "border-amber-500 bg-(--tint-warning)" : "border-(--border-default)"} ${c.resolved_at ? "opacity-60" : ""}`}>
             <div className="flex items-center gap-1.5 text-mac-caption text-(--text-secondary)">
               <span className="font-medium text-(--text-primary) truncate">{c.author}</span>
               <span>· {new Date(c.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
@@ -93,7 +93,7 @@ export default function CommentsPanel({ docId, comentarios, setComentarios, pont
         {podeAnotar && (
           <div className="flex items-center gap-2 text-mac-caption">
             <button type="button" onClick={() => { setAnnotating(!annotating); setPonto(null); }} aria-pressed={annotating}
-              className={`inline-flex items-center gap-1 rounded-full px-2.5 min-h-7 pointer-coarse:min-h-11 border ${annotating || ponto ? "border-teal-600 bg-teal-500/10 text-(--text-primary)" : "border-(--border-control) text-(--text-secondary) hover:bg-(--bg-hover)"}`}>
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 min-h-7 pointer-coarse:min-h-11 border ${annotating || ponto ? "border-teal-600 bg-(--tint-accent) text-(--text-primary)" : "border-(--border-control) text-(--text-secondary) hover:bg-(--bg-hover)"}`}>
               <MapPin className="w-3.5 h-3.5" aria-hidden />{ponto ? `Na página ${ponto.page}` : annotating ? "Clique na página…" : "Marcar na página"}
             </button>
             {ponto && <button type="button" onClick={() => setPonto(null)} className="text-(--text-secondary) hover:underline">tirar o ponto</button>}

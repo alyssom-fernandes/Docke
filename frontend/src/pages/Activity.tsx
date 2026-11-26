@@ -142,7 +142,7 @@ export default function Activity() {
     <div className="space-y-5 max-w-[1100px] w-full mx-auto">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-mac-title2 font-semibold text-(--text-primary)">Atividade</h1>
+          <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Atividade</h1>
           <p className="text-mac-caption text-(--text-secondary) mt-0.5">Quem fez o quê, quando. Cada registro fica encadeado ao anterior e não pode ser alterado.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -168,7 +168,7 @@ export default function Activity() {
       </div>
 
       {integrity && (
-        <p role="status" className={`flex items-center gap-2 rounded-(--radius-control) px-3 py-2 text-mac-body ${integrity.intact ? "bg-green-600/10 text-(--text-primary)" : "bg-red-500/10 text-(--text-primary)"}`}>
+        <p role="status" className={`flex items-center gap-2 rounded-(--radius-control) px-3 py-2 text-mac-body ${integrity.intact ? "bg-green-600/10 text-(--text-primary)" : "bg-(--tint-danger) text-(--text-primary)"}`}>
           {integrity.intact ? <ShieldCheck className="w-4 h-4 text-(--text-success)" aria-hidden="true" /> : <ShieldAlert className="w-4 h-4 text-(--text-danger)" aria-hidden="true" />}
           {integrity.intact
             ? `Trilha íntegra: ${integrity.total_events.toLocaleString("pt-BR")} registros conferidos, nenhum alterado.`

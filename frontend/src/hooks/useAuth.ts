@@ -23,6 +23,7 @@ interface AuthState {
   updateProfile: (fullName: string) => Promise<void>;
   passwordChanged: () => void;
   completeMfa: (tokens: SessionTokens) => Promise<void>;
+  loginWithSession: (tokens: SessionTokens, remember?: boolean) => Promise<void>;
 }
 
 const LOGIN_TIMEOUT_MS = 20_000;
@@ -119,6 +120,11 @@ export function useAuth(): AuthState {
 
   // Modo demo: a senha nunca fica no frontend — o backend guarda como
   // segredo (Fly secret) e faz o login por trás via /auth/demo-login.
+  // Passkey (B4.5.8): o servidor já conferiu a assinatura e devolveu a sessão.
+  async function loginWithSession(tokens: SessionTokens, remember?: boolean) {
+    await applySession(tokens, remember);
+  }
+
   async function loginDemo() {
     const res = await api.post("/auth/demo-login", undefined, { timeout: DEMO_LOGIN_TIMEOUT_MS });
     await applySession(res.data, false, true);
@@ -168,5 +174,5 @@ export function useAuth(): AuthState {
     });
   }
 
-  return { user, isLoading, login, loginDemo, logout, updateProfile, passwordChanged, completeMfa };
+  return { user, isLoading, login, loginDemo, logout, updateProfile, passwordChanged, completeMfa, loginWithSession };
 }

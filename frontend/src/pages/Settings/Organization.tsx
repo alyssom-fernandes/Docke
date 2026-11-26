@@ -331,7 +331,7 @@ export default function Organization() {
           <ul>
             {orgs.map((org) => (
               <li key={org.id} className="flex items-center gap-3 px-5 py-4 border-b border-(--border-default) last:border-0">
-                <div className="w-9 h-9 rounded-(--radius-control) bg-teal-500/10 flex items-center justify-center shrink-0">
+                <div className="w-9 h-9 rounded-(--radius-control) bg-(--tint-accent) flex items-center justify-center shrink-0">
                   <Building2 className="w-4 h-4 text-(--text-accent)" />
                 </div>
                 <div className="flex-1 min-w-0">

@@ -468,6 +468,34 @@ async def get_resolved_folder_fields(
     return [dict(r) for r in rows]
 
 
+@router.get("/custom-fields/{field_id}/where")
+async def where_field_applies(
+    field_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Onde o campo vale (A8-13): as regras dele na árvore, com o caminho da
+    pasta, aplicar/excluir, obrigatório e valor padrão, e quantos documentos já
+    têm valor. O RLS da conexão limita às pastas que a pessoa enxerga."""
+    field = await conn.fetchrow("SELECT id, company_id, label FROM public.custom_field WHERE id = $1", field_id)
+    if field is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campo não encontrado.")
+    rows = await conn.fetch(
+        """
+        SELECT ff.folder_path::text AS folder_path, ff.mode, ff.required, ff.default_value, f.id::text AS folder_id,
+               CASE WHEN ff.folder_path IS NULL THEN 'Empresa toda'
+                    ELSE (SELECT string_agg(a.name, ' / ' ORDER BY nlevel(a.path)) FROM public.folders a
+                          WHERE a.company_id = ff.company_id AND a.path @> ff.folder_path AND a.deleted_at IS NULL) END AS caminho
+        FROM public.folder_field ff
+        LEFT JOIN public.folders f ON f.company_id = ff.company_id AND f.path = ff.folder_path AND f.deleted_at IS NULL
+        WHERE ff.custom_field_id = $1 AND (ff.folder_path IS NULL OR f.id IS NOT NULL)
+        ORDER BY ff.folder_path NULLS FIRST
+        """,
+        field_id,
+    )
+    preenchidos = await conn.fetchval("SELECT count(*) FROM public.document_field_value WHERE custom_field_id = $1", field_id)
+    return {"label": field["label"], "regras": [dict(r) for r in rows], "documentos_com_valor": preenchidos}
+
+
 @router.get("/folder-fields/rules")
 async def get_folder_field_rules(
     company_id: UUID = Query(...),

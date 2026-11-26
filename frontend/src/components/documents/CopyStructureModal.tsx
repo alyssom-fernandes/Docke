@@ -284,7 +284,7 @@ export default function CopyStructureModal({
                     data-opt="raiz" role="radio" aria-checked={targetParentId === null} tabIndex={targetParentId === null ? 0 : -1}
                     onClick={() => setTargetParentId(null)}
                     className={`w-full flex items-center gap-2 h-8 pointer-coarse:h-11 px-3 text-mac-body text-left transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring) ${
-                      targetParentId === null ? "bg-teal-500/10 text-(--text-accent) font-medium" : "text-(--text-primary) hover:bg-(--bg-hover)"
+                      targetParentId === null ? "bg-(--tint-accent) text-(--text-accent) font-medium" : "text-(--text-primary) hover:bg-(--bg-hover)"
                     }`}
                   >
                     <Home className="w-3.5 h-3.5 shrink-0" aria-hidden />
@@ -305,7 +305,7 @@ export default function CopyStructureModal({
                         disabled
                           ? "text-(--text-placeholder) cursor-not-allowed"
                           : sel
-                          ? "bg-teal-500/10 text-(--text-accent) font-medium"
+                          ? "bg-(--tint-accent) text-(--text-accent) font-medium"
                           : "text-(--text-primary) hover:bg-(--bg-hover)"
                       }`}
                     >

@@ -117,7 +117,7 @@ export default function ResetPassword() {
                 aria-describedby={mismatch ? "rs-diferente" : undefined} className={fieldClass.replace("pr-11", "pr-3")} />
               {mismatch && <p id="rs-diferente" className="text-mac-caption text-(--text-danger)">As duas senhas ainda não são iguais.</p>}
             </div>
-            {error && <div role="alert" className="reveal rounded-(--radius-control) border border-red-500/30 bg-red-500/8 px-3 py-2.5 text-mac-body text-(--text-primary)">{error}</div>}
+            {error && <div role="alert" className="reveal rounded-(--radius-control) border border-red-500/30 bg-(--tint-danger) px-3 py-2.5 text-mac-body text-(--text-primary)">{error}</div>}
             <Button type="submit" loading={loading} className="w-full h-11! sm:h-10! text-[14px]! font-semibold mt-1">Gravar senha nova</Button>
           </form>
         )}

@@ -1,6 +1,7 @@
 /*
- * Service worker do Docke: só recebe o "Compartilhar" do celular (Web Share
- * Target, B4.5.7). Não guarda páginas nem respostas da API em cache: o app
+ * Service worker do Docke: recebe o "Compartilhar" do celular (Web Share
+ * Target, B4.5.7) e mostra os avisos por push (B4.4.5). Não guarda páginas
+ * nem respostas da API em cache: o app
  * continua sempre na versão publicada. Os arquivos compartilhados ficam num
  * cache próprio até a tela de envio lê-los (e apagá-los).
  */
@@ -28,5 +29,29 @@ self.addEventListener("fetch", (event) => {
       n = 0;
     }
     return Response.redirect(n ? "/documents?acao=compartilhado" : "/documents", 303);
+  })());
+});
+
+// Avisos no celular (B4.4.5): o conteúdo chega cifrado e o navegador decifra.
+self.addEventListener("push", (event) => {
+  let dados = {};
+  try { dados = event.data ? event.data.json() : {}; } catch { dados = { body: event.data ? event.data.text() : "" }; }
+  event.waitUntil(self.registration.showNotification(dados.title || "Docke", {
+    body: dados.body || "",
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    tag: dados.tag,
+    data: { url: dados.url || "/dashboard" },
+  }));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = new URL(event.notification.data?.url || "/dashboard", self.location.origin).href;
+  event.waitUntil((async () => {
+    const janelas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const aberta = janelas.find((c) => c.url.startsWith(self.location.origin));
+    if (aberta) { await aberta.focus(); return aberta.navigate(url); }
+    return self.clients.openWindow(url);
   })());
 });

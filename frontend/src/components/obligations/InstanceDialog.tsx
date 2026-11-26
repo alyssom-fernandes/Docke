@@ -151,7 +151,7 @@ export default function InstanceDialog({
               <p className="text-mac-body text-(--text-primary)">Dispensada: {data.dispensa_motivo}</p>
             )}
             {data.status === "pending" && data.review_note && (
-              <p className="rounded-(--radius-control) bg-amber-500/10 px-3 py-2 text-mac-body text-(--text-primary)">
+              <p className="rounded-(--radius-control) bg-(--tint-warning) px-3 py-2 text-mac-body text-(--text-primary)">
                 Devolvida{data.reviewer_name ? ` por ${data.reviewer_name}` : ""}: {data.review_note}
               </p>
             )}

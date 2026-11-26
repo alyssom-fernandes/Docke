@@ -59,6 +59,7 @@ import RequestFilesModal from "@/components/documents/RequestFilesModal";
 import { RequestAccessBanner } from "@/components/shared/AccessRequests";
 import CopyStructureModal from "@/components/documents/CopyStructureModal";
 import { SaveTemplateDialog, ApplyTemplateDialog, NewFromTemplateDialog } from "@/components/documents/Templates";
+import InboxPanel from "@/components/documents/InboxPanel";
 import FolderTree from "@/components/documents/FolderTree";
 import Dialog from "@/components/ui/Dialog";
 import Input from "@/components/ui/Input";
@@ -105,13 +106,18 @@ const SEM_VALOR = "Sem valor";
 // Colunas opcionais da lista (A4-16): a pessoa escolhe quais ver (clique
 // direito no cabeçalho ou no botão de visualização); todas ordenam.
 type OptCol = "created" | "updated" | "uploader" | "size" | "kind" | "ocr";
-const OPT_COLS: { key: OptCol; label: string; menu: string; sortKey: SortKey; align?: "right"; cls: string }[] = [
-  { key: "created", label: "Criado em", menu: "Criado em", sortKey: "created_at", cls: "hidden sm:table-cell" },
-  { key: "updated", label: "Modificado em", menu: "Modificado em", sortKey: "updated_at", cls: "hidden sm:table-cell" },
-  { key: "uploader", label: "Enviado por", menu: "Enviado por", sortKey: "uploader", cls: "hidden md:table-cell" },
-  { key: "size", label: "Tamanho", menu: "Tamanho", sortKey: "size", align: "right", cls: "hidden sm:table-cell" },
-  { key: "kind", label: "Tipo", menu: "Tipo", sortKey: "kind", cls: "hidden lg:table-cell" },
-  { key: "ocr", label: "OCR", menu: "Texto lido (OCR)", sortKey: "ocr", cls: "hidden sm:table-cell" },
+// colCls por extenso: o Tailwind só gera classes que aparecem literalmente no
+// código. Antes a classe da <col> era montada trocando "table-cell" por
+// "table-column", e md:/lg:table-column nunca existiam: as colunas "Enviado
+// por" e "Tipo" ficavam sem largura e as seguintes se deslocavam (cortando
+// "Tamanho" e deixando o OCR com a sobra).
+const OPT_COLS: { key: OptCol; label: string; menu: string; sortKey: SortKey; align?: "right"; cls: string; colCls: string }[] = [
+  { key: "created", label: "Criado em", menu: "Criado em", sortKey: "created_at", cls: "hidden sm:table-cell", colCls: "hidden sm:table-column" },
+  { key: "updated", label: "Modificado em", menu: "Modificado em", sortKey: "updated_at", cls: "hidden sm:table-cell", colCls: "hidden sm:table-column" },
+  { key: "uploader", label: "Enviado por", menu: "Enviado por", sortKey: "uploader", cls: "hidden md:table-cell", colCls: "hidden md:table-column" },
+  { key: "size", label: "Tamanho", menu: "Tamanho", sortKey: "size", align: "right", cls: "hidden sm:table-cell", colCls: "hidden sm:table-column" },
+  { key: "kind", label: "Tipo", menu: "Tipo", sortKey: "kind", cls: "hidden lg:table-cell", colCls: "hidden lg:table-column" },
+  { key: "ocr", label: "OCR", menu: "Texto lido (OCR)", sortKey: "ocr", cls: "hidden sm:table-cell", colCls: "hidden sm:table-column" },
 ];
 const DEFAULT_VISIBLE_COLS: OptCol[] = ["created", "size", "kind", "ocr"];
 const OCR_ORDER: Record<string, number> = { failed: 0, pending: 1, processing: 2, skipped: 3, done: 4 };
@@ -156,7 +162,7 @@ function SaveViewDialog({ folderName, onClose, onSave }: { folderName: string; o
   const [scope, setScope] = useState<"pasta" | "todas">("pasta");
   const [shared, setShared] = useState(true);
   const [busy, setBusy] = useState(false);
-  const opcao = (ativo: boolean) => `text-left rounded-(--radius-control) border px-3 py-2 text-mac-body transition-colors focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${ativo ? "border-teal-600 bg-teal-500/10 text-(--text-primary)" : "border-(--border-control) text-(--text-secondary) hover:bg-(--bg-hover)"}`;
+  const opcao = (ativo: boolean) => `text-left rounded-(--radius-control) border px-3 py-2 text-mac-body transition-colors focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${ativo ? "border-teal-600 bg-(--tint-accent) text-(--text-primary)" : "border-(--border-control) text-(--text-secondary) hover:bg-(--bg-hover)"}`;
   return (
     <Dialog onClose={onClose} size="sm" busy={busy} title="Salvar vista"
       description="Guarda a ordenação, as colunas, o agrupamento e o filtro por metadado de agora."
@@ -483,6 +489,7 @@ export default function Documents() {
       list.push({ label: "Copiar estrutura para…", icon: <Copy />, onSelect: () => setCopyingFolder(f) });
       list.push({ label: "Salvar como modelo…", icon: <LayoutTemplate />, onSelect: () => setSavingTemplate(f) });
       list.push({ label: "Aplicar modelo…", icon: <LayoutTemplate />, onSelect: () => setApplyingTemplate(f) });
+      list.push({ label: "Usar como pasta de triagem", icon: <Inbox />, onSelect: () => marcarComoTriagem(f) });
       list.push({ label: "Permissões desta pasta", icon: <Shield />, separatorBefore: true, onSelect: () => navigate(`/settings/users?folder=${f.id}`) });
       list.push({ label: "Metadados desta pasta", icon: <Tags />, onSelect: () => navigate(`/settings/metadata?tab=tree&folder=${f.id}`) });
       list.push({ label: "Retenção desta pasta", icon: <Archive />, onSelect: () => navigate(`/settings/retention?folder=${f.id}`) });
@@ -1597,6 +1604,16 @@ export default function Documents() {
     success(`${plural(ok, "documento ancorado", "documentos ancorados")}.`);
   }
 
+  async function marcarComoTriagem(f: Folder) {
+    if (!current) return;
+    try {
+      await api.put(`/companies/${current.id}/inbox`, { folder_id: f.id });
+      success(`"${f.name}" agora é a pasta de triagem: ao abrir, ela sugere o destino de cada documento.`);
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível definir a pasta de triagem.");
+    }
+  }
+
   async function toggleDocTemplate(doc: Document) {
     try {
       await api.put(`/documents/${doc.id}/template`, { is_template: !doc.is_template });
@@ -1838,7 +1855,7 @@ export default function Documents() {
                 onClick={navigateHome}
                 className={`w-full flex items-center gap-1.5 h-8 pl-3 pr-2 text-mac-body rounded-[6px] transition-colors duration-fast text-left ${
                   currentFolderId === null
-                    ? "bg-teal-500/10 text-(--text-accent) font-medium"
+                    ? "bg-(--tint-accent) text-(--text-accent) font-medium"
                     : "text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)"
                 }`}
               >
@@ -1910,7 +1927,7 @@ export default function Documents() {
             </h1>
             {currentPrivacy !== "normal" && (
               <span title={currentPrivacy === "sensivel" ? "Dado sensível (LGPD): link público bloqueado" : "Dado pessoal (LGPD)"}
-                className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-mac-caption2 font-medium ${currentPrivacy === "sensivel" ? "bg-red-500/12 text-(--text-danger)" : "bg-amber-500/12 text-(--text-warning)"}`}>
+                className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-mac-caption2 font-medium ${currentPrivacy === "sensivel" ? "bg-(--tint-danger) text-(--text-danger)" : "bg-(--tint-warning) text-(--text-warning)"}`}>
                 <ShieldAlert className="w-3 h-3" aria-hidden />{PRIVACY_LABEL[currentPrivacy]}
               </span>
             )}
@@ -2094,6 +2111,8 @@ export default function Documents() {
           onScroll={handleTableScroll}
           onMouseDown={handleBodyMouseDown}
         >
+          {/* Triagem (B1.1.8): só aparece quando a pasta aberta é a "Entrada" da empresa. */}
+          {current && currentFolderId && !loading && <InboxPanel companyId={current.id} folderId={currentFolderId} onMoved={load} />}
           {loading ? (
             // Abaixo de 200ms não mostra nada (regra dos 200ms) — só depois
             // disso o skeleton aparece, já na forma exata do que vai substituir.
@@ -2120,7 +2139,7 @@ export default function Documents() {
           ) : loadError ? (
             <div className="flex items-center justify-center h-full px-6">
               <div role="alert" className="reveal flex max-w-sm flex-col items-center text-center gap-2">
-                <div className="w-11 h-11 rounded-full bg-amber-500/12 flex items-center justify-center">
+                <div className="w-11 h-11 rounded-full bg-(--tint-warning) flex items-center justify-center">
                   <AlertTriangle className="w-5 h-5 text-(--text-warning)" aria-hidden />
                 </div>
                 <p className="text-mac-callout font-semibold text-(--text-primary)">Não foi possível abrir esta pasta.</p>
@@ -2191,7 +2210,7 @@ export default function Documents() {
                       onFocus={() => setFocusedId(f.id)}
                       className={`group relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-(--radius-control) cursor-pointer transition-colors duration-fast outline-none focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${
                         selected.has(f.id) ? "bg-teal-600" : "hover:bg-(--bg-hover)"
-                      } ${isDropTarget ? "spring-target bg-teal-500/10 outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""} ${dragFolderIds?.includes(f.id) ? "opacity-40" : ""} ${droppedOn === f.id ? "drop-pulse" : ""}`}
+                      } ${isDropTarget ? "spring-target bg-(--tint-accent) outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""} ${dragFolderIds?.includes(f.id) ? "opacity-40" : ""} ${droppedOn === f.id ? "drop-pulse" : ""}`}
                       onClick={(e) => selectDocClick(e, f.id)}
                       onDoubleClick={() => openFolder(f)}
                       onContextMenu={(e) => openContextMenu(e, "folder", f)}
@@ -2348,7 +2367,7 @@ export default function Documents() {
                 {selectionMode && <col style={{ width: 40 }} />}
                 <col style={{ width: colWidths.name }} />
                 {shownCols.map((c) => (
-                  <col key={c.key} className={c.cls.replace("table-cell", "table-column")} style={{ width: colWidths[c.key] }} />
+                  <col key={c.key} className={c.colCls} style={{ width: colWidths[c.key] }} />
                 ))}
                 {resolvedFields.map((f) => (
                   <col key={f.custom_field_id} className="hidden sm:table-column" style={{ width: f.column_width ?? 130 }} />
@@ -2427,7 +2446,7 @@ export default function Documents() {
                         onFocus={() => setFocusedId(f.id)}
                         className={`border-b border-(--border-default) transition-colors duration-fast group cursor-pointer outline-none focus-visible:shadow-[inset_3px_0_0_var(--focus-ring)] ${
                           isFolderSel ? "bg-teal-600" : "odd:bg-black/4 dark:odd:bg-white/[0.035] hover:bg-(--bg-hover) focus-visible:bg-teal-500/12"
-                        } ${isDropTarget ? "spring-target bg-teal-500/10 outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""} ${dragFolderIds?.includes(f.id) ? "opacity-40" : ""} ${droppedOn === f.id ? "drop-pulse" : ""}`}
+                        } ${isDropTarget ? "spring-target bg-(--tint-accent) outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""} ${dragFolderIds?.includes(f.id) ? "opacity-40" : ""} ${droppedOn === f.id ? "drop-pulse" : ""}`}
                         onClick={(e) => selectDocClick(e, f.id)}
                         onDoubleClick={() => openFolder(f)}
                         onContextMenu={(e) => openContextMenu(e, "folder", f)}
@@ -2751,7 +2770,7 @@ export default function Documents() {
           )}
           {dragBox && (
             <div
-              className="absolute border border-teal-500 bg-teal-500/10 pointer-events-none z-20 rounded-[4px]"
+              className="absolute border border-teal-500 bg-(--tint-accent) pointer-events-none z-20 rounded-[4px]"
               style={{
                 left: Math.min(dragBox.x1, dragBox.x2),
                 top: Math.min(dragBox.y1, dragBox.y2),
@@ -2784,7 +2803,7 @@ export default function Documents() {
                   }}
                   onDragLeave={() => setDragOverFolderId((v) => (v === `crumb-${idx}` ? null : v))}
                   onDrop={(e) => { e.preventDefault(); dropOnTarget({ id: crumb.id ?? null, name: idx === 0 ? "Início" : crumb.name }, e.altKey); }}
-                  className={`text-mac-caption hover:text-(--text-accent) transition-colors duration-fast rounded-[4px] px-0.5 ${dragOverFolderId === `crumb-${idx}` ? "bg-teal-500/15 text-(--text-accent) outline-solid outline-1 outline-teal-400" : ""} ${
+                  className={`text-mac-caption hover:text-(--text-accent) transition-colors duration-fast rounded-[4px] px-0.5 ${dragOverFolderId === `crumb-${idx}` ? "bg-(--tint-accent) text-(--text-accent) outline-solid outline-1 outline-teal-400" : ""} ${
                     idx === breadcrumbs.length - 1
                       ? "text-(--text-primary) font-medium"
                       : "text-(--text-secondary)"
@@ -2815,7 +2834,7 @@ export default function Documents() {
           {/* Pendentes de classificação (X2-20): filtra quem tem campo obrigatório vazio. */}
           {(missingRequired.size > 0 || onlyMissing) && (
             <button onClick={() => setOnlyMissing((v) => !v)} aria-pressed={onlyMissing}
-              className={`shrink-0 ml-2 inline-flex items-center gap-1 rounded-full px-2 min-h-6 pointer-coarse:min-h-9 ${onlyMissing ? "bg-amber-500/15 text-(--text-primary)" : "text-(--text-warning) hover:bg-(--bg-hover)"}`}>
+              className={`shrink-0 ml-2 inline-flex items-center gap-1 rounded-full px-2 min-h-6 pointer-coarse:min-h-9 ${onlyMissing ? "bg-(--tint-warning) text-(--text-primary)" : "text-(--text-warning) hover:bg-(--bg-hover)"}`}>
               <AlertTriangle className="w-3 h-3" aria-hidden />
               {onlyMissing ? "Mostrar todos" : `${missingRequired.size} com campo obrigatório vazio`}
             </button>
@@ -2823,7 +2842,7 @@ export default function Documents() {
           {/* Metadado navegável (B1.2.7): clicar num valor da coluna filtra; aqui limpa. */}
           {fieldFilter && (
             <button onClick={() => setFieldFilter(null)} aria-label={`Tirar o filtro ${fieldFilter.label} = ${fieldFilter.value}`}
-              className="shrink-0 ml-2 inline-flex items-center gap-1 rounded-full px-2 min-h-6 pointer-coarse:min-h-9 bg-teal-500/15 text-(--text-primary) hover:bg-teal-500/25">
+              className="shrink-0 ml-2 inline-flex items-center gap-1 rounded-full px-2 min-h-6 pointer-coarse:min-h-9 bg-(--tint-accent) text-(--text-primary) hover:bg-teal-500/25">
               {fieldFilter.label} = {fieldFilter.value} <X className="w-3 h-3" aria-hidden />
             </button>
           )}
@@ -2912,7 +2931,7 @@ export default function Documents() {
         <Dialog onClose={() => setShowTreeDrawer(false)} title="Pastas" size="sm" bodyClassName="px-2 py-2">
           <button
             onClick={() => { navigateHome(); setShowTreeDrawer(false); }}
-            className={`w-full flex items-center gap-1.5 h-9 pointer-coarse:h-11 pl-3 pr-2 text-mac-body rounded-[6px] text-left ${currentFolderId === null ? "bg-teal-500/12 text-(--text-accent) font-medium" : "text-(--text-primary) hover:bg-(--bg-hover)"}`}
+            className={`w-full flex items-center gap-1.5 h-9 pointer-coarse:h-11 pl-3 pr-2 text-mac-body rounded-[6px] text-left ${currentFolderId === null ? "bg-(--tint-accent) text-(--text-accent) font-medium" : "text-(--text-primary) hover:bg-(--bg-hover)"}`}
           >
             <Home className="w-4 h-4 shrink-0" aria-hidden /> Início
           </button>

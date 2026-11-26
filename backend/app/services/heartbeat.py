@@ -7,7 +7,7 @@ monitora, em vez de a fila de OCR ou de exportação parar em silêncio.
 import time
 
 # Quanto tempo sem batimento até considerar o worker atrasado (segundos).
-LIMITES = {"ocr": 300, "exportacao": 300, "estatisticas": 1800, "manutencao": 7200, "miniaturas": 600}
+LIMITES = {"ocr": 300, "exportacao": 300, "estatisticas": 1800, "manutencao": 7200, "miniaturas": 600, "avisos": 300}
 
 _ultimo: dict[str, float] = {}
 _inicio = time.time()

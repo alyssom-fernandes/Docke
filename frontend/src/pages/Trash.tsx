@@ -117,7 +117,7 @@ export default function Trash() {
   return (
     <div className="space-y-5 max-w-[1100px] w-full mx-auto">
       <div>
-        <h1 className="text-mac-title2 font-semibold text-(--text-primary)">Lixeira</h1>
+        <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Lixeira</h1>
         <p className="text-mac-caption text-(--text-secondary) mt-0.5">O que foi excluído fica aqui por um tempo e volta para o lugar de origem ao restaurar. Depois do prazo, sai sozinho.</p>
       </div>
 
@@ -154,7 +154,7 @@ export default function Trash() {
               return (
                 <li key={k} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 sm:px-5 py-3 border-b border-(--border-default) last:border-0">
                   <Checkbox aria-label={`Selecionar ${item.name}`} checked={sel.has(k)} onChange={() => setSel((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; })} />
-                  <span className={`w-8 h-8 rounded-badge flex items-center justify-center shrink-0 ${item.item_type === "folder" ? "bg-teal-500/12" : fs.bgColor}`} aria-hidden="true">
+                  <span className={`w-8 h-8 rounded-badge flex items-center justify-center shrink-0 ${item.item_type === "folder" ? "bg-(--tint-accent)" : fs.bgColor}`} aria-hidden="true">
                     <Icon className={`w-4 h-4 ${item.item_type === "folder" ? "text-(--text-accent)" : `${fs.iconColor} ${fs.fillColor}`}`} />
                   </span>
                   <div className="flex-1 min-w-[14rem]">

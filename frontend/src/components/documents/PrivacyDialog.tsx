@@ -53,7 +53,7 @@ export default function PrivacyDialog({ folderId, folderName, onClose, onSaved }
       description="Classificação pela LGPD. Vale para esta pasta e as subpastas."
       footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={busy} onClick={salvar} disabled={!atual}>Salvar</Button></>}>
       {atual?.inherited && (
-        <p className="mb-3 flex items-start gap-2 rounded-(--radius-control) bg-amber-500/10 px-3 py-2 text-mac-caption text-(--text-primary)">
+        <p className="mb-3 flex items-start gap-2 rounded-(--radius-control) bg-(--tint-warning) px-3 py-2 text-mac-caption text-(--text-primary)">
           <ShieldAlert className="w-3.5 h-3.5 mt-0.5 text-(--text-warning) shrink-0" aria-hidden="true" />
           Uma pasta acima já está como “{PRIVACY_LABEL[atual.effective]}”: a classificação mais restritiva continua valendo aqui.
         </p>
@@ -61,7 +61,7 @@ export default function PrivacyDialog({ folderId, folderName, onClose, onSaved }
       <div role="radiogroup" aria-label="Classificação" className="space-y-2">
         {OPCOES.map((o) => (
           <button key={o.v} type="button" role="radio" aria-checked={escolha === o.v} onClick={() => setEscolha(o.v)}
-            className={`w-full text-left rounded-(--radius-control) border p-3 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${escolha === o.v ? "border-teal-600 bg-teal-500/10" : "border-(--border-control) hover:bg-(--bg-hover)"}`}>
+            className={`w-full text-left rounded-(--radius-control) border p-3 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${escolha === o.v ? "border-teal-600 bg-(--tint-accent)" : "border-(--border-control) hover:bg-(--bg-hover)"}`}>
             <span className="block text-mac-body font-medium text-(--text-primary)">{o.titulo}</span>
             <span className="block text-mac-caption text-(--text-secondary)">{o.texto}</span>
           </button>

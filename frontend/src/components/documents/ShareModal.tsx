@@ -145,7 +145,7 @@ export default function ShareModal({ resourceType, resourceId, name, onClose, on
       <Dialog onClose={onClose} title={`Compartilhar "${name}"`} description="Quem tiver o link abre sem precisar de conta no Docke." size="md">
         <div className="space-y-4">
           {sensitive && (
-            <div role="note" className="flex gap-2 rounded-(--radius-control) border border-amber-500/30 bg-amber-500/8 px-3 py-2.5 text-mac-body text-(--text-primary)">
+            <div role="note" className="flex gap-2 rounded-(--radius-control) border border-amber-500/30 bg-(--tint-warning) px-3 py-2.5 text-mac-body text-(--text-primary)">
               <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-(--text-warning)" aria-hidden />
               Pode conter dados pessoais ou de saúde. Prefira senha, validade curta e "só visualizar".
             </div>

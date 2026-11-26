@@ -351,6 +351,41 @@ class DocumentsService:
 
         chave_acesso = (inf_nfe.get("Id") or "").replace("NFe", "") or None
 
+        def endereco(path: str) -> str | None:
+            el = inf_nfe.find(path, _NFE_NS)
+            if el is None:
+                return None
+            partes = []
+            for tag in ("xLgr", "nro", "xCpl", "xBairro", "xMun", "UF", "CEP"):
+                t = el.find(f"nfe:{tag}", _NFE_NS)
+                if t is not None and t.text and t.text.strip():
+                    partes.append(t.text.strip())
+            return ", ".join(partes) or None
+
+        def prot(tag: str) -> str | None:
+            el = root.find(f".//nfe:protNFe/nfe:infProt/{tag}", _NFE_NS)
+            return el.text.strip() if el is not None and el.text else None
+
+        itens = []
+        for det in inf_nfe.findall("nfe:det", _NFE_NS)[:300]:
+            def d(path: str, det=det) -> str | None:
+                el = det.find(path, _NFE_NS)
+                return el.text.strip() if el is not None and el.text else None
+            icms = det.find("nfe:imposto/nfe:ICMS/*", _NFE_NS)
+
+            def i(tag: str, icms=icms) -> str | None:
+                if icms is None:
+                    return None
+                el = icms.find(f"nfe:{tag}", _NFE_NS)
+                return el.text.strip() if el is not None and el.text else None
+            itens.append({
+                "codigo": d("nfe:prod/nfe:cProd"), "descricao": d("nfe:prod/nfe:xProd"), "ncm": d("nfe:prod/nfe:NCM"),
+                "cst": i("CST") or i("CSOSN"), "cfop": d("nfe:prod/nfe:CFOP"), "unidade": d("nfe:prod/nfe:uCom"),
+                "quantidade": d("nfe:prod/nfe:qCom"), "valor_unitario": d("nfe:prod/nfe:vUnCom"), "valor_total": d("nfe:prod/nfe:vProd"),
+                "bc_icms": i("vBC"), "valor_icms": i("vICMS"), "aliquota_icms": i("pICMS"),
+                "valor_ipi": d("nfe:imposto/nfe:IPI/nfe:IPITrib/nfe:vIPI"),
+            })
+
         return {
             "recognized": True,
             "chave_acesso": chave_acesso,
@@ -363,6 +398,25 @@ class DocumentsService:
             "destinatario_nome": text("nfe:dest/nfe:xNome"),
             "destinatario_cnpj": text("nfe:dest/nfe:CNPJ") or text("nfe:dest/nfe:CPF"),
             "valor_total": text("nfe:total/nfe:ICMSTot/nfe:vNF"),
+            # Quadros do DANFE (FA-A5-04): endereços, IE, itens, impostos, transporte, protocolo.
+            "tipo_operacao": text("nfe:ide/nfe:tpNF"),
+            "emitente_ie": text("nfe:emit/nfe:IE"),
+            "emitente_endereco": endereco("nfe:emit/nfe:enderEmit"),
+            "destinatario_ie": text("nfe:dest/nfe:IE"),
+            "destinatario_endereco": endereco("nfe:dest/nfe:enderDest"),
+            "itens": itens,
+            "totais": {k: text(f"nfe:total/nfe:ICMSTot/nfe:{k}") for k in ("vBC", "vICMS", "vBCST", "vST", "vProd", "vFrete", "vSeg", "vDesc", "vOutro", "vIPI", "vNF")},
+            "transporte": {
+                "modalidade": text("nfe:transp/nfe:modFrete"),
+                "nome": text("nfe:transp/nfe:transporta/nfe:xNome"),
+                "cnpj": text("nfe:transp/nfe:transporta/nfe:CNPJ") or text("nfe:transp/nfe:transporta/nfe:CPF"),
+                "volumes": text("nfe:transp/nfe:vol/nfe:qVol"),
+                "peso_liquido": text("nfe:transp/nfe:vol/nfe:pesoL"),
+                "peso_bruto": text("nfe:transp/nfe:vol/nfe:pesoB"),
+            },
+            "protocolo": prot("nfe:nProt"),
+            "protocolo_data": prot("nfe:dhRecbto"),
+            "informacoes_complementares": text("nfe:infAdic/nfe:infCpl"),
         }
 
     # -- listagem / detalhe / patch -----------------------------------------------

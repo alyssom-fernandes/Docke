@@ -339,6 +339,12 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
   const [failed, setFailed] = useState(false);
   const [archived, setArchived] = useState<CustomField[]>([]);
   const [renaming, setRenaming] = useState<CustomField | null>(null);
+  // Onde cada campo vale (A8-13): regras do campo na árvore, sob demanda.
+  const [ondeVale, setOndeVale] = useState<{ id: string; dados: { regras: { folder_path: string | null; mode: string; required: boolean; default_value: string | null; caminho: string }[]; documentos_com_valor: number } | null } | null>(null);
+  useEffect(() => {
+    if (!ondeVale || ondeVale.dados) return;
+    api.get(`/custom-fields/${ondeVale.id}/where`).then((r) => setOndeVale((o) => (o && o.id === ondeVale.id ? { ...o, dados: r.data } : o))).catch(() => setOndeVale(null));
+  }, [ondeVale]);
   const [applying, setApplying] = useState<CustomField | null>(null);
   const [retyping, setRetyping] = useState<CustomField | null>(null);
   const [newLabel, setNewLabel] = useState("");
@@ -444,11 +450,29 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
                 <p className="text-mac-body text-(--text-primary)">{f.label}</p>
                 <p className="text-mac-caption text-(--text-secondary)">{TYPE_LABEL[f.type]}</p>
               </div>
+              <Button variant="ghost" size="sm" onClick={() => setOndeVale(ondeVale?.id === f.id ? null : { id: f.id, dados: null })} aria-expanded={ondeVale?.id === f.id} aria-label={`Onde ${f.label} vale`}>Onde vale</Button>
               <Button variant="ghost" size="sm" onClick={() => setApplying(f)} aria-label={`Aplicar ${f.label} em pastas`}>Aplicar em pastas…</Button>
               <Button variant="ghost" size="sm" onClick={() => { setRenaming(f); setNewLabel(f.label); }} aria-label={`Renomear ${f.label}`}>Renomear</Button>
               <Button variant="ghost" size="sm" onClick={() => setRetyping(f)} aria-label={`Trocar o tipo de ${f.label}`}>Trocar tipo…</Button>
               <Button variant="ghost" size="sm" onClick={() => setArchiving(f)} aria-label={`Arquivar ${f.label}`}><Archive className="w-3.5 h-3.5" aria-hidden="true" /> Arquivar</Button>
               <Button variant="ghost" size="sm" onClick={() => setDeleting(f)} aria-label={`Excluir ${f.label}`}><Trash2 className="w-3.5 h-3.5 text-(--text-danger)" aria-hidden="true" /> Excluir</Button>
+              {ondeVale?.id === f.id && (
+                <div className="basis-full mt-1 rounded-(--radius-control) bg-(--bg-hover) px-3 py-2 text-mac-caption" role="region" aria-label={`Onde ${f.label} vale`}>
+                  {!ondeVale.dados ? <span className="text-(--text-secondary)">Carregando…</span> : ondeVale.dados.regras.length === 0 ? (
+                    <span className="text-(--text-secondary)">Ainda não está aplicado em nenhuma pasta.</span>
+                  ) : (
+                    <ul className="space-y-0.5">
+                      {ondeVale.dados.regras.map((r, i) => (
+                        <li key={i} className="text-(--text-primary)">
+                          {r.mode === "exclude" ? "Não vale em " : ""}<strong className="font-medium">{r.caminho}</strong>{r.folder_path ? " e subpastas" : ""}
+                          {r.mode !== "exclude" && <span className="text-(--text-secondary)">{r.required ? " · obrigatório" : " · opcional"}{r.default_value ? ` · padrão “${r.default_value}”` : ""}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {ondeVale.dados && <p className="mt-1 text-(--text-secondary)">{ondeVale.dados.documentos_com_valor} {ondeVale.dados.documentos_com_valor === 1 ? "documento já tem" : "documentos já têm"} valor.</p>}
+                </div>
+              )}
             </li>
           ))}
         </ul>

@@ -390,7 +390,7 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone, 
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
           className={`block border-2 border-dashed rounded-(--radius-control) px-5 py-7 text-center cursor-pointer transition-colors duration-fast focus-within:ring-[3px] focus-within:ring-(--focus-ring) ${
-            dragOver ? "border-teal-500 bg-teal-500/8" : "border-(--border-control) hover:border-teal-500"
+            dragOver ? "border-teal-500 bg-(--tint-accent)" : "border-(--border-control) hover:border-teal-500"
           }`}
         >
           <Upload className="w-7 h-7 text-(--text-accent) mx-auto mb-2" aria-hidden />
@@ -455,7 +455,7 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone, 
           </div>
         )}
         {rejected.length > 0 && (
-          <div role="status" className="rounded-(--radius-control) border border-amber-500/30 bg-amber-500/8 px-3 py-2 text-mac-caption text-(--text-primary)">
+          <div role="status" className="rounded-(--radius-control) border border-amber-500/30 bg-(--tint-warning) px-3 py-2 text-mac-caption text-(--text-primary)">
             <p className="font-medium">{plural(rejected.length, "arquivo ficou de fora", "arquivos ficaram de fora")}:</p>
             <ul className="mt-1 max-h-20 overflow-y-auto space-y-0.5 text-(--text-secondary)">
               {rejected.map((r, i) => <li key={i} className="truncate">{r.name} — {r.reason}</li>)}

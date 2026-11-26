@@ -136,7 +136,7 @@ export function ApplyTemplateDialog({ companyId, folder, onClose, onDone }: { co
             <div role="radiogroup" aria-label="Onde aplicar" className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {([["dentro", "Dentro desta pasta", `O conteúdo do modelo entra em "${folder.name}".`], ["subpasta", "Como subpasta", `A pasta do modelo é criada dentro de "${folder.name}".`]] as const).map(([v, t, d]) => (
                 <button key={v} type="button" role="radio" aria-checked={modo === v} onClick={() => setModo(v)}
-                  className={`text-left rounded-(--radius-control) border p-3 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${modo === v ? "border-teal-600 bg-teal-500/10" : "border-(--border-control) hover:bg-(--bg-hover)"}`}>
+                  className={`text-left rounded-(--radius-control) border p-3 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${modo === v ? "border-teal-600 bg-(--tint-accent)" : "border-(--border-control) hover:bg-(--bg-hover)"}`}>
                   <span className="block text-mac-body font-medium text-(--text-primary)">{t}</span>
                   <span className="block text-mac-caption text-(--text-secondary)">{d}</span>
                 </button>
@@ -148,7 +148,7 @@ export function ApplyTemplateDialog({ companyId, folder, onClose, onDone }: { co
             <div role="radiogroup" aria-label="Se já houver uma pasta com o mesmo nome" className="space-y-1.5">
               {opcoesConflito.map((o) => (
                 <button key={o.v} type="button" role="radio" aria-checked={conflito === o.v} onClick={() => setConflito(o.v)}
-                  className={`w-full text-left rounded-(--radius-control) border px-3 py-2 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${conflito === o.v ? "border-teal-600 bg-teal-500/10" : "border-(--border-control) hover:bg-(--bg-hover)"}`}>
+                  className={`w-full text-left rounded-(--radius-control) border px-3 py-2 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${conflito === o.v ? "border-teal-600 bg-(--tint-accent)" : "border-(--border-control) hover:bg-(--bg-hover)"}`}>
                   <span className="block text-mac-body text-(--text-primary)">{o.t}</span>
                   <span className="block text-mac-caption text-(--text-secondary)">{o.d}</span>
                 </button>

@@ -1,3 +1,5 @@
+import { entrarComPasskey, passkeySuportada } from "@/lib/passkey";
+import { Fingerprint } from "lucide-react";
 import { useState, useEffect, useRef, FormEvent, CSSProperties, KeyboardEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, ArrowLeft, MailCheck } from "lucide-react";
@@ -43,7 +45,21 @@ function useReturnTo(): string {
 
 export default function Login() {
   usePageTitle("Entrar");
-  const { login, loginDemo, user } = useAuthContext();
+  const { login, loginDemo, user, loginWithSession } = useAuthContext();
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  async function entrarPasskey() {
+    setFormError("");
+    setPasskeyBusy(true);
+    try {
+      await loginWithSession(await entrarComPasskey(), remember);
+      navigate(returnTo, { replace: true });
+    } catch (err: any) {
+      if (err?.name === "NotAllowedError" || err?.message === "cancelado") return;  // a pessoa cancelou no aparelho
+      setFormError(err?.response?.data?.detail ?? "Não foi possível entrar com a passkey. Tente de novo ou use a senha.");
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }
   const navigate = useNavigate();
   const returnTo = useReturnTo();
 
@@ -157,7 +173,7 @@ export default function Login() {
       ref={formErrorRef}
       tabIndex={-1}
       role="alert"
-      className="login-reveal rounded-(--radius-control) border border-red-500/30 bg-red-500/8 px-3 py-2.5 text-mac-body leading-[19px] text-(--text-primary) focus:outline-hidden"
+      className="login-reveal rounded-(--radius-control) border border-red-500/30 bg-(--tint-danger) px-3 py-2.5 text-mac-body leading-[19px] text-(--text-primary) focus:outline-hidden"
     >
       {formError}
     </div>
@@ -234,6 +250,12 @@ export default function Login() {
       >
         Entrar
       </Button>
+      {passkeySuportada() && (
+        <Button type="button" variant="ghost" loading={passkeyBusy} disabled={loading || demoBusy} onClick={entrarPasskey}
+          className="w-full h-11! sm:h-10! text-[14px]!">
+          <Fingerprint className="w-4 h-4" aria-hidden /> Entrar com digital ou rosto
+        </Button>
+      )}
     </form>
   ) : view === "forgot" ? (
     <form onSubmit={handleForgot} className="flex flex-col gap-3 text-left login-reveal" noValidate>
@@ -303,7 +325,7 @@ export default function Login() {
           <div className="brand-wordmark block w-[124px] h-[36px]" role="img" aria-label="Docke" />
           <h1
             id="titulo"
-            className="mt-8 max-w-[22ch] text-[30px] leading-[36px] font-bold tracking-[-0.022em] text-(--text-primary) sm:text-[34px] sm:leading-[40px] lg:mt-12 lg:text-[42px] lg:leading-[48px] 2xl:text-[48px] 2xl:leading-[54px]"
+            className="mt-8 max-w-[22ch] text-[30px] leading-[36px] font-bold tracking-[-0.022em] text-(--text-primary) sm:text-[34px] sm:leading-[40px] lg:mt-12 lg:text-[42px] lg:leading-[48px] 2xl:text-[48px] 2xl:leading-[54px] display-type"
             style={{ textWrap: "balance" } as CSSProperties}
           >
             Os documentos das suas empresas, achados em segundos.
@@ -340,7 +362,7 @@ export default function Login() {
                   )}
                 </div>
                 {demo === "error" && (
-                  <div role="alert" className="login-reveal mt-3.5 rounded-(--radius-control) border border-red-500/30 bg-red-500/8 px-4 py-3.5">
+                  <div role="alert" className="login-reveal mt-3.5 rounded-(--radius-control) border border-red-500/30 bg-(--tint-danger) px-4 py-3.5">
                     <p className="text-mac-body leading-[19px] text-(--text-secondary)">
                       <strong className="mb-1 block font-semibold text-(--text-primary)">Não foi possível abrir a demonstração agora.</strong>
                       O servidor não respondeu a tempo. Tente de novo em alguns minutos.

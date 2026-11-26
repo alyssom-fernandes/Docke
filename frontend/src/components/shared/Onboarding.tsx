@@ -152,7 +152,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
               return (
                 <button key={t.id} type="button" role="checkbox" aria-checked={on}
                   onClick={() => setTemplateIds((ids) => (on ? ids.filter((x) => x !== t.id) : [...ids, t.id]))}
-                  className={`text-left rounded-(--radius-control) border p-3 min-h-16 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${on ? "border-teal-600 bg-teal-500/10" : "border-(--border-control) hover:bg-(--bg-hover)"}`}>
+                  className={`text-left rounded-(--radius-control) border p-3 min-h-16 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${on ? "border-teal-600 bg-(--tint-accent)" : "border-(--border-control) hover:bg-(--bg-hover)"}`}>
                   <span className="flex items-center gap-2 text-mac-body font-medium text-(--text-primary)">
                     {on ? <Check className="w-4 h-4 text-(--text-accent)" aria-hidden="true" /> : <FolderOpen className="w-4 h-4 text-(--text-secondary)" aria-hidden="true" />}{t.label}
                   </span>

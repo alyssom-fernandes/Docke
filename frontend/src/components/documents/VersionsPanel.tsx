@@ -89,6 +89,54 @@ function ImageOverlay({ documentId, documentName, older, newer }: { documentId: 
   );
 }
 
+/** O que mudou, por parte (B2.7.5): arquivo, páginas, anotações e metadados. */
+interface Partes {
+  arquivo: { tamanho_antes: number; tamanho_depois: number; identico: boolean };
+  paginas: { antes: number; depois: number; alteradas: number[]; incluidas: number[]; removidas: number[] } | null;
+  anotacoes: { antes: { body: string; page: number | null }[]; depois: { body: string; page: number | null }[] };
+  metadados: { created_at: string; autor: string | null; campo: string | null; antes: string | null; depois: string | null }[];
+}
+
+function ResumoPartes({ documentId, a, b }: { documentId: string; a: string; b: string }) {
+  const [p, setP] = useState<Partes | null>(null);
+  const [aberto, setAberto] = useState(false);
+  useEffect(() => {
+    api.get<Partes>(`/documents/${documentId}/versions/compare-summary`, { params: { a, b } }).then((r) => setP(r.data)).catch(() => setP(null));
+  }, [documentId, a, b]);
+  if (!p) return null;
+  const lista = (ns: number[]) => (ns.length > 6 ? `${ns.slice(0, 6).join(", ")} e mais ${ns.length - 6}` : ns.join(", "));
+  const pag = p.paginas;
+  const textoPag = !pag ? null
+    : pag.alteradas.length + pag.incluidas.length + pag.removidas.length === 0 ? `Páginas: ${pag.depois}, sem mudança de texto`
+    : [`Páginas: ${pag.antes} → ${pag.depois}`, pag.alteradas.length ? `texto mudou na ${lista(pag.alteradas)}` : "", pag.incluidas.length ? `entraram ${lista(pag.incluidas)}` : "", pag.removidas.length ? `saíram ${lista(pag.removidas)}` : ""].filter(Boolean).join("; ");
+  const textoAnot = `Anotações: ${p.anotacoes.antes.length} na anterior, ${p.anotacoes.depois.length} nesta`;
+  const textoMeta = p.metadados.length ? `Metadados: ${p.metadados.length} ${p.metadados.length === 1 ? "alteração" : "alterações"} entre as duas` : "Metadados: sem alteração entre as duas";
+  return (
+    <div className="px-4 py-2 border-b border-(--border-default) text-mac-caption">
+      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-(--text-secondary)" aria-label="O que mudou, por parte">
+        <li>{p.arquivo.identico ? "Arquivo idêntico (mesma impressão digital)" : `Arquivo: ${fmtSize(p.arquivo.tamanho_antes)} → ${fmtSize(p.arquivo.tamanho_depois)}`}</li>
+        {textoPag && <li>{textoPag}</li>}
+        <li>{textoAnot}</li>
+        <li>{textoMeta}</li>
+      </ul>
+      {(p.metadados.length > 0 || p.anotacoes.antes.length + p.anotacoes.depois.length > 0) && (
+        <button type="button" onClick={() => setAberto((v) => !v)} aria-expanded={aberto} className="mt-1 text-(--text-accent) hover:underline">{aberto ? "Esconder detalhes" : "Ver detalhes"}</button>
+      )}
+      {aberto && (
+        <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-3 text-(--text-primary)">
+          {p.metadados.length > 0 && (
+            <ul className="space-y-0.5">{p.metadados.map((m, i) => <li key={i}>{m.campo}: “{m.antes ?? "vazio"}” → “{m.depois ?? "vazio"}”{m.autor ? ` (${m.autor})` : ""}</li>)}</ul>
+          )}
+          <ul className="space-y-0.5">
+            {p.anotacoes.antes.map((x, i) => <li key={`a${i}`}>Anterior{x.page ? `, pág. ${x.page}` : ""}: {x.body}</li>)}
+            {p.anotacoes.depois.map((x, i) => <li key={`d${i}`}>Esta{x.page ? `, pág. ${x.page}` : ""}: {x.body}</li>)}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
   documentId: string; documentName: string; versionA: Version; versionB: Version; onClose: () => void;
 }) {
@@ -184,6 +232,7 @@ function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
           <Button onClick={onClose}>Fechar</Button>
         </>
       ) : undefined}>
+      <ResumoPartes documentId={documentId} a={older.id} b={newer.id} />
       {summary && (
         <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-(--border-default)">
           <p role="status" className="flex-1 min-w-[12rem] text-mac-caption font-medium text-(--text-primary)">{summary}</p>
@@ -222,7 +271,7 @@ function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
               <div key={`g${k}`} className="my-1 px-4 text-(--text-secondary) select-none" aria-hidden="true">⋯</div>
             ) : (
               <div key={v} data-line={v}
-                className={`flex gap-2 px-4 whitespace-pre-wrap break-words ${lines[v].type === "add" ? "bg-emerald-500/12" : lines[v].type === "remove" ? "bg-red-500/12" : ""} ${changeStarts[cursor] === v ? "ring-2 ring-inset ring-(--focus-ring)" : ""}`}>
+                className={`flex gap-2 px-4 whitespace-pre-wrap break-words ${lines[v].type === "add" ? "bg-(--tint-success)" : lines[v].type === "remove" ? "bg-(--tint-danger)" : ""} ${changeStarts[cursor] === v ? "ring-2 ring-inset ring-(--focus-ring)" : ""}`}>
                 <span aria-hidden="true" className={`w-3 shrink-0 select-none ${lines[v].type === "add" ? "text-(--text-success)" : lines[v].type === "remove" ? "text-(--text-danger)" : "text-(--text-secondary)"}`}>{lines[v].type === "add" ? "+" : lines[v].type === "remove" ? "−" : ""}</span>
                 {lines[v].type !== "same" && <span className="sr-only">{lines[v].type === "add" ? "Entrou: " : "Saiu: "}</span>}
                 <span className={`flex-1 ${lines[v].type === "same" ? "text-(--text-secondary)" : "text-(--text-primary)"}`}><LineText line={lines[v]} /></span>
@@ -449,7 +498,7 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
           {full && <p className="text-mac-caption text-(--text-warning)">Limite de {MAX_VERSIONS} versões atingido: exclua uma antiga para enviar ou restaurar outra.</p>}
 
           {pickFor && (
-            <div role="status" className="flex items-center gap-2 rounded-(--radius-control) bg-teal-500/10 px-3 py-2 text-mac-caption text-(--text-primary)">
+            <div role="status" className="flex items-center gap-2 rounded-(--radius-control) bg-(--tint-accent) px-3 py-2 text-mac-caption text-(--text-primary)">
               <GitCompare className="w-3.5 h-3.5 text-(--text-accent)" aria-hidden="true" />
               <span className="flex-1">Escolha a versão para comparar com a {pickFor.version_number}.</span>
               <button onClick={() => setPickFor(null)} aria-label="Cancelar comparação" className={iconBtn}><X className="w-3.5 h-3.5" aria-hidden="true" /></button>
@@ -468,7 +517,7 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
                 <li
                   key={v.id}
                   className={`${fresh === v.id ? "reveal" : ""} flex items-start gap-1.5 pl-3 pr-1 py-2 rounded-(--radius-control) text-mac-caption ${
-                    v.is_current ? "bg-teal-500/10 border border-teal-500/30" : "bg-(--bg-page) border border-transparent"
+                    v.is_current ? "bg-(--tint-accent) border border-teal-500/30" : "bg-(--bg-page) border border-transparent"
                   }`}
                 >
                   <div className="flex-1 min-w-0 py-0.5">

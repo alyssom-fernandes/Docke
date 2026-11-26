@@ -14,7 +14,7 @@ function DockItem({ to, icon: Icon, label, badge }: NavItem & { badge?: NavBadge
       className={({ isActive }) =>
         `group relative shrink-0 flex items-center justify-center w-10 h-10 pointer-coarse:w-11 pointer-coarse:h-11 rounded-[10px] transition-[background-color,color,transform] duration-150 active:scale-90 active:bg-(--bg-pressed,var(--bg-hover)) motion-reduce:active:scale-100 ${
           isActive
-            ? "text-(--text-accent) bg-teal-500/12"
+            ? "text-(--text-accent) bg-(--tint-accent)"
             : "text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-hover)"
         }`
       }

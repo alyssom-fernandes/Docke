@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import ConformityMatrix from "@/components/obligations/ConformityMatrix";
+import AsoMatrix from "@/components/obligations/AsoMatrix";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useAuthContext } from "@/lib/AuthContext";
@@ -24,7 +25,7 @@ import {
   STATUS, StatusChip, URGENCY, OPEN_STATUSES, CRIT_LABEL, MESES, dueText, scheduleText, friendly,
 } from "@/components/obligations/shared";
 
-type Tab = "pendencias" | "calendario" | "configuracao" | "matriz";
+type Tab = "pendencias" | "calendario" | "configuracao" | "matriz" | "aso";
 type Load<T> = { state: "loading" | "ok" | "error"; data: T };
 
 const GROUPS: { id: string; title: string; statuses: string[] }[] = [
@@ -65,7 +66,7 @@ export default function Obligations() {
   const [params, setParams] = useSearchParams();
   const uid = useId();
 
-  const tab = (["pendencias", "calendario", "configuracao", "matriz"].includes(params.get("aba") ?? "") ? params.get("aba") : "pendencias") as Tab;
+  const tab = (["pendencias", "calendario", "configuracao", "matriz", "aso"].includes(params.get("aba") ?? "") ? params.get("aba") : "pendencias") as Tab;
   const grupo = params.get("escopo") === "grupo" && companies.length > 1;
   const mine = params.get("minhas") === "1";
   const prazo = params.get("prazo");
@@ -180,7 +181,7 @@ export default function Obligations() {
     <div className="space-y-5 sm:space-y-6 max-w-[1440px] w-full mx-auto">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-mac-title2 font-semibold text-(--text-primary)">Obrigações</h1>
+          <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Obrigações</h1>
           <p className="text-mac-caption text-(--text-secondary) mt-0.5">
             {grupo ? `Todas as ${companies.length} empresas que você acessa` : current.name} · o que precisa ser comprovado, até quando e por quem.
           </p>
@@ -201,8 +202,8 @@ export default function Obligations() {
       {/* Abas e escopo */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div role="tablist" aria-label="Visões de obrigações" className="flex items-center gap-0.5 p-0.5 rounded-full bg-(--bg-hover)">
-          {([["pendencias", "Pendências"], ["matriz", "Matriz"], ["calendario", "Calendário"], ["configuracao", "Cadastro"]] as const)
-            .filter(([id]) => (grupo ? id === "pendencias" || id === "matriz" : id !== "matriz"))
+          {([["pendencias", "Pendências"], ["matriz", "Matriz"], ["calendario", "Calendário"], ["configuracao", "Cadastro"], ["aso", "Exames (ASO)"]] as const)
+            .filter(([id]) => (grupo ? id === "pendencias" || id === "matriz" : id !== "matriz" && (id !== "aso" || isAdmin)))
             .map(([id, label]) => (
               <button key={id} role="tab" aria-selected={tab === id} onClick={() => setParam({ aba: id === "pendencias" ? null : id })}
                 className={`px-3 h-8 pointer-coarse:h-10 rounded-full text-mac-body font-medium transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${tab === id ? "bg-(--bg-card) text-(--text-primary) shadow-sm" : "text-(--text-secondary) hover:text-(--text-primary)"}`}>
@@ -249,6 +250,8 @@ export default function Obligations() {
         </div>
       ) : tab === "matriz" && grupo ? (
         <ConformityMatrix />
+      ) : tab === "aso" && !grupo && current && isAdmin ? (
+        <AsoMatrix companyId={current.id} />
       ) : tab === "pendencias" ? (
         <>
           {instances.state === "error" ? (
@@ -273,7 +276,7 @@ export default function Obligations() {
                       return (
                         <li key={e.company_id}>
                           <button aria-pressed={on} onClick={() => setParam({ empresa: on ? null : e.company_id })}
-                            className={`text-left rounded-(--radius-control) border px-3 py-2 min-h-11 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${on ? "border-teal-600 bg-teal-500/10" : "border-(--border-default) hover:bg-(--bg-hover)"}`}>
+                            className={`text-left rounded-(--radius-control) border px-3 py-2 min-h-11 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${on ? "border-teal-600 bg-(--tint-accent)" : "border-(--border-default) hover:bg-(--bg-hover)"}`}>
                             <span className="block text-mac-body font-medium text-(--text-primary)">{e.name}</span>
                             <span className="block text-mac-caption text-(--text-secondary)">
                               {e.overdue > 0 ? <span className="text-(--text-danger) font-medium">{e.overdue} atrasada{e.overdue > 1 ? "s" : ""}</span> : "nada atrasado"}

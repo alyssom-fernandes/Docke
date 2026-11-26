@@ -345,7 +345,7 @@ export function DocumentNfe({ docId, name }: { docId: string; name: string }) {
     <section aria-label="Nota fiscal" className="space-y-2 border-t border-(--border-default) pt-3">
       <h3 className="flex flex-wrap items-center gap-2 text-mac-body font-semibold text-(--text-primary)">
         {nota.modelo === "65" ? "NFC-e" : "NF-e"} {nota.numero}{nota.serie ? ` · série ${nota.serie}` : ""}
-        {nota.cancelada && <span className="rounded-full bg-red-500/12 px-2 py-0.5 text-mac-caption font-medium text-(--text-danger)">Cancelada</span>}
+        {nota.cancelada && <span className="rounded-full bg-(--tint-danger) px-2 py-0.5 text-mac-caption font-medium text-(--text-danger)">Cancelada</span>}
       </h3>
       {!!nota.eventos?.length && (
         <ul className="space-y-0.5 text-mac-caption text-(--text-secondary)" aria-label="Eventos da nota">
