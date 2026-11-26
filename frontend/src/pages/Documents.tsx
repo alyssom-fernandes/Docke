@@ -72,7 +72,7 @@ import Dialog from "@/components/ui/Dialog";
 import Menu, { type MenuItem } from "@/components/ui/Menu";
 import FolderPickerDialog, { type PickedFolder } from "@/components/documents/FolderPickerDialog";
 import { pushUndo, takeUndo, isUndoShortcut } from "@/lib/undo";
-import { maskValue, validateValue, PLACEHOLDER, INPUT_MODE, type FieldType } from "@/components/documents/fieldMasks";
+import { maskValue, validateValue, PLACEHOLDER, INPUT_MODE, fieldOptions, isChoice, type FieldType } from "@/components/documents/fieldMasks";
 import { SkeletonTableRow, SkeletonGridItem } from "@/components/shared/Skeleton";
 import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 import { prefetchPdfViewer } from "@/lib/prefetch";
@@ -104,7 +104,7 @@ interface Document {
 
 // Metadados personalizados (ADENDO-08) — campo resolvido pra pasta atual
 // (já com herança/override aplicados pelo backend) e valor preenchido por documento.
-export type CustomFieldType = "texto" | "cpf" | "cnpj" | "data" | "competencia" | "numero" | "selecao";
+export type CustomFieldType = "texto" | "cpf" | "cnpj" | "data" | "competencia" | "numero" | "selecao" | "moeda" | "email" | "telefone" | "cep" | "booleano";
 
 export interface ResolvedField {
   custom_field_id: string;
@@ -933,7 +933,7 @@ function MetadataSection({ doc, companyId, canEdit, onSaved }: { doc: Document; 
               </label>
               <span aria-live="polite"><FieldStatusIndicator status={status} message={status === "error" ? "não salvou" : undefined} /></span>
             </div>
-            {f.type === "selecao" ? (
+            {isChoice(f.type) ? (
               <Dropdown
                 id={fid}
                 value={values[f.custom_field_id] ?? ""}
@@ -941,7 +941,7 @@ function MetadataSection({ doc, companyId, canEdit, onSaved }: { doc: Document; 
                 placeholder="Escolha"
                 disabled={!canEdit}
                 ariaLabel={f.label}
-                options={((f.format_config?.options as string[]) ?? []).map((o) => ({ value: o, label: o }))}
+                options={fieldOptions(f.type, f.format_config?.options).map((o) => ({ value: o, label: o }))}
               />
             ) : (
               <input
@@ -1274,10 +1274,10 @@ function BulkMetadataModal({
                 <label htmlFor={fid} className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">
                   {f.label}{f.required && <span className="text-(--text-danger)" aria-label="obrigatório"> *</span>}
                 </label>
-                {f.type === "selecao" ? (
+                {isChoice(f.type) ? (
                   <Dropdown id={fid} ariaLabel={f.label} value={edited[f.custom_field_id] ?? ""} placeholder={hint}
                     onChange={(v) => setEdited((e) => ({ ...e, [f.custom_field_id]: v }))}
-                    options={((f.format_config?.options as string[]) ?? []).map((o) => ({ value: o, label: o }))} />
+                    options={fieldOptions(f.type, f.format_config?.options).map((o) => ({ value: o, label: o }))} />
                 ) : (
                   <input id={fid} type="text" inputMode={INPUT_MODE[f.type as FieldType]} value={edited[f.custom_field_id] ?? ""}
                     onChange={(e) => { const v = maskValue(f.type as FieldType, e.target.value); setEdited((prev) => ({ ...prev, [f.custom_field_id]: v })); setErrors((x) => { const n = { ...x }; delete n[f.custom_field_id]; return n; }); }}

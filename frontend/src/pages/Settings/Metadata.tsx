@@ -16,7 +16,7 @@ import Dropdown from "@/components/ui/Dropdown";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type FieldType = "texto" | "cpf" | "cnpj" | "data" | "competencia" | "numero" | "selecao";
+type FieldType = "texto" | "cpf" | "cnpj" | "data" | "competencia" | "numero" | "selecao" | "moeda" | "email" | "telefone" | "cep" | "booleano";
 
 interface CustomField {
   id: string;
@@ -66,7 +66,12 @@ const TYPE_LABEL: Record<FieldType, string> = {
   data: "Data",
   competencia: "Competência (mês/ano)",
   numero: "Número",
-  selecao: "Seleção",
+  moeda: "Valor em reais",
+  selecao: "Seleção (lista de opções)",
+  booleano: "Sim ou não",
+  email: "E-mail",
+  telefone: "Telefone",
+  cep: "CEP",
 };
 
 function folderDepth(path: string) {
@@ -128,7 +133,7 @@ function NewFieldModal({ companyId, existingFields, onClose, onCreated }: {
           <label id="nf-tipo" className="block text-mac-body font-medium text-(--text-secondary) mb-1">Tipo de resposta</label>
           <Dropdown ariaLabelledby="nf-tipo" value={type} placeholder="Selecione…" onChange={(v) => setType(v as FieldType)}
             options={(Object.keys(TYPE_LABEL) as FieldType[]).map((t) => ({ value: t, label: TYPE_LABEL[t] }))} />
-          <p className="mt-1 text-mac-caption text-(--text-secondary)">CPF, CNPJ, data e competência são conferidos ao preencher.</p>
+          <p className="mt-1 text-mac-caption text-(--text-secondary)">CPF, CNPJ, data, competência, valor, e-mail, telefone e CEP são conferidos ao preencher.</p>
         </div>
         {type === "numero" && (
           <div className="space-y-2">

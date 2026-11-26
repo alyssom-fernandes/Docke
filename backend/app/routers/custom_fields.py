@@ -98,6 +98,11 @@ def _value_error(field: Any, raw: str) -> str | None:
             Decimal(v.replace(".", "").replace(",", ".") if "," in v else v)
         except InvalidOperation:
             return "Número inválido."
+    if t in ("moeda", "email", "telefone", "cep", "booleano"):
+        try:
+            _normalize_extra(t, v)
+        except ValueError as exc:
+            return str(exc)
     if t == "selecao":
         cfg = field["format_config"]
         if isinstance(cfg, str):
@@ -106,6 +111,53 @@ def _value_error(field: Any, raw: str) -> str | None:
         if v not in (cfg or {}).get("options", []):
             return "O valor padrão precisa ser uma das opções do campo."
     return None
+
+
+def _normalize_extra(t: str, v: str):
+    """
+    Tipos novos (B1.3.2). Devolve (texto exibido, número ou None) ou levanta
+    ValueError com a mensagem para quem preenche.
+    """
+    from decimal import Decimal, InvalidOperation
+
+    v = v.strip()
+    if t == "moeda":
+        limpo = re.sub(r"[R$\s]", "", v)
+        if "," in limpo:
+            limpo = limpo.replace(".", "").replace(",", ".")
+        try:
+            n = Decimal(limpo).quantize(Decimal("0.01"))
+        except InvalidOperation:
+            raise ValueError("Valor em reais inválido: use 1.234,56.")
+        inteiro, cent = f"{abs(n):.2f}".split(".")
+        inteiro = f"{int(inteiro):,}".replace(",", ".")
+        return f"{'-' if n < 0 else ''}R$ {inteiro},{cent}", n
+    if t == "email":
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", v):
+            raise ValueError("E-mail inválido.")
+        return v.lower(), None
+    if t == "telefone":
+        d = re.sub(r"\D", "", v)
+        if d.startswith("55") and len(d) in (12, 13):
+            d = d[2:]
+        if len(d) == 11:
+            return f"({d[:2]}) {d[2:7]}-{d[7:]}", None
+        if len(d) == 10:
+            return f"({d[:2]}) {d[2:6]}-{d[6:]}", None
+        raise ValueError("Telefone inválido: use DDD + número.")
+    if t == "cep":
+        d = re.sub(r"\D", "", v)
+        if len(d) != 8:
+            raise ValueError("CEP inválido: são 8 dígitos.")
+        return f"{d[:5]}-{d[5:]}", None
+    if t == "booleano":
+        low = v.lower()
+        if low in ("sim", "s", "true", "1", "yes"):
+            return "Sim", None
+        if low in ("não", "nao", "n", "false", "0", "no"):
+            return "Não", None
+        raise ValueError("Use Sim ou Não.")
+    return v, None
 
 
 async def _log_config(conn: asyncpg.Connection, user_id: str, company_id: UUID | str, action: str, item_id: UUID | str, name: str, meta: dict[str, Any] | None = None) -> None:
@@ -562,6 +614,11 @@ async def set_document_field_values(
             options = format_config.get("options", [])
             if options and value_text not in options:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Valor fora das opções permitidas em '{field['label']}'.")
+        elif field["type"] in ("moeda", "email", "telefone", "cep", "booleano") and value_text:
+            try:
+                value_text, value_number = _normalize_extra(field["type"], value_text)
+            except ValueError as exc:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{exc} ({field['label']})")
 
         row = await CustomFieldsService.upsert_document_value(
             conn, document_id=document_id, company_id=company_id, custom_field_id=item.custom_field_id,

@@ -57,3 +57,25 @@ async def test_padrao_validado_campo_volta_e_trilha(api, admin, empresa):  # noq
         "SELECT action FROM public.activity_log WHERE company_id = $1 AND item_type = 'config' ORDER BY created_at", uuid.UUID(co),
     )]
     assert acoes == ["field_rule_apply", "field_archive", "field_restore"]
+
+
+@pytest.mark.asyncio
+async def test_tipos_novos_validam_e_formatam(api, admin, empresa):  # noqa: F811
+    """B1.3.2: moeda, e-mail, telefone, CEP e sim/não."""
+    from app.routers.custom_fields import _normalize_extra
+
+    h, co = _token(empresa["user"]), empresa["co"]
+    casos = {"moeda": ("1.234,56", "abc"), "email": ("ana@posto.com.br", "ana@"), "telefone": ("11987654321", "123"),
+             "cep": ("01310100", "123"), "booleano": ("sim", "talvez")}
+    for tipo, (bom, ruim) in casos.items():
+        f = await api.post(API + "/custom-fields", json={"company_id": co, "label": f"Campo {tipo}", "type": tipo}, headers=h)
+        assert f.status_code in (200, 201), (tipo, f.text)
+        fid = f.json()["id"]
+        r = await api.put(API + "/folder-fields", json={"company_id": co, "custom_field_id": fid, "default_value": ruim}, headers=h)
+        assert r.status_code == 422, (tipo, r.text)
+        r = await api.put(API + "/folder-fields", json={"company_id": co, "custom_field_id": fid, "default_value": bom}, headers=h)
+        assert r.status_code == 200, (tipo, r.text)
+    assert _normalize_extra("moeda", "1.234,56")[0] == "R$ 1.234,56"
+    assert _normalize_extra("telefone", "11987654321")[0] == "(11) 98765-4321"
+    assert _normalize_extra("cep", "01310100")[0] == "01310-100"
+    assert _normalize_extra("booleano", "NÃO")[0] == "Não"

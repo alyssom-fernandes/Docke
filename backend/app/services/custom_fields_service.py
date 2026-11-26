@@ -13,7 +13,7 @@ from uuid import UUID
 
 import asyncpg
 
-VALID_TYPES = ("texto", "cpf", "cnpj", "data", "competencia", "numero", "selecao")
+VALID_TYPES = ("texto", "cpf", "cnpj", "data", "competencia", "numero", "selecao", "moeda", "email", "telefone", "cep", "booleano")
 
 
 def _decode_field_row(row: asyncpg.Record) -> dict[str, Any]:

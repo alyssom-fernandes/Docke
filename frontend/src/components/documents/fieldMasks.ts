@@ -3,7 +3,14 @@
  * A5-11): CPF e CNPJ com dígito verificador, data e competência válidas.
  * A mesma regra continua no backend; aqui o erro aparece antes de salvar.
  */
-export type FieldType = "texto" | "cpf" | "cnpj" | "data" | "competencia" | "numero" | "selecao";
+export type FieldType = "texto" | "cpf" | "cnpj" | "data" | "competencia" | "numero" | "selecao" | "moeda" | "email" | "telefone" | "cep" | "booleano";
+
+/** Opções fixas de quem escolhe numa lista (seleção e sim/não). */
+export function fieldOptions(type: string, options?: unknown): string[] {
+  if (type === "booleano") return ["Sim", "Não"];
+  return Array.isArray(options) ? (options as string[]) : [];
+}
+export const isChoice = (type: string) => type === "selecao" || type === "booleano";
 
 const digits = (v: string) => v.replace(/\D/g, "");
 
@@ -20,6 +27,14 @@ export function maskValue(type: FieldType, raw: string): string {
       return d.slice(0, 6).replace(/(\d{2})(\d)/, "$1/$2");
     case "numero":
       return raw.replace(/[^\d,.-]/g, "");
+    case "moeda":
+      return raw.replace(/[^\d,.R$\s-]/g, "");
+    case "telefone": {
+      const t = d.slice(0, 11);
+      return t.length > 10 ? t.replace(/^(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3") : t.replace(/^(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3").replace(/^(\d{2})(\d{0,4})$/, "($1) $2");
+    }
+    case "cep":
+      return d.slice(0, 8).replace(/^(\d{5})(\d)/, "$1-$2");
     default:
       return raw;
   }
@@ -71,6 +86,14 @@ export function validateValue(type: FieldType, value: string): string | null {
     }
     case "numero":
       return /^-?\d+([.,]\d+)?$/.test(v) ? null : "Use só números, com vírgula nos centavos (ex.: 1234,56).";
+    case "moeda":
+      return /^-?(R\$\s?)?\d{1,3}(\.?\d{3})*(,\d{1,2})?$|^-?\d+(\.\d{1,2})?$/.test(v.replace(/\s/g, "")) ? null : "Valor em reais: use 1.234,56.";
+    case "email":
+      return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v) ? null : "E-mail inválido.";
+    case "telefone":
+      return [10, 11].includes(digits(v).length) ? null : "Telefone com DDD: (11) 98765-4321.";
+    case "cep":
+      return digits(v).length === 8 ? null : "CEP tem 8 dígitos.";
     default:
       return null;
   }
@@ -78,8 +101,9 @@ export function validateValue(type: FieldType, value: string): string | null {
 
 export const PLACEHOLDER: Record<FieldType, string> = {
   texto: "", cpf: "000.000.000-00", cnpj: "00.000.000/0000-00", data: "dd/mm/aaaa", competencia: "mm/aaaa", numero: "0", selecao: "",
+  moeda: "R$ 0,00", email: "nome@empresa.com.br", telefone: "(11) 98765-4321", cep: "00000-000", booleano: "",
 };
 
 export const INPUT_MODE: Partial<Record<FieldType, "numeric" | "decimal">> = {
-  cpf: "numeric", cnpj: "numeric", data: "numeric", competencia: "numeric", numero: "decimal",
+  cpf: "numeric", cnpj: "numeric", data: "numeric", competencia: "numeric", numero: "decimal", moeda: "decimal", telefone: "numeric", cep: "numeric",
 };
