@@ -83,7 +83,10 @@ class SearchService:
     """
 
     _ORDER = {
-        "relevancia": "rank DESC, d.created_at DESC",
+        # Sinais de uso (B2.1.4): ancorado por quem busca e aberto por ela nos
+        # últimos 90 dias sobem; o ganho é limitado para não passar na frente
+        # de um resultado bem mais relevante.
+        "relevancia": "rank * (1 + uso.boost) DESC, d.created_at DESC",
         "recentes": "d.created_at DESC",
         "antigos": "d.created_at ASC",
         "nome": "lower(d.name) ASC",
@@ -122,6 +125,7 @@ class SearchService:
               d.id::text, d.name, d.file_type, d.size_bytes, d.sector, d.competencia, d.tipo_fiscal,
               d.ocr_status, d.folder_id::text, d.company_id::text, d.created_at, f.name AS folder_name,
               ts_rank_cd(dtv.tsv, sq.tsq, 4) AS rank,
+              uso.boost > 0 AS usado_por_mim,
               CASE
                 WHEN d.ocr_text IS NOT NULL
                  AND (to_tsvector('portuguese', public.immutable_unaccent(d.ocr_text)) @@ sq.tsq
@@ -134,6 +138,15 @@ class SearchService:
                  FROM public.folders anc WHERE anc.company_id = d.company_id AND anc.path @> f.path) AS folder_path_label,
               count(*) OVER () AS total_count
             {SearchService._FROM}
+            CROSS JOIN LATERAL (
+              SELECT
+                (CASE WHEN EXISTS (SELECT 1 FROM public.favorites fv WHERE fv.user_id = auth.uid() AND fv.document_id = d.id) THEN 0.5 ELSE 0 END)
+                + (CASE WHEN EXISTS (
+                    SELECT 1 FROM public.activity_log al
+                    WHERE al.item_id = d.id AND al.item_type = 'document' AND al.user_id = auth.uid()
+                      AND al.action IN ('view', 'download') AND al.created_at > now() - interval '90 days'
+                  ) THEN 0.3 ELSE 0 END) AS boost
+            ) uso
             WHERE {SearchService._WHERE}
               AND ($9::text IS NULL OR d.sector = $9)
               AND ($10::text IS NULL OR d.file_type = $10)

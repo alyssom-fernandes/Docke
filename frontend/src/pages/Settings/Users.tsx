@@ -453,11 +453,17 @@ function NewPersonDialog({ companyId, folders, onClose, onCreated }: { companyId
   const [password] = useState(generatePassword);
   const [role, setRole] = useState("visualizador");
   const [folderId, setFolderId] = useState("");
+  const [ate, setAte] = useState("");
+  // Convite sem atrito (B4.3.6): o usuário sai do nome, até a pessoa editar.
+  const [userEditado, setUserEditado] = useState(false);
+  const sugestao = fullName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().split(/\s+/).filter(Boolean);
+  const userSugerido = sugestao.length > 1 ? `${sugestao[0]}.${sugestao[sugestao.length - 1]}` : sugestao[0] ?? "";
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
   const [touched, setTouched] = useState(false);
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  const errors = { name: !fullName.trim() ? "Informe o nome." : "", user: !/^[a-z0-9._-]{3,}$/.test(username) ? "Use 3 ou mais letras minúsculas, números, ponto ou hífen." : "", email: !emailOk ? "E-mail inválido." : "" };
+  const usuarioFinal = userEditado ? username : (username || userSugerido.replace(/[^a-z0-9._-]/g, ""));
+  const errors = { name: !fullName.trim() ? "Informe o nome." : "", user: !/^[a-z0-9._-]{3,}$/.test(usuarioFinal) ? "Use 3 ou mais letras minúsculas, números, ponto ou hífen." : "", email: !emailOk ? "E-mail inválido." : "" };
   const invalid = Object.values(errors).some(Boolean);
 
   async function create() {
@@ -465,7 +471,7 @@ function NewPersonDialog({ companyId, folders, onClose, onCreated }: { companyId
     if (invalid) return;
     setSaving(true);
     try {
-      await api.post(`/companies/${companyId}/members`, { email: email.trim(), password, username, full_name: fullName.trim(), permission_level: role, folder_id: folderId || null });
+      await api.post(`/companies/${companyId}/members`, { email: email.trim(), password, username: userEditado ? username : (username || userSugerido.replace(/[^a-z0-9._-]/g, "")), full_name: fullName.trim(), permission_level: role, folder_id: folderId || null, expires_on: ate || null });
       setDone(true);
     } catch (e) { showError(friendly(e, "Não foi possível criar a pessoa.")); } finally { setSaving(false); }
   }
@@ -476,13 +482,18 @@ function NewPersonDialog({ companyId, folders, onClose, onCreated }: { companyId
       footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={saving} onClick={create}>Criar</Button></>}>
       <div className="space-y-4">
         <Input label="Nome completo" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Maria Silva" error={touched ? errors.name : undefined} autoFocus />
-        <Input label="Nome de usuário" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/\s+/g, "."))} placeholder="maria.silva" error={touched ? errors.user : undefined} />
+        <Input label="Nome de usuário" value={userEditado ? username : (username || userSugerido.replace(/[^a-z0-9._-]/g, ""))} onChange={(e) => { setUserEditado(true); setUsername(e.target.value.toLowerCase().replace(/\s+/g, ".")); }} placeholder="maria.silva" error={touched ? errors.user : undefined} />
         <Input label="E-mail (usado para entrar)" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="maria@empresa.com.br" error={touched ? errors.email : undefined} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div><label id="np-role" className="block text-mac-body font-medium text-(--text-secondary) mb-1">Papel</label><Dropdown ariaLabelledby="np-role" value={role} onChange={setRole} options={ROLE_OPTS} /></div>
           <div><label id="np-f" className="block text-mac-body font-medium text-(--text-secondary) mb-1">Onde</label><Dropdown ariaLabelledby="np-f" value={folderId} onChange={setFolderId} options={folderOptions(folders)} /></div>
         </div>
-        <p className="text-mac-caption text-(--text-secondary)">{ROLE_HELP[role]}</p>
+        <div className="w-48">
+          <label htmlFor="np-ate" className="block text-mac-body font-medium text-(--text-secondary) mb-1">Acesso até (opcional)</label>
+          <input id="np-ate" type="date" value={ate} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setAte(e.target.value)}
+            className="w-full h-9 pointer-coarse:h-11 px-2 rounded-(--radius-control) border border-(--border-control) bg-(--bg-card) text-mac-body text-(--text-primary) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring)" />
+        </div>
+        <p className="text-mac-caption text-(--text-secondary)">{ROLE_HELP[role]}{ate ? " O acesso sai sozinho ao fim do dia escolhido (bom para auditor ou temporário)." : ""}</p>
       </div>
     </Dialog>
   );
