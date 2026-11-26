@@ -61,7 +61,7 @@ async def _doc(admin, e, folder, nome, created_at):
     return doc
 
 
-async def _policy(api, h, co, **body):
+async def _policy(api, h, co, **body):  # noqa: F811 — recebe o cliente do teste
     r = await api.post(API + f"/companies/{co}/retention/policies", json={"company_id": co, **body}, headers=h)
     assert r.status_code == 201, r.text
     return r.json()
