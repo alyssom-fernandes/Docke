@@ -1,12 +1,13 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import XmlCode from "./XmlCode";
-import { X, Download, AlertCircle, Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Printer, RotateCw, ZoomIn, ZoomOut, Layers } from "lucide-react";
+import { X, Download, AlertCircle, Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Printer, RotateCw, ZoomIn, ZoomOut, Layers, MessageSquare } from "lucide-react";
 import { getFileStyle } from "@/lib/fileType";
 import api from "@/lib/api";
 import Dialog, { DialogCloseButton } from "@/components/ui/Dialog";
 import Code128 from "./Code128";
 import type { PdfViewerHandle } from "./PdfViewer";
 const PageOrganizer = lazy(() => import("@/components/documents/PageOrganizer"));
+import CommentsPanel, { type Comentario } from "./CommentsPanel";
 
 // pdf.js (~400 KB) só é baixado quando alguém abre um PDF.
 const PdfViewer = lazy(() => import("./PdfViewer"));
@@ -212,6 +213,12 @@ interface PreviewModalProps {
  */
 export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = null, initialQuery = null, onChanged }: PreviewModalProps) {
   const [organizing, setOrganizing] = useState(false);
+  // Comentários e anotações (B2.4.6, B2.4.9).
+  const [showComments, setShowComments] = useState(false);
+  const [comentarios, setComentarios] = useState<Comentario[]>([]);
+  const [ponto, setPonto] = useState<{ page: number; x: number; y: number } | null>(null);
+  const [annotating, setAnnotating] = useState(false);
+  const [ativo, setAtivo] = useState<string | null>(null);
   const list = docs && docs.length ? docs : [initialDoc];
   const [index, setIndex] = useState(() => Math.max(0, list.findIndex((d) => d.id === initialDoc.id)));
   const swipe = useRef<{ x: number; y: number; t: number } | null>(null);
@@ -238,6 +245,10 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
   const searchRef = useRef<HTMLInputElement>(null);
 
   const type = resolveType(doc.name, doc.mime_type);
+  useEffect(() => {
+    setComentarios([]); setPonto(null); setAnnotating(false); setAtivo(null);
+    api.get<Comentario[]>(`/documents/${doc.id}/comments`).then((r) => setComentarios(r.data)).catch(() => {});
+  }, [doc.id]);
   const isXml = doc.name.toLowerCase().endsWith(".xml") || doc.mime_type.includes("xml");
   const { icon: Icon, iconColor } = getFileStyle(doc.name);
 
@@ -394,6 +405,10 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
           <Search className="w-4 h-4" aria-hidden />
         </button>
       )}
+      <button className={iconBtn} onClick={() => setShowComments((v) => !v)} aria-pressed={showComments}
+        aria-label={`Comentários${comentarios.length ? ` (${comentarios.length})` : ""}`} title="Comentários e anotações">
+        <MessageSquare className="w-4 h-4" aria-hidden />
+      </button>
       {type === "pdf" && url && (
         <button className={`${iconBtn} hidden sm:flex`} onClick={() => setOrganizing(true)} aria-label="Organizar páginas" title="Organizar páginas (girar, reordenar, tirar, extrair)">
           <Layers className="w-4 h-4" aria-hidden />
@@ -479,8 +494,17 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
               query={searchOpen ? query : ""}
               focusPage={matches.length && searchOpen ? (matches[active] as { page: number }).page : null}
               onLoaded={() => { if (searchOpen) ensurePdfText(); }}
+              pins={comentarios.filter((c) => c.x !== null && c.y !== null && c.page).map((c) => ({ id: c.id, page: c.page!, x: c.x!, y: c.y!, label: c.body.slice(0, 80), active: ativo === c.id }))}
+              annotating={annotating}
+              onPagePoint={(page, x, y) => { setPonto({ page, x, y }); setAnnotating(false); setShowComments(true); }}
+              onPinClick={(id) => { setShowComments(true); setAtivo(id); }}
             />
           </Suspense>
+        )}
+        {showComments && (
+          <CommentsPanel docId={doc.id} comentarios={comentarios} setComentarios={setComentarios} ponto={ponto} setPonto={setPonto}
+            annotating={annotating} setAnnotating={setAnnotating} ativo={ativo} podeAnotar={type === "pdf"}
+            onGoTo={(page, id) => { pdfRef.current?.goToPage(page); setAtivo(id); }} onClose={() => { setShowComments(false); setAnnotating(false); }} />
         )}
         {organizing && url && (
           <Suspense fallback={null}>

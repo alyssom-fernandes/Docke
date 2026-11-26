@@ -84,6 +84,31 @@ export function pollOcrStatus(items: { documentId: string; taskId: string; fileN
   setTimeout(tick, 3000);
 }
 
+// Sessões de envio em partes guardadas no aparelho (FA-A4-04). Valem 5 h: a
+// limpeza do servidor apaga envios incompletos com mais de 6 h.
+interface SessaoEnvio { documentId: string; uploadId: string; partSize: number; totalParts: number; parts: { part_number: number; etag: string }[]; savedAt: number }
+const SESSOES_KEY = "docke_upload_sessions";
+const SESSAO_VALIDADE_MS = 5 * 3600 * 1000;
+function sessaoChave(file: File, folderId: string) { return `${folderId}|${file.name}|${file.size}|${file.lastModified}`; }
+function todasSessoes(): Record<string, SessaoEnvio> {
+  try { return JSON.parse(localStorage.getItem(SESSOES_KEY) ?? "{}"); } catch { return {}; }
+}
+function lerSessao(fp: string): SessaoEnvio | null {
+  const s = todasSessoes()[fp];
+  return s && Date.now() - s.savedAt < SESSAO_VALIDADE_MS ? s : null;
+}
+function gravarSessao(fp: string, s: SessaoEnvio) {
+  const all = todasSessoes();
+  for (const [k, v] of Object.entries(all)) if (Date.now() - v.savedAt >= SESSAO_VALIDADE_MS) delete all[k];
+  all[fp] = s;
+  try { localStorage.setItem(SESSOES_KEY, JSON.stringify(all)); } catch { /* sem espaço: segue sem retomar */ }
+}
+function apagarSessao(fp: string) {
+  const all = todasSessoes();
+  delete all[fp];
+  try { localStorage.setItem(SESSOES_KEY, JSON.stringify(all)); } catch { /* ignore */ }
+}
+
 export function UploadModal({ folderId, folderName, companyId, onClose, onDone, initialFiles }: { folderId: string | null; folderName: string; companyId: string; onClose: () => void; onDone: () => void; initialFiles?: File[] }) {
   const { success, warning } = useToast();
   const { addTask, updateTask, registerRetry, registerCancel } = useTaskCenter();
@@ -175,35 +200,66 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone, 
   const MULTIPART_THRESHOLD = 20 * 1024 * 1024;
 
   async function uploadFileMultipart(
-    file: File, targetFolderId: string, onProgress: (label: string, progress: number) => void, signal?: AbortSignal,
+    file: File, targetFolderId: string, onProgress: (label: string, progress: number) => void, signal?: AbortSignal, novoEnvio = false,
   ): Promise<string> {
-    const { data: created } = await api.post("/documents/multipart/create", {
-      folder_id: targetFolderId,
-      company_id: companyId,
-      name: file.name,
-      size_bytes: file.size,
-      content_type: file.type || "application/octet-stream",
-    });
-    const { document_id: documentId, upload_id: uploadId, part_size: partSize, total_parts: totalParts } = created;
+    // Envio retomável (FA-A4-04): a sessão (documento, upload e partes já
+    // confirmadas) fica guardada no aparelho; se a conexão cair, "Tentar de
+    // novo" ou escolher o mesmo arquivo depois continua das partes que faltam.
+    const fp = sessaoChave(file, targetFolderId);
+    const salva = novoEnvio ? null : lerSessao(fp);
+    let sess: SessaoEnvio;
+    if (salva) {
+      sess = salva;
+      onProgress(`${file.name}`, Math.round((sess.parts.length / sess.totalParts) * 100));
+    } else {
+      const { data: created } = await api.post("/documents/multipart/create", {
+        folder_id: targetFolderId,
+        company_id: companyId,
+        name: file.name,
+        size_bytes: file.size,
+        content_type: file.type || "application/octet-stream",
+      });
+      sess = { documentId: created.document_id, uploadId: created.upload_id, partSize: created.part_size, totalParts: created.total_parts, parts: [], savedAt: Date.now() };
+      gravarSessao(fp, sess);
+    }
+    const { documentId, uploadId, partSize, totalParts } = sess;
     try {
-      const parts: { part_number: number; etag: string }[] = [];
       for (let partNumber = 1; partNumber <= totalParts; partNumber++) {
         if (signal?.aborted) throw new Error(CANCELADO);
+        if (sess.parts.some((pt) => pt.part_number === partNumber)) continue;
         const start = (partNumber - 1) * partSize;
         const chunk = file.slice(start, start + partSize);
-        const { data: partUrlData } = await api.post(`/documents/multipart/${documentId}/part-url`, { upload_id: uploadId, part_number: partNumber });
+        let partUrlData: { upload_url: string };
+        try {
+          partUrlData = (await api.post(`/documents/multipart/${documentId}/part-url`, { upload_id: uploadId, part_number: partNumber })).data;
+        } catch (e: any) {
+          // Sessão vencida (a limpeza de envios incompletos já apagou): recomeça do zero.
+          if (salva && [404, 409, 410].includes(e?.response?.status)) {
+            apagarSessao(fp);
+            return uploadFileMultipart(file, targetFolderId, onProgress, signal, true);
+          }
+          throw e;
+        }
         const putResp = await fetch(partUrlData.upload_url, { method: "PUT", body: chunk, signal }).catch(() => null);
         if (signal?.aborted) throw new Error(CANCELADO);
-        if (!putResp || !putResp.ok) throw new Error("A conexão caiu durante o envio. Tente de novo.");
+        if (!putResp || !putResp.ok) throw new Error(`A conexão caiu durante o envio. O que já subiu (${Math.round((sess.parts.length / totalParts) * 100)}%) fica guardado: tente de novo para continuar de onde parou.`);
         const etag = putResp.headers.get("ETag");
         if (!etag) throw new Error("O armazenamento não confirmou uma parte do arquivo. Tente de novo; se continuar, avise o administrador.");
-        parts.push({ part_number: partNumber, etag });
-        onProgress(`${file.name}`, Math.round((partNumber / totalParts) * 100));
+        sess.parts.push({ part_number: partNumber, etag });
+        sess.savedAt = Date.now();
+        gravarSessao(fp, sess);
+        onProgress(`${file.name}`, Math.round((sess.parts.length / totalParts) * 100));
       }
+      const parts = [...sess.parts].sort((a, b) => a.part_number - b.part_number);
       await api.post(`/documents/multipart/${documentId}/complete`, { upload_id: uploadId, parts });
+      apagarSessao(fp);
       return documentId;
     } catch (err) {
-      try { await api.post(`/documents/multipart/${documentId}/abort`, { upload_id: uploadId }); } catch { /* ignore */ }
+      // Cancelado por quem enviou: descarta. Queda de conexão: guarda para retomar.
+      if (err instanceof Error && err.message === CANCELADO) {
+        apagarSessao(fp);
+        try { await api.post(`/documents/multipart/${documentId}/abort`, { upload_id: uploadId }); } catch { /* ignore */ }
+      }
       throw err;
     }
   }

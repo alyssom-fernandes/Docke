@@ -45,7 +45,7 @@ def montar_pdf(data: bytes, paginas: list[Pagina]) -> tuple[bytes, int]:
         total = len(src)
         fora = [p.indice + 1 for p in paginas if p.indice >= total]
         if fora:
-            raise ValueError(f"O documento tem {total} páginas; não existe a página {fora[0]}.")
+            raise ValueError(f"O documento tem {total} página{'s' if total != 1 else ''}; não existe a página {fora[0]}.")
         out = pdfium.PdfDocument.new()
         try:
             for p in paginas:
