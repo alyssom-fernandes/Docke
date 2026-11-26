@@ -102,6 +102,8 @@ interface Document {
   folder_id: string | null;
   favorited?: boolean;
   active_share_count?: number;
+  /** Miniatura da grade (A4-20): URL assinada, quando já foi gerada. */
+  thumb_url?: string | null;
 }
 
 // Metadados personalizados (ADENDO-08) — campo resolvido pra pasta atual
@@ -241,7 +243,50 @@ function OcrIcon({ status, inverted = false }: { status: Document["ocr_status"];
   );
 }
 
-type SortKey = "name" | "size" | "created_at";
+// Miniatura na grade (A4-20): página 1 do PDF ou a imagem reduzida; sem
+// miniatura (ainda gerando, ou formato sem prévia), o ícone do tipo.
+function GridThumb({ doc, selected }: { doc: Document; selected: boolean }) {
+  const [falhou, setFalhou] = useState(false);
+  const s = getFileStyle(doc.name);
+  const Icon = s.icon;
+  return (
+    <div className="h-[76px] w-full flex items-end justify-center shrink-0" aria-hidden>
+      {doc.thumb_url && !falhou ? (
+        <img
+          src={doc.thumb_url}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          onError={() => setFalhou(true)}
+          className={`max-h-[76px] max-w-[70px] rounded-[3px] bg-white object-contain shadow-[0_1px_3px_rgb(0_0_0/0.25)] ring-1 ${selected ? "ring-white/60" : "ring-black/10 dark:ring-white/10"}`}
+        />
+      ) : (
+        <div className={`w-12 h-14 rounded-[6px] flex items-center justify-center ${selected ? "bg-white/20" : s.bgColor}`}>
+          <Icon className={`w-6 h-6 ${selected ? "text-white" : `${s.iconColor} ${s.fillColor}`}`} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+type SortKey = "name" | "size" | "created_at" | "updated_at" | "kind" | "ocr" | "uploader";
+
+// Colunas opcionais da lista (A4-16): a pessoa escolhe quais ver (clique
+// direito no cabeçalho ou no botão de visualização); todas ordenam.
+type OptCol = "created" | "updated" | "uploader" | "size" | "kind" | "ocr";
+const OPT_COLS: { key: OptCol; label: string; menu: string; sortKey: SortKey; align?: "right"; cls: string }[] = [
+  { key: "created", label: "Criado em", menu: "Criado em", sortKey: "created_at", cls: "hidden sm:table-cell" },
+  { key: "updated", label: "Modificado em", menu: "Modificado em", sortKey: "updated_at", cls: "hidden sm:table-cell" },
+  { key: "uploader", label: "Enviado por", menu: "Enviado por", sortKey: "uploader", cls: "hidden md:table-cell" },
+  { key: "size", label: "Tamanho", menu: "Tamanho", sortKey: "size", align: "right", cls: "hidden sm:table-cell" },
+  { key: "kind", label: "Tipo", menu: "Tipo", sortKey: "kind", cls: "hidden lg:table-cell" },
+  { key: "ocr", label: "OCR", menu: "Texto lido (OCR)", sortKey: "ocr", cls: "hidden sm:table-cell" },
+];
+const DEFAULT_VISIBLE_COLS: OptCol[] = ["created", "size", "kind", "ocr"];
+const OCR_ORDER: Record<string, number> = { failed: 0, pending: 1, processing: 2, skipped: 3, done: 4 };
+type Density = "compact" | "comfortable" | "spacious";
+const DENSITY_PAD: Record<Density, string> = { compact: "[&_td]:py-1!", comfortable: "[&_td]:py-1.5!", spacious: "[&_td]:py-2.5!" };
 
 // ─── Preferência de view/sort por pasta ─────────────────────────────────────
 // Finder/Explorer lembram como cada pasta foi deixada (ordenação, modo de
@@ -280,7 +325,7 @@ function saveFolderPref(folderId: string | null, patch: Partial<FolderPref>) {
 
 // ─── Larguras de coluna redimensionáveis ────────────────────────────────────
 
-const DEFAULT_COL_WIDTHS = { name: 320, kind: 150, size: 100, ocr: 70, created: 110 };
+const DEFAULT_COL_WIDTHS = { name: 320, kind: 150, size: 100, ocr: 70, created: 110, updated: 120, uploader: 150 };
 
 function SortableHeader({ label, sortKey, sort, onSort, className = "", align = "left", onResizeStart, onResizeReset, onResizeNudge, width }: {
   label: string;
@@ -1431,16 +1476,21 @@ export default function Documents() {
     e.preventDefault();
     e.stopPropagation();
     setFocusedId(data.id);
-    if (kind === "document" && !selected.has(data.id)) setSelected(new Set([data.id]));
+    if (!selected.has(data.id)) setSelected(new Set([data.id]));
     setMenu({ anchor: { x: e.clientX, y: e.clientY }, kind, data } as MenuTarget);
   }
   function openMenuAt(el: HTMLElement, kind: "document" | "folder", data: Document | Folder) {
     setFocusedId(data.id);
-    if (kind === "document" && !selected.has(data.id)) setSelected(new Set([data.id]));
+    if (!selected.has(data.id)) setSelected(new Set([data.id]));
     setMenu({ anchor: el, kind, data } as MenuTarget);
   }
   // "Mover para…" (documentos ou pasta) — achados A4-36 e X1-08.
-  const [picker, setPicker] = useState<{ kind: "documents"; ids: string[] } | { kind: "folder"; folder: Folder } | null>(null);
+  const [picker, setPicker] = useState<
+    | { kind: "documents"; ids: string[] }
+    | { kind: "folder"; folder: Folder }
+    | { kind: "selection"; docIds: string[]; folders: Folder[] }
+    | null
+  >(null);
   // Erro de carga nunca vira "Pasta vazia" (achado A4-01).
   const [loadError, setLoadError] = useState<string | null>(null);
   // Paginação (achado A4-12): 200 por vez, o resto ao rolar.
@@ -1452,7 +1502,7 @@ export default function Documents() {
   function menuItems(t: MenuTarget): MenuItem[] {
     if (t.kind === "document") {
       const d = t.data;
-      const ids = selected.has(d.id) && selected.size > 1 ? [...selected] : [d.id];
+      const ids = selected.has(d.id) && selDocIds.length > 1 ? selDocIds : [d.id];
       const multi = ids.length > 1;
       const list: MenuItem[] = [];
       if (!multi) {
@@ -1499,14 +1549,37 @@ export default function Documents() {
   });
 
   // ADR-026: densidade de tabela — compacto reduz padding vertical das linhas
-  const [density, setDensity] = useState<"comfortable" | "compact">(
-    () => (localStorage.getItem("docke_table_density") as "comfortable" | "compact") || "comfortable"
+  const [density, setDensity] = useState<Density>(
+    () => (["compact", "comfortable", "spacious"].includes(localStorage.getItem("docke_table_density") ?? "") ? localStorage.getItem("docke_table_density") as Density : "comfortable")
   );
-  function toggleDensity() {
-    const next = density === "comfortable" ? "compact" : "comfortable";
+  function chooseDensity(next: Density) {
     setDensity(next);
     localStorage.setItem("docke_table_density", next);
   }
+  function toggleDensity() {
+    chooseDensity(density === "compact" ? "comfortable" : "compact");
+  }
+
+  const [visibleCols, setVisibleCols] = useState<OptCol[]>(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem("docke_doc_columns") ?? "null");
+      if (Array.isArray(raw)) return OPT_COLS.map((c) => c.key).filter((k) => raw.includes(k));
+    } catch { /* ignora */ }
+    return DEFAULT_VISIBLE_COLS;
+  });
+  function toggleCol(k: OptCol) {
+    setVisibleCols((prev) => {
+      const next = prev.includes(k) ? prev.filter((x) => x !== k) : OPT_COLS.map((c) => c.key).filter((x) => x === k || prev.includes(x));
+      localStorage.setItem("docke_doc_columns", JSON.stringify(next));
+      return next;
+    });
+  }
+  function resetCols() {
+    setVisibleCols(DEFAULT_VISIBLE_COLS);
+    localStorage.removeItem("docke_doc_columns");
+  }
+  const shownCols = OPT_COLS.filter((c) => visibleCols.includes(c.key));
+  const [viewMenu, setViewMenu] = useState<{ x: number; y: number } | HTMLElement | null>(null);
 
   // Preferência de ordenação e modo de visualização por pasta (Finder/Explorer
   // lembram como cada pasta foi deixada, não usam uma preferência global única).
@@ -1523,6 +1596,11 @@ export default function Documents() {
       saveFolderPref(currentFolderId, { sort: next });
       return next;
     });
+  }
+  function setSortTo(key: SortKey, dir: "asc" | "desc") {
+    const next = { key, dir };
+    saveFolderPref(currentFolderId, { sort: next });
+    setSort(next);
   }
   function setView(mode: "list" | "grid") {
     setViewMode(mode);
@@ -1561,6 +1639,28 @@ export default function Documents() {
   function nudgeColWidth(col: keyof typeof DEFAULT_COL_WIDTHS, delta: number) {
     setColWidths((prev) => {
       const next = { ...prev, [col]: Math.min(800, Math.max(60, prev[col] + delta)) };
+      localStorage.setItem("docke_col_widths", JSON.stringify(next));
+      return next;
+    });
+  }
+
+  // Duplo clique na borda: ajusta a coluna ao maior conteúdo visível (Finder/Excel).
+  function autoFitCol(col: keyof typeof DEFAULT_COL_WIDTHS) {
+    const cells = scrollBodyRef.current?.querySelectorAll<HTMLElement>(`[data-col="${col}"]`);
+    if (!cells || !cells.length) { resetColWidth(col); return; }
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) { resetColWidth(col); return; }
+    let max = 0;
+    cells.forEach((c) => {
+      const cs = getComputedStyle(c);
+      ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      max = Math.max(max, ctx.measureText((c.innerText || "").trim()).width);
+    });
+    const extra = col === "name" ? 64 : 34;
+    const w = Math.round(Math.min(640, Math.max(60, max + extra)));
+    setColWidths((prev) => {
+      const next = { ...prev, [col]: w };
       localStorage.setItem("docke_col_widths", JSON.stringify(next));
       return next;
     });
@@ -1710,7 +1810,7 @@ export default function Documents() {
       if (mod && e.shiftKey && e.key.toLowerCase() === "n") { e.preventDefault(); if (currentFolderId !== undefined && canWrite) setShowNewFolder(true); return; }
       if (mod && e.key.toLowerCase() === "a") {
         e.preventDefault();
-        setSelected(new Set(visibleDocuments.map((d) => d.id)));
+        setSelected(new Set(items.map((it) => it.data.id)));
         return;
       }
       if (e.key === "Escape" && selected.size) { setSelected(new Set()); return; }
@@ -1727,9 +1827,9 @@ export default function Documents() {
         if (e.shiftKey && isDoc) {
           const anchor = idx >= 0 ? idx : clamped;
           const [a, b] = anchor < clamped ? [anchor, clamped] : [clamped, anchor];
-          setSelected(new Set(items.slice(a, b + 1).filter((it) => it.kind === "document").map((it) => it.data.id)));
+          setSelected(new Set(items.slice(a, b + 1).map((it) => it.data.id)));
         } else if (!mod) {
-          setSelected(isDoc ? new Set([id]) : new Set());
+          setSelected(new Set([id]));
         }
         // O painel de detalhes acompanha o item em foco (como a pré-visualização do Finder).
         if (isDoc && detailDoc && isDesktop) {
@@ -1780,7 +1880,7 @@ export default function Documents() {
         else if (folder && canAdmin) startRename("folder", folder.id, folder.name);
       } else if ((e.key === "Delete" || (mod && e.key === "Backspace")) && canWrite) {
         e.preventDefault();
-        if (selected.size) deleteDocuments([...selected]);
+        if (selected.size) deleteSelected();
         else if (doc) deleteDocuments([doc.id]);
         else if (folder && canAdmin) askDeleteFolder(folder);
       }
@@ -1799,6 +1899,9 @@ export default function Documents() {
   // Arrastar documento(s) pra dentro de uma pasta (mover) — mesma convenção
   // de move/copy que Finder/Explorer, aqui só move (sem tecla modificadora ainda).
   const [dragDocIds, setDragDocIds] = useState<string[] | null>(null);
+  // Pastas também se arrastam e entram no lote (A4-14).
+  const [dragFolderIds, setDragFolderIds] = useState<string[] | null>(null);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   // Spring-loaded folders: manter um documento arrastado sobre uma pasta por
   // um tempo abre a pasta automaticamente (padrão Finder/Explorer).
@@ -1842,7 +1945,7 @@ export default function Documents() {
         const rowBottom = rowTop + er.height;
         const rowLeft = er.left - r.left + container!.scrollLeft;
         const rowRight = rowLeft + er.width;
-        if (rowBottom >= top && rowTop <= bottom && rowRight >= left && rowLeft <= right && documents.some((d) => d.id === id)) hitIds.push(id);
+        if (rowBottom >= top && rowTop <= bottom && rowRight >= left && rowLeft <= right && (documents.some((d) => d.id === id) || folders.some((f) => f.id === id))) hitIds.push(id);
       });
       if (hitIds.length) {
         setSelected((prev) => {
@@ -2154,7 +2257,7 @@ export default function Documents() {
 
   function selectAll() {
     // Só o que está visível (filtro aplicado) — antes o ⌘A pegava os ocultos (A4-25).
-    const allIds = visibleDocuments.map((d) => d.id);
+    const allIds = items.map((it) => it.data.id);
     setSelected(selected.size === allIds.length ? new Set() : new Set(allIds));
   }
 
@@ -2195,7 +2298,82 @@ export default function Documents() {
   }
 
   function deleteSelected() {
-    deleteDocuments([...selected]);
+    if (selFolders.length) { setConfirmBulkDelete(true); return; }
+    deleteDocuments(selDocIds);
+  }
+
+  // Lote com pastas: confirma (vai tudo o que há dentro) e oferece Desfazer.
+  async function deleteSelectedConfirmed() {
+    const fs = selFolders;
+    const ds = selDocIds;
+    setConfirmBulkDelete(false);
+    if (ds.length) await deleteDocuments(ds);
+    const done: Folder[] = [];
+    for (const f of fs) {
+      try { await api.delete(`/folders/${f.id}`); done.push(f); }
+      catch (e: any) { showError(friendlyError(e, `Não foi possível excluir a pasta "${f.name}".`)); }
+    }
+    if (!done.length) return;
+    setFolders((prev) => prev.filter((f) => !done.some((x) => x.id === f.id)));
+    setFolderTreeVersion((v) => v + 1);
+    setSelected(new Set());
+    toastWithUndo(
+      `${plural(done.length, "pasta foi", "pastas foram")} para a lixeira.`,
+      `excluir ${plural(done.length, "pasta", "pastas")}`,
+      async () => { for (const f of done) await api.post(`/trash/${f.id}/restore`, null, { params: { item_type: "folder" } }); },
+    );
+  }
+
+  async function moveFoldersTo(list: Folder[], target: PickedFolder) {
+    const moved: { f: Folder; old: string | null }[] = [];
+    for (const f of list) {
+      if (f.id === target.id || (f.parent_id ?? null) === (target.id ?? null)) continue;
+      try { await api.patch(`/folders/${f.id}/move`, { parent_id: target.id }); moved.push({ f, old: f.parent_id ?? null }); }
+      catch (e: any) { showError(friendlyError(e, `Não foi possível mover a pasta "${f.name}".`)); }
+    }
+    if (!moved.length) return;
+    setFolders((prev) => prev.filter((x) => !moved.some((m) => m.f.id === x.id)));
+    setFolderTreeVersion((v) => v + 1);
+    setSelected(new Set());
+    toastWithUndo(
+      `${moved.length === 1 ? `Pasta "${moved[0].f.name}" movida` : `${moved.length} pastas movidas`} para "${target.name}".`,
+      `mover ${plural(moved.length, "pasta", "pastas")}`,
+      async () => { for (const m of moved) await api.patch(`/folders/${m.f.id}/move`, { parent_id: m.old }); },
+    );
+  }
+
+  // Arrastar documentos e pastas (A4-14, A4-39): fantasma com tokens.
+  function startItemDrag(e: React.DragEvent, id: string, name: string) {
+    const ids = selected.has(id) && selected.size > 1 ? [...selected] : [id];
+    const docs = ids.filter((x) => docIdSet.has(x));
+    const fids = ids.filter((x) => !docIdSet.has(x));
+    setDragDocIds(docs.length ? docs : null);
+    setDragFolderIds(fids.length ? fids : null);
+    e.dataTransfer.effectAllowed = "move";
+    if (docs.length) e.dataTransfer.setData("application/x-docke-document-ids", docs.join(","));
+    if (fids.length === 1 && !docs.length) e.dataTransfer.setData("application/x-docke-folder-id", fids[0]);
+    e.dataTransfer.setData("text/plain", ids.join(","));
+    const ghost = document.createElement("div");
+    ghost.className = "drag-ghost";
+    ghost.textContent = ids.length > 1 ? `${ids.length} ${fids.length ? "itens" : "arquivos"}` : name;
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, 14, 14);
+    setTimeout(() => ghost.remove(), 0);
+  }
+  function endItemDrag() {
+    setDragDocIds(null);
+    setDragFolderIds(null);
+    setDragOverFolderId(null);
+  }
+  function dropOnFolder(f: Folder) {
+    if (dragDocIds) moveDocuments(dragDocIds, f.id, f.name);
+    if (dragFolderIds) {
+      const list = folders.filter((x) => dragFolderIds.includes(x.id) && x.id !== f.id);
+      if (list.length) moveFoldersTo(list, { id: f.id, name: f.name } as PickedFolder);
+    }
+    setDragDocIds(null);
+    setDragFolderIds(null);
+    setDragOverFolderId(null);
   }
 
   async function moveDocuments(ids: string[], targetFolderId: string, targetFolderName: string) {
@@ -2318,8 +2496,12 @@ export default function Documents() {
     const sortedFolders = [...folders].sort((a, b) => a.name.localeCompare(b.name));
   const sortedDocuments = [...documents].sort((a, b) => {
     let cmp = 0;
-    if (sort.key === "name") cmp = a.name.localeCompare(b.name);
+    if (sort.key === "name") cmp = a.name.localeCompare(b.name, "pt-BR");
     else if (sort.key === "size") cmp = a.size_bytes - b.size_bytes;
+    else if (sort.key === "kind") cmp = kindLabel(a.name).localeCompare(kindLabel(b.name), "pt-BR");
+    else if (sort.key === "ocr") cmp = (OCR_ORDER[a.ocr_status] ?? 9) - (OCR_ORDER[b.ocr_status] ?? 9);
+    else if (sort.key === "uploader") cmp = (a.uploaded_by_name ?? "").localeCompare(b.uploaded_by_name ?? "", "pt-BR");
+    else if (sort.key === "updated_at") cmp = new Date(a.updated_at ?? a.created_at).getTime() - new Date(b.updated_at ?? b.created_at).getTime();
     else cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
     return sort.dir === "asc" ? cmp : -cmp;
   });
@@ -2350,6 +2532,11 @@ export default function Documents() {
     ...visibleDocuments.map((d): Item => ({ kind: "document", data: d })),
   ];
 
+  // Seleção única para pastas e documentos (ids não colidem).
+  const docIdSet = new Set(documents.map((d) => d.id));
+  const selDocIds = [...selected].filter((id) => docIdSet.has(id));
+  const selFolders = folders.filter((f) => selected.has(f.id));
+
   // Clique em documento — Shift estende o intervalo a partir do último item
   // focado, Ctrl/Cmd alterna a seleção individual, clique simples troca a
   // seleção pra só esse item (padrão Finder/Explorer, "inviolável" — consenso
@@ -2364,11 +2551,13 @@ export default function Documents() {
     // (J1-03). Ctrl/Shift continuam selecionando.
     if (!isDesktop && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
       if (selectionMode) { toggleSelect(id); setFocusedId(id); return; }
+      const pasta = folders.find((f) => f.id === id);
+      if (pasta) { openFolder(pasta); return; }
       const doc = documents.find((d) => d.id === id);
       if (doc) { setFocusedId(id); setPreviewDoc(doc); }
       return;
     }
-    const ids = visibleDocuments.map((d) => d.id);
+    const ids = items.map((it) => it.data.id);
     if (e.shiftKey && focusedId && ids.includes(focusedId)) {
       const i1 = ids.indexOf(focusedId);
       const i2 = ids.indexOf(id);
@@ -2399,7 +2588,7 @@ export default function Documents() {
     // mexe em nada (só "..." e duplo-toque continuam abrindo o modal).
     if (isDesktop) {
       const doc = documents.find((d) => d.id === id);
-      if (doc) setDetailDoc(doc);
+      setDetailDoc(doc ?? null);
     }
   }
 
@@ -2655,14 +2844,31 @@ export default function Documents() {
                 <ListChecks className="w-4 h-4" />
               </button>
               <button
-                onClick={toggleDensity}
-                title={density === "comfortable" ? "Densidade compacta" : "Densidade confortável"}
-                aria-label="Linhas compactas"
-                aria-pressed={density === "compact"}
+                onClick={(e) => setViewMenu(e.currentTarget)}
+                title="Ordenação, colunas e densidade"
+                aria-label="Colunas e densidade"
+                aria-haspopup="menu"
                 className="h-7 w-7 pointer-coarse:h-11 pointer-coarse:w-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-primary) transition-colors duration-fast"
               >
-                {density === "comfortable" ? <Rows3 className="w-4 h-4" /> : <Rows4 className="w-4 h-4" />}
+                {density === "compact" ? <Rows4 className="w-4 h-4" /> : <Rows3 className="w-4 h-4" />}
               </button>
+              {viewMenu && (
+                <Menu
+                  anchor={viewMenu}
+                  label="Colunas e densidade"
+                  onClose={() => setViewMenu(null)}
+                  items={[
+                    ...OPT_COLS.map((c) => ({ label: c.menu, checked: visibleCols.includes(c.key), onSelect: () => toggleCol(c.key) })),
+                    ...([["name", "Ordenar por nome"], ["created_at", "Ordenar por criação"], ["updated_at", "Ordenar por modificação"], ["size", "Ordenar por tamanho"], ["kind", "Ordenar por tipo"]] as [SortKey, string][])
+                      .map(([k, l], i) => ({ label: l, checked: sort.key === k, separatorBefore: i === 0, onSelect: () => setSortTo(k, sort.key === k ? sort.dir : "asc") })),
+                    { label: "Ordem decrescente", checked: sort.dir === "desc", onSelect: () => setSortTo(sort.key, sort.dir === "desc" ? "asc" : "desc") },
+                    { label: "Linhas compactas", checked: density === "compact", onSelect: () => chooseDensity("compact"), separatorBefore: true },
+                    { label: "Linhas confortáveis", checked: density === "comfortable", onSelect: () => chooseDensity("comfortable") },
+                    { label: "Linhas espaçosas", checked: density === "spacious", onSelect: () => chooseDensity("spacious") },
+                    { label: "Voltar ao padrão", onSelect: () => { resetCols(); chooseDensity("comfortable"); }, separatorBefore: true },
+                  ]}
+                />
+              )}
               <button
                 onClick={() => setView(viewMode === "list" ? "grid" : "list")}
                 title={viewMode === "list" ? "Ver em grade" : "Ver em lista"}
@@ -2749,7 +2955,7 @@ export default function Documents() {
                   {Array.from({ length: 12 }).map((_, i) => <SkeletonGridItem key={i} />)}
                 </div>
               ) : (
-                <table className={`w-full table-auto sm:table-fixed select-none ${density === "compact" ? "[&_td]:py-1!" : "[&_td]:py-1.5!"}`}>
+                <table className={`w-full table-auto sm:table-fixed select-none ${DENSITY_PAD[density]}`}>
                   <tbody>
                     {Array.from({ length: 8 }).map((_, i) => (
                       <SkeletonTableRow
@@ -2809,8 +3015,20 @@ export default function Documents() {
               )}
             </div>
           ) : viewMode === "grid" ? (
-            <div role="listbox" aria-multiselectable="true" aria-label={`Conteúdo de ${breadcrumbs[breadcrumbs.length - 1].name}`} className="p-4 grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-1">
-              {items.map((item) => {
+            <div role="listbox" aria-multiselectable="true" aria-label={`Conteúdo de ${breadcrumbs[breadcrumbs.length - 1].name}`} className="p-4 space-y-4">
+              {(["folder", "document"] as const).map((sec) => {
+                const lista = items.filter((it) => it.kind === sec);
+                if (!lista.length) return null;
+                const ambos = items.some((it) => it.kind === "folder") && items.some((it) => it.kind === "document");
+                return (
+              <div key={sec} role="group" aria-label={sec === "folder" ? "Pastas" : "Documentos"}>
+                {ambos && (
+                  <p aria-hidden="true" className="px-2 pb-1.5 text-mac-caption font-semibold text-(--text-secondary)">
+                    {sec === "folder" ? "Pastas" : "Documentos"} <span className="font-normal text-(--text-tertiary)">{lista.length.toLocaleString("pt-BR")}</span>
+                  </p>
+                )}
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-1">
+              {lista.map((item) => {
                 if (item.kind === "folder") {
                   const f = item.data;
                   const isDropTarget = dragOverFolderId === f.id;
@@ -2819,18 +3037,25 @@ export default function Documents() {
                       key={`folder-${f.id}`}
                       ref={(el) => { if (el) rowRefs.current.set(f.id, el); else rowRefs.current.delete(f.id); }}
                       role="option"
-                      aria-selected={false}
+                      aria-selected={selected.has(f.id)}
                       aria-label={`Pasta ${f.name}`}
                       tabIndex={focusedId === f.id || (!focusedId && items[0]?.data.id === f.id) ? 0 : -1}
                       onFocus={() => setFocusedId(f.id)}
-                      className={`group relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-(--radius-control) cursor-pointer transition-colors duration-fast hover:bg-(--bg-hover) outline-none focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${
-                        isDropTarget ? "bg-teal-500/10 outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""
-                      }`}
-                      onClick={() => setFocusedId(f.id)}
+                      className={`group relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-(--radius-control) cursor-pointer transition-colors duration-fast outline-none focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${
+                        selected.has(f.id) ? "bg-teal-600" : "hover:bg-(--bg-hover)"
+                      } ${isDropTarget ? "spring-target bg-teal-500/10 outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""} ${dragFolderIds?.includes(f.id) ? "opacity-40" : ""}`}
+                      onClick={(e) => selectDocClick(e, f.id)}
                       onDoubleClick={() => openFolder(f)}
                       onContextMenu={(e) => openContextMenu(e, "folder", f)}
+                      onTouchStart={(e) => handleTouchStart(e, f.id)}
+                      onTouchMove={handleTouchMove}
+                      onTouchEnd={handleTouchEnd}
+                      draggable={!(renaming?.kind === "folder" && renaming.id === f.id) && canAdmin}
+                      onDragStart={(e) => startItemDrag(e, f.id, f.name)}
+                      onDragEnd={endItemDrag}
                       onDragOver={(e) => {
-                        if (!dragDocIds) return;
+                        if (!dragDocIds && !dragFolderIds) return;
+                        if (dragFolderIds?.includes(f.id)) return;
                         e.preventDefault();
                         e.dataTransfer.dropEffect = "move";
                         if (dragOverFolderId !== f.id) {
@@ -2850,9 +3075,7 @@ export default function Documents() {
                       onDrop={(e) => {
                         e.preventDefault();
                         clearDragHoverTimer();
-                        if (dragDocIds) moveDocuments(dragDocIds, f.id, f.name);
-                        setDragDocIds(null);
-                        setDragOverFolderId(null);
+                        dropOnFolder(f);
                       }}
                     >
                       <button
@@ -2863,7 +3086,7 @@ export default function Documents() {
                       >
                         <MoreHorizontal className="w-4 h-4" aria-hidden />
                       </button>
-                      <Folder className="w-10 h-10 text-(--text-accent) fill-teal-500/20 shrink-0" />
+                      <Folder className={`w-10 h-10 shrink-0 ${selected.has(f.id) ? "text-white fill-white/25" : "text-(--text-accent) fill-teal-500/20"}`} aria-hidden />
                       {renaming?.kind === "folder" && renaming.id === f.id ? (
                         <input
                           ref={renameInputRef}
@@ -2879,7 +3102,7 @@ export default function Documents() {
                           className="w-full h-6 px-1 text-mac-caption text-center bg-(--bg-page) border border-teal-500 rounded-badge text-(--text-primary) focus:outline-hidden"
                         />
                       ) : (
-                        <span className="text-mac-caption text-(--text-primary) text-center leading-tight w-full line-clamp-2">{f.name}</span>
+                        <span className={`text-mac-caption text-center leading-tight w-full line-clamp-2 ${selected.has(f.id) ? "text-white" : "text-(--text-primary)"}`}>{f.name}</span>
                       )}
                     </div>
                   );
@@ -2889,8 +3112,6 @@ export default function Documents() {
                 const isSelected = selected.has(d.id);
                 const isDragging = dragDocIds?.includes(d.id) ?? false;
                 const isRenamingDoc = renaming?.kind === "document" && renaming.id === d.id;
-                const s = getFileStyle(d.name);
-                const Icon = s.icon;
                 return (
                   <div
                     key={`doc-${d.id}`}
@@ -2910,21 +3131,8 @@ export default function Documents() {
                     onTouchMove={handleTouchMove}
                     onTouchEnd={handleTouchEnd}
                     draggable={!isRenamingDoc}
-                    onDragStart={(e) => {
-                      const ids = selected.has(d.id) && selected.size > 1 ? [...selected] : [d.id];
-                      setDragDocIds(ids);
-                      e.dataTransfer.effectAllowed = "move";
-                      e.dataTransfer.setData("application/x-docke-document-ids", ids.join(","));
-                      e.dataTransfer.setData("text/plain", ids.join(","));
-
-                      const ghost = document.createElement("div");
-                      ghost.textContent = ids.length > 1 ? `${ids.length} arquivos` : d.name;
-                      ghost.style.cssText = "position:fixed;top:-1000px;left:-1000px;padding:6px 14px;background:#0d9488;color:#fff;border-radius:999px;font-size:13px;font-weight:500;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.35);font-family:inherit;";
-                      document.body.appendChild(ghost);
-                      e.dataTransfer.setDragImage(ghost, 14, 14);
-                      setTimeout(() => document.body.removeChild(ghost), 0);
-                    }}
-                    onDragEnd={() => { setDragDocIds(null); setDragOverFolderId(null); }}
+                    onDragStart={(e) => startItemDrag(e, d.id, d.name)}
+                    onDragEnd={endItemDrag}
                   >
                     {selectionMode && (
                       <Checkbox
@@ -2942,9 +3150,7 @@ export default function Documents() {
                     >
                       <MoreHorizontal className="w-4 h-4" aria-hidden />
                     </button>
-                    <div className={`w-10 h-10 rounded-[6px] flex items-center justify-center shrink-0 ${isSelected ? "bg-white/20" : s.bgColor}`}>
-                      <Icon className={`w-5 h-5 ${isSelected ? "text-white" : `${s.iconColor} ${s.fillColor}`}`} aria-hidden />
-                    </div>
+                    <GridThumb doc={d} selected={isSelected} />
                     {isRenamingDoc ? (
                       <div className="flex items-center gap-0.5 w-full justify-center" onClick={(e) => e.stopPropagation()}>
                         <input
@@ -2972,6 +3178,10 @@ export default function Documents() {
                   </div>
                 );
               })}
+              </div>
+              </div>
+                );
+              })}
             </div>
           ) : (
             // overflow-x-auto: com colunas redimensionáveis (table-fixed) a soma das
@@ -2982,15 +3192,14 @@ export default function Documents() {
               aria-label={`Conteúdo de ${breadcrumbs[breadcrumbs.length - 1].name}`}
               aria-multiselectable="true"
               aria-rowcount={folders.length + total + 1}
-              className={`w-full table-auto sm:table-fixed select-none ${density === "compact" ? "[&_td]:py-1!" : "[&_td]:py-1.5!"}`}
+              className={`w-full table-auto sm:table-fixed select-none ${DENSITY_PAD[density]}`}
             >
               <colgroup>
                 {selectionMode && <col style={{ width: 40 }} />}
                 <col style={{ width: colWidths.name }} />
-                <col className="hidden sm:table-column" style={{ width: colWidths.created }} />
-                <col className="hidden sm:table-column" style={{ width: colWidths.size }} />
-                <col className="hidden lg:table-column" style={{ width: colWidths.kind }} />
-                <col className="hidden sm:table-column" style={{ width: colWidths.ocr }} />
+                {shownCols.map((c) => (
+                  <col key={c.key} className={c.cls.replace("table-cell", "table-column")} style={{ width: colWidths[c.key] }} />
+                ))}
                 {resolvedFields.map((f) => (
                   <col key={f.custom_field_id} className="hidden sm:table-column" style={{ width: f.column_width ?? 130 }} />
                 ))}
@@ -3002,48 +3211,38 @@ export default function Documents() {
                     mesmo sobrando espaço lateral. */}
                 <col style={{ width: 76 }} />
               </colgroup>
-              <thead className="sticky top-0 bg-(--glass-panel-bg) backdrop-blur-xl border-b border-(--border-default)">
+              <thead
+                className="sticky top-0 bg-(--glass-panel-bg) backdrop-blur-xl border-b border-(--border-default)"
+                onContextMenu={(e) => { e.preventDefault(); setViewMenu({ x: e.clientX, y: e.clientY }); }}
+              >
                 <tr>
                   {selectionMode && (
                     <th className="w-10 px-4 py-2 text-left">
                       <Checkbox
-                        checked={selected.size === visibleDocuments.length && visibleDocuments.length > 0}
+                        checked={selected.size === items.length && items.length > 0}
+                        indeterminate={selected.size > 0 && selected.size < items.length}
                         onChange={selectAll}
-                        aria-label="Selecionar todos os documentos visíveis"
+                        aria-label="Selecionar tudo o que está visível"
                       />
                     </th>
                   )}
                   <SortableHeader
                     label="Nome" sortKey="name" sort={sort} onSort={toggleSort}
                     onResizeStart={(e) => startColResize("name", e)}
-                    onResizeReset={() => resetColWidth("name")} onResizeNudge={(d) => nudgeColWidth("name", d)} width={colWidths.name}
+                    onResizeReset={() => autoFitCol("name")} onResizeNudge={(d) => nudgeColWidth("name", d)} width={colWidths.name}
                   />
-                  {/* Ordem das colunas (regra da pesquisa): nome/tipo/data primeiro — o que
-                      identifica o arquivo — badges de status (OCR, e futuramente
-                      retenção/compartilhamento) sempre por último, nunca bloqueando o nome. */}
-                  <SortableHeader
-                    label="Criado em" sortKey="created_at" sort={sort} onSort={toggleSort}
-                    className="hidden sm:table-cell"
-                    onResizeStart={(e) => startColResize("created", e)}
-                    onResizeReset={() => resetColWidth("created")} onResizeNudge={(d) => nudgeColWidth("created", d)} width={colWidths.created}
-                  />
-                  <SortableHeader
-                    label="Tamanho" sortKey="size" sort={sort} onSort={toggleSort}
-                    className="hidden sm:table-cell"
-                    align="right"
-                    onResizeStart={(e) => startColResize("size", e)}
-                    onResizeReset={() => resetColWidth("size")} onResizeNudge={(d) => nudgeColWidth("size", d)} width={colWidths.size}
-                  />
-                  <th className="relative px-3 py-2 text-mac-caption font-normal text-(--text-secondary) text-left hidden lg:table-cell">
-                    Tipo
-                    <ColumnResizeHandle label="Tipo" width={colWidths.kind} onMouseDown={(e) => startColResize("kind", e)}
-                      onReset={() => resetColWidth("kind")} onNudge={(d) => nudgeColWidth("kind", d)} />
-                  </th>
-                  <th className="relative px-3 py-2 text-mac-caption font-normal text-(--text-secondary) text-left hidden sm:table-cell">
-                    OCR
-                    <ColumnResizeHandle label="OCR" width={colWidths.ocr} onMouseDown={(e) => startColResize("ocr", e)}
-                      onReset={() => resetColWidth("ocr")} onNudge={(d) => nudgeColWidth("ocr", d)} />
-                  </th>
+                  {/* Ordem das colunas (regra da pesquisa): o que identifica o
+                      arquivo primeiro, estado (OCR) por último. Clique direito no
+                      cabeçalho escolhe as colunas (A4-16). */}
+                  {shownCols.map((c) => (
+                    <SortableHeader
+                      key={c.key}
+                      label={c.label} sortKey={c.sortKey} sort={sort} onSort={toggleSort}
+                      className={c.cls} align={c.align}
+                      onResizeStart={(e) => startColResize(c.key, e)}
+                      onResizeReset={() => autoFitCol(c.key)} onResizeNudge={(d) => nudgeColWidth(c.key, d)} width={colWidths[c.key]}
+                    />
+                  ))}
                   {resolvedFields.map((f) => (
                     <th key={f.custom_field_id} className="px-3 py-2 text-mac-caption font-normal text-(--text-secondary) text-left truncate hidden sm:table-cell">
                       {f.label}{f.required && <span className="text-(--text-danger) ml-0.5">*</span>}
@@ -3057,23 +3256,33 @@ export default function Documents() {
                   if (item.kind === "folder") {
                     const f = item.data;
                     const isDropTarget = dragOverFolderId === f.id;
+                    const isFolderSel = selected.has(f.id);
+                    const isRenamingFolder = renaming?.kind === "folder" && renaming.id === f.id;
                     const expanded = expandedFolders[f.id];
-                    const nestedColSpan = (selectionMode ? 1 : 0) + 6 + resolvedFields.length;
+                    const nestedColSpan = (selectionMode ? 1 : 0) + 2 + shownCols.length + resolvedFields.length;
                     return (
                       <Fragment key={`folder-${f.id}`}>
                       <tr
                         ref={(el) => { if (el) rowRefs.current.set(f.id, el); else rowRefs.current.delete(f.id); }}
                         tabIndex={focusedId === f.id || (!focusedId && items[0]?.data.id === f.id) ? 0 : -1}
                         aria-label={`Pasta ${f.name}`}
+                        aria-selected={isFolderSel}
                         onFocus={() => setFocusedId(f.id)}
-                        className={`border-b border-(--border-default) odd:bg-black/4 dark:odd:bg-white/[0.035] hover:bg-(--bg-hover) transition-colors duration-fast group outline-none focus-visible:bg-teal-500/12 focus-visible:shadow-[inset_3px_0_0_var(--focus-ring)] ${
-                          isDropTarget ? "bg-teal-500/10 outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""
-                        }`}
-                        onClick={() => setFocusedId(f.id)}
+                        className={`border-b border-(--border-default) transition-colors duration-fast group cursor-pointer outline-none focus-visible:shadow-[inset_3px_0_0_var(--focus-ring)] ${
+                          isFolderSel ? "bg-teal-600" : "odd:bg-black/4 dark:odd:bg-white/[0.035] hover:bg-(--bg-hover) focus-visible:bg-teal-500/12"
+                        } ${isDropTarget ? "spring-target bg-teal-500/10 outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""} ${dragFolderIds?.includes(f.id) ? "opacity-40" : ""}`}
+                        onClick={(e) => selectDocClick(e, f.id)}
                         onDoubleClick={() => openFolder(f)}
                         onContextMenu={(e) => openContextMenu(e, "folder", f)}
+                        onTouchStart={(e) => handleTouchStart(e, f.id)}
+                        onTouchMove={handleTouchMove}
+                        onTouchEnd={handleTouchEnd}
+                        draggable={!isRenamingFolder && canAdmin}
+                        onDragStart={(e) => startItemDrag(e, f.id, f.name)}
+                        onDragEnd={endItemDrag}
                         onDragOver={(e) => {
-                          if (!dragDocIds) return;
+                          if (!dragDocIds && !dragFolderIds) return;
+                          if (dragFolderIds?.includes(f.id)) return;
                           e.preventDefault();
                           e.dataTransfer.dropEffect = "move";
                           if (dragOverFolderId !== f.id) {
@@ -3096,12 +3305,14 @@ export default function Documents() {
                         onDrop={(e) => {
                           e.preventDefault();
                           clearDragHoverTimer();
-                          if (dragDocIds) moveDocuments(dragDocIds, f.id, f.name);
-                          setDragDocIds(null);
-                          setDragOverFolderId(null);
+                          dropOnFolder(f);
                         }}
                       >
-                        {selectionMode && <td className="px-4 py-2" />}
+                        {selectionMode && (
+                          <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
+                            <Checkbox checked={isFolderSel} onChange={() => toggleSelect(f.id)} aria-label={`Selecionar a pasta ${f.name}`} />
+                          </td>
+                        )}
                         <td className="px-3 py-2">
                           {renaming?.kind === "folder" && renaming.id === f.id ? (
                             <input
@@ -3123,27 +3334,26 @@ export default function Documents() {
                                   navegar pra dentro dela, igual Finder/Explorer em lista. */}
                               <button
                                 onClick={(e) => toggleExpandFolder(e, f.id)}
-                                className="p-0.5 -ml-1 rounded text-(--text-tertiary) hover:text-(--text-primary) shrink-0"
+                                className={`p-0.5 -ml-1 rounded shrink-0 ${isFolderSel ? "text-white/80 hover:text-white" : "text-(--text-tertiary) hover:text-(--text-primary)"}`}
                                 title={expanded ? "Recolher" : "Expandir"}
                                 aria-label={`${expanded ? "Recolher" : "Expandir"} ${f.name}`}
                                 aria-expanded={!!expanded}
                               >
                                 <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-fast ${expanded ? "rotate-90" : ""}`} />
                               </button>
-                              <button
-                                onClick={() => openFolder(f)}
-                                className="flex items-center gap-2 text-mac-body text-(--text-primary) hover:text-(--text-accent) transition-colors duration-fast min-w-0"
-                              >
-                                <Folder className="w-4 h-4 text-(--text-accent) fill-teal-500/20 shrink-0" />
+                              {/* Clique seleciona, duplo clique ou Enter abre (igual à grade e ao Finder); no celular, o toque abre. */}
+                              <span className={`flex items-center gap-2 text-mac-body min-w-0 ${isFolderSel ? "text-white" : "text-(--text-primary)"}`}>
+                                <Folder className={`w-4 h-4 shrink-0 ${isFolderSel ? "text-white fill-white/25" : "text-(--text-accent) fill-teal-500/20"}`} aria-hidden />
                                 <span className="truncate">{f.name}</span>
-                              </button>
+                              </span>
                             </div>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden sm:table-cell">—</td>
-                        <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) text-right hidden sm:table-cell">—</td>
-                        <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden lg:table-cell">Pasta</td>
-                        <td className="px-3 py-2 hidden sm:table-cell" />
+                        {shownCols.map((c) => (
+                          <td key={c.key} className={`px-3 py-2 text-mac-caption ${isFolderSel ? "text-white/80" : "text-(--text-tertiary)"} ${c.cls} ${c.align === "right" ? "text-right" : ""}`}>
+                            {c.key === "kind" ? "Pasta" : c.key === "ocr" ? null : "—"}
+                          </td>
+                        ))}
                         {resolvedFields.map((rf) => (
                           <td key={rf.custom_field_id} className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden sm:table-cell">—</td>
                         ))}
@@ -3152,7 +3362,7 @@ export default function Documents() {
                             onClick={(e) => { e.stopPropagation(); openMenuAt(e.currentTarget, "folder", f); }}
                             aria-label={`Ações da pasta ${f.name}`}
                             aria-haspopup="menu"
-                            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 focus-visible:opacity-100 w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 inline-flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-hover) transition-all duration-fast"
+                            className={`opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 focus-visible:opacity-100 w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 inline-flex items-center justify-center rounded-full transition-all duration-fast ${isFolderSel ? "text-white hover:bg-white/20" : "text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-hover)"}`}
                           >
                             <MoreHorizontal className="w-4 h-4" aria-hidden />
                           </button>
@@ -3181,10 +3391,11 @@ export default function Documents() {
                               <span className="truncate">{nf.name}</span>
                             </div>
                           </td>
-                          <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden sm:table-cell">—</td>
-                          <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) text-right hidden sm:table-cell">—</td>
-                          <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden lg:table-cell">Pasta</td>
-                          <td className="px-3 py-2 hidden sm:table-cell" />
+                          {shownCols.map((c) => (
+                            <td key={c.key} className={`px-3 py-2 text-mac-caption text-(--text-tertiary) ${c.cls} ${c.align === "right" ? "text-right" : ""}`}>
+                              {c.key === "kind" ? "Pasta" : c.key === "ocr" ? null : "—"}
+                            </td>
+                          ))}
                           {resolvedFields.map((rf) => <td key={rf.custom_field_id} className="hidden sm:table-cell" />)}
                           <td />
                         </tr>
@@ -3205,10 +3416,16 @@ export default function Documents() {
                                 <span className="truncate">{nd.name}</span>
                               </div>
                             </td>
-                            <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden sm:table-cell">{fmtDate(nd.created_at)}</td>
-                            <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) text-right hidden sm:table-cell">{fmtSize(nd.size_bytes)}</td>
-                            <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden lg:table-cell">{kindLabel(nd.name)}</td>
-                            <td className="px-3 py-2 hidden sm:table-cell"><OcrIcon status={nd.ocr_status} /></td>
+                            {shownCols.map((c) => (
+                              <td key={c.key} className={`px-3 py-2 text-mac-caption text-(--text-tertiary) truncate ${c.cls} ${c.align === "right" ? "text-right tabular-nums" : ""}`}>
+                                {c.key === "created" ? fmtDate(nd.created_at)
+                                  : c.key === "updated" ? fmtDate(nd.updated_at ?? nd.created_at)
+                                  : c.key === "uploader" ? (nd.uploaded_by_name ?? "—")
+                                  : c.key === "size" ? fmtSize(nd.size_bytes)
+                                  : c.key === "kind" ? kindLabel(nd.name)
+                                  : <OcrIcon status={nd.ocr_status} />}
+                              </td>
+                            ))}
                             {resolvedFields.map((rf) => <td key={rf.custom_field_id} className="hidden sm:table-cell" />)}
                             <td />
                           </tr>
@@ -3239,33 +3456,15 @@ export default function Documents() {
                       onTouchMove={handleTouchMove}
                       onTouchEnd={handleTouchEnd}
                       draggable={!isRenaming}
-                      onDragStart={(e) => {
-                        const ids = selected.has(d.id) && selected.size > 1 ? [...selected] : [d.id];
-                        setDragDocIds(ids);
-                        e.dataTransfer.effectAllowed = "move";
-                        // Tipo MIME custom pra sinalizar (ao FolderTree da sidebar,
-                        // que tem seu próprio drag interno de pasta-pra-pasta) que
-                        // isso é um drag de documento vindo de fora, não de pasta.
-                        e.dataTransfer.setData("application/x-docke-document-ids", ids.join(","));
-                        e.dataTransfer.setData("text/plain", ids.join(","));
-
-                        // Imagem fantasma customizada (pill "N arquivos") no lugar do
-                        // preview padrão do navegador — padrão Finder/Explorer/Drive.
-                        const ghost = document.createElement("div");
-                        ghost.textContent = ids.length > 1 ? `${ids.length} arquivos` : d.name;
-                        ghost.style.cssText = "position:fixed;top:-1000px;left:-1000px;padding:6px 14px;background:#0d9488;color:#fff;border-radius:999px;font-size:13px;font-weight:500;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.35);font-family:inherit;";
-                        document.body.appendChild(ghost);
-                        e.dataTransfer.setDragImage(ghost, 14, 14);
-                        setTimeout(() => document.body.removeChild(ghost), 0);
-                      }}
-                      onDragEnd={() => { setDragDocIds(null); setDragOverFolderId(null); }}
+                      onDragStart={(e) => startItemDrag(e, d.id, d.name)}
+                      onDragEnd={endItemDrag}
                     >
                       {selectionMode && (
                         <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
                           <Checkbox checked={isSelected} onChange={() => toggleSelect(d.id)} aria-label={`Selecionar ${d.name}`} />
                         </td>
                       )}
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2" data-col="name">
                         <div className="flex items-center gap-2">
                           {(() => { const s = getFileStyle(d.name); const Icon = s.icon; return (
                             <div className={`w-6 h-6 rounded-badge flex items-center justify-center shrink-0 ${isSelected ? "bg-white/20" : s.bgColor}`}>
@@ -3311,10 +3510,18 @@ export default function Documents() {
                           )}
                         </div>
                       </td>
-                      <td className={`px-3 py-2 text-mac-caption hidden sm:table-cell ${isSelected ? "text-white/90" : "text-(--text-secondary)"}`} title={d.uploaded_by_name ? `Enviado por ${d.uploaded_by_name}` : undefined}>{fmtDate(d.created_at)}</td>
-                      <td className={`px-3 py-2 text-mac-caption text-right tabular-nums hidden sm:table-cell ${isSelected ? "text-white/90" : "text-(--text-secondary)"}`}>{fmtSize(d.size_bytes)}</td>
-                      <td className={`px-3 py-2 text-mac-caption hidden lg:table-cell ${isSelected ? "text-white/90" : "text-(--text-secondary)"}`}>{kindLabel(d.name)}</td>
-                      <td className="px-3 py-2 hidden sm:table-cell"><OcrIcon status={d.ocr_status} inverted={isSelected} /></td>
+                      {shownCols.map((c) => (
+                        <td key={c.key} data-col={c.key}
+                          className={`px-3 py-2 text-mac-caption truncate ${c.cls} ${c.align === "right" ? "text-right tabular-nums" : ""} ${isSelected ? "text-white/90" : "text-(--text-secondary)"}`}
+                          title={c.key === "created" && d.uploaded_by_name ? `Enviado por ${d.uploaded_by_name}` : undefined}>
+                          {c.key === "created" ? fmtDate(d.created_at)
+                            : c.key === "updated" ? fmtDate(d.updated_at ?? d.created_at)
+                            : c.key === "uploader" ? (d.uploaded_by_name ?? "—")
+                            : c.key === "size" ? fmtSize(d.size_bytes)
+                            : c.key === "kind" ? kindLabel(d.name)
+                            : <OcrIcon status={d.ocr_status} inverted={isSelected} />}
+                        </td>
+                      ))}
                       {resolvedFields.map((rf) => {
                         const value = fieldValues[d.id]?.[rf.custom_field_id];
                         return (
@@ -3511,7 +3718,35 @@ export default function Documents() {
       {sharingDoc && (
         <ShareModal resourceType="document" resourceId={sharingDoc.id} name={sharingDoc.name} onClose={() => setSharingDoc(null)} />
       )}
-      {picker && current && (
+      {picker && current && picker.kind === "selection" && (
+        <FolderPickerDialog
+          companyId={current.id}
+          title={`Mover ${plural(picker.docIds.length + picker.folders.length, "item", "itens")} para…`}
+          confirmLabel="Mover aqui"
+          allowRoot={picker.docIds.length === 0}
+          excludeSubtreeOf={picker.folders.map((f) => f.id)}
+          disabledIds={currentFolderId ? [currentFolderId] : []}
+          initialId={currentFolderId}
+          onPick={async (f) => {
+            const { docIds, folders: fs } = picker;
+            setPicker(null);
+            if (docIds.length && f.id) await moveDocuments(docIds, f.id, f.name);
+            if (fs.length) await moveFoldersTo(fs, f);
+          }}
+          onClose={() => setPicker(null)}
+        />
+      )}
+      {confirmBulkDelete && (
+        <ConfirmModal
+          title={`Excluir ${plural(selFolders.length + selDocIds.length, "item", "itens")}?`}
+          description={`${plural(selFolders.length, "pasta vai", "pastas vão")} para a lixeira com tudo o que há dentro${selDocIds.length ? `, junto com ${plural(selDocIds.length, "documento", "documentos")}` : ""}. Dá para desfazer logo em seguida ou restaurar pela Lixeira.`}
+          confirmLabel="Excluir"
+          danger
+          onConfirm={deleteSelectedConfirmed}
+          onClose={() => setConfirmBulkDelete(false)}
+        />
+      )}
+      {picker && current && picker.kind !== "selection" && (
         picker.kind === "documents" ? (
           <FolderPickerDialog
             companyId={current.id}
@@ -3567,12 +3802,12 @@ export default function Documents() {
       )}
 
       {/* Anúncio da seleção para leitor de tela (achado A4-28). */}
-      <div className="sr-only" aria-live="polite">{selected.size ? `${plural(selected.size, "documento selecionado", "documentos selecionados")}` : ""}</div>
+      <div className="sr-only" aria-live="polite">{selected.size ? `${plural(selected.size, "item selecionado", "itens selecionados")}` : ""}</div>
 
       {/* Barra de ações em lote — flutuante; escondida, fica inerte (fora do Tab). */}
       <div
         role="toolbar"
-        aria-label="Ações para os documentos selecionados"
+        aria-label="Ações para os itens selecionados"
         inert={selected.size === 0}
         className={`glass-panel glass-blur-pill fixed bottom-[calc(76px+env(safe-area-inset-bottom))] md:bottom-[100px] left-1/2 flex items-center gap-1 rounded-[50px] pl-4 pr-1.5 py-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.45)] z-30 max-w-[calc(100vw-24px)] overflow-x-auto transition-[opacity,transform] duration-normal ${
           selected.size > 0 ? "opacity-100" : "opacity-0 pointer-events-none"
@@ -3582,27 +3817,27 @@ export default function Documents() {
         <span className="text-mac-body text-(--text-primary) mr-1 whitespace-nowrap">
           <b className="text-(--text-accent) font-semibold tabular-nums">{selected.size}</b> selecionado{selected.size !== 1 ? "s" : ""}
         </span>
-        {canWrite && (
-          <button onClick={() => setPicker({ kind: "documents", ids: [...selected] })}
+        {canWrite && (selFolders.length === 0 || canAdmin) && (
+          <button onClick={() => setPicker(selFolders.length ? { kind: "selection", docIds: selDocIds, folders: selFolders } : { kind: "documents", ids: selDocIds })}
             className="flex items-center gap-1.5 h-8 pointer-coarse:h-11 px-3 rounded-full text-mac-body text-(--text-primary) whitespace-nowrap hover:bg-(--bg-hover)">
             <FolderInput className="w-3.5 h-3.5" aria-hidden /> Mover
           </button>
         )}
-        <button onClick={() => downloadDocuments([...selected])}
+        {selDocIds.length > 0 && <button onClick={() => downloadDocuments(selDocIds)}
           className="flex items-center gap-1.5 h-8 pointer-coarse:h-11 px-3 rounded-full text-mac-body text-(--text-primary) whitespace-nowrap hover:bg-(--bg-hover)">
           <Download className="w-3.5 h-3.5" aria-hidden /> Baixar
-        </button>
-        <button onClick={() => anchorDocuments([...selected])}
+        </button>}
+        {selDocIds.length > 0 && <button onClick={() => anchorDocuments(selDocIds)}
           className="hidden sm:flex items-center gap-1.5 h-8 pointer-coarse:h-11 px-3 rounded-full text-mac-body text-(--text-primary) whitespace-nowrap hover:bg-(--bg-hover)">
           <Anchor className="w-3.5 h-3.5" aria-hidden /> Ancorar
-        </button>
-        {resolvedFields.length > 0 && canWrite && (
+        </button>}
+        {resolvedFields.length > 0 && canWrite && selDocIds.length > 0 && (
           <button onClick={() => setShowBulkMetadata(true)}
             className="flex items-center gap-1.5 h-8 pointer-coarse:h-11 px-3 rounded-full text-mac-body text-(--text-primary) whitespace-nowrap hover:bg-(--bg-hover)">
             <Pencil className="w-3.5 h-3.5" aria-hidden /> Metadados
           </button>
         )}
-        {canWrite && (
+        {canWrite && (selFolders.length === 0 || canAdmin) && (
           <button onClick={deleteSelected}
             className="flex items-center gap-1.5 h-8 pointer-coarse:h-11 px-3 rounded-full text-mac-body text-(--text-danger) whitespace-nowrap hover:bg-red-500/12">
             <Trash2 className="w-3.5 h-3.5" aria-hidden /> Excluir
@@ -3616,14 +3851,14 @@ export default function Documents() {
 
       {showBulkMetadata && current && (
         <BulkMetadataModal
-          documentIds={[...selected]}
+          documentIds={selDocIds}
           fields={resolvedFields}
           fieldValues={fieldValues}
           companyId={current.id}
           onClose={() => setShowBulkMetadata(false)}
           onSaved={(applied) => setFieldValues((prev) => {
             const next = { ...prev };
-            for (const id of selected) next[id] = { ...(next[id] ?? {}), ...applied };
+            for (const id of selDocIds) next[id] = { ...(next[id] ?? {}), ...applied };
             return next;
           })}
         />

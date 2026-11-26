@@ -694,3 +694,22 @@ input[type="number"] {
   :focus-visible { outline: 2px solid Highlight !important; outline-offset: 2px; }
   .brand-mark, .brand-wordmark { background-color: CanvasText; forced-color-adjust: none; }
 }
+
+/* Arrastar (A4-39): fantasma com os tokens da marca e o piscar do
+   spring-loaded avisando que a pasta vai abrir. */
+.drag-ghost {
+  position: fixed; top: -1000px; left: -1000px;
+  padding: 6px 14px; border-radius: 999px;
+  background: var(--color-teal-600); color: #fff;
+  font-family: inherit; font-size: var(--text-mac-body, 13px); font-weight: 500;
+  white-space: nowrap; box-shadow: 0 4px 12px rgb(0 0 0 / 0.35);
+}
+@keyframes spring-blink {
+  0%, 70% { outline-color: var(--color-teal-400); }
+  78% { outline-color: transparent; }
+  86% { outline-color: var(--color-teal-400); }
+  93% { outline-color: transparent; }
+  100% { outline-color: var(--color-teal-400); }
+}
+.spring-target { animation: spring-blink 1.2s linear 1; }
+@media (prefers-reduced-motion: reduce) { .spring-target { animation: none; } }
