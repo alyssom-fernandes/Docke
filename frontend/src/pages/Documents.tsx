@@ -1035,9 +1035,16 @@ function DocumentRetentionSection({ docId }: { docId: string }) {
   const [candidates, setCandidates] = useState<RetentionCandidate[] | null>(null);
   const [showCalc, setShowCalc] = useState(false);
   const load = () => { setInfo(null); api.get(`/documents/${docId}/retention`).then((r) => setInfo(r.data)).catch(() => setInfo("erro")); };
+  // Carrega junto com o painel: o cabeçalho já diz o prazo, sem abrir (A5-24).
+  useEffect(load, [docId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (showCalc) api.get<{ candidates: RetentionCandidate[] }>(`/documents/${docId}/retention/explain`).then((r) => setCandidates(r.data.candidates)).catch(() => setCandidates([])); }, [showCalc, docId]);
+  const resumo = info === null || info === "erro" ? undefined
+    : info.under_hold ? "bloqueio judicial"
+    : !info.policy_name ? "sem prazo"
+    : info.is_indeterminate ? "guarda permanente"
+    : `até ${brDate(info.expires_at)}`;
   return (
-    <Disclosure icon={<Archive className="w-4 h-4" aria-hidden />} title="Retenção" onOpen={load}>
+    <Disclosure icon={<Archive className="w-4 h-4" aria-hidden />} title="Retenção" summary={resumo}>
       {info === null ? (
         <div className="h-10 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />
       ) : info === "erro" ? (
@@ -1109,6 +1116,16 @@ function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit, onClos
   onFieldSaved: (docId: string, fieldId: string, value: string) => void;
 }) {
   const { success, error: showError } = useToast();
+  // Resumo da atividade no cabeçalho (A5-26): quantos eventos e o último.
+  const [act, setAct] = useState<{ total: number; last: string | null } | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    setAct(null);
+    api.get(`/activity`, { params: { company_id: companyId, item_id: doc.id, page_size: 1 } })
+      .then((r) => { if (vivo) setAct({ total: r.data?.total ?? 0, last: r.data?.results?.[0]?.created_at ?? null }); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [doc.id, companyId]);
   const [favorited, setFavorited] = useState(doc.favorited ?? false);
   const [sharing, setSharing] = useState(false);
   const [shareCount, setShareCount] = useState(doc.active_share_count ?? 0);
@@ -1193,17 +1210,18 @@ function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit, onClos
       )}
 
       <MetadataSection doc={doc} companyId={companyId} canEdit={canEdit} onSaved={(fid, v) => onFieldSaved(doc.id, fid, v)} />
-      <IntegrityCheck key={doc.id} documentId={doc.id} />
-      <VersionsPanel documentId={doc.id} documentName={doc.name} onChanged={onChanged} />
-      <DocumentRetentionSection docId={doc.id} />
-      <DocumentObligations docId={doc.id} />
-      <Disclosure icon={<Clock className="w-4 h-4" aria-hidden />} title="Atividade">
+      <Disclosure icon={<Clock className="w-4 h-4" aria-hidden />} title="Atividade"
+        summary={act ? (act.total ? `${act.total} ${act.total === 1 ? "evento" : "eventos"} · último ${relativeDate(act.last ?? "")}` : "sem eventos") : undefined}>
         <ActivityFeed companyId={companyId} itemId={doc.id} pageSize={20} groupByDay={false} emptyDescription="Nenhuma atividade registrada neste documento ainda." />
         <LinkAccesses documentId={doc.id} />
         <Link to={`/activity?item=${doc.id}&nome=${encodeURIComponent(doc.name)}`} className="mt-2 inline-flex items-center gap-1 min-h-6 pointer-coarse:min-h-11 text-mac-caption font-medium text-(--text-accent) hover:underline">
           Ver tudo na Atividade <ChevronRight className="w-3.5 h-3.5" aria-hidden />
         </Link>
       </Disclosure>
+      <IntegrityCheck key={doc.id} documentId={doc.id} />
+      <VersionsPanel documentId={doc.id} documentName={doc.name} onChanged={onChanged} />
+      <DocumentRetentionSection docId={doc.id} />
+      <DocumentObligations docId={doc.id} />
     </div>
   );
 
