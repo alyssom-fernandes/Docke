@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useCallback, type ElementType } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, Upload, FileSearch, Archive, Download, X, CheckCircle2, AlertCircle, Loader2, RotateCcw, RefreshCw, ChevronRight } from "lucide-react";
+import { Bell, Upload, FileSearch, Archive, Download, Copy, X, CheckCircle2, AlertCircle, Loader2, RotateCcw, RefreshCw, ChevronRight } from "lucide-react";
 import { useTaskCenter, type Task, type TaskKind } from "@/lib/TaskContext";
 import { useCompany } from "@/lib/CompanyContext";
 import api from "@/lib/api";
@@ -12,6 +12,7 @@ const KIND_ICON: Record<TaskKind, ElementType> = {
   ocr: FileSearch,
   zip: Archive,
   export: Download,
+  copy: Copy,
 };
 
 interface Notification {

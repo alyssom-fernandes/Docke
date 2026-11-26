@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from "react";
 
 export type TaskStatus = "running" | "done" | "failed";
-export type TaskKind = "upload" | "ocr" | "zip" | "export";
+export type TaskKind = "upload" | "ocr" | "zip" | "export" | "copy";
 // Fase 11.2: estados separados na fila — upload (subindo bytes, com % real
 // quando multipart) é uma etapa distinta de processing (OCR rodando no
 // worker, fora do controle do cliente). Antes as duas ficavam disfarçadas
