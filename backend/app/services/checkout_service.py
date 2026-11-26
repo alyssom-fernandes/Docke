@@ -11,8 +11,16 @@ import asyncpg
 from fastapi import HTTPException, status
 
 
+async def _consultar(sql: str, *args):
+    """Leitura pelo pool interno: com a conexão do usuário, o RLS de users esconde quem reservou."""
+    from app.dependencies import _acquire, _require_pool
+
+    async with _acquire(_require_pool()) as c:
+        return await c.fetchrow(sql, *args)
+
+
 async def reserva(conn: asyncpg.Connection, document_id: UUID | str) -> dict[str, Any] | None:
-    row = await conn.fetchrow(
+    row = await _consultar(
         """
         SELECT c.user_id::text, u.full_name, c.note, c.created_at
         FROM public.document_checkouts c JOIN public.users u ON u.id = c.user_id
@@ -28,7 +36,7 @@ async def exigir_livre(conn: asyncpg.Connection, document_ids: Iterable[UUID | s
     ids = [str(d) for d in document_ids]
     if not ids:
         return
-    row = await conn.fetchrow(
+    row = await _consultar(
         """
         SELECT d.name, u.full_name, c.created_at
         FROM public.document_checkouts c

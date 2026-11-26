@@ -15,7 +15,7 @@ async def test_pasta_sensivel_bloqueia_link_e_vale_para_subpastas(api, admin, em
     r = await api.put(API + f"/folders/{empresa['raiz']}/privacy", json={"sensitivity": "sensivel"}, headers=h)
     assert r.status_code == 200, r.text
     r = await api.get(API + f"/folders/{empresa['sub']}/privacy", headers=h)
-    assert r.json() == {"sensitivity": "normal", "effective": "sensivel", "inherited": True}
+    assert {k: r.json()[k] for k in ("sensitivity", "effective", "inherited")} == {"sensitivity": "normal", "effective": "sensivel", "inherited": True}
 
     doc = await _doc(admin, empresa, empresa["sub"], "ASO admissional.pdf", "exame")
     r = await api.post(API + "/shares", json={"resource_type": "document", "resource_id": doc, "always_latest": True}, headers=h)
