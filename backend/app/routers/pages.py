@@ -131,7 +131,8 @@ async def organizar_paginas(
             )
         return {"modo": "versao", "document_id": str(document_id), "version_number": numero, "paginas": len(body.paginas), "resumo": resumo}
 
-    # Extrair: documento novo na mesma pasta, pela conexão da pessoa (vale o RLS de escrita).
+    # Extrair: documento novo na mesma pasta. A escrita nela já foi conferida acima
+    # (_check_write_access); grava pela conexão interna para o OCR enxergar o documento.
     base = doc["name"][:-4]
     nome = (body.nome or "").strip() or f"{base} (páginas extraídas).pdf"
     if not nome.lower().endswith(".pdf"):
@@ -140,7 +141,7 @@ async def organizar_paginas(
     novo_id = uuid4()
     chave = storage_service.storage_key(doc["company_id"], str(novo_id), "pdf")
     await asyncio.to_thread(storage_service.put_object_bytes, chave, novo, "application/pdf")
-    await conn.execute(
+    await admin_conn.execute(
         """
         INSERT INTO public.documents (id, folder_id, company_id, name, mime_type, file_type, size_bytes, storage_path, content_hash, copied_from, uploaded_by)
         VALUES ($1, $2, $3::uuid, $4, 'application/pdf', 'pdf', $5, $6, $7, $8, $9::uuid)
