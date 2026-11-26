@@ -7,6 +7,7 @@ import CommandPalette from "@/components/shared/CommandPalette";
 import KeyboardShortcuts from "@/components/shared/KeyboardShortcuts";
 import ErrorBoundary from "@/components/shared/ErrorBoundary";
 import BottomTabBar from "./BottomTabBar";
+import { prefetchCommonRoutes } from "@/lib/routePrefetch";
 
 interface AppShellProps {
   children: ReactNode;
@@ -20,6 +21,9 @@ export default function AppShell({ children }: AppShellProps) {
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0 });
   }, [location.pathname]);
+
+  // Documentos e Busca pré-carregados com o navegador ocioso (A1-35).
+  useEffect(() => { prefetchCommonRoutes(); }, []);
 
   // Mede a largura REAL reservada pela barra de rolagem (não necessariamente
   // igual ao width:7px do ::-webkit-scrollbar em tokens.css — varia com

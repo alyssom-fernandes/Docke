@@ -1,5 +1,5 @@
 import ForcePasswordChange from "@/components/shared/ForcePasswordChange";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuthContext } from "@/lib/AuthContext";
 import { CompanyProvider, useCompany } from "@/lib/CompanyContext";
@@ -41,10 +41,29 @@ function isAppRoute(pathname: string) {
   return pathname === "/" || APP_ROUTES.some((r) => pathname === r || pathname.startsWith(r + "/"));
 }
 
+// Esqueleto de página no lugar do spinner solto (A1-35).
 function PageFallback() {
   return (
-    <div className="flex min-h-[40vh] items-center justify-center" role="status" aria-label="Carregando">
-      <div className="w-5 h-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
+    <div className="space-y-4 max-w-[1100px] w-full mx-auto" role="status" aria-label="Carregando">
+      <div className="h-7 w-48 rounded-[6px] bg-(--bg-hover) animate-pulse" />
+      <div className="h-4 w-72 max-w-full rounded-[6px] bg-(--bg-hover) animate-pulse" />
+      <div className="grid gap-3 sm:grid-cols-3">{[0, 1, 2].map((i) => <div key={i} className="h-24 rounded-(--radius-panel) bg-(--bg-hover) animate-pulse" />)}</div>
+      <div className="h-64 rounded-(--radius-panel) bg-(--bg-hover) animate-pulse" />
+    </div>
+  );
+}
+
+/** Validação da sessão: depois de 3 s explica a espera (partida a frio do servidor). */
+function SessionCheck() {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => { const t = window.setTimeout(() => setSlow(true), 3000); return () => window.clearTimeout(t); }, []);
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-(--bg-page) px-6 text-center" role="status">
+      <div className="brand-wordmark w-[150px] h-[43px]" role="img" aria-label="Docke" />
+      <div className="w-5 h-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+      <p className={`text-mac-caption text-(--text-secondary) transition-opacity duration-300 ${slow ? "opacity-100" : "opacity-0"}`}>
+        Conectando ao servidor… depois de um tempo parado ele leva alguns segundos para acordar.
+      </p>
     </div>
   );
 }
@@ -72,12 +91,7 @@ function ProtectedRoutes() {
   const { pathname } = location;
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-(--bg-page)">
-        <div className="brand-wordmark w-[150px] h-[43px]" role="img" aria-label="Docke" />
-        <div className="w-5 h-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <SessionCheck />;
   }
 
   // Guarda o endereço pedido: depois de entrar, a pessoa volta para ele (achado A1-02).

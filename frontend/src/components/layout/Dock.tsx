@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { NAV_ITEMS, useNavBadges, type NavItem, type NavBadge } from "./navItems";
+import { prefetchRoute } from "@/lib/routePrefetch";
 
 // Navegação principal a partir de 768 px, como o Dock do macOS: só ícone,
 // rótulo no hover e no foco. Todos os destinos à vista (sem "Mais").
@@ -7,6 +8,8 @@ function DockItem({ to, icon: Icon, label, badge }: NavItem & { badge?: NavBadge
   return (
     <NavLink
       to={to}
+      onMouseEnter={() => prefetchRoute(to)}
+      onFocus={() => prefetchRoute(to)}
       aria-label={badge ? `${label} (${badge.label})` : label}
       className={({ isActive }) =>
         `group relative shrink-0 flex items-center justify-center w-10 h-10 pointer-coarse:w-11 pointer-coarse:h-11 rounded-[10px] transition-[background-color,color,transform] duration-150 active:scale-90 active:bg-(--bg-pressed,var(--bg-hover)) motion-reduce:active:scale-100 ${

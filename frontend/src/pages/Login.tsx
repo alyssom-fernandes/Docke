@@ -47,7 +47,8 @@ export default function Login() {
   const navigate = useNavigate();
   const returnTo = useReturnTo();
 
-  const [view, setView] = useState<View>("login");
+  // Vindo de "Esqueci a senha" na sessão expirada (A1-29), abre direto na recuperação.
+  const [view, setView] = useState<View>(() => (window.history.state?.usr?.forgot ? "forgot" : "login"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
