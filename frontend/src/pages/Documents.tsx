@@ -3011,6 +3011,7 @@ export default function Documents() {
           doc={previewDoc}
           docs={visibleDocuments.some((d) => d.id === previewDoc.id) ? visibleDocuments : undefined}
           onClose={() => { setPreviewDoc(null); setPreviewQuery(null); }}
+          onChanged={load}
           initialQuery={previewQuery}
           origin={(() => {
             // Quick Look cresce a partir do item clicado (A5-38).
