@@ -39,6 +39,7 @@ import {
   Link2,
   RefreshCw,
   AlertTriangle,
+  Inbox,
 } from "lucide-react";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
@@ -52,6 +53,7 @@ import TruncatedFileName from "@/components/ui/TruncatedFileName";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import PreviewModal from "@/components/documents/PreviewModal";
 import ShareModal from "@/components/documents/ShareModal";
+import RequestFilesModal from "@/components/documents/RequestFilesModal";
 import CopyStructureModal from "@/components/documents/CopyStructureModal";
 import FolderTree from "@/components/documents/FolderTree";
 import Dialog from "@/components/ui/Dialog";
@@ -343,6 +345,7 @@ export default function Documents() {
   const [confirmDeleteFolder, setConfirmDeleteFolder] = useState<Folder | null>(null);
   const [deletingFolder, setDeletingFolder] = useState(false);
   const [sharingFolder, setSharingFolder] = useState<Folder | null>(null);
+  const [requestingFolder, setRequestingFolder] = useState<Folder | null>(null);
   const [sharingDoc, setSharingDoc] = useState<Document | null>(null);
   const [showTreeDrawer, setShowTreeDrawer] = useState(false);
   const [copyingFolder, setCopyingFolder] = useState<Folder | null>(null);
@@ -405,6 +408,8 @@ export default function Documents() {
     const f = t.data;
     const list: MenuItem[] = [{ label: "Abrir", icon: <FolderOpen />, shortcut: "Enter", onSelect: () => openFolder(f) }];
     list.push({ label: "Compartilhar…", icon: <Share2 />, disabled: !canWrite, onSelect: () => setSharingFolder(f) });
+    // Link de envio para alguém de fora mandar arquivos para a pasta (FA-A4-11).
+    list.push({ label: "Pedir arquivos…", icon: <Inbox />, disabled: !canWrite, onSelect: () => setRequestingFolder(f) });
     if (canAdmin) {
       list.push({ label: "Mover para…", icon: <FolderInput />, separatorBefore: true, onSelect: () => setPicker({ kind: "folder", folder: f }) });
       list.push({ label: "Renomear", icon: <Pencil />, shortcut: "F2", onSelect: () => startRename("folder", f.id, f.name) });
@@ -2706,6 +2711,9 @@ export default function Documents() {
       )}
       {sharingFolder && (
         <ShareModal resourceType="folder" resourceId={sharingFolder.id} name={sharingFolder.name} onClose={() => setSharingFolder(null)} />
+      )}
+      {requestingFolder && current && (
+        <RequestFilesModal companyId={current.id} folder={requestingFolder} onClose={() => setRequestingFolder(null)} />
       )}
       {showTreeDrawer && current && (
         <Dialog onClose={() => setShowTreeDrawer(false)} title="Pastas" size="sm" bodyClassName="px-2 py-2">

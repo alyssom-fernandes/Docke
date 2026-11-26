@@ -75,6 +75,7 @@ _ACTION_LABELS: dict[str, str] = {
     "mfa_policy": "Regra da verificação em duas etapas alterada",
     "mfa_reset": "Verificação em duas etapas zerada",
     "sessions_end": "Sessões encerradas",
+    "upload_request": "Pedido de arquivos criado",
     "audit_verify": "Integridade da trilha verificada",
     "field_rules_copy": "Regras de metadados copiadas de outra pasta",
     "field_rule_exclude": "Campo tirado de pasta",

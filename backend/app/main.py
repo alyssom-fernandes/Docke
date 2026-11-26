@@ -28,6 +28,7 @@ from app.routers import (
     shares,
     today,
     trash,
+    upload_requests,
     versions,
     privacy,
 )
@@ -165,6 +166,7 @@ app.include_router(admin.router, prefix=PREFIX)
 app.include_router(versions.router, prefix=PREFIX)
 app.include_router(shares.router, prefix=PREFIX)
 app.include_router(shares.public_router, prefix=PREFIX)
+app.include_router(upload_requests.router, prefix=PREFIX)
 app.include_router(notifications.router, prefix=PREFIX)
 app.include_router(obligations.router, prefix=PREFIX)
 app.include_router(retention_legal.router, prefix=PREFIX)
