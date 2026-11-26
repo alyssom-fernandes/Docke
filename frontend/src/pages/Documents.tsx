@@ -606,7 +606,7 @@ function UploadModal({ folderId, folderName, companyId, onClose, onDone }: { fol
         <span className="flex flex-wrap items-center gap-x-1.5">
           Para:
           <span className="inline-flex items-center gap-1 font-medium text-(--text-primary)">
-            <Folder className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" aria-hidden />
+            <Folder className="w-3.5 h-3.5 text-(--text-accent)" aria-hidden />
             {dest.id ? dest.name : "escolha uma pasta"}
           </span>
           <button type="button" onClick={() => setPicking(true)} disabled={uploading}
@@ -635,7 +635,7 @@ function UploadModal({ folderId, folderName, companyId, onClose, onDone }: { fol
             dragOver ? "border-teal-500 bg-teal-500/8" : "border-(--border-control) hover:border-teal-500"
           }`}
         >
-          <Upload className="w-7 h-7 text-teal-600 dark:text-teal-400 mx-auto mb-2" aria-hidden />
+          <Upload className="w-7 h-7 text-(--text-accent) mx-auto mb-2" aria-hidden />
           <p className="text-mac-body text-(--text-primary)">Arraste arquivos ou pastas para cá, ou clique para escolher</p>
           <p className="text-mac-caption text-(--text-secondary) mt-1">PDF, Word, Excel, CSV, XML (NF-e), TXT, JPG, PNG e GIF · até 200 MB cada · a pasta arrastada vem com as subpastas</p>
           <input
@@ -2390,7 +2390,7 @@ export default function Documents() {
                     className="w-full flex items-center gap-1.5 h-8 pl-3 pr-2 text-mac-body rounded-[6px] transition-colors duration-fast text-left text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)"
                   >
                     {fav.item_type === "folder" ? (
-                      <Folder className="w-4 h-4 text-teal-500 shrink-0" />
+                      <Folder className="w-4 h-4 text-(--text-accent) shrink-0" />
                     ) : (
                       (() => { const s = getFileStyle(fav.item_name); const Icon = s.icon; return <Icon className={`w-4 h-4 shrink-0 ${s.iconColor} ${s.fillColor}`} />; })()
                     )}
@@ -2417,7 +2417,7 @@ export default function Documents() {
                 onClick={navigateHome}
                 className={`w-full flex items-center gap-1.5 h-8 pl-3 pr-2 text-mac-body rounded-[6px] transition-colors duration-fast text-left ${
                   currentFolderId === null
-                    ? "bg-teal-500/10 text-teal-500 font-medium"
+                    ? "bg-teal-500/10 text-(--text-accent) font-medium"
                     : "text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)"
                 }`}
               >
@@ -2482,7 +2482,7 @@ export default function Documents() {
               onClick={() => setShowTreeDrawer(true)}
               className="lg:hidden flex items-center gap-1.5 h-8 pointer-coarse:h-11 px-3 rounded-full border border-(--border-control) text-mac-body text-(--text-primary) hover:bg-(--bg-hover) shrink-0"
             >
-              <Folder className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" aria-hidden /> Pastas
+              <Folder className="w-3.5 h-3.5 text-(--text-accent)" aria-hidden /> Pastas
             </button>
             <h1 className="text-mac-body font-semibold text-(--text-primary) truncate">
               {breadcrumbs[breadcrumbs.length - 1].name}
@@ -2491,7 +2491,7 @@ export default function Documents() {
 
           {/* Breadcrumbs — versão truncada (mobile): Início, "…" (seletor com as pastas ocultas, em ordem) e a pasta atual */}
           <nav className="flex sm:hidden items-center gap-1 flex-1 min-w-0">
-            <button onClick={() => navigateBreadcrumb(0)} className="shrink-0 text-(--text-secondary) hover:text-teal-500 transition-colors duration-fast">
+            <button onClick={() => navigateBreadcrumb(0)} className="shrink-0 text-(--text-secondary) hover:text-(--text-accent) transition-colors duration-fast">
               <Home className="w-4 h-4" />
             </button>
             {breadcrumbs.length > 2 && (
@@ -2500,7 +2500,7 @@ export default function Documents() {
                 <div className="relative" ref={crumbMenuRef}>
                   <button
                     onClick={() => setCrumbMenuOpen((v) => !v)}
-                    className="shrink-0 text-mac-body text-(--text-secondary) hover:text-teal-500 transition-colors duration-fast"
+                    className="shrink-0 text-mac-body text-(--text-secondary) hover:text-(--text-accent) transition-colors duration-fast"
                   >
                     …
                   </button>
@@ -2512,7 +2512,7 @@ export default function Documents() {
                           onClick={() => { navigateBreadcrumb(i + 1); setCrumbMenuOpen(false); }}
                           className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-left text-(--text-primary) hover:bg-teal-500 hover:text-white [&:hover_svg]:text-white transition-colors duration-fast"
                         >
-                          <FolderOpen className="w-3.5 h-3.5 text-teal-500 shrink-0" />
+                          <FolderOpen className="w-3.5 h-3.5 text-(--text-accent) shrink-0" />
                           <span className="truncate">{crumb.name}</span>
                         </button>
                       ))}
@@ -2554,7 +2554,7 @@ export default function Documents() {
                 aria-label="Selecionar vários"
                 aria-pressed={selectionMode}
                 className={`h-7 w-7 pointer-coarse:h-11 pointer-coarse:w-11 flex items-center justify-center rounded-full transition-colors duration-fast ${
-                  selectionMode ? "bg-(--bg-card) text-teal-500 shadow-xs" : "text-(--text-secondary) hover:text-(--text-primary)"
+                  selectionMode ? "bg-(--bg-card) text-(--text-accent) shadow-xs" : "text-(--text-secondary) hover:text-(--text-primary)"
                 }`}
               >
                 <ListChecks className="w-4 h-4" />
@@ -2766,7 +2766,7 @@ export default function Documents() {
                       >
                         <MoreHorizontal className="w-4 h-4" aria-hidden />
                       </button>
-                      <Folder className="w-10 h-10 text-teal-500 fill-teal-500/20 shrink-0" />
+                      <Folder className="w-10 h-10 text-(--text-accent) fill-teal-500/20 shrink-0" />
                       {renaming?.kind === "folder" && renaming.id === f.id ? (
                         <input
                           ref={renameInputRef}
@@ -2950,7 +2950,7 @@ export default function Documents() {
                   </th>
                   {resolvedFields.map((f) => (
                     <th key={f.custom_field_id} className="px-3 py-2 text-mac-caption font-normal text-(--text-secondary) text-left truncate hidden sm:table-cell">
-                      {f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}
+                      {f.label}{f.required && <span className="text-(--text-danger) ml-0.5">*</span>}
                     </th>
                   ))}
                   <th className="w-[76px]"><span className="sr-only">Ações</span></th>
@@ -3036,9 +3036,9 @@ export default function Documents() {
                               </button>
                               <button
                                 onClick={() => openFolder(f)}
-                                className="flex items-center gap-2 text-mac-body text-(--text-primary) hover:text-teal-500 transition-colors duration-fast min-w-0"
+                                className="flex items-center gap-2 text-mac-body text-(--text-primary) hover:text-(--text-accent) transition-colors duration-fast min-w-0"
                               >
-                                <Folder className="w-4 h-4 text-teal-500 fill-teal-500/20 shrink-0" />
+                                <Folder className="w-4 h-4 text-(--text-accent) fill-teal-500/20 shrink-0" />
                                 <span className="truncate">{f.name}</span>
                               </button>
                             </div>
@@ -3081,7 +3081,7 @@ export default function Documents() {
                           {selectionMode && <td className="px-4 py-2" />}
                           <td className="px-3 py-2 pl-10">
                             <div className="flex items-center gap-2 text-mac-body text-(--text-secondary)">
-                              <Folder className="w-3.5 h-3.5 text-teal-500/70 fill-teal-500/15 shrink-0" />
+                              <Folder className="w-3.5 h-3.5 text-(--text-accent)/70 fill-teal-500/15 shrink-0" />
                               <span className="truncate">{nf.name}</span>
                             </div>
                           </td>
@@ -3218,7 +3218,7 @@ export default function Documents() {
                             {value ? (
                               <span className={isSelected ? "text-white/90" : "text-(--text-secondary)"}>{value}</span>
                             ) : rf.required ? (
-                              <span className={isSelected ? "text-white" : "text-amber-600 dark:text-amber-400"} title="Campo obrigatório sem preenchimento">Pendente</span>
+                              <span className={isSelected ? "text-white" : "text-(--text-warning)"} title="Campo obrigatório sem preenchimento">Pendente</span>
                             ) : (
                               <span className={isSelected ? "text-white/60" : "text-(--text-placeholder)"}>—</span>
                             )}
@@ -3276,7 +3276,7 @@ export default function Documents() {
                 {idx > 0 && <ChevronRight className="w-3.5 h-3.5 text-(--text-tertiary)" />}
                 <button
                   onClick={() => navigateBreadcrumb(idx)}
-                  className={`text-mac-caption hover:text-teal-500 transition-colors duration-fast ${
+                  className={`text-mac-caption hover:text-(--text-accent) transition-colors duration-fast ${
                     idx === breadcrumbs.length - 1
                       ? "text-(--text-primary) font-medium"
                       : "text-(--text-secondary)"

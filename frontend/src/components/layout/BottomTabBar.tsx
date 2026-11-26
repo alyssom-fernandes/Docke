@@ -59,7 +59,7 @@ export default function BottomTabBar() {
               onClick={() => navigate(to)}
               className={`w-full flex items-center gap-3 px-4 py-2.5 text-mac-body transition-colors duration-fast ${
                 location.pathname.startsWith(to)
-                  ? "text-teal-500"
+                  ? "text-(--text-accent)"
                   : "text-(--text-primary) hover:bg-(--bg-hover)"
               }`}
             >
@@ -90,7 +90,7 @@ export default function BottomTabBar() {
               // só uma caixa flutuante, não uma aba de verdade).
               `flex-1 min-w-0 flex flex-col items-center justify-center py-1.5 gap-0.5 text-[10px] rounded-stat transition-colors duration-fast ${
                 isActive && !moreOpen
-                  ? "text-teal-500"
+                  ? "text-(--text-accent)"
                   : "text-(--text-tertiary) hover:text-(--text-secondary)"
               }`
             }
@@ -102,7 +102,7 @@ export default function BottomTabBar() {
         <button
           onClick={() => setMoreOpen((v) => !v)}
           className={`flex-1 min-w-0 flex flex-col items-center justify-center py-1.5 gap-0.5 text-[10px] rounded-stat transition-colors duration-fast ${
-            moreOpen || moreActive ? "text-teal-500" : "text-(--text-tertiary) hover:text-(--text-secondary)"
+            moreOpen || moreActive ? "text-(--text-accent)" : "text-(--text-tertiary) hover:text-(--text-secondary)"
           }`}
           aria-label="Mais opções"
         >

@@ -204,7 +204,7 @@ export default function FolderPickerDialog({
               className={optionClass(selected === f.id, !!disabled)}
               style={{ paddingLeft: query.trim() ? 8 : 8 + depth * 18 }}
             >
-              <Folder className={`w-4 h-4 shrink-0 ${selected === f.id ? "text-white fill-white/25" : "text-teal-600 dark:text-teal-400 fill-teal-500/20"}`} aria-hidden />
+              <Folder className={`w-4 h-4 shrink-0 ${selected === f.id ? "text-white fill-white/25" : "text-(--text-accent) fill-teal-500/20"}`} aria-hidden />
               <span className="truncate">{query.trim() ? trail : f.name}</span>
               {disabled && <span className="ml-auto shrink-0 text-mac-caption">{disabled}</span>}
             </li>

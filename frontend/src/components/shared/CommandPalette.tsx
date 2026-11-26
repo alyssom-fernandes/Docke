@@ -101,7 +101,7 @@ export default function CommandPalette() {
       const st = r.type === "document" ? getFileStyle(r.name) : null;
       return {
         id: `r-${r.id}`, group: "Documentos e pastas", label: r.name, doc: r,
-        icon: st ? st.icon : Folder, iconClass: st ? `${st.iconColor} ${st.fillColor}` : "text-teal-600 dark:text-teal-400",
+        icon: st ? st.icon : Folder, iconClass: st ? `${st.iconColor} ${st.fillColor}` : "text-(--text-accent)",
         hint: r.type === "folder" ? "Pasta" : "Documento",
         run: () => go(r.type === "folder" ? `/documents?folder_id=${r.id}` : `/documents?folder_id=${r.folder_id ?? ""}&doc=${r.id}`),
       };

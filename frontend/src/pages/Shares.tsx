@@ -131,7 +131,7 @@ export default function Shares() {
                 return (
                   <li key={s.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 sm:px-5 py-3 border-b border-(--border-default) last:border-0">
                     <span className={`w-8 h-8 rounded-badge flex items-center justify-center shrink-0 ${s.resource_type === "folder" ? "bg-teal-500/12" : fs.bgColor}`} aria-hidden="true">
-                      <Icon className={`w-4 h-4 ${s.resource_type === "folder" ? "text-teal-600 dark:text-teal-400" : `${fs.iconColor} ${fs.fillColor}`}`} />
+                      <Icon className={`w-4 h-4 ${s.resource_type === "folder" ? "text-(--text-accent)" : `${fs.iconColor} ${fs.fillColor}`}`} />
                     </span>
                     <div className="flex-1 min-w-[14rem]">
                       <Link to={href(s)} className="block truncate text-mac-body text-(--text-primary) hover:underline">{s.resource_name ?? "Item excluído"}</Link>

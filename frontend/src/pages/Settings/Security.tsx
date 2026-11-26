@@ -53,15 +53,15 @@ function IntegritySection() {
       {result && (
         <div role="status" className={`mt-4 flex items-start gap-2 p-3 rounded-(--radius-control) ${result.intact ? "bg-emerald-500/10" : "bg-red-500/10"}`}>
           {result.intact ? (
-            <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+            <ShieldCheck className="w-4 h-4 text-(--text-success) shrink-0 mt-0.5" />
           ) : (
-            <ShieldAlert className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+            <ShieldAlert className="w-4 h-4 text-(--text-danger) shrink-0 mt-0.5" />
           )}
           <div className="text-mac-caption">
             {result.intact ? (
               <p className="text-(--text-primary)">Cadeia íntegra — {result.total_events} eventos verificados, nenhuma quebra encontrada.</p>
             ) : (
-              <p className="text-red-600 dark:text-red-400">
+              <p className="text-(--text-danger)">
                 Quebra detectada em {result.broken_count} ponto{result.broken_count > 1 ? "s" : ""}. {result.first_broken?.reason}
                 {result.first_broken?.event_created_at && (
                   <> O primeiro evento afetado foi registrado originalmente em {new Date(result.first_broken.event_created_at).toLocaleString("pt-BR")}.</>
@@ -71,7 +71,7 @@ function IntegritySection() {
           </div>
         </div>
       )}
-      {error && <p className="text-mac-caption text-red-500 mt-3">{error}</p>}
+      {error && <p className="text-mac-caption text-(--text-danger) mt-3">{error}</p>}
     </div>
   );
 }

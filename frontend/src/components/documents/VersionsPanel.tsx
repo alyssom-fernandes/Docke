@@ -227,7 +227,7 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
     <div className="border-t border-(--border-default) pt-3">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between text-mac-body text-(--text-primary) hover:text-teal-500 transition-colors duration-fast"
+        className="w-full flex items-center justify-between text-mac-body text-(--text-primary) hover:text-(--text-accent) transition-colors duration-fast"
       >
         <span className="flex items-center gap-2">
           <History className="w-4 h-4" />
@@ -291,7 +291,7 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
                   )}
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-(--text-primary)">
-                      v{v.version_number} {v.is_current && <span className="text-teal-500">· atual</span>}
+                      v{v.version_number} {v.is_current && <span className="text-(--text-accent)">· atual</span>}
                     </p>
                     <p className="text-(--text-tertiary) truncate">
                       {fmtSize(v.size_bytes)} · {relativeDate(v.created_at)} {v.uploaded_by_name ? `· ${v.uploaded_by_name}` : ""}
@@ -306,7 +306,7 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
                         onClick={() => restoreVersion(v)}
                         disabled={busyId === v.id}
                         title="Restaurar esta versão"
-                        className="p-1 rounded text-(--text-tertiary) hover:text-teal-500 hover:bg-(--bg-hover) disabled:opacity-50"
+                        className="p-1 rounded text-(--text-tertiary) hover:text-(--text-accent) hover:bg-(--bg-hover) disabled:opacity-50"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                       </button>

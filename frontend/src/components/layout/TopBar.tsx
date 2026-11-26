@@ -72,7 +72,7 @@ export default function TopBar({ onUploadClick }: TopBarProps) {
                   key={c.id}
                   onClick={() => { setCurrent(c); setCompanyOpen(false); }}
                   className={`w-full flex items-center gap-2 px-3 py-1.5 text-mac-body text-left transition-colors duration-fast hover:bg-(--bg-hover) ${
-                    current?.id === c.id ? "text-teal-500 font-medium" : "text-(--text-primary)"
+                    current?.id === c.id ? "text-(--text-accent) font-medium" : "text-(--text-primary)"
                   }`}
                 >
                   {c.name}
@@ -122,7 +122,7 @@ export default function TopBar({ onUploadClick }: TopBarProps) {
             onClick={() => navigate("/favorites")}
             className={`hidden md:flex lg:hidden w-7 h-7 items-center justify-center rounded-full transition-colors duration-fast ${
               location.pathname.startsWith("/favorites")
-                ? "text-teal-500 bg-teal-500/10"
+                ? "text-(--text-accent) bg-teal-500/10"
                 : "text-(--text-secondary) hover:bg-black/5 dark:hover:bg-white/10"
             }`}
           >
@@ -135,7 +135,7 @@ export default function TopBar({ onUploadClick }: TopBarProps) {
             onClick={() => navigate("/settings/profile")}
             className={`hidden md:flex lg:hidden w-7 h-7 items-center justify-center rounded-full transition-colors duration-fast ${
               location.pathname.startsWith("/settings")
-                ? "text-teal-500 bg-teal-500/10"
+                ? "text-(--text-accent) bg-teal-500/10"
                 : "text-(--text-secondary) hover:bg-black/5 dark:hover:bg-white/10"
             }`}
           >
@@ -182,7 +182,7 @@ export default function TopBar({ onUploadClick }: TopBarProps) {
             </button>
             <button
               onClick={() => { setAvatarOpen(false); logout(); }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-mac-body text-red-500 hover:bg-(--bg-hover) transition-colors duration-fast"
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-mac-body text-(--text-danger) hover:bg-(--bg-hover) transition-colors duration-fast"
             >
               <LogOut className="w-4 h-4" />
               Sair

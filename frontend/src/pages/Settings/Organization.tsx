@@ -196,7 +196,7 @@ function FiscalProfileSection({ companyId, companyName, isAdmin }: { companyId: 
   return (
     <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-5 space-y-4 border border-teal-500/20">
       <div className="flex items-center gap-2">
-        <ScrollText className="w-4 h-4 text-teal-500 shrink-0" />
+        <ScrollText className="w-4 h-4 text-(--text-accent) shrink-0" />
         <h2 className="text-mac-body font-semibold text-(--text-primary) truncate">
           Perfil fiscal <span className="text-(--text-tertiary) font-normal">de</span> {companyName}
         </h2>
@@ -329,7 +329,7 @@ export default function Organization() {
             {orgs.map((org) => (
               <li key={org.id} className="flex items-center gap-3 px-5 py-4 border-b border-(--border-default) last:border-0">
                 <div className="w-9 h-9 rounded-(--radius-control) bg-teal-500/10 flex items-center justify-center shrink-0">
-                  <Building2 className="w-4 h-4 text-teal-500" />
+                  <Building2 className="w-4 h-4 text-(--text-accent)" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-mac-body font-medium text-(--text-primary) flex items-center gap-2 min-w-0">

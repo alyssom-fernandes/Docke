@@ -452,7 +452,7 @@ export default function Dashboard() {
                       <li key={fav.id} className="border-b border-(--border-default) last:border-0">
                         <Link to={to} className="flex items-center gap-3 px-5 py-2 min-h-11 hover:bg-(--bg-hover) transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-(--focus-ring)">
                           {fav.item_type === "folder" ? (
-                            <span className="w-7 h-7 flex items-center justify-center shrink-0" aria-hidden="true"><FolderOpen className="w-4.5 h-4.5 text-teal-600 dark:text-teal-400" /></span>
+                            <span className="w-7 h-7 flex items-center justify-center shrink-0" aria-hidden="true"><FolderOpen className="w-4.5 h-4.5 text-(--text-accent)" /></span>
                           ) : (
                             <FileBadge name={fav.item_name} />
                           )}

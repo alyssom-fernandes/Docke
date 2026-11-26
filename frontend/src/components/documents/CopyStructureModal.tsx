@@ -139,7 +139,7 @@ export default function CopyStructureModal({
                       role="radio" aria-checked={targetParentId === null}
                       onClick={() => setTargetParentId(null)}
                       className={`w-full flex items-center gap-2 h-8 pointer-coarse:h-11 px-3 text-mac-body text-left transition-colors duration-fast ${
-                        targetParentId === null ? "bg-teal-500/10 text-teal-500 font-medium" : "text-(--text-primary) hover:bg-(--bg-hover)"
+                        targetParentId === null ? "bg-teal-500/10 text-(--text-accent) font-medium" : "text-(--text-primary) hover:bg-(--bg-hover)"
                       }`}
                     >
                       <Home className="w-3.5 h-3.5 shrink-0" />
@@ -159,11 +159,11 @@ export default function CopyStructureModal({
                             disabled
                               ? "text-(--text-placeholder) cursor-not-allowed"
                               : targetParentId === f.id
-                              ? "bg-teal-500/10 text-teal-500 font-medium"
+                              ? "bg-teal-500/10 text-(--text-accent) font-medium"
                               : "text-(--text-primary) hover:bg-(--bg-hover)"
                           }`}
                         >
-                          <Folder className={`w-3.5 h-3.5 shrink-0 ${disabled ? "" : "text-teal-500"}`} />
+                          <Folder className={`w-3.5 h-3.5 shrink-0 ${disabled ? "" : "text-(--text-accent)"}`} />
                           <span className="truncate">{f.name}</span>
                         </button>
                       );

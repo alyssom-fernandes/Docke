@@ -28,11 +28,11 @@ function TaskRow({ task, onRemove, onRetry }: { task: Task; onRemove: () => void
     <li className="flex items-center gap-3 px-4 py-3 hover:bg-(--bg-hover) transition-colors duration-fast group">
       <div className="shrink-0">
         {task.status === "running" ? (
-          <Loader2 className="w-4 h-4 text-teal-500 animate-spin" />
+          <Loader2 className="w-4 h-4 text-(--text-accent) animate-spin" />
         ) : task.status === "done" ? (
-          <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+          <CheckCircle2 className="w-4 h-4 text-(--text-success)" />
         ) : (
-          <AlertCircle className="w-4 h-4 text-red-500" />
+          <AlertCircle className="w-4 h-4 text-(--text-danger)" />
         )}
       </div>
       <div className="flex-1 min-w-0">
@@ -51,7 +51,7 @@ function TaskRow({ task, onRemove, onRetry }: { task: Task; onRemove: () => void
           </div>
         )}
         {task.status === "failed" && task.error && (
-          <p className="text-mac-caption text-red-500 mt-0.5 truncate">{task.error}</p>
+          <p className="text-mac-caption text-(--text-danger) mt-0.5 truncate">{task.error}</p>
         )}
       </div>
       <div className="flex items-center gap-1 shrink-0">
@@ -61,7 +61,7 @@ function TaskRow({ task, onRemove, onRetry }: { task: Task; onRemove: () => void
           <button
             onClick={onRetry}
             title="Tentar novamente"
-            className="p-1 rounded-full text-(--text-tertiary) hover:text-teal-500 hover:bg-teal-500/10 transition-colors duration-fast"
+            className="p-1 rounded-full text-(--text-tertiary) hover:text-(--text-accent) hover:bg-teal-500/10 transition-colors duration-fast"
           >
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
@@ -163,7 +163,7 @@ export default function TaskCenter() {
               <div className="flex items-center justify-between px-4 py-2.5 border-b border-(--border-default) shrink-0">
                 <span className="text-mac-caption font-medium text-(--text-primary)">Em andamento</span>
                 {hasDone && (
-                  <button onClick={clearDone} className="text-mac-caption text-(--text-secondary) hover:text-teal-500 transition-colors duration-fast">
+                  <button onClick={clearDone} className="text-mac-caption text-(--text-secondary) hover:text-(--text-accent) transition-colors duration-fast">
                     Limpar concluídos
                   </button>
                 )}
@@ -180,7 +180,7 @@ export default function TaskCenter() {
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-(--border-default) shrink-0">
             <span className="text-mac-caption font-medium text-(--text-primary)">Notificações</span>
             {unreadCount > 0 && (
-              <button onClick={markAllRead} className="text-mac-caption text-(--text-secondary) hover:text-teal-500 transition-colors duration-fast">
+              <button onClick={markAllRead} className="text-mac-caption text-(--text-secondary) hover:text-(--text-accent) transition-colors duration-fast">
                 Marcar todas como lidas
               </button>
             )}

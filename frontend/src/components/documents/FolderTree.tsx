@@ -281,7 +281,7 @@ export default function FolderTree({
               >
                 {hasChildren && <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`} />}
               </span>
-              <Icon className="w-4 h-4 shrink-0 text-teal-600 dark:text-teal-400 fill-teal-500/20" aria-hidden />
+              <Icon className="w-4 h-4 shrink-0 text-(--text-accent) fill-teal-500/20" aria-hidden />
               <span className="truncate flex-1">{node.name}</span>
             </div>
           );

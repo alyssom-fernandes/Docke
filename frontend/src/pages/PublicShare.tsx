@@ -146,7 +146,7 @@ export default function PublicShare() {
               className="flex flex-col items-center gap-4 py-4"
             >
               <div className="w-12 h-12 bg-amber-50 dark:bg-amber-900/20 rounded-card flex items-center justify-center">
-                <Lock className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                <Lock className="w-6 h-6 text-(--text-warning)" />
               </div>
               <p className="text-mac-body text-(--text-primary) font-medium">"{info.name}" está protegido por senha</p>
               <Input
@@ -195,17 +195,17 @@ export default function PublicShare() {
             <div>
               {path.length > 0 && (
                 <nav className="flex items-center gap-1 mb-4 text-mac-caption text-(--text-secondary)">
-                  <button onClick={() => navigateTo(null, 0)} className="hover:text-teal-500">raiz</button>
+                  <button onClick={() => navigateTo(null, 0)} className="hover:text-(--text-accent)">raiz</button>
                   {path.map((p, i) => (
                     <span key={p.id} className="flex items-center gap-1">
                       <ChevronRight className="w-3 h-3" />
-                      <button onClick={() => navigateTo(p.id, i + 1)} className="hover:text-teal-500">{p.name}</button>
+                      <button onClick={() => navigateTo(p.id, i + 1)} className="hover:text-(--text-accent)">{p.name}</button>
                     </span>
                   ))}
                 </nav>
               )}
               <p className="text-mac-body font-medium text-(--text-primary) mb-3 flex items-center gap-2">
-                <FolderOpen className="w-4 h-4 text-teal-500" />
+                <FolderOpen className="w-4 h-4 text-(--text-accent)" />
                 {content.name}
               </p>
               <ul className="divide-y divide-(--border-default) border border-(--border-default) rounded-(--radius-control) overflow-hidden">
@@ -215,7 +215,7 @@ export default function PublicShare() {
                       onClick={() => navigateTo(f.id)}
                       className="w-full flex items-center gap-2 px-3 py-2.5 text-mac-body text-left hover:bg-(--bg-hover) transition-colors duration-fast"
                     >
-                      <FolderOpen className="w-4 h-4 text-teal-500 shrink-0" />
+                      <FolderOpen className="w-4 h-4 text-(--text-accent) shrink-0" />
                       {f.name}
                     </button>
                   </li>

@@ -183,7 +183,7 @@ export default function Login() {
           <button
             type="button"
             onClick={() => { setView("forgot"); setFormError(""); setErrors({}); }}
-            className="text-mac-body text-teal-700 underline-offset-[3px] hover:underline dark:text-teal-200 min-h-6 pointer-coarse:min-h-11 px-0.5 rounded-sm"
+            className="text-mac-body text-(--text-accent) underline-offset-[3px] hover:underline dark:text-teal-200 min-h-6 pointer-coarse:min-h-11 px-0.5 rounded-sm"
           >
             Esqueci a senha
           </button>
@@ -216,8 +216,8 @@ export default function Login() {
             {showPassword ? <EyeOff className="w-4 h-4" aria-hidden /> : <Eye className="w-4 h-4" aria-hidden />}
           </button>
         </div>
-        {errors.password && <p id="login-senha-erro" className="text-mac-caption text-red-600 dark:text-red-400">{errors.password}</p>}
-        {capsLock && <p id="login-caps" className="text-mac-caption text-amber-700 dark:text-amber-300">A tecla Caps Lock está ativada.</p>}
+        {errors.password && <p id="login-senha-erro" className="text-mac-caption text-(--text-danger)">{errors.password}</p>}
+        {capsLock && <p id="login-caps" className="text-mac-caption text-(--text-warning)">A tecla Caps Lock está ativada.</p>}
       </div>
       <label className="flex items-center gap-2.5 min-h-8 pointer-coarse:min-h-11 cursor-pointer select-none text-mac-body text-(--text-secondary)">
         <Checkbox checked={remember} onChange={(e) => setRemember(e.target.checked)} />
@@ -266,7 +266,7 @@ export default function Login() {
     </form>
   ) : (
     <div className="flex flex-col gap-3 text-left login-reveal" role="status">
-      <MailCheck className="w-6 h-6 text-teal-600 dark:text-teal-300" aria-hidden />
+      <MailCheck className="w-6 h-6 text-(--text-accent)" aria-hidden />
       <p className="text-mac-callout font-semibold text-(--text-primary)">Confira seu e-mail</p>
       <p className="text-mac-body leading-[19px] text-(--text-secondary)">
         Se <strong className="text-(--text-primary) font-medium">{email.trim()}</strong> tiver cadastro, chega em alguns minutos um link para criar a senha nova. Confira também a caixa de spam. Se não chegar, fale com o administrador da sua empresa.
@@ -288,7 +288,7 @@ export default function Login() {
         }}
       />
 
-      <a href="#acesso-titulo" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-10 text-mac-body text-teal-700 dark:text-teal-200">
+      <a href="#acesso-titulo" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-10 text-mac-body text-(--text-accent) dark:text-teal-200">
         Pular para o acesso
       </a>
 
@@ -379,9 +379,9 @@ export default function Login() {
                   Comércio Alfa Modelo Ltda, {e.where}
                 </span>
                 <span className="mt-1 whitespace-nowrap font-mono text-[11.5px] leading-[17px] text-(--text-secondary) sm:col-start-2 sm:row-span-2 sm:row-start-1 sm:mt-0 sm:text-right">
-                  anterior <span className={i === 0 ? "" : "text-teal-700 dark:text-teal-200"}>{e.prev}</span>
+                  anterior <span className={i === 0 ? "" : "text-(--text-accent) dark:text-teal-200"}>{e.prev}</span>
                   <br />
-                  <span className="text-teal-700 dark:text-teal-200">registro {e.hash}</span>
+                  <span className="text-(--text-accent) dark:text-teal-200">registro {e.hash}</span>
                 </span>
               </li>
             ))}
@@ -401,7 +401,7 @@ export default function Login() {
                   AFN Systems
                 </span>
               </span>
-              <a href={REPO_URL} className="text-teal-700 underline underline-offset-[3px] hover:text-teal-600 dark:text-teal-200 dark:hover:text-teal-100">
+              <a href={REPO_URL} className="text-(--text-accent) underline underline-offset-[3px] hover:text-(--text-accent) dark:text-teal-200 dark:hover:text-teal-100">
                 Código-fonte no GitHub
               </a>
             </>

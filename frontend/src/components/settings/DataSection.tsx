@@ -111,7 +111,7 @@ export default function DataSection({ companyId, companyName }: { companyId: str
   if (loadError && !text) {
     return (
       <div role="alert" className="glass-panel glass-blur-card rounded-(--radius-panel) p-5 flex items-center gap-3">
-        <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" aria-hidden />
+        <AlertTriangle className="w-4 h-4 text-(--text-warning) shrink-0" aria-hidden />
         <p className="flex-1 text-mac-body text-(--text-secondary)">Não foi possível carregar a situação dos dados desta empresa.</p>
         <Button size="sm" variant="secondary" onClick={load}>Tentar de novo</Button>
       </div>
@@ -123,7 +123,7 @@ export default function DataSection({ companyId, companyName }: { companyId: str
   return (
     <section aria-labelledby="dados-titulo" className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-5 space-y-5">
       <div className="flex items-center gap-2">
-        <Archive className="w-4 h-4 text-teal-500 shrink-0" aria-hidden />
+        <Archive className="w-4 h-4 text-(--text-accent) shrink-0" aria-hidden />
         <h2 id="dados-titulo" className="text-mac-body font-semibold text-(--text-primary) truncate">
           Dados <span className="text-(--text-tertiary) font-normal">de</span> {companyName}
         </h2>
@@ -175,11 +175,11 @@ export default function DataSection({ companyId, companyName }: { companyId: str
               <li key={e.id} className="px-3 py-2.5 text-mac-caption">
                 <div className="flex items-center gap-2 flex-wrap">
                   {e.status === "done" ? (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-400 shrink-0" aria-hidden />
+                    <CheckCircle2 className="w-3.5 h-3.5 text-(--text-success) shrink-0" aria-hidden />
                   ) : e.status === "failed" ? (
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" aria-hidden />
+                    <AlertTriangle className="w-3.5 h-3.5 text-(--text-warning) shrink-0" aria-hidden />
                   ) : (
-                    <RotateCw className="w-3.5 h-3.5 text-teal-500 animate-spin motion-reduce:animate-none shrink-0" aria-hidden />
+                    <RotateCw className="w-3.5 h-3.5 text-(--text-accent) animate-spin motion-reduce:animate-none shrink-0" aria-hidden />
                   )}
                   <span className="text-(--text-primary) font-medium">
                     {e.status === "done"
@@ -193,7 +193,7 @@ export default function DataSection({ companyId, companyName }: { companyId: str
                   </span>
                 </div>
                 {e.status === "done" && (e.hash_mismatches ?? 0) > 0 && (
-                  <p className="mt-1 text-amber-700 dark:text-amber-400">
+                  <p className="mt-1 text-(--text-warning)">
                     {plural(e.hash_mismatches ?? 0, "arquivo não conferiu", "arquivos não conferiram")} com o hash registrado — veja a coluna "confere" do manifesto.
                   </p>
                 )}
