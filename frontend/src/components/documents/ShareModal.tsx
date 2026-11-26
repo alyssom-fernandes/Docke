@@ -1,14 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-import { X, Link2, Copy, Trash2, Lock } from "lucide-react";
-import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { useEffect, useId, useState } from "react";
+import { Copy, Check, Link2, Lock, Eye, EyeOff, Trash2, Pencil, AlertTriangle } from "lucide-react";
 import api from "@/lib/api";
 import { useToast } from "@/lib/toast";
-import { relativeDate } from "@/lib/date";
+import Dialog from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
-import ConfirmModal from "@/components/ui/ConfirmModal";
-import Switch from "@/components/ui/Switch";
-import Portal from "@/components/ui/Portal";
+import Checkbox from "@/components/ui/Checkbox";
 import Dropdown from "@/components/ui/Dropdown";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 
 interface ShareLink {
   id: string;
@@ -18,53 +16,73 @@ interface ShareLink {
   last_accessed_at: string | null;
   created_at: string;
   has_password: boolean;
+  max_views?: number | null;
+  allow_download?: boolean;
 }
 
-export default function ShareModal({
-  resourceType, resourceId, name, onClose, onChanged,
-}: { resourceType: "document" | "folder"; resourceId: string; name: string; onClose: () => void; onChanged?: (activeCount: number) => void }) {
-  const { success, error: showError } = useToast();
-  const containerRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(containerRef);
+const EXPIRY = [
+  { value: "24h", label: "24 horas" },
+  { value: "7d", label: "7 dias" },
+  { value: "30d", label: "30 dias" },
+  { value: "custom", label: "Escolher a data" },
+  { value: "never", label: "Sem validade" },
+];
 
-  const [links, setLinks] = useState<ShareLink[]>([]);
-  const [loading, setLoading] = useState(true);
+// Pastas e nomes que sugerem dados pessoais ou de saúde (achado A5-84).
+const SENSITIVE = /(holerite|aso|atestado|exame|sa[uú]de|rh|folha|f[eé]rias|rescis|admiss|prontu|cpf|rg)/i;
+
+const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+
+/**
+ * Compartilhar por link (achados A5-77..A5-85): validade (inclusive data
+ * escolhida), senha em campo protegido, limite de aberturas, "só visualizar",
+ * aviso para dados pessoais, links existentes editáveis e com acessos à vista.
+ */
+export default function ShareModal({ resourceType, resourceId, name, onClose, onChanged }: {
+  resourceType: "document" | "folder"; resourceId: string; name: string; onClose: () => void; onChanged?: (activeCount: number) => void;
+}) {
+  const { success, error: showError } = useToast();
+  const uid = useId();
+  const [links, setLinks] = useState<ShareLink[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [expiry, setExpiry] = useState("7d");
+  const [customDate, setCustomDate] = useState("");
   const [usePassword, setUsePassword] = useState(false);
   const [password, setPassword] = useState("");
-  const [expiresIn, setExpiresIn] = useState("7d");
-  const [alwaysLatest, setAlwaysLatest] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [limit, setLimit] = useState("");
+  const [viewOnly, setViewOnly] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [newLink, setNewLink] = useState<string | null>(null);
-  const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [created, setCreated] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [revoking, setRevoking] = useState<ShareLink | null>(null);
+  const [editing, setEditing] = useState<ShareLink | null>(null);
+
+  const active = (links ?? []).filter((l) => !l.revoked_at && (!l.expires_at || new Date(l.expires_at) > new Date()));
+  const sensitive = SENSITIVE.test(name);
 
   function load() {
-    setLoading(true);
+    setLoadError(false);
     api.get<ShareLink[]>("/shares", { params: { resource_type: resourceType, resource_id: resourceId } })
-      .then((r) => {
-        const active = Array.isArray(r.data) ? r.data.filter((l) => !l.revoked_at) : [];
-        setLinks(active);
-        onChanged?.(active.length);
-      })
-      .catch(() => setLinks([]))
-      .finally(() => setLoading(false));
+      .then((r) => { setLinks(r.data); onChanged?.(r.data.filter((l) => !l.revoked_at).length); })
+      .catch(() => { setLoadError(true); setLinks([]); });
   }
+  useEffect(load, [resourceType, resourceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(load, [resourceType, resourceId]);
-
-  async function createLink() {
+  async function create() {
+    if (usePassword && password.length < 4) { showError("Use uma senha com pelo menos 4 caracteres."); return; }
+    if (expiry === "custom" && !customDate) { showError("Escolha a data de validade."); return; }
     setCreating(true);
     try {
       const { data } = await api.post("/shares", {
-        resource_type: resourceType,
-        resource_id: resourceId,
+        resource_type: resourceType, resource_id: resourceId,
         password: usePassword ? password : null,
-        expires_in: expiresIn,
-        always_latest: alwaysLatest,
+        expires_in: expiry, custom_expires_at: expiry === "custom" ? customDate : null,
+        max_views: limit ? Number(limit) : null,
+        allow_download: !viewOnly,
       });
-      const url = `${window.location.origin}/s/${data.token}`;
-      setNewLink(url);
-      await navigator.clipboard.writeText(url).catch(() => {});
-      success("Link criado e copiado para a área de transferência.");
+      setCreated(`${window.location.origin}/s/${data.token}`);
+      setCopied(false);
       setPassword("");
       load();
     } catch (e: any) {
@@ -74,124 +92,204 @@ export default function ShareModal({
     }
   }
 
-  async function confirmRevoke() {
-    if (!revokingId) return;
+  async function copy() {
+    if (!created) return;
     try {
-      await api.delete(`/shares/${revokingId}`);
-      success("Link revogado.");
-      load();
+      await navigator.clipboard.writeText(created);
+      setCopied(true);
+      success("Link copiado.");
     } catch {
-      showError("Erro ao revogar o link.");
+      showError("Não foi possível copiar. Selecione o link e copie com Ctrl+C.");
+    }
+  }
+
+  async function revoke(link: ShareLink) {
+    try {
+      await api.delete(`/shares/${link.id}`);
+      setRevoking(null);
+      success("Link revogado. Quem tentar abrir verá que ele não vale mais.");
+      setLinks((prev) => (prev ?? []).map((l) => (l.id === link.id ? { ...l, revoked_at: new Date().toISOString() } : l)));
+      onChanged?.(active.length - 1);
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível revogar o link.");
+    }
+  }
+
+  const field = "w-full h-9 pointer-coarse:h-11 px-3 text-mac-body pointer-coarse:text-[16px] bg-(--bg-card) border border-(--border-control) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring)";
+
+  return (
+    <>
+      <Dialog onClose={onClose} title={`Compartilhar "${name}"`} description="Quem tiver o link abre sem precisar de conta no Docke." size="md">
+        <div className="space-y-4">
+          {sensitive && (
+            <div role="note" className="flex gap-2 rounded-(--radius-control) border border-amber-500/30 bg-amber-500/8 px-3 py-2.5 text-mac-body text-(--text-primary)">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-(--text-warning)" aria-hidden />
+              Pode conter dados pessoais ou de saúde. Prefira senha, validade curta e "só visualizar".
+            </div>
+          )}
+
+          {created ? (
+            <div className="reveal space-y-2">
+              <label htmlFor={`${uid}-link`} className="block text-mac-body font-medium text-(--text-primary)">Link criado. Copie agora: por segurança ele não é mostrado de novo.</label>
+              <div className="flex gap-2">
+                <input id={`${uid}-link`} readOnly value={created} onFocus={(e) => e.target.select()} className={`${field} font-mono text-mac-caption`} />
+                <Button onClick={copy} aria-label="Copiar link">{copied ? <Check className="w-4 h-4" aria-hidden /> : <Copy className="w-4 h-4" aria-hidden />}{copied ? "Copiado" : "Copiar"}</Button>
+              </div>
+              <button onClick={() => setCreated(null)} className="text-mac-body text-(--text-accent) underline-offset-2 hover:underline min-h-6 pointer-coarse:min-h-11">Criar outro link</button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <span id={`${uid}-val`} className="block text-mac-body font-medium text-(--text-secondary) mb-1.5">Validade</span>
+                  <Dropdown value={expiry} onChange={setExpiry} options={EXPIRY} ariaLabelledby={`${uid}-val`} />
+                </div>
+                {expiry === "custom" && (
+                  <div>
+                    <label htmlFor={`${uid}-data`} className="block text-mac-body font-medium text-(--text-secondary) mb-1.5">Vale até</label>
+                    <input id={`${uid}-data`} type="date" min={new Date().toISOString().slice(0, 10)} value={customDate} onChange={(e) => setCustomDate(e.target.value)} className={field} />
+                  </div>
+                )}
+                <div>
+                  <label htmlFor={`${uid}-lim`} className="block text-mac-body font-medium text-(--text-secondary) mb-1.5">Limite de aberturas</label>
+                  <input id={`${uid}-lim`} inputMode="numeric" value={limit} onChange={(e) => setLimit(e.target.value.replace(/\D/g, "").slice(0, 5))} placeholder="Sem limite" className={field} />
+                </div>
+              </div>
+              <label className="flex items-center gap-2.5 min-h-8 pointer-coarse:min-h-11 cursor-pointer text-mac-body text-(--text-primary)">
+                <Checkbox checked={viewOnly} onChange={(e) => setViewOnly(e.target.checked)} />
+                Só visualizar (sem botão de baixar)
+              </label>
+              <label className="flex items-center gap-2.5 min-h-8 pointer-coarse:min-h-11 cursor-pointer text-mac-body text-(--text-primary)">
+                <Checkbox checked={usePassword} onChange={(e) => setUsePassword(e.target.checked)} />
+                Pedir senha
+              </label>
+              {usePassword && (
+                <div className="reveal">
+                  <label htmlFor={`${uid}-senha`} className="block text-mac-body font-medium text-(--text-secondary) mb-1.5">Senha do link</label>
+                  <div className="relative">
+                    <input id={`${uid}-senha`} type={showPassword ? "text" : "password"} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} className={`${field} pr-11`} />
+                    <button type="button" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"} aria-pressed={showPassword}
+                      className="absolute right-0.5 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center rounded-(--radius-control) text-(--text-secondary) hover:bg-(--bg-hover)">
+                      {showPassword ? <EyeOff className="w-4 h-4" aria-hidden /> : <Eye className="w-4 h-4" aria-hidden />}
+                    </button>
+                  </div>
+                  <p className="mt-1 text-mac-caption text-(--text-secondary)">Envie a senha por outro canal (telefone, mensagem separada).</p>
+                </div>
+              )}
+              <Button onClick={create} loading={creating} className="w-full"><Link2 className="w-4 h-4" aria-hidden /> Criar link</Button>
+            </div>
+          )}
+
+          <section aria-labelledby={`${uid}-ativos`} className="border-t border-(--border-default) pt-3">
+            <h3 id={`${uid}-ativos`} className="text-mac-body font-semibold text-(--text-primary) mb-2">Links ativos{links ? ` (${active.length})` : ""}</h3>
+            {links === null ? (
+              <div className="h-12 rounded-(--radius-control) bg-(--bg-hover) animate-pulse" aria-label="Carregando links" />
+            ) : loadError ? (
+              <p role="alert" className="text-mac-body text-(--text-secondary)">Não foi possível carregar os links. <button onClick={load} className="font-medium text-(--text-accent) underline underline-offset-2">Tentar de novo</button></p>
+            ) : active.length === 0 ? (
+              <p className="text-mac-body text-(--text-secondary)">Nenhum link ativo para {resourceType === "document" ? "este documento" : "esta pasta"}.</p>
+            ) : (
+              <ul className="divide-y divide-(--border-default) rounded-(--radius-control) border border-(--border-default)">
+                {active.map((l) => {
+                  const soon = l.expires_at && new Date(l.expires_at).getTime() - Date.now() < 2 * 86400000;
+                  return (
+                    <li key={l.id} className="flex items-center gap-2 px-3 py-2">
+                      <div className="flex-1 min-w-0 text-mac-caption">
+                        <p className="text-(--text-primary) flex flex-wrap items-center gap-x-1.5">
+                          Criado em {fmtDate(l.created_at)}
+                          {l.has_password && <span className="inline-flex items-center gap-0.5 text-(--text-secondary)"><Lock className="w-3 h-3" aria-hidden /> com senha</span>}
+                          {l.allow_download === false && <span className="text-(--text-secondary)">· só visualizar</span>}
+                        </p>
+                        <p className={soon ? "text-(--text-warning)" : "text-(--text-secondary)"}>
+                          {l.expires_at ? `Vale até ${fmtDate(l.expires_at)}` : "Sem validade"} · {l.view_count} {l.view_count === 1 ? "abertura" : "aberturas"}{l.max_views ? ` de ${l.max_views}` : ""}
+                          {l.last_accessed_at ? ` · última em ${fmtDate(l.last_accessed_at)}` : ""}
+                        </p>
+                      </div>
+                      <button onClick={() => setEditing(l)} aria-label="Editar este link" className="w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)"><Pencil className="w-3.5 h-3.5" aria-hidden /></button>
+                      <button onClick={() => setRevoking(l)} aria-label="Revogar este link" className="w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-full text-(--text-danger) hover:bg-red-500/10"><Trash2 className="w-3.5 h-3.5" aria-hidden /></button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        </div>
+      </Dialog>
+      {revoking && (
+        <ConfirmModal
+          title="Revogar este link?"
+          description="Quem abrir o link a partir de agora verá que ele não vale mais. Uma página que já estava aberta pode continuar funcionando por até 1 hora."
+          confirmLabel="Revogar"
+          danger
+          onConfirm={() => revoke(revoking)}
+          onClose={() => setRevoking(null)}
+        />
+      )}
+      {editing && <EditShare link={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
+    </>
+  );
+}
+
+function EditShare({ link, onClose, onSaved }: { link: ShareLink; onClose: () => void; onSaved: () => void }) {
+  const { success, error: showError } = useToast();
+  const uid = useId();
+  const [expiry, setExpiry] = useState<string>("");
+  const [customDate, setCustomDate] = useState("");
+  const [password, setPassword] = useState("");
+  const [removePassword, setRemovePassword] = useState(false);
+  const [limit, setLimit] = useState(link.max_views ? String(link.max_views) : "");
+  const [viewOnly, setViewOnly] = useState(link.allow_download === false);
+  const [saving, setSaving] = useState(false);
+  const field = "w-full h-9 pointer-coarse:h-11 px-3 text-mac-body bg-(--bg-card) border border-(--border-control) rounded-(--radius-control) text-(--text-primary) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring)";
+
+  async function save() {
+    const body: Record<string, unknown> = { allow_download: !viewOnly, max_views: limit ? Number(limit) : 0 };
+    if (expiry) { body.expires_in = expiry; if (expiry === "custom") body.custom_expires_at = customDate; }
+    if (removePassword) body.password = "";
+    else if (password) body.password = password;
+    setSaving(true);
+    try {
+      await api.patch(`/shares/${link.id}`, body);
+      success("Link atualizado.");
+      onSaved();
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível salvar.");
     } finally {
-      setRevokingId(null);
+      setSaving(false);
     }
   }
 
   return (
-    <Portal>
-    <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[480px] max-h-[85vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-(--border-default)">
-          <h2 className="text-mac-body font-semibold text-(--text-primary) truncate">Compartilhar "{name}"</h2>
-          <button onClick={onClose} className="p-1 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover) shrink-0">
-            <X className="w-4 h-4" />
-          </button>
+    <Dialog onClose={onClose} title="Editar link" size="sm" busy={saving}
+      footer={<><Button variant="secondary" onClick={onClose} disabled={saving}>Cancelar</Button><Button onClick={save} loading={saving}>Salvar</Button></>}>
+      <div className="space-y-3">
+        <div>
+          <span id={`${uid}-v`} className="block text-mac-body font-medium text-(--text-secondary) mb-1.5">Nova validade</span>
+          <Dropdown value={expiry} onChange={setExpiry} placeholder="Manter a atual" options={[{ value: "", label: "Manter a atual" }, ...EXPIRY]} ariaLabelledby={`${uid}-v`} />
         </div>
-
-        <div className="p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <label className="text-mac-caption font-medium text-(--text-secondary) flex items-center gap-1.5">
-              <Lock className="w-3.5 h-3.5" /> Proteger com senha
-            </label>
-            <Switch checked={usePassword} onChange={setUsePassword} label="Proteger com senha" />
-          </div>
-          {usePassword && (
-            <input
-              type="text"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Senha do link"
-              className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-            />
-          )}
-
+        {expiry === "custom" && (
           <div>
-            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Expiração</label>
-            <Dropdown
-              value={expiresIn}
-              onChange={setExpiresIn}
-              placeholder="Expiração"
-              options={[
-                { value: "24h", label: "24 horas" },
-                { value: "7d", label: "7 dias" },
-                { value: "30d", label: "30 dias" },
-                { value: "never", label: "Nunca expira" },
-              ]}
-            />
+            <label htmlFor={`${uid}-d`} className="block text-mac-body font-medium text-(--text-secondary) mb-1.5">Vale até</label>
+            <input id={`${uid}-d`} type="date" min={new Date().toISOString().slice(0, 10)} value={customDate} onChange={(e) => setCustomDate(e.target.value)} className={field} />
           </div>
-
-          {resourceType === "document" && (
-            <div className="flex items-center justify-between">
-              <label className="text-mac-caption text-(--text-secondary)">Vincular à versão mais recente (em vez de fixar a atual)</label>
-              <Switch checked={alwaysLatest} onChange={setAlwaysLatest} label="Vincular à versão mais recente" />
-            </div>
-          )}
-
-          <Button size="sm" className="w-full" loading={creating} onClick={createLink} disabled={usePassword && !password.trim()}>
-            <Link2 className="w-3.5 h-3.5" />
-            Gerar link
-          </Button>
-
-          {newLink && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-900/40 rounded-(--radius-control)">
-              <span className="flex-1 text-mac-caption text-teal-700 dark:text-teal-400 truncate font-mono">{newLink}</span>
-              <button onClick={() => navigator.clipboard.writeText(newLink)} className="p-1 rounded-full text-teal-500 hover:bg-teal-100 dark:hover:bg-teal-900/40">
-                <Copy className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-
-          <div className="pt-3 border-t border-(--border-default)">
-            <p className="text-mac-caption font-medium text-(--text-secondary) mb-2">Links ativos</p>
-            {loading ? (
-              <div className="h-10 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />
-            ) : links.length === 0 ? (
-              <p className="text-mac-caption text-(--text-tertiary)">Nenhum link ativo.</p>
-            ) : (
-              <ul className="space-y-1.5">
-                {links.map((l) => (
-                  <li key={l.id} className="flex items-center gap-2 px-2.5 py-2 bg-(--bg-page) rounded-(--radius-control) text-mac-caption">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-(--text-primary)">
-                        {l.has_password && <Lock className="w-3 h-3 inline mr-1" />}
-                        {l.view_count} acesso{l.view_count !== 1 ? "s" : ""}
-                      </p>
-                      <p className="text-(--text-tertiary)">
-                        {l.expires_at ? `Expira ${relativeDate(l.expires_at)}` : "Nunca expira"}
-                      </p>
-                    </div>
-                    <button onClick={() => setRevokingId(l.id)} title="Revogar" className="p-1 rounded-full text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--bg-hover)">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+        )}
+        <div>
+          <label htmlFor={`${uid}-l`} className="block text-mac-body font-medium text-(--text-secondary) mb-1.5">Limite de aberturas</label>
+          <input id={`${uid}-l`} inputMode="numeric" value={limit} onChange={(e) => setLimit(e.target.value.replace(/\D/g, "").slice(0, 5))} placeholder="Sem limite" className={field} />
         </div>
+        <div>
+          <label htmlFor={`${uid}-s`} className="block text-mac-body font-medium text-(--text-secondary) mb-1.5">{link.has_password ? "Trocar a senha" : "Pôr senha"}</label>
+          <input id={`${uid}-s`} type="password" autoComplete="new-password" value={password} disabled={removePassword} onChange={(e) => setPassword(e.target.value)} placeholder="Deixe em branco para não mudar" className={field} />
+        </div>
+        {link.has_password && (
+          <label className="flex items-center gap-2.5 min-h-8 pointer-coarse:min-h-11 cursor-pointer text-mac-body text-(--text-primary)">
+            <Checkbox checked={removePassword} onChange={(e) => setRemovePassword(e.target.checked)} /> Tirar a senha
+          </label>
+        )}
+        <label className="flex items-center gap-2.5 min-h-8 pointer-coarse:min-h-11 cursor-pointer text-mac-body text-(--text-primary)">
+          <Checkbox checked={viewOnly} onChange={(e) => setViewOnly(e.target.checked)} /> Só visualizar
+        </label>
       </div>
-
-      {revokingId && (
-        <ConfirmModal
-          title="Revogar link de compartilhamento?"
-          description={`Quem tiver esse link de "${name}" perderá o acesso imediatamente. Essa ação não pode ser desfeita.`}
-          confirmLabel="Revogar"
-          danger
-          onConfirm={confirmRevoke}
-          onClose={() => setRevokingId(null)}
-        />
-      )}
-    </div>
-    </Portal>
+    </Dialog>
   );
 }

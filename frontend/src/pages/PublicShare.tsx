@@ -176,14 +176,18 @@ export default function PublicShare() {
               ) : content.mime_type === "application/pdf" ? (
                 <iframe src={content.preview_url} className="w-full h-[400px] border border-(--border-default) rounded-(--radius-control) mb-4" title={content.name} />
               ) : null}
-              <a
-                href={content.preview_url}
-                download={content.name}
-                className="inline-flex items-center gap-1.5 h-8 px-4 bg-teal-600 text-white text-mac-body font-medium rounded-full hover:bg-teal-500 transition-colors duration-fast"
-              >
-                <Download className="w-3.5 h-3.5" />
-                Baixar
-              </a>
+              {(content as any).allow_download !== false ? (
+                <a
+                  href={content.preview_url}
+                  download={content.name}
+                  className="inline-flex items-center gap-1.5 h-9 pointer-coarse:h-11 px-4 bg-teal-600 text-white text-mac-body font-medium rounded-full hover:bg-teal-700 transition-colors duration-fast"
+                >
+                  <Download className="w-3.5 h-3.5" aria-hidden />
+                  Baixar
+                </a>
+              ) : (
+                <p className="text-mac-caption text-(--text-secondary)">Quem enviou permitiu só visualizar este documento.</p>
+              )}
             </div>
           )}
 
@@ -225,9 +229,11 @@ export default function PublicShare() {
                       </div>
                       <span className="flex-1 truncate text-(--text-primary)">{d.name}</span>
                       <span className="text-mac-caption text-(--text-tertiary)">{fmtSize(d.size_bytes)}</span>
-                      <button onClick={() => downloadDoc(d.id)} className="p-1 text-(--text-tertiary) hover:text-teal-500">
-                        <Download className="w-3.5 h-3.5" />
-                      </button>
+                      {(content as any).allow_download !== false && (
+                        <button onClick={() => downloadDoc(d.id)} aria-label={`Baixar ${d.name}`} className="w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-hover)">
+                          <Download className="w-3.5 h-3.5" aria-hidden />
+                        </button>
+                      )}
                     </li>
                   );
                 })}

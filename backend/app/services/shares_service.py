@@ -29,15 +29,18 @@ class SharesService:
     async def insert_share(
         conn: asyncpg.Connection, *, resource_type: str, resource_id: UUID, company_id, token_hash: str,
         password_hash: str | None, expires_at: datetime | None, pin_to_version_id, created_by: str,
+        max_views: int | None = None, allow_download: bool = True,
     ) -> asyncpg.Record:
         return await conn.fetchrow(
             """
             INSERT INTO public.shares
-              (resource_type, resource_id, company_id, token_hash, password_hash, expires_at, pin_to_version_id, created_by)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+              (resource_type, resource_id, company_id, token_hash, password_hash, expires_at, pin_to_version_id, created_by,
+               max_views, allow_download)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING id::text, created_at
             """,
             resource_type, resource_id, company_id, token_hash, password_hash, expires_at, pin_to_version_id, created_by,
+            max_views, allow_download,
         )
 
     @staticmethod
@@ -52,7 +55,7 @@ class SharesService:
             """
             SELECT s.id::text, s.resource_type, s.resource_id::text, s.company_id::text,
                    s.expires_at, s.revoked_at, s.view_count, s.last_accessed_at, s.created_at,
-                   (s.password_hash IS NOT NULL) AS has_password,
+                   (s.password_hash IS NOT NULL) AS has_password, s.max_views, s.allow_download, s.pin_to_version_id::text,
                    CASE WHEN s.resource_type = 'document' THEN d.name ELSE f.name END AS resource_name,
                    -- pasta que contém o documento compartilhado — necessário pro
                    -- frontend montar o deep-link /documents?folder_id=...&doc=...
@@ -84,7 +87,8 @@ class SharesService:
         return await admin_conn.fetchrow(
             """
             SELECT s.id, s.resource_type, s.resource_id, s.company_id, s.password_hash,
-                   s.expires_at, s.revoked_at, s.expired_at, s.pin_to_version_id
+                   s.expires_at, s.revoked_at, s.expired_at, s.pin_to_version_id,
+                   s.view_count, s.max_views, s.allow_download
             FROM public.shares s
             WHERE s.token_hash = $1
             """,

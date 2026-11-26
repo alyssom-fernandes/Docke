@@ -1,9 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 import { ChevronDown, Check } from "lucide-react";
-
-// Dropdown genérico (substitui <select> nativo por popover de vidro) — extraído
-// de Settings/Metadata.tsx pra ser reusado em qualquer seletor do app (Users.tsx,
-// etc.) em vez de cada tela reimplementar o próprio <select> cru.
 
 export interface DropdownOption {
   value: string;
@@ -11,79 +7,131 @@ export interface DropdownOption {
   depth?: number;
 }
 
+/**
+ * Seletor no lugar do <select> nativo, no padrão "combobox só de seleção" do
+ * WAI-ARIA (achado A2 primitivos): botão com aria-haspopup="listbox" e
+ * aria-expanded, lista com role="listbox"/"option", setas, Home/End, letra
+ * inicial, Enter/Espaço escolhem, Esc fecha e devolve o foco. 44 px no toque.
+ */
 export default function Dropdown({
-  value, placeholder, options, onChange, disabled, className,
+  value, placeholder = "Selecione", options, onChange, disabled, className, ariaLabelledby, ariaLabel, id,
 }: {
   value: string;
-  placeholder: string;
+  placeholder?: string;
   options: DropdownOption[];
   onChange: (value: string) => void;
   disabled?: boolean;
   className?: string;
+  ariaLabelledby?: string;
+  ariaLabel?: string;
+  id?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
-  const selected = options.find((o) => o.value === value);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const uid = useId();
+  const listId = `${uid}-lista`;
+  const selectedIndex = options.findIndex((o) => o.value === value);
+  const selected = selectedIndex >= 0 ? options[selectedIndex] : undefined;
+  const typeahead = useRef({ text: "", timer: 0 });
 
   useEffect(() => {
     if (!open) return;
+    setActive(selectedIndex >= 0 ? selectedIndex : 0);
     function onClickOutside(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
     }
-    function onEscape(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
     document.addEventListener("mousedown", onClickOutside);
-    document.addEventListener("keydown", onEscape);
-    return () => {
-      document.removeEventListener("mousedown", onClickOutside);
-      document.removeEventListener("keydown", onEscape);
-    };
+    return () => document.removeEventListener("mousedown", onClickOutside);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  useEffect(() => {
+    if (open) listRef.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [active, open]);
+
+  function choose(i: number) {
+    const opt = options[i];
+    if (!opt) return;
+    onChange(opt.value);
+    setOpen(false);
+    buttonRef.current?.focus();
+  }
+
+  function onKeyDown(e: KeyboardEvent) {
+    if (disabled) return;
+    if (!open) {
+      if (["ArrowDown", "ArrowUp", "Enter", " "].includes(e.key)) { e.preventDefault(); setOpen(true); }
+      return;
+    }
+    if (e.key === "ArrowDown") { e.preventDefault(); setActive((a) => Math.min(options.length - 1, a + 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => Math.max(0, a - 1)); }
+    else if (e.key === "Home") { e.preventDefault(); setActive(0); }
+    else if (e.key === "End") { e.preventDefault(); setActive(options.length - 1); }
+    else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(active); }
+    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setOpen(false); }
+    else if (e.key === "Tab") setOpen(false);
+    else if (e.key.length === 1) {
+      window.clearTimeout(typeahead.current.timer);
+      typeahead.current.text += e.key.toLowerCase();
+      typeahead.current.timer = window.setTimeout(() => { typeahead.current.text = ""; }, 600);
+      const hit = options.findIndex((o) => o.label.toLowerCase().startsWith(typeahead.current.text));
+      if (hit >= 0) setActive(hit);
+    }
+  }
 
   return (
     <div ref={containerRef} className={`relative ${className ?? ""}`}>
       <button
+        ref={buttonRef}
+        id={id}
         type="button"
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-labelledby={ariaLabelledby}
+        aria-label={ariaLabelledby ? undefined : ariaLabel}
+        aria-activedescendant={open ? `${uid}-op-${active}` : undefined}
         disabled={disabled}
         onClick={() => setOpen((v) => !v)}
-        className="w-full h-9 px-3 flex items-center justify-between gap-2 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) disabled:opacity-50 focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70 hover:bg-(--bg-hover) transition-colors duration-fast"
+        onKeyDown={onKeyDown}
+        className="w-full h-9 pointer-coarse:h-11 px-3 flex items-center justify-between gap-2 text-mac-body pointer-coarse:text-[16px] bg-(--bg-card) border border-(--border-control) rounded-(--radius-control) text-left focus:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        <span className={`truncate ${selected ? "" : "text-(--text-placeholder)"}`}>
-          {selected ? selected.label : placeholder}
-        </span>
-        <ChevronDown className={`w-4 h-4 shrink-0 text-(--text-tertiary) transition-transform duration-fast ${open ? "rotate-180" : ""}`} />
+        <span className={`truncate ${selected ? "text-(--text-primary)" : "text-(--text-placeholder)"}`}>{selected?.label ?? placeholder}</span>
+        <ChevronDown className={`w-3.5 h-3.5 shrink-0 text-(--text-secondary) transition-transform duration-150 ${open ? "rotate-180" : ""}`} aria-hidden />
       </button>
       {open && (
-        <div
+        <ul
+          ref={listRef}
+          id={listId}
           role="listbox"
-          className="popover-tail-left absolute top-full left-0 mt-1 w-full min-w-[220px] max-h-[280px] overflow-y-auto glass-panel glass-blur-strong rounded-(--radius-popover) shadow-dropdown py-1 z-50"
+          aria-labelledby={ariaLabelledby}
+          aria-label={ariaLabelledby ? undefined : ariaLabel ?? placeholder}
+          className="menu-in absolute z-50 mt-1 w-full max-h-64 overflow-y-auto py-1 glass-panel glass-blur-strong rounded-(--radius-popover) shadow-dropdown"
         >
-          {options.length === 0 ? (
-            <p className="px-3 py-2 text-mac-caption text-(--text-tertiary)">Nenhuma opção disponível.</p>
-          ) : (
-            options.map((o) => (
-              <button
-                key={o.value}
-                type="button"
-                role="option"
-                aria-selected={o.value === value}
-                onClick={() => { onChange(o.value); setOpen(false); }}
-                style={{ paddingLeft: `${12 + (o.depth ?? 0) * 16}px` }}
-                // Hover com barra de destaque sólida (cor de acento cheia +
-                // texto branco) — padrão real de menu macOS, não o tint
-                // cinza neutro que uma lista/tabela usa. Vale só pra menus
-                // (este dropdown, menus de contexto, pull-downs).
-                className={`w-full flex items-center justify-between gap-2 pr-3 py-1.5 text-mac-body text-left transition-colors duration-fast hover:bg-teal-500 hover:text-white ${
-                  o.value === value ? "text-teal-500 font-medium" : "text-(--text-primary)"
-                }`}
-              >
-                <span className="truncate">{o.label}</span>
-                {o.value === value && <Check className="w-4 h-4 shrink-0" />}
-              </button>
-            ))
-          )}
-        </div>
+          {options.map((opt, i) => (
+            <li
+              key={`${opt.value}-${i}`}
+              id={`${uid}-op-${i}`}
+              data-index={i}
+              role="option"
+              aria-selected={opt.value === value}
+              onMouseEnter={() => setActive(i)}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => choose(i)}
+              style={{ paddingLeft: 12 + (opt.depth ?? 0) * 14 }}
+              className={`mx-1 flex items-center justify-between gap-2 h-8 pointer-coarse:h-11 pr-2.5 rounded-[6px] text-mac-body cursor-pointer select-none ${
+                i === active ? "bg-teal-600 text-white" : "text-(--text-primary)"
+              }`}
+            >
+              <span className="truncate">{opt.label}</span>
+              {opt.value === value && <Check className="w-3.5 h-3.5 shrink-0" aria-hidden />}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
