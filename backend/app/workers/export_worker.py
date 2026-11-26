@@ -21,7 +21,10 @@ async def export_worker_loop() -> None:
 
     if _admin_pool is not None:
         await _admin_pool.execute("UPDATE public.company_exports SET status = 'pending' WHERE status = 'processing'")
+    from app.services.heartbeat import beat
+
     while True:
+        beat("exportacao")
         try:
             if not await _process_one():
                 await asyncio.sleep(_POLL_INTERVAL)

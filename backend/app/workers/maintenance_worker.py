@@ -38,7 +38,10 @@ _last_demo_reset_at: float | None = None
 
 
 async def maintenance_worker_loop() -> None:
+    from app.services.heartbeat import beat
+
     while True:
+        beat("manutencao")
         try:
             await _run_once()
         except asyncio.CancelledError:
@@ -55,7 +58,10 @@ async def stats_refresh_loop() -> None:
     hora) — os agregados do dashboard (Fase 3.1) prometem no máximo 15min de
     atraso pro usuário, então precisam do próprio ritmo.
     """
+    from app.services.heartbeat import beat
+
     while True:
+        beat("estatisticas")
         try:
             from app.dependencies import _admin_pool
             if _admin_pool is not None:

@@ -44,7 +44,10 @@ async def ocr_worker_loop() -> None:
     provider = get_provider()
     logger.info("OCR worker iniciado. Tesseract: %s", "sim" if provider.tesseract else "não (só texto nativo)")
 
+    from app.services.heartbeat import beat
+
     while True:
+        beat("ocr")
         try:
             processed = await _process_one_job(provider)
             if not processed:

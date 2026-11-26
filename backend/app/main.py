@@ -128,6 +128,13 @@ async def health_check():
     return {"status": "ok"}
 
 
+@app.get("/health/workers", tags=["health"])
+async def health_workers():
+    """Estado dos workers em segundo plano (X3-11): ok, atrasado ou parado."""
+    from app.services.heartbeat import snapshot
+    return snapshot()
+
+
 @app.get("/health/db", tags=["health"])
 async def health_db():
     """
