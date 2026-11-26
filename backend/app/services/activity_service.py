@@ -81,6 +81,7 @@ _ACTION_LABELS: dict[str, str] = {
     "lgpd_report": "Relatório de privacidade emitido",
     "field_type_change": "Tipo de campo trocado",
     "field_default_apply": "Valor padrão aplicado aos documentos",
+    "versions_policy": "Prazo do histórico de versões alterado",
     "audit_verify": "Integridade da trilha verificada",
     "field_rules_copy": "Regras de metadados copiadas de outra pasta",
     "field_rule_exclude": "Campo tirado de pasta",
