@@ -5,6 +5,8 @@ import { getThemePreference, setThemePreference } from "@/lib/theme";
 import { useAuthContext } from "@/lib/AuthContext";
 import { useToast } from "@/lib/toast";
 import api from "@/lib/api";
+import DangerZone from "@/components/shared/DangerZone";
+import Button from "@/components/ui/Button";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 
 const THEME_OPTIONS = [
@@ -129,23 +131,13 @@ export default function Preferences() {
             24h (ver app/workers/maintenance_worker.py), este botão é só pra
             quem quiser uma demonstração limpa na hora, sem esperar o ciclo. */}
         {user?.username === "demo" && (
-          <div className="pt-6 border-t border-(--border-default)">
-            <div className="flex items-center gap-2 mb-3">
-              <RotateCcw className="w-4 h-4 text-(--text-accent)" />
-              <h3 className="text-mac-body font-medium text-(--text-primary)">Dados demo</h3>
-            </div>
-            <p className="text-mac-caption text-(--text-secondary) mb-3 max-w-[420px]">
-              Restaura as 3 empresas de exemplo ao estado padrão, apagando qualquer
-              documento, pasta, usuário ou link criado durante o uso. Roda sozinho
-              a cada 6 horas — use este botão se quiser uma demonstração limpa agora.
-            </p>
-            <button
-              onClick={() => setConfirmingReset(true)}
-              className="flex items-center gap-1.5 h-8 px-3.5 text-mac-body text-(--text-secondary) border border-(--border-default) rounded-full hover:bg-(--bg-hover) transition-colors duration-fast"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              Resetar dados demo
-            </button>
+          <div className="pt-6">
+            <DangerZone title="Dados demo"
+              description="Restaura as 3 empresas de exemplo ao estado padrão, apagando qualquer documento, pasta, usuário ou link criado durante o uso. Roda sozinho a cada 6 horas; use se quiser uma demonstração limpa agora.">
+              <Button variant="danger" size="sm" onClick={() => setConfirmingReset(true)}>
+                <RotateCcw className="w-3.5 h-3.5" aria-hidden /> Resetar dados demo
+              </Button>
+            </DangerZone>
           </div>
         )}
       </div>
