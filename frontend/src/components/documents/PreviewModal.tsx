@@ -1,11 +1,12 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import XmlCode from "./XmlCode";
-import { X, Download, AlertCircle, Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Printer, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
+import { X, Download, AlertCircle, Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Printer, RotateCw, ZoomIn, ZoomOut, Layers } from "lucide-react";
 import { getFileStyle } from "@/lib/fileType";
 import api from "@/lib/api";
 import Dialog, { DialogCloseButton } from "@/components/ui/Dialog";
 import Code128 from "./Code128";
 import type { PdfViewerHandle } from "./PdfViewer";
+const PageOrganizer = lazy(() => import("@/components/documents/PageOrganizer"));
 
 // pdf.js (~400 KB) só é baixado quando alguém abre um PDF.
 const PdfViewer = lazy(() => import("./PdfViewer"));
@@ -197,6 +198,8 @@ interface PreviewModalProps {
   onClose: () => void;
   /** Centro do item clicado: a prévia cresce dali (A5-38). */
   origin?: { x: number; y: number } | null;
+  /** Depois de organizar páginas (versão nova ou documento extraído), a lista recarrega. */
+  onChanged?: () => void;
   /** Termo vindo da Busca: a busca interna já abre com ele (B2.6.6). */
   initialQuery?: string | null;
 }
@@ -207,7 +210,8 @@ interface PreviewModalProps {
  * realça no próprio PDF e salta para a página (Ctrl+F abre a busca daqui),
  * imagem com zoom e girar, impressão do arquivo e DANFE com Code-128 real.
  */
-export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = null, initialQuery = null }: PreviewModalProps) {
+export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = null, initialQuery = null, onChanged }: PreviewModalProps) {
+  const [organizing, setOrganizing] = useState(false);
   const list = docs && docs.length ? docs : [initialDoc];
   const [index, setIndex] = useState(() => Math.max(0, list.findIndex((d) => d.id === initialDoc.id)));
   const swipe = useRef<{ x: number; y: number; t: number } | null>(null);
@@ -390,6 +394,11 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
           <Search className="w-4 h-4" aria-hidden />
         </button>
       )}
+      {type === "pdf" && url && (
+        <button className={`${iconBtn} hidden sm:flex`} onClick={() => setOrganizing(true)} aria-label="Organizar páginas" title="Organizar páginas (girar, reordenar, tirar, extrair)">
+          <Layers className="w-4 h-4" aria-hidden />
+        </button>
+      )}
       {(type === "pdf" || type === "image") && url && (
         <button className={`${iconBtn} hidden sm:flex`} onClick={() => printFile(url).catch(() => setError("Não foi possível preparar a impressão."))} aria-label="Imprimir" title="Imprimir">
           <Printer className="w-4 h-4" aria-hidden />
@@ -471,6 +480,11 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
               focusPage={matches.length && searchOpen ? (matches[active] as { page: number }).page : null}
               onLoaded={() => { if (searchOpen) ensurePdfText(); }}
             />
+          </Suspense>
+        )}
+        {organizing && url && (
+          <Suspense fallback={null}>
+            <PageOrganizer docId={doc.id} docName={doc.name} url={url} onClose={() => setOrganizing(false)} onDone={() => { onChanged?.(); onClose(); }} />
           </Suspense>
         )}
         {!loading && !error && type === "image" && url && (
