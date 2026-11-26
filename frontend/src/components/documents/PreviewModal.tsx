@@ -75,7 +75,22 @@ interface XmlFields {
   destinatario_nome?: string | null;
   destinatario_cnpj?: string | null;
   valor_total?: string | null;
+  // Quadros do DANFE (FA-A5-04).
+  tipo_operacao?: string | null;
+  emitente_ie?: string | null;
+  emitente_endereco?: string | null;
+  destinatario_ie?: string | null;
+  destinatario_endereco?: string | null;
+  itens?: { codigo: string | null; descricao: string | null; ncm: string | null; cst: string | null; cfop: string | null; unidade: string | null; quantidade: string | null; valor_unitario: string | null; valor_total: string | null; bc_icms: string | null; valor_icms: string | null; aliquota_icms: string | null; valor_ipi: string | null }[];
+  totais?: Record<string, string | null>;
+  transporte?: { modalidade: string | null; nome: string | null; cnpj: string | null; volumes: string | null; peso_liquido: string | null; peso_bruto: string | null };
+  protocolo?: string | null;
+  protocolo_data?: string | null;
+  informacoes_complementares?: string | null;
 }
+
+const MOD_FRETE: Record<string, string> = { "0": "0 - Por conta do emitente", "1": "1 - Por conta do destinatário", "2": "2 - Por conta de terceiros", "3": "3 - Próprio, do remetente", "4": "4 - Próprio, do destinatário", "9": "9 - Sem frete" };
+const num = (v?: string | null, casas = 2) => (!v ? "—" : Number.isNaN(Number(v)) ? v : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: Math.max(casas, 4) }));
 
 const fmtCurrency = (v?: string | null) => (!v ? "—" : Number.isNaN(Number(v)) ? v : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
 /** Texto e campos da NF-e já baixados nesta sessão (A5-58). */
@@ -156,11 +171,14 @@ function Danfe({ fields, docName }: { fields: XmlFields; docName: string }) {
           <section className={box} aria-label="Emitente">
             <p className={cap}>Emitente</p>
             <p className="font-bold text-[12px]">{fields.emitente_nome ?? "—"}</p>
+            {fields.emitente_endereco && <p className="text-[9.5px]">{fields.emitente_endereco}</p>}
             <p className="whitespace-nowrap">CNPJ {fmtCnpj(fields.emitente_cnpj)}</p>
+            {fields.emitente_ie && <p>IE {fields.emitente_ie}</p>}
           </section>
           <section className={`${box} text-center`} aria-label="Identificação do DANFE">
             <h3 className="font-bold text-[15px]">DANFE</h3>
             <p className="text-[9px]">Documento Auxiliar da Nota Fiscal Eletrônica</p>
+            {fields.tipo_operacao && <p className="text-[9px] mt-1">{fields.tipo_operacao === "0" ? "0 - Entrada" : "1 - Saída"}</p>}
             <p className="mt-1 font-semibold">Nº {fields.numero ?? "—"}</p>
             <p>Série {fields.serie ?? "—"}</p>
           </section>
@@ -173,6 +191,9 @@ function Danfe({ fields, docName }: { fields: XmlFields; docName: string }) {
         </div>
         <div className="grid grid-cols-[2fr_1fr] gap-2 mb-2">
           <section className={box}><p className={cap}>Natureza da operação</p><p>{fields.natureza_operacao ?? "—"}</p></section>
+          <section className={box}><p className={cap}>Protocolo de autorização</p><p>{fields.protocolo ? `${fields.protocolo}${fields.protocolo_data ? ` · ${fmtXmlDate(fields.protocolo_data)}` : ""}` : "—"}</p></section>
+        </div>
+        <div className="grid grid-cols-[1fr] gap-2 mb-2">
           <section className={box}><p className={cap}>Data de emissão</p><p>{fmtXmlDate(fields.data_emissao)}</p></section>
         </div>
         <section className={`${box} mb-2`} aria-label="Destinatário">
@@ -180,12 +201,59 @@ function Danfe({ fields, docName }: { fields: XmlFields; docName: string }) {
           <div className="grid grid-cols-[2fr_1fr] gap-2">
             <p className="font-medium">{fields.destinatario_nome ?? "—"}</p>
             <p className="whitespace-nowrap">CNPJ/CPF {fmtCnpj(fields.destinatario_cnpj)}</p>
+            {fields.destinatario_endereco && <p className="text-[9.5px]">{fields.destinatario_endereco}</p>}
+            {fields.destinatario_ie && <p>IE {fields.destinatario_ie}</p>}
           </div>
         </section>
-        <section className={`${box} flex items-center justify-between`} aria-label="Cálculo do imposto">
-          <p className={cap}>Valor total da nota</p>
-          <p className="font-bold text-[15px]">{fmtCurrency(fields.valor_total)}</p>
+        <section className={`${box} mb-2`} aria-label="Cálculo do imposto">
+          <p className={cap}>Cálculo do imposto</p>
+          <dl className="grid grid-cols-3 sm:grid-cols-6 gap-x-2 gap-y-1 mt-1">
+            {([["vBC", "Base ICMS"], ["vICMS", "Valor ICMS"], ["vBCST", "Base ICMS ST"], ["vST", "Valor ICMS ST"], ["vProd", "Total produtos"], ["vFrete", "Frete"],
+              ["vSeg", "Seguro"], ["vDesc", "Desconto"], ["vOutro", "Outras despesas"], ["vIPI", "Valor IPI"]] as [string, string][]).map(([k, l]) => (
+              <div key={k}><dt className="text-[8px] uppercase text-black/70">{l}</dt><dd className="tabular-nums">{num(fields.totais?.[k])}</dd></div>
+            ))}
+            <div><dt className="text-[8px] uppercase text-black/70">Valor total da nota</dt><dd className="font-bold tabular-nums">{fmtCurrency(fields.valor_total)}</dd></div>
+          </dl>
         </section>
+        {fields.transporte && (
+          <section className={`${box} mb-2`} aria-label="Transportador e volumes">
+            <p className={cap}>Transportador / volumes transportados</p>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-1">
+              <p><span className="block text-[8px] uppercase text-black/70">Frete</span>{MOD_FRETE[fields.transporte.modalidade ?? ""] ?? "—"}</p>
+              <p><span className="block text-[8px] uppercase text-black/70">Razão social</span>{fields.transporte.nome ?? "—"}</p>
+              <p><span className="block text-[8px] uppercase text-black/70">CNPJ/CPF</span>{fields.transporte.cnpj ? fmtCnpj(fields.transporte.cnpj) : "—"}</p>
+              <p><span className="block text-[8px] uppercase text-black/70">Volumes</span>{fields.transporte.volumes ?? "—"}</p>
+              <p><span className="block text-[8px] uppercase text-black/70">Peso bruto / líquido</span>{num(fields.transporte.peso_bruto, 3)} / {num(fields.transporte.peso_liquido, 3)}</p>
+            </div>
+          </section>
+        )}
+        {fields.itens && fields.itens.length > 0 && (
+          <section className={`${box} mb-2 overflow-x-auto`} aria-label="Dados dos produtos e serviços">
+            <p className={cap}>Dados dos produtos / serviços</p>
+            <table className="w-full mt-1 text-[9px] tabular-nums">
+              <thead><tr className="text-left uppercase text-black/70">
+                {["Código", "Descrição", "NCM", "CST", "CFOP", "Un.", "Qtd.", "V. unit.", "V. total", "BC ICMS", "V. ICMS", "V. IPI", "Alíq. ICMS"].map((h) => <th key={h} scope="col" className="px-1 font-normal">{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {fields.itens.map((it, i) => (
+                  <tr key={i} className="border-t border-black/20 align-top">
+                    <td className="px-1">{it.codigo}</td><td className="px-1 min-w-[140px]">{it.descricao}</td><td className="px-1">{it.ncm}</td><td className="px-1">{it.cst}</td>
+                    <td className="px-1">{it.cfop}</td><td className="px-1">{it.unidade}</td><td className="px-1 text-right">{num(it.quantidade, 2)}</td>
+                    <td className="px-1 text-right">{num(it.valor_unitario)}</td><td className="px-1 text-right">{num(it.valor_total)}</td>
+                    <td className="px-1 text-right">{num(it.bc_icms)}</td><td className="px-1 text-right">{num(it.valor_icms)}</td><td className="px-1 text-right">{num(it.valor_ipi)}</td>
+                    <td className="px-1 text-right">{it.aliquota_icms ? `${num(it.aliquota_icms)}%` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
+        {fields.informacoes_complementares && (
+          <section className={box} aria-label="Dados adicionais">
+            <p className={cap}>Dados adicionais / informações complementares</p>
+            <p className="whitespace-pre-wrap text-[9.5px]">{fields.informacoes_complementares}</p>
+          </section>
+        )}
         <p className="text-[8.5px] text-center mt-3 text-black/70">Representação simplificada gerada pelo Docke a partir do XML ({docName}). O documento fiscal válido é o XML.</p>
       </div>
     </div>
