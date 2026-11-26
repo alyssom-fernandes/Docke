@@ -1,114 +1,192 @@
-import { useEffect, useRef, useState } from "react";
-import { Download, ChevronDown } from "lucide-react";
+import { useEffect, useId, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Download, ShieldCheck, ShieldAlert, ChevronLeft, ChevronRight } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
-import { useSearchParams } from "react-router-dom";
+import { useToast } from "@/lib/toast";
 import ActivityFeed, { ACTION_LABELS } from "@/components/shared/ActivityFeed";
+import Dropdown from "@/components/ui/Dropdown";
+import Button from "@/components/ui/Button";
+import Menu from "@/components/ui/Menu";
 
+interface Member { user_id: string; full_name: string }
+
+const ACTION_GROUPS: { value: string; label: string }[] = [
+  { value: "", label: "Todas as ações" },
+  { value: "upload", label: "Envios" },
+  { value: "view", label: "Aberturas" },
+  { value: "download", label: "Downloads" },
+  { value: "move", label: "Movimentações" },
+  { value: "rename", label: "Renomeações" },
+  { value: "delete", label: "Exclusões" },
+  { value: "restore", label: "Restaurações" },
+  { value: "update_metadata", label: "Metadados alterados" },
+  { value: "version_delete", label: "Versões excluídas" },
+  { value: "obligation_link", label: "Documentos enviados para obrigações" },
+  { value: "obligation_approve", label: "Obrigações aprovadas" },
+  { value: "retention_hold_create", label: "Bloqueios judiciais" },
+  { value: "retention_queue_approved", label: "Descartes aprovados" },
+];
+
+const PERIODS = [
+  { value: "", label: "Qualquer data" },
+  { value: "hoje", label: "Hoje" },
+  { value: "7", label: "Últimos 7 dias" },
+  { value: "30", label: "Últimos 30 dias" },
+  { value: "90", label: "Últimos 90 dias" },
+];
+
+function daysAgo(n: number) { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); }
+
+/**
+ * Atividade (A6-22..A6-29): filtros por pessoa, ação, tipo e período na URL;
+ * exportar leva só o que está filtrado, com aviso de erro; integridade da
+ * trilha verificável aqui (A6-23).
+ */
 export default function Activity() {
   usePageTitle("Atividade");
   const { current } = useCompany();
+  const { error: showError, success } = useToast();
+  const [params, setParams] = useSearchParams();
+  const uid = useId();
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [exportOpen, setExportOpen] = useState(false);
-  const exportRef = useRef<HTMLDivElement>(null);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [exporting, setExporting] = useState(false);
+  const [integrity, setIntegrity] = useState<{ intact: boolean; total_events: number; broken_count: number } | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const PAGE_SIZE = 25;
-  // ?acao=upload vem do contador "Enviados em 7 dias" do Início.
-  const [searchParams, setSearchParams] = useSearchParams();
-  const acao = searchParams.get("acao") ?? undefined;
+  const isAdmin = ["admin", "supremo"].includes(current?.permission_level ?? "");
+
+  const acao = params.get("acao") ?? "";
+  const pessoa = params.get("pessoa") ?? "";
+  const tipo = params.get("tipo") ?? "";
+  const periodo = params.get("periodo") ?? "";
+  const page = Math.max(1, Number(params.get("pagina") ?? 1) || 1);
+
+  function setP(changes: Record<string, string | null>) {
+    setParams((p) => {
+      const n = new URLSearchParams(p);
+      for (const [k, v] of Object.entries(changes)) { if (!v) n.delete(k); else n.set(k, v); }
+      if (!("pagina" in changes)) n.delete("pagina");
+      return n;
+    }, { replace: true });
+  }
 
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
+    if (!current) return;
+    api.get<Member[]>(`/companies/${current.id}/members`)
+      .then((r) => setMembers([...new Map((r.data ?? []).map((m) => [m.user_id, m])).values()].sort((a, b) => a.full_name.localeCompare(b.full_name, "pt-BR"))))
+      .catch(() => setMembers([]));
+  }, [current?.id]);
+
+  const dateFrom = periodo === "hoje" ? daysAgo(0) : periodo ? daysAgo(Number(periodo)) : undefined;
+  const filters = useMemo(() => ({ userId: pessoa || undefined, action: acao || undefined, itemType: tipo || undefined, dateFrom }), [pessoa, acao, tipo, dateFrom]);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const filtrado = !!(acao || pessoa || tipo || periodo);
 
   async function exportActivity(format: "csv" | "xlsx") {
     if (!current) return;
-    setExportOpen(false);
-    const r = await api.get("/activity/export", {
-      params: { company_id: current.id, format },
-      responseType: "blob",
-    });
-    const url = URL.createObjectURL(r.data);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `atividade_${current.name}_${new Date().toISOString().slice(0, 10)}.${format}`;
-    a.click();
-    URL.revokeObjectURL(url);
+    setExporting(true);
+    try {
+      const r = await api.get("/activity/export", {
+        params: { company_id: current.id, format, user_id: pessoa || undefined, action: acao || undefined, item_type: tipo || undefined, date_from: dateFrom },
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `atividade-${current.name.replace(/[^\w-]+/g, "-").toLowerCase()}-${new Date().toISOString().slice(0, 10)}.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+      success(filtrado ? "Exportado só o que está filtrado." : "Atividade exportada.");
+    } catch {
+      showError("Não foi possível exportar agora. Tente de novo.");
+    } finally {
+      setExporting(false);
+    }
   }
 
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+  async function verify() {
+    if (!current) return;
+    setChecking(true);
+    try {
+      const r = await api.get("/activity/verify-integrity", { params: { company_id: current.id } });
+      setIntegrity(r.data);
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível verificar agora.");
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  const memberOpts = [{ value: "", label: "Todas as pessoas" }, ...members.map((m) => ({ value: m.user_id, label: m.full_name }))];
+  const labelOf = (v: string) => ACTION_GROUPS.find((a) => a.value === v)?.label ?? ACTION_LABELS[v] ?? v;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-mac-title2 font-semibold text-(--text-primary)">Atividade</h1>
-        <div className="relative" ref={exportRef}>
-          <button
-            onClick={() => setExportOpen((v) => !v)}
-            className="flex items-center gap-1.5 h-8 px-3.5 text-mac-body text-(--text-secondary) border border-(--border-default) rounded-full hover:bg-(--bg-hover) transition-colors duration-fast"
-          >
-            <Download className="w-3.5 h-3.5" />
-            Exportar
-            <ChevronDown className="w-3.5 h-3.5" />
-          </button>
-          {exportOpen && (
-            <div className="popover-tail-right absolute top-full right-0 mt-1 w-40 glass-panel glass-blur-strong rounded-(--radius-popover) shadow-dropdown py-1 z-50">
-              <button
-                onClick={() => exportActivity("csv")}
-                className="w-full text-left px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white transition-colors duration-fast"
-              >
-                CSV
-              </button>
-              <button
-                onClick={() => exportActivity("xlsx")}
-                className="w-full text-left px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white transition-colors duration-fast"
-              >
-                Excel (.xlsx)
-              </button>
-            </div>
+    <div className="space-y-5 max-w-[1100px] w-full mx-auto">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-mac-title2 font-semibold text-(--text-primary)">Atividade</h1>
+          <p className="text-mac-caption text-(--text-secondary) mt-0.5">Quem fez o quê, quando. Cada registro fica encadeado ao anterior e não pode ser alterado.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {isAdmin && (
+            <Button variant="secondary" size="sm" loading={checking} onClick={verify}>
+              <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" /> Verificar integridade
+            </Button>
+          )}
+          <Button variant="secondary" size="sm" loading={exporting} aria-haspopup="menu" aria-expanded={!!menuAnchor}
+            onClick={(e) => setMenuAnchor(e.currentTarget)}>
+            <Download className="w-3.5 h-3.5" aria-hidden="true" /> Exportar{filtrado ? " filtrado" : ""}
+          </Button>
+          {menuAnchor && (
+            <Menu
+              anchor={menuAnchor} label="Exportar atividade" align="end" onClose={() => setMenuAnchor(null)}
+              items={[
+                { label: "Planilha CSV", onSelect: () => exportActivity("csv") },
+                { label: "Excel (.xlsx)", onSelect: () => exportActivity("xlsx") },
+              ]}
+            />
           )}
         </div>
       </div>
 
-      {acao && (
-        <p className="flex items-center gap-2 text-mac-caption text-(--text-secondary)">
-          Mostrando só: <strong className="text-(--text-primary)">{ACTION_LABELS[acao] ?? acao}</strong>
-          <button
-            onClick={() => { const n = new URLSearchParams(searchParams); n.delete("acao"); setSearchParams(n, { replace: true }); setPage(1); }}
-            className="font-medium text-(--text-accent) hover:underline"
-          >
-            Ver tudo
-          </button>
+      {integrity && (
+        <p role="status" className={`flex items-center gap-2 rounded-(--radius-control) px-3 py-2 text-mac-body ${integrity.intact ? "bg-green-600/10 text-(--text-primary)" : "bg-red-500/10 text-(--text-primary)"}`}>
+          {integrity.intact ? <ShieldCheck className="w-4 h-4 text-(--text-success)" aria-hidden="true" /> : <ShieldAlert className="w-4 h-4 text-(--text-danger)" aria-hidden="true" />}
+          {integrity.intact
+            ? `Trilha íntegra: ${integrity.total_events.toLocaleString("pt-BR")} registros conferidos, nenhum alterado.`
+            : `${integrity.broken_count} ${integrity.broken_count === 1 ? "registro não confere" : "registros não conferem"}. Detalhes em Ajustes → Segurança.`}
         </p>
       )}
 
-      {current && <ActivityFeed companyId={current.id} page={page} pageSize={PAGE_SIZE} onLoaded={setTotal} filters={{ action: acao }} />}
+      <section aria-label="Filtros" className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        <div><label id={`${uid}-p`} className="sr-only">Pessoa</label><Dropdown ariaLabelledby={`${uid}-p`} value={pessoa} onChange={(v) => setP({ pessoa: v })} options={memberOpts} /></div>
+        <div><label id={`${uid}-a`} className="sr-only">Ação</label><Dropdown ariaLabelledby={`${uid}-a`} value={acao} onChange={(v) => setP({ acao: v })} options={ACTION_GROUPS.some((a) => a.value === acao) ? ACTION_GROUPS : [...ACTION_GROUPS, { value: acao, label: labelOf(acao) }]} /></div>
+        <div><label id={`${uid}-t`} className="sr-only">Tipo de item</label><Dropdown ariaLabelledby={`${uid}-t`} value={tipo} onChange={(v) => setP({ tipo: v })}
+          options={[{ value: "", label: "Documentos e pastas" }, { value: "document", label: "Só documentos" }, { value: "folder", label: "Só pastas" }, { value: "obligation", label: "Obrigações" }, { value: "retention", label: "Retenção" }]} /></div>
+        <div><label id={`${uid}-d`} className="sr-only">Período</label><Dropdown ariaLabelledby={`${uid}-d`} value={periodo} onChange={(v) => setP({ periodo: v })} options={PERIODS} /></div>
+      </section>
+      {filtrado && (
+        <div className="flex flex-wrap items-center gap-2 text-mac-caption text-(--text-secondary)">
+          <span aria-live="polite">{total.toLocaleString("pt-BR")} {total === 1 ? "registro" : "registros"} com estes filtros.</span>
+          <button onClick={() => setP({ acao: null, pessoa: null, tipo: null, periodo: null })} className="font-medium text-(--text-accent) hover:underline">Limpar filtros</button>
+        </div>
+      )}
+
+      {current && (
+        <ActivityFeed companyId={current.id} page={page} pageSize={PAGE_SIZE} onLoaded={setTotal} filters={filters}
+          emptyDescription={filtrado ? "Nada com estes filtros." : "As ações nos documentos aparecem aqui."} />
+      )}
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-            className="h-8 px-3.5 text-mac-body border border-(--border-default) rounded-full text-(--text-secondary) hover:bg-(--bg-hover) disabled:opacity-40 disabled:pointer-events-none transition-colors duration-fast"
-          >
-            Anterior
-          </button>
-          <span className="text-mac-body text-(--text-secondary)">
-            {page} / {totalPages}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages}
-            className="h-8 px-3.5 text-mac-body border border-(--border-default) rounded-full text-(--text-secondary) hover:bg-(--bg-hover) disabled:opacity-40 disabled:pointer-events-none transition-colors duration-fast"
-          >
-            Próxima
-          </button>
-        </div>
+        <nav aria-label="Páginas da atividade" className="flex items-center justify-center gap-2">
+          <Button variant="secondary" size="sm" disabled={page <= 1} onClick={() => { setP({ pagina: String(page - 1) }); window.scrollTo({ top: 0 }); }}><ChevronLeft className="w-3.5 h-3.5" aria-hidden="true" /> Anterior</Button>
+          <span className="text-mac-body text-(--text-secondary) tabular-nums">{page} / {totalPages}</span>
+          <Button variant="secondary" size="sm" disabled={page >= totalPages} onClick={() => { setP({ pagina: String(page + 1) }); window.scrollTo({ top: 0 }); }}>Próxima <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" /></Button>
+        </nav>
       )}
     </div>
   );

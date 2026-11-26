@@ -1,13 +1,15 @@
-import { useEffect, useState } from "react";
-import { FolderOpen, Trash2, RotateCcw, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Trash2, Folder, RotateCcw, AlertTriangle, RefreshCw, Lock } from "lucide-react";
 import { getFileStyle } from "@/lib/fileType";
-import { usePageTitle } from "@/hooks/usePageTitle";
 import { relativeDate, fullDate } from "@/lib/date";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
 import EmptyState from "@/components/shared/EmptyState";
 import ConfirmModal from "@/components/ui/ConfirmModal";
+import Button from "@/components/ui/Button";
 import Checkbox from "@/components/ui/Checkbox";
 
 interface TrashItem {
@@ -15,207 +17,181 @@ interface TrashItem {
   item_type: "document" | "folder";
   name: string;
   deleted_at: string;
+  trash_expires_at?: string | null;
+  original_path?: string | null;
+  original_folder_name?: string | null;
+  original_folder_deleted?: boolean;
+  deleted_by_name?: string | null;
+  document_count?: number;
+  bloqueio?: "legal_hold" | "retencao" | null;
+}
+interface TrashResponse { documents: TrashItem[]; folders: TrashItem[]; total: number }
+
+const DIA = 86_400_000;
+function expiresText(iso?: string | null) {
+  if (!iso) return null;
+  const dias = Math.ceil((new Date(iso).getTime() - Date.now()) / DIA);
+  if (dias <= 0) return "sai da lixeira hoje";
+  return `sai da lixeira em ${dias} ${dias === 1 ? "dia" : "dias"}`;
 }
 
-interface TrashResponse {
-  documents: TrashItem[];
-  folders: TrashItem[];
-  total: number;
-}
-
-const fmtDate = relativeDate;
-
+/**
+ * Lixeira (A6-31, A6-36, A6-T1, A6-T2): quando cada item é apagado de vez,
+ * de onde veio e quem excluiu; bloqueios explicados; restaurar diz para
+ * onde volta; exclusão definitiva em lote com progresso e resumo.
+ */
 export default function Trash() {
   usePageTitle("Lixeira");
   const { current } = useCompany();
-  const { success, error: showError } = useToast();
-  const [items, setItems] = useState<TrashItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [confirmSingle, setConfirmSingle] = useState<TrashItem | null>(null);
-  const [confirmBulk, setConfirmBulk] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const navigate = useNavigate();
+  const { toast, error: showError, success } = useToast();
+  const [items, setItems] = useState<TrashItem[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState<TrashItem[] | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const isAdmin = ["admin", "supremo"].includes(current?.permission_level ?? "");
 
   function load() {
     if (!current) return;
-    setLoading(true);
-    api
-      .get<TrashResponse>("/trash", { params: { company_id: current.id } })
-      .then((r) => {
-        const docs = r.data.documents ?? [];
-        const folders = r.data.folders ?? [];
-        setItems(Array.isArray(r.data) ? r.data : [...docs, ...folders]);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    setFailed(false);
+    api.get<TrashResponse>("/trash", { params: { company_id: current.id } })
+      .then((r) => setItems([...(r.data.folders ?? []), ...(r.data.documents ?? [])].sort((a, b) => b.deleted_at.localeCompare(a.deleted_at))))
+      .catch(() => setFailed(true));
   }
+  useEffect(load, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(load, [current?.id]);
+  const key = (i: TrashItem) => `${i.item_type}:${i.id}`;
 
   async function restore(item: TrashItem) {
+    setBusyId(key(item));
     try {
-      await api.post(`/trash/${item.id}/restore`, null, { params: { item_type: item.item_type } });
-      setItems((prev) => prev.filter((i) => i.id !== item.id));
-      setSelected((prev) => { const next = new Set(prev); next.delete(item.id); return next; });
-      success(`"${item.name}" restaurado.`);
-    } catch {
-      showError("Não foi possível restaurar o item.");
-    }
-  }
-
-  function toggleSelect(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
-
-  async function permanentlyDeleteOne(item: TrashItem) {
-    setDeleting(true);
-    try {
-      await api.delete(`/trash/${item.id}/permanent`, { params: { item_type: item.item_type, confirm: true } });
-      setItems((prev) => prev.filter((i) => i.id !== item.id));
-      setSelected((prev) => { const next = new Set(prev); next.delete(item.id); return next; });
-      success(`"${item.name}" excluído permanentemente.`);
-      setConfirmSingle(null);
+      const r = await api.post(`/trash/${item.id}/restore`, null, { params: { item_type: item.item_type } });
+      setItems((prev) => prev?.filter((i) => key(i) !== key(item)) ?? null);
+      const folderId = r.data?.restored_to_folder_id ?? (item.item_type === "folder" ? item.id : null);
+      const extra = item.item_type === "folder" && r.data?.restored_documents ? ` com ${r.data.restored_documents} documentos` : "";
+      toast({
+        type: "success",
+        message: `“${item.name}” voltou${extra}${item.original_path ? ` para ${item.original_path}` : ""}.`,
+        action: folderId ? { label: "Abrir", onClick: () => navigate(item.item_type === "folder" ? `/documents?folder_id=${item.id}` : `/documents?folder_id=${folderId}&doc=${item.id}`) } : undefined,
+      });
     } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Não foi possível excluir permanentemente.");
+      showError(e?.response?.data?.detail ?? "Não foi possível restaurar. Tente de novo.");
     } finally {
-      setDeleting(false);
+      setBusyId(null);
     }
   }
 
-  async function permanentlyDeleteBulk() {
-    setDeleting(true);
-    const targets = items.filter((i) => selected.has(i.id));
-    let okCount = 0;
-    for (const item of targets) {
-      try {
-        await api.delete(`/trash/${item.id}/permanent`, { params: { item_type: item.item_type, confirm: true } });
-        okCount++;
-      } catch {
-        // segue tentando os demais — reporta ao final quantos deram certo
-      }
+  async function restoreSelected() {
+    const targets = (items ?? []).filter((i) => sel.has(key(i)));
+    setProgress({ done: 0, total: targets.length });
+    let ok = 0;
+    for (const [n, item] of targets.entries()) {
+      try { await api.post(`/trash/${item.id}/restore`, null, { params: { item_type: item.item_type } }); ok++; } catch { /* conta no resumo */ }
+      setProgress({ done: n + 1, total: targets.length });
     }
-    setItems((prev) => prev.filter((i) => !selected.has(i.id)));
-    setSelected(new Set());
-    setDeleting(false);
-    setConfirmBulk(false);
-    if (okCount === targets.length) {
-      success(`${okCount} ite${okCount !== 1 ? "ns excluídos" : "m excluído"} permanentemente.`);
-    } else {
-      showError(`${okCount} de ${targets.length} itens excluídos. Alguns falharam.`);
-    }
+    setProgress(null); setSel(new Set()); load();
+    if (ok === targets.length) success(`${ok} ${ok === 1 ? "item restaurado" : "itens restaurados"} para o lugar de origem.`);
+    else showError(`${ok} de ${targets.length} restaurados. Os outros continuam na lixeira.`);
   }
+
+  async function deleteForever(targets: TrashItem[]) {
+    setProgress({ done: 0, total: targets.length });
+    let ok = 0;
+    const falhas: string[] = [];
+    for (const [n, item] of targets.entries()) {
+      try { await api.delete(`/trash/${item.id}/permanent`, { params: { item_type: item.item_type, confirm: true } }); ok++; }
+      catch (e: any) { falhas.push(e?.response?.status === 423 ? `${item.name} (bloqueado)` : item.name); }
+      setProgress({ done: n + 1, total: targets.length });
+    }
+    setProgress(null); setDeleting(null); setSel(new Set()); load();
+    if (!falhas.length) success(`${ok} ${ok === 1 ? "item apagado" : "itens apagados"} para sempre.`);
+    else showError(`${ok} apagados. Não foi possível apagar: ${falhas.slice(0, 3).join(", ")}${falhas.length > 3 ? ` e mais ${falhas.length - 3}` : ""}.`);
+  }
+
+  const list = items ?? [];
+  const selecionados = useMemo(() => list.filter((i) => sel.has(key(i))), [list, sel]);
+  const allOn = list.length > 0 && sel.size === list.length;
 
   return (
-    <div className="space-y-6 pb-16">
-      <div className="flex items-center justify-between">
+    <div className="space-y-5 max-w-[1100px] w-full mx-auto">
+      <div>
         <h1 className="text-mac-title2 font-semibold text-(--text-primary)">Lixeira</h1>
-        {items.length > 0 && (
-          <p className="text-mac-body text-(--text-secondary)">{items.length} ite{items.length !== 1 ? "ns" : "m"}</p>
-        )}
+        <p className="text-mac-caption text-(--text-secondary) mt-0.5">O que foi excluído fica aqui por um tempo e volta para o lugar de origem ao restaurar. Depois do prazo, sai sozinho.</p>
       </div>
 
-      {loading ? (
-        <div className="space-y-2">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="h-12 bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) animate-pulse" />
-          ))}
+      {failed ? (
+        <div role="alert" className="glass-panel glass-blur-card rounded-(--radius-panel) flex flex-wrap items-center gap-3 px-5 py-4">
+          <AlertTriangle className="w-4 h-4 text-(--text-warning)" aria-hidden="true" />
+          <p className="flex-1 text-mac-body text-(--text-primary)">Não foi possível carregar a lixeira.</p>
+          <Button variant="secondary" size="sm" onClick={load}><RefreshCw className="w-3.5 h-3.5" aria-hidden="true" /> Tentar de novo</Button>
         </div>
-      ) : items.length === 0 ? (
-        <EmptyState
-          title="Lixeira vazia"
-          description="Documentos e pastas excluídos aparecerão aqui."
-          icon={<Trash2 className="w-6 h-6" />}
-        />
+      ) : !items ? (
+        <div className="space-y-2" aria-label="Carregando">{[0, 1, 2].map((i) => <div key={i} className="h-16 rounded-(--radius-control) bg-(--bg-hover) animate-pulse" />)}</div>
+      ) : list.length === 0 ? (
+        <EmptyState title="Lixeira vazia" description="Nada excluído por aqui." icon={<Trash2 className="w-6 h-6" />} />
       ) : (
-        <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
-          <ul>
-            {items.map((item) => (
-              <li
-                key={item.id}
-                className="flex items-center gap-3 px-5 py-3 hover:bg-(--bg-hover) transition-colors duration-fast border-b border-(--border-default) last:border-0 group"
-              >
-                <Checkbox
-                  checked={selected.has(item.id)}
-                  onChange={() => toggleSelect(item.id)}
-                  aria-label={`Selecionar ${item.name}`}
-                />
-                {item.item_type === "folder" ? (
-                  <FolderOpen className="w-4 h-4 text-teal-500 shrink-0" />
-                ) : (
-                  (() => { const s = getFileStyle(item.name); const Icon = s.icon; return (
-                    <div className={`w-6 h-6 rounded-badge flex items-center justify-center shrink-0 ${s.bgColor}`}>
-                      <Icon className={`w-3.5 h-3.5 ${s.iconColor} ${s.fillColor}`} />
-                    </div>
-                  ); })()
-                )}
-                <span className="flex-1 min-w-0 text-mac-body text-(--text-primary) truncate">{item.name}</span>
-                <span className="hidden md:inline text-mac-caption text-(--text-tertiary) mr-2" title={fullDate(item.deleted_at)}>
-                  Excluído {fmtDate(item.deleted_at)}
-                </span>
-                <button
-                  onClick={() => restore(item)}
-                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 flex items-center justify-center gap-1 p-2.5 sm:px-2.5 sm:py-1 rounded-full text-mac-caption text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-all duration-fast shrink-0"
-                  title="Restaurar"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Restaurar</span>
-                </button>
-                <button
-                  onClick={() => setConfirmSingle(item)}
-                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 flex items-center justify-center gap-1 p-2.5 sm:px-2.5 sm:py-1 rounded-full text-mac-caption text-(--text-secondary) hover:bg-(--bg-hover) transition-all duration-fast shrink-0"
-                  title="Excluir permanentemente"
-                >
-                  <X className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Excluir</span>
-                </button>
-              </li>
-            ))}
+        <>
+          <div className="flex flex-wrap items-center gap-2 min-h-9">
+            <label className="inline-flex items-center gap-2 text-mac-body text-(--text-primary) mr-2">
+              <Checkbox checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(list.map(key)))} /> Todos ({list.length})
+            </label>
+            {sel.size > 0 && (
+              <div className="reveal flex flex-wrap items-center gap-2">
+                <Button size="sm" variant="secondary" disabled={!!progress} onClick={restoreSelected}><RotateCcw className="w-3.5 h-3.5" aria-hidden="true" /> Restaurar {sel.size}</Button>
+                {isAdmin && <Button size="sm" variant="danger" disabled={!!progress} onClick={() => setDeleting(selecionados)}><Trash2 className="w-3.5 h-3.5" aria-hidden="true" /> Apagar para sempre</Button>}
+              </div>
+            )}
+            {progress && <span role="status" className="text-mac-caption text-(--text-secondary)">{progress.done} de {progress.total}…</span>}
+          </div>
+          <ul className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
+            {list.map((item) => {
+              const fs = getFileStyle(item.name);
+              const Icon = item.item_type === "folder" ? Folder : fs.icon;
+              const k = key(item);
+              const bloqueio = item.bloqueio === "legal_hold" ? "Bloqueio judicial: não pode ser apagado" : item.bloqueio === "retencao" ? "Prazo de guarda travado: não pode ser apagado ainda" : null;
+              return (
+                <li key={k} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 sm:px-5 py-3 border-b border-(--border-default) last:border-0">
+                  <Checkbox aria-label={`Selecionar ${item.name}`} checked={sel.has(k)} onChange={() => setSel((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; })} />
+                  <span className={`w-8 h-8 rounded-badge flex items-center justify-center shrink-0 ${item.item_type === "folder" ? "bg-teal-500/12" : fs.bgColor}`} aria-hidden="true">
+                    <Icon className={`w-4 h-4 ${item.item_type === "folder" ? "text-teal-600 dark:text-teal-400" : `${fs.iconColor} ${fs.fillColor}`}`} />
+                  </span>
+                  <div className="flex-1 min-w-[14rem]">
+                    <p className="text-mac-body text-(--text-primary) truncate">{item.name}{item.item_type === "folder" && item.document_count ? <span className="text-(--text-secondary)"> · {item.document_count} documentos</span> : null}</p>
+                    <p className="text-mac-caption text-(--text-secondary)">
+                      Excluído <time dateTime={item.deleted_at} title={fullDate(item.deleted_at)}>{relativeDate(item.deleted_at)}</time>{item.deleted_by_name ? ` por ${item.deleted_by_name}` : ""}
+                      {item.original_path ? ` · estava em ${item.original_path}` : ""}
+                    </p>
+                    <p className={`text-mac-caption ${bloqueio ? "text-(--text-warning)" : "text-(--text-secondary)"}`}>
+                      {bloqueio ? <><Lock className="inline w-3 h-3 -mt-0.5" aria-hidden="true" /> {bloqueio}</> : expiresText(item.trash_expires_at)}
+                      {item.original_folder_deleted ? " · a pasta de origem também foi excluída: volta para a raiz" : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button variant="secondary" size="sm" loading={busyId === k} disabled={!!progress} onClick={() => restore(item)} aria-label={`Restaurar ${item.name}`}>
+                      <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" /> Restaurar
+                    </Button>
+                    {isAdmin && !bloqueio && (
+                      <Button variant="ghost" size="sm" disabled={!!progress} onClick={() => setDeleting([item])} aria-label={`Apagar ${item.name} para sempre`}>
+                        <Trash2 className="w-3.5 h-3.5 text-(--text-danger)" aria-hidden="true" /> Apagar
+                      </Button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
-        </div>
+        </>
       )}
 
-      {/* Barra de ações em lote */}
-      {selected.size > 0 && (
-        <div className="glass-panel glass-blur-pill fixed bottom-[76px] md:bottom-7 lg:bottom-[100px] left-1/2 -translate-x-1/2 flex items-center gap-3 rounded-[50px] pl-[18px] pr-1.5 py-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.55)] z-40">
-          <span className="text-mac-body text-(--text-primary)">{selected.size} selecionado{selected.size !== 1 ? "s" : ""}</span>
-          <button
-            onClick={() => setConfirmBulk(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-mac-body text-white bg-red-600 hover:bg-red-500 transition-colors duration-fast"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Excluir permanentemente
-          </button>
-        </div>
-      )}
-
-      {/* Confirmação — nível Médio (item único) */}
-      {confirmSingle && (
+      {deleting && (
         <ConfirmModal
-          title={`Excluir "${confirmSingle.name}" permanentemente?`}
-          description="Esta ação não tem volta — o arquivo é removido do banco e do armazenamento."
-          confirmLabel="Excluir permanentemente"
-          danger
-          loading={deleting}
-          onConfirm={() => permanentlyDeleteOne(confirmSingle)}
-          onClose={() => setConfirmSingle(null)}
-        />
-      )}
-
-      {/* Confirmação — nível Alto (lote, exige digitar CONFIRMAR) */}
-      {confirmBulk && (
-        <ConfirmModal
-          title={`Excluir ${selected.size} itens permanentemente?`}
-          description="Esta ação não tem volta. Os itens são removidos do banco e do armazenamento."
-          confirmLabel="Excluir permanentemente"
-          danger
-          requireTypedConfirmation
-          loading={deleting}
-          onConfirm={permanentlyDeleteBulk}
-          onClose={() => setConfirmBulk(false)}
+          title={deleting.length === 1 ? `Apagar “${deleting[0].name}” para sempre?` : `Apagar ${deleting.length} itens para sempre?`}
+          description={<>O arquivo e o histórico de versões somem e não dá para recuperar.{deleting.some((d) => d.bloqueio) ? " Os itens com bloqueio ficam de fora." : ""}</>}
+          confirmLabel="Apagar para sempre" danger loading={!!progress}
+          onClose={() => setDeleting(null)}
+          onConfirm={() => deleteForever(deleting.filter((d) => !d.bloqueio))}
         />
       )}
     </div>

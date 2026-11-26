@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
-import { FolderOpen, Anchor, Trash2 } from "lucide-react";
+import { useEffect, useId, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { Folder, Anchor, X, AlertTriangle, RefreshCw, Search } from "lucide-react";
 import { getFileStyle } from "@/lib/fileType";
-import { Link, useNavigate } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
+import { pushUndo, takeUndo } from "@/lib/undo";
 import EmptyState from "@/components/shared/EmptyState";
+import Button from "@/components/ui/Button";
 
 interface Favorite {
   id: string;
@@ -15,112 +17,139 @@ interface Favorite {
   folder_id: string | null;
   document_folder_id: string | null;
   item_name: string;
+  location?: string | null;
   created_at: string;
 }
 
+type Tipo = "todos" | "folder" | "document";
+
+/**
+ * Ancorados (A6-12..A6-15, A6-T1, A6-T2): mostra onde cada item está,
+ * filtra por tipo e nome, ordena, e desancorar é imediato com Desfazer.
+ * Erro de carga é erro, não "nada ancorado".
+ */
 export default function Favorites() {
   usePageTitle("Ancorados");
   const { current } = useCompany();
-  const navigate = useNavigate();
-  const { success, error: showError } = useToast();
-  const [favorites, setFavorites] = useState<Favorite[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { toast, error: showError } = useToast();
+  const uid = useId();
+  const [items, setItems] = useState<Favorite[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [tipo, setTipo] = useState<Tipo>("todos");
+  const [filtro, setFiltro] = useState("");
+  const [ordem, setOrdem] = useState<"recentes" | "nome">("recentes");
 
   function load() {
     if (!current) return;
-    setLoading(true);
-    api
-      .get<Favorite[]>("/favorites", { params: { company_id: current.id } })
-      .then((r) => setFavorites(Array.isArray(r.data) ? r.data : []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    setFailed(false);
+    api.get<Favorite[]>("/favorites", { params: { company_id: current.id } })
+      .then((r) => setItems(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setFailed(true));
+  }
+  useEffect(load, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function anchorAgain(fav: Favorite) {
+    await api.post("/favorites", fav.item_type === "folder" ? { folder_id: fav.folder_id } : { document_id: fav.document_id });
+    load();
   }
 
-  useEffect(load, [current?.id]);
-
-  async function removeFavorite(fav: Favorite) {
+  async function remove(fav: Favorite) {
+    setItems((prev) => prev?.filter((f) => f.id !== fav.id) ?? null);
     try {
       await api.delete(`/favorites/${fav.id}`);
-      setFavorites((prev) => prev.filter((f) => f.id !== fav.id));
-      success(`"${fav.item_name}" removido dos ancorados.`);
+      const entry = pushUndo(`Ancorar “${fav.item_name}” de novo`, () => anchorAgain(fav));
+      toast({ type: "success", message: `“${fav.item_name}” saiu dos ancorados.`, action: { label: "Desfazer", onClick: () => { takeUndo(entry.id)?.undo(); } } });
     } catch {
-      showError("Não foi possível remover a ancoragem.");
+      setItems((prev) => (prev ? [fav, ...prev] : [fav]));
+      showError("Não foi possível desancorar. Tente de novo.");
     }
   }
 
-  function openFavorite(fav: Favorite) {
-    if (fav.item_type === "folder") {
-      navigate(`/documents?folder_id=${fav.folder_id}`);
-    } else {
-      navigate(`/documents?folder_id=${fav.document_folder_id ?? ""}&doc=${fav.document_id}`);
-    }
-  }
+  const visible = useMemo(() => {
+    let list = items ?? [];
+    if (tipo !== "todos") list = list.filter((f) => f.item_type === tipo);
+    const q = filtro.trim().toLocaleLowerCase("pt-BR");
+    if (q) list = list.filter((f) => f.item_name.toLocaleLowerCase("pt-BR").includes(q) || (f.location ?? "").toLocaleLowerCase("pt-BR").includes(q));
+    return [...list].sort((a, b) => (ordem === "nome" ? a.item_name.localeCompare(b.item_name, "pt-BR") : b.created_at.localeCompare(a.created_at)));
+  }, [items, tipo, filtro, ordem]);
+
+  const href = (f: Favorite) => (f.item_type === "folder" ? `/documents?folder_id=${f.folder_id}` : `/documents?folder_id=${f.document_folder_id ?? ""}&doc=${f.document_id}`);
+  const counts = { todos: items?.length ?? 0, folder: items?.filter((f) => f.item_type === "folder").length ?? 0, document: items?.filter((f) => f.item_type === "document").length ?? 0 };
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-mac-title2 font-semibold text-(--text-primary)">Ancorados</h1>
+    <div className="space-y-5 max-w-[1100px] w-full mx-auto">
+      <div>
+        <h1 className="text-mac-title2 font-semibold text-(--text-primary)">Ancorados</h1>
+        <p className="text-mac-caption text-(--text-secondary) mt-0.5">Os documentos e pastas que você usa todo dia, a um clique. Só você vê os seus.</p>
+      </div>
 
-      {loading ? (
-        <div className="space-y-2">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="h-12 bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) animate-pulse" />
-          ))}
+      {failed ? (
+        <div role="alert" className="glass-panel glass-blur-card rounded-(--radius-panel) flex flex-wrap items-center gap-3 px-5 py-4">
+          <AlertTriangle className="w-4 h-4 text-(--text-warning)" aria-hidden="true" />
+          <p className="flex-1 text-mac-body text-(--text-primary)">Não foi possível carregar os ancorados.</p>
+          <Button variant="secondary" size="sm" onClick={load}><RefreshCw className="w-3.5 h-3.5" aria-hidden="true" /> Tentar de novo</Button>
         </div>
-      ) : favorites.length === 0 ? (
+      ) : !items ? (
+        <div className="space-y-2" aria-label="Carregando">{[0, 1, 2, 3].map((i) => <div key={i} className="h-14 rounded-(--radius-control) bg-(--bg-hover) animate-pulse" />)}</div>
+      ) : items.length === 0 ? (
         <EmptyState
           title="Nada ancorado ainda"
-          description="Clique no ícone de âncora em qualquer documento ou pasta para fixá-lo aqui."
+          description="No menu de qualquer documento ou pasta, escolha “Ancorar” para trazê-lo para cá e para o Início."
           icon={<Anchor className="w-6 h-6" />}
-          action={
-            <Link
-              to="/documents"
-              className="px-4 py-2 text-mac-body font-medium text-white bg-teal-600 rounded-full hover:bg-teal-500 transition-colors duration-fast"
-            >
-              Explorar documentos
-            </Link>
-          }
+          action={<Link to="/documents" className="inline-flex items-center h-9 pointer-coarse:h-11 px-4 text-mac-body font-medium text-white bg-teal-600 rounded-full hover:bg-teal-700">Ir para Documentos</Link>}
         />
       ) : (
-        <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
-          <ul>
-            {favorites.map((fav) => (
-              <li
-                key={fav.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => openFavorite(fav)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    openFavorite(fav);
-                  }
-                }}
-                className="flex items-center gap-3 px-5 py-3 hover:bg-(--bg-hover) transition-colors duration-fast border-b border-(--border-default) last:border-0 group cursor-pointer"
-              >
-                {fav.item_type === "folder" ? (
-                  <FolderOpen className="w-4 h-4 text-teal-500 shrink-0" />
-                ) : (
-                  (() => { const s = getFileStyle(fav.item_name); const Icon = s.icon; return (
-                    <div className={`w-6 h-6 rounded-badge flex items-center justify-center shrink-0 ${s.bgColor}`}>
-                      <Icon className={`w-3.5 h-3.5 ${s.iconColor} ${s.fillColor}`} />
-                    </div>
-                  ); })()
-                )}
-                <span className="flex-1 min-w-0 text-mac-body text-(--text-primary) truncate">{fav.item_name}</span>
-                <span className="hidden md:inline text-mac-caption text-(--text-tertiary) mr-2">
-                  {fav.item_type === "folder" ? "Pasta" : "Documento"}
-                </span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); removeFavorite(fav); }}
-                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-full text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--bg-hover) transition-all duration-fast shrink-0"
-                  title="Remover ancoragem"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <div role="group" aria-label="Tipo" className="flex items-center gap-0.5 p-0.5 rounded-full bg-(--bg-hover)">
+              {([["todos", "Tudo"], ["folder", "Pastas"], ["document", "Documentos"]] as const).map(([v, l]) => (
+                <button key={v} aria-pressed={tipo === v} onClick={() => setTipo(v)}
+                  className={`px-3 h-8 pointer-coarse:h-10 rounded-full text-mac-body font-medium transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${tipo === v ? "bg-(--bg-card) text-(--text-primary) shadow-sm" : "text-(--text-secondary) hover:text-(--text-primary)"}`}>
+                  {l} <span className="text-(--text-secondary)">{counts[v]}</span>
                 </button>
-              </li>
-            ))}
-          </ul>
-        </div>
+              ))}
+            </div>
+            <div className="relative flex-1 min-w-48 max-w-72">
+              <label htmlFor={`${uid}-f`} className="sr-only">Filtrar ancorados</label>
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-(--text-secondary)" aria-hidden="true" />
+              <input id={`${uid}-f`} value={filtro} onChange={(e) => setFiltro(e.target.value)} placeholder="Filtrar por nome ou pasta"
+                className="h-8 pointer-coarse:h-10 w-full rounded-full border border-(--border-control) bg-(--bg-card) pl-8 pr-3 text-mac-body pointer-coarse:text-[16px] text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring)" />
+            </div>
+            <button onClick={() => setOrdem((o) => (o === "recentes" ? "nome" : "recentes"))} className="h-8 pointer-coarse:h-10 px-3 rounded-full text-mac-body text-(--text-accent) hover:bg-(--bg-hover)">
+              Ordem: {ordem === "recentes" ? "mais recentes" : "nome"}
+            </button>
+          </div>
+          <p className="sr-only" role="status" aria-live="polite">{visible.length} itens</p>
+          {visible.length === 0 ? (
+            <p className="text-mac-body text-(--text-secondary)">Nenhum ancorado com esse filtro.</p>
+          ) : (
+            <ul className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
+              {visible.map((fav) => {
+                const s = getFileStyle(fav.item_name);
+                const Icon = fav.item_type === "folder" ? Folder : s.icon;
+                return (
+                  <li key={fav.id} className="group flex items-center border-b border-(--border-default) last:border-0">
+                    <Link to={href(fav)} className="flex-1 min-w-0 flex items-center gap-3 px-4 sm:px-5 py-2.5 min-h-14 hover:bg-(--bg-hover) transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-(--focus-ring)">
+                      <span className={`w-8 h-8 rounded-badge flex items-center justify-center shrink-0 ${fav.item_type === "folder" ? "bg-teal-500/12" : s.bgColor}`} aria-hidden="true">
+                        <Icon className={`w-4 h-4 ${fav.item_type === "folder" ? "text-teal-600 dark:text-teal-400 fill-teal-500/25" : `${s.iconColor} ${s.fillColor}`}`} />
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-mac-body text-(--text-primary) truncate">{fav.item_name}</span>
+                        <span className="block text-mac-caption text-(--text-secondary) truncate">
+                          {fav.item_type === "folder" ? "Pasta" : "Documento"}{fav.location ? ` em ${fav.location}` : ""}
+                        </span>
+                      </span>
+                    </Link>
+                    <button onClick={() => remove(fav)} aria-label={`Desancorar ${fav.item_name}`} title="Desancorar"
+                      className="shrink-0 mr-2 p-2 pointer-coarse:p-3 rounded-full text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-hover) sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 sm:group-focus-within:opacity-100 pointer-coarse:opacity-100 focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) transition-opacity duration-fast">
+                      <X className="w-4 h-4" aria-hidden="true" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
       )}
     </div>
   );

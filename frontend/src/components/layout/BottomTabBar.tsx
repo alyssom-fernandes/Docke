@@ -11,7 +11,7 @@ const TABS = [
 ];
 
 const MORE_LINKS = [
-  { to: "/shares", icon: Link2, label: "Compartilhados" },
+  { to: "/shares", icon: Link2, label: "Links" },
   { to: "/activity", icon: Activity, label: "Atividade" },
   { to: "/obligations", icon: ShieldQuestion, label: "Obrigações" },
   { to: "/trash", icon: Trash2, label: "Lixeira" },

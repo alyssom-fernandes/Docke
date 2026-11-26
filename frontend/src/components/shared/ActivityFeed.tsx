@@ -159,24 +159,47 @@ function EventDetail({ ev }: { ev: ActivityEvent }) {
       </p>
     );
   }
-  if (ev.metadata && Object.keys(ev.metadata).length > 0) {
-    return (
-      <p className="text-mac-caption text-(--text-secondary) mt-1 pl-9 truncate">
-        {Object.entries(ev.metadata).map(([k, v]) => `${k}: ${v}`).join(" · ")}
-      </p>
-    );
+  const partes = readableMetadata(ev.metadata);
+  if (partes.length) {
+    return <p className="text-mac-caption text-(--text-secondary) mt-1 pl-9">{partes.join(" · ")}</p>;
   }
   return null;
 }
 
-function timeLabel(iso: string, relative: boolean) {
+const META_LABEL: Record<string, string> = {
+  motivo: "Motivo", documento: "Documento", onde: "Onde", processo: "Processo", nota: "Observação",
+  prazo: "Prazo", prazo_antes: "Prazo antes", prazo_depois: "Prazo depois", depende_de: "Depende de",
+  versao: "Versão", vencimento: "Vencimento", valido_ate: "Válido até", adiado_para: "Adiado para",
+  documentos_afetados: "Documentos afetados", modelo_pronto: "Modelo pronto", policy_name: "Prazo de guarda",
+};
+
+/** Detalhe do evento em português, sem ids nem chaves internas (achado A6-25). */
+function readableMetadata(meta: Record<string, any> | null): string[] {
+  if (!meta) return [];
+  const out: string[] = [];
+  if (meta.reason === "retention_purge") out.push("Descarte pelo prazo de guarda, com certificado");
+  if (meta.version_upload) out.push("Nova versão enviada");
+  if (meta.restored_version) out.push(`Versão ${meta.restored_version} restaurada`);
+  if (meta.travada !== undefined) out.push(meta.travada ? "Prazo travado" : "Prazo não travado");
+  if (Array.isArray(meta.campos) && meta.campos.length) out.push(`Campos alterados: ${meta.campos.length}`);
+  for (const [k, v] of Object.entries(meta)) {
+    if (!META_LABEL[k] || v === null || v === undefined || v === "") continue;
+    out.push(`${META_LABEL[k]}: ${v}`);
+  }
+  return out;
+}
+
+function timeLabel(iso: string, relative: boolean | "dia") {
+  if (relative === "dia") {
+    return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(",", "");
+  }
   return relative ? relativeDate(iso) : new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
-function EventRow({ ev, onNavigate, relative }: { ev: ActivityEvent; onNavigate: (target: string) => void; relative: boolean }) {
+function EventRow({ ev, onNavigate, relative }: { ev: ActivityEvent; onNavigate: (target: string) => void; relative: boolean | "dia" }) {
   const [expanded, setExpanded] = useState(false);
   const target = activityTarget(ev);
-  const hasDetail = !!(ev.metadata && Object.keys(ev.metadata).length > 0);
+  const hasDetail = (ev.action === "update_metadata" && !!ev.metadata?.field_label) || (ev.action === "rename" && !!ev.metadata?.de) || readableMetadata(ev.metadata).length > 0;
   const texto = (
     <>
       <span className="font-medium">{ev.user_name}</span> {ACTION_LABELS[ev.action] ?? ev.action}{" "}
@@ -217,7 +240,7 @@ function EventRow({ ev, onNavigate, relative }: { ev: ActivityEvent; onNavigate:
   );
 }
 
-function ClusterRow({ cluster, onNavigate, relative }: { cluster: Cluster; onNavigate: (target: string) => void; relative: boolean }) {
+function ClusterRow({ cluster, onNavigate, relative }: { cluster: Cluster; onNavigate: (target: string) => void; relative: boolean | "dia" }) {
   const [expanded, setExpanded] = useState(false);
   const latest = cluster.events[0];
 
@@ -365,7 +388,7 @@ export default function ActivityFeed({
           <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
             <ul>
               {clusterEvents(group.items).map((c) => (
-                <ClusterRow key={c.key} cluster={c} onNavigate={navigate} relative={!groupByDay} />
+                <ClusterRow key={c.key} cluster={c} onNavigate={navigate} relative={!groupByDay ? true : group.label === "Hoje" || group.label === "Ontem" ? false : "dia"} />
               ))}
             </ul>
           </div>
