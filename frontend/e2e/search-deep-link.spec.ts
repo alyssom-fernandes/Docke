@@ -30,11 +30,11 @@ test("Ctrl+K a partir da própria tela de Documentos navega para o documento cer
   // Depois do clique: a paleta fecha, a URL ganha folder_id/doc, e a tabela
   // deixa de mostrar a listagem de pastas da raiz para mostrar só o
   // documento certo — com o Detail Drawer aberto.
-  await expect(page.getByRole("heading", { name: "Detalhes" })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("complementary", { name: /^Detalhes de / })).toBeVisible({ timeout: 10_000 });
   if (resultText) {
     const fileName = resultText.replace(/(Documento|Pasta)$/, "").trim();
     // Painel de detalhes = o bloco que contém o título "Detalhes" (cabeçalho + corpo).
-    const details = page.getByRole("heading", { name: "Detalhes" }).locator("xpath=../..");
+    const details = page.getByRole("complementary", { name: /^Detalhes de / });
     await expect(details).toContainText(fileName);
   }
 });

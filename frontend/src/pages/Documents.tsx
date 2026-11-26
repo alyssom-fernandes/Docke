@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, useCallback, type ElementType } from "react";
+import { Fragment, useEffect, useRef, useState, useCallback, useId, type ElementType, type ReactNode } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
@@ -73,6 +73,7 @@ import Dialog from "@/components/ui/Dialog";
 import Menu, { type MenuItem } from "@/components/ui/Menu";
 import FolderPickerDialog, { type PickedFolder } from "@/components/documents/FolderPickerDialog";
 import { pushUndo, takeUndo, isUndoShortcut } from "@/lib/undo";
+import { maskValue, validateValue, PLACEHOLDER, INPUT_MODE, type FieldType } from "@/components/documents/fieldMasks";
 import { SkeletonTableRow, SkeletonGridItem } from "@/components/shared/Skeleton";
 import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 
@@ -130,8 +131,8 @@ type Item = { kind: "folder"; data: Folder } | { kind: "document"; data: Documen
 
 function fmtSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1).replace(".", ",")} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
 }
 
 const fmtDate = relativeDate;
@@ -785,354 +786,244 @@ function CreateFolderModal({ parentId, parentName, siblings, companyId, onClose,
 
 // ─── Detail Drawer ────────────────────────────────────────────────────────────
 
-// Metadados personalizados (ADENDO-08 M-G): campos resolvidos pra pasta do
-// documento, com formulário dinâmico por tipo. Some da tela se a pasta não
-// tem nenhum campo aplicado — não polui Detalhes pra quem não usa a feature.
+// Metadados personalizados (ADENDO-08 M-G): formulário por tipo, com máscara,
+// validação no próprio campo e salvamento automático anunciado (A5-11, A5-15).
 type FieldSaveStatus = "idle" | "saving" | "saved" | "error";
 
-function FieldStatusIndicator({ status }: { status: FieldSaveStatus }) {
+function FieldStatusIndicator({ status, message }: { status: FieldSaveStatus; message?: string }) {
   if (status === "idle") return null;
-  if (status === "saving") {
-    return <span className="text-mac-caption2 text-(--text-tertiary) flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full border-2 border-current border-t-transparent animate-spin" />salvando…</span>;
-  }
-  if (status === "error") {
-    return <span className="text-mac-caption2 text-red-500">não foi possível salvar</span>;
-  }
-  return <span className="text-mac-caption2 text-teal-600 dark:text-teal-400">✓ salvo</span>;
+  if (status === "saving") return <span className="text-mac-caption text-(--text-secondary)">salvando…</span>;
+  if (status === "error") return <span className="text-mac-caption text-(--text-danger)">{message ?? "não salvou"}</span>;
+  return <span className="reveal text-mac-caption text-(--text-success)">salvo</span>;
 }
 
-function MetadataSection({ doc, companyId, onChanged }: { doc: Document; companyId: string; onChanged: () => void }) {
-  const { error: showError } = useToast();
-  const [fields, setFields] = useState<ResolvedField[]>([]);
-  const [values, setValues] = useState<Record<string, string>>({});
-  // Fase 8.3: quais campos têm valor REALMENTE salvo no documento (distinto
-  // de um valor padrão herdado só exibido, nunca gravado) — usado pro ícone
-  // de "quebra de herança" quando o valor salvo diverge do padrão da pasta.
-  const [savedFieldIds, setSavedFieldIds] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(true);
-  // Autosave por campo (Fase 1.5): cada campo tem seu próprio status —
-  // idle/saving/saved/error — em vez de um botão único "Salvar metadados".
-  const [fieldStatus, setFieldStatus] = useState<Record<string, FieldSaveStatus>>({});
-  const debounceRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const savedFlashRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-
-  useEffect(() => {
-    if (!doc.folder_id) { setFields([]); setLoading(false); return; }
-    setLoading(true);
-    Promise.all([
-      api.get<ResolvedField[]>("/folder-fields/resolved", { params: { company_id: companyId, folder_id: doc.folder_id } }),
-      api.get<DocFieldValueRow[]>(`/documents/${doc.id}/field-values`),
-    ]).then(([fRes, vRes]) => {
-      const fetchedFields = Array.isArray(fRes.data) ? [...fRes.data].sort((a, b) => a.display_order - b.display_order) : [];
-      setFields(fetchedFields);
-      const vmap: Record<string, string> = {};
-      const saved = new Set<string>();
-      for (const row of Array.isArray(vRes.data) ? vRes.data : []) {
-        vmap[row.custom_field_id] = row.value_text;
-        saved.add(row.custom_field_id);
-      }
-      // Fase 8.3: campo sem valor salvo mas com valor padrão herdado da pasta
-      // mostra o padrão pré-preenchido — não grava sozinho, só exibe; salva
-      // de verdade só quando a pessoa confirma (blur/debounce), igual a
-      // qualquer outro campo.
-      for (const f of fetchedFields) {
-        if (!saved.has(f.custom_field_id) && f.default_value) vmap[f.custom_field_id] = f.default_value;
-      }
-      setValues(vmap);
-      setSavedFieldIds(saved);
-      setFieldStatus({});
-    }).catch(() => { setFields([]); setValues({}); setSavedFieldIds(new Set()); }).finally(() => setLoading(false));
-  }, [doc.id, doc.folder_id, companyId]);
-
-  // Limpa todos os timers pendentes ao desmontar (troca de documento, fecha modal).
-  useEffect(() => () => {
-    Object.values(debounceRefs.current).forEach(clearTimeout);
-    Object.values(savedFlashRefs.current).forEach(clearTimeout);
-  }, []);
-
-  async function saveField(fieldId: string, rawValue: string) {
-    const trimmed = rawValue.trim();
-    // Campos tipados (CPF/CNPJ/data/competência) dão 400 se vazios no backend
-    // — mesma regra que o botão antigo já respeitava: campo esvaziado não
-    // dispara chamada nenhuma (não existe "limpar" campo hoje, é limitação
-    // pré-existente, fora do escopo do autosave).
-    if (!trimmed) { setFieldStatus((s) => ({ ...s, [fieldId]: "idle" })); return; }
-
-    setFieldStatus((s) => ({ ...s, [fieldId]: "saving" }));
-    try {
-      await api.put(
-        `/documents/${doc.id}/field-values`,
-        [{ custom_field_id: fieldId, value: trimmed }],
-        { params: { company_id: companyId } },
-      );
-      setFieldStatus((s) => ({ ...s, [fieldId]: "saved" }));
-      setSavedFieldIds((s) => new Set(s).add(fieldId));
-      onChanged();
-      // "✓ salvo" também é transitório — volta a idle depois de um tempo,
-      // senão o indicador fica preso permanentemente no campo.
-      if (savedFlashRefs.current[fieldId]) clearTimeout(savedFlashRefs.current[fieldId]);
-      savedFlashRefs.current[fieldId] = setTimeout(() => {
-        setFieldStatus((s) => (s[fieldId] === "saved" ? { ...s, [fieldId]: "idle" } : s));
-      }, 3000);
-    } catch (e: any) {
-      setFieldStatus((s) => ({ ...s, [fieldId]: "error" }));
-      showError(e?.response?.data?.detail ?? `Não foi possível salvar "${fields.find((f) => f.custom_field_id === fieldId)?.label ?? "campo"}".`);
-    }
-  }
-
-  function handleFieldChange(fieldId: string, value: string) {
-    setValues((v) => ({ ...v, [fieldId]: value }));
-    setFieldStatus((s) => ({ ...s, [fieldId]: "idle" })); // sai do "salvo"/"erro" assim que volta a digitar
-    if (debounceRefs.current[fieldId]) clearTimeout(debounceRefs.current[fieldId]);
-    debounceRefs.current[fieldId] = setTimeout(() => saveField(fieldId, value), 900);
-  }
-
-  if (loading || fields.length === 0) return null;
-
-  // Fase 8.4: campos condicionais (Progressive Disclosure) — só aparece no
-  // formulário quando o campo do qual depende tem exatamente o valor exigido.
-  // Não remove do array (não altera fields/display_order), só filtra na hora
-  // de renderizar — o backend continua sendo a fonte de verdade do catálogo.
-  const visibleFields = fields.filter((f) => {
-    if (!f.condition_field_id) return true;
-    return (values[f.condition_field_id] ?? "") === (f.condition_value ?? "");
-  });
-  if (visibleFields.length === 0) return null;
-
+/** Acordeão acessível com altura animada (A5-05, A5-07, A5-22). */
+function Disclosure({ icon, title, summary, children, defaultOpen = false, onOpen }: {
+  icon: ReactNode; title: string; summary?: string; children: ReactNode; defaultOpen?: boolean; onOpen?: () => void;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const id = useId();
   return (
-    <div className="pt-2 border-t border-(--border-default) space-y-3">
-      <p className="text-mac-body font-semibold text-(--text-secondary)">Metadados</p>
-      {visibleFields.map((f) => {
-        // Fase 8.3: ícone de "quebra de herança" — o valor salvo no documento
-        // diverge do valor padrão da pasta (só faz sentido comparar quando
-        // ambos existem; sem padrão configurado não há herança pra quebrar).
-        const brokeInheritance = f.default_value != null && savedFieldIds.has(f.custom_field_id)
-          && values[f.custom_field_id] !== f.default_value;
-        return (
-        <div key={f.custom_field_id}>
-          <div className="flex items-center justify-between mb-1">
-            <label className="text-mac-caption font-medium text-(--text-secondary) flex items-center gap-1">
-              {f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}
-              {brokeInheritance && (
-                <Tooltip label={`Diferente do padrão da pasta ("${f.default_value}")`}>
-                  <span aria-label="Valor diferente do padrão herdado" className="inline-flex text-amber-500">
-                    <GitBranch className="w-3 h-3" />
-                  </span>
-                </Tooltip>
-              )}
-            </label>
-            <FieldStatusIndicator status={fieldStatus[f.custom_field_id] ?? "idle"} />
-          </div>
-          {f.type === "selecao" ? (
-            <Dropdown
-              value={values[f.custom_field_id] ?? ""}
-              onChange={(v) => { handleFieldChange(f.custom_field_id, v); saveField(f.custom_field_id, v); }}
-              placeholder="—"
-              options={((f.format_config?.options as string[]) ?? []).map((o) => ({ value: o, label: o }))}
-            />
-          ) : (
-            <input
-              type="text"
-              value={values[f.custom_field_id] ?? ""}
-              onChange={(e) => handleFieldChange(f.custom_field_id, e.target.value)}
-              onBlur={(e) => {
-                // Sair do campo confirma na hora em vez de esperar o debounce —
-                // não faz sentido a pessoa trocar de campo e ficar esperando.
-                if (debounceRefs.current[f.custom_field_id]) clearTimeout(debounceRefs.current[f.custom_field_id]);
-                saveField(f.custom_field_id, e.target.value);
-              }}
-              placeholder={
-                f.type === "cpf" ? "000.000.000-00" :
-                f.type === "cnpj" ? "00.000.000/0000-00" :
-                f.type === "data" ? "dd/mm/aaaa" :
-                f.type === "competencia" ? "mm/aaaa" :
-                f.type === "numero" ? "0" : ""
-              }
-              className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-            />
-          )}
-        </div>
-        );
-      })}
+    <div className="border-t border-(--border-default) pt-2">
+      <h3>
+        <button
+          aria-expanded={open}
+          aria-controls={`${id}-painel`}
+          onClick={() => { const next = !open; setOpen(next); if (next) onOpen?.(); }}
+          className="w-full flex items-center justify-between gap-2 min-h-9 pointer-coarse:min-h-11 rounded-[6px] text-mac-body text-(--text-primary) hover:text-(--text-accent)"
+        >
+          <span className="flex items-center gap-2">{icon}{title}{summary && <span className="text-mac-caption text-(--text-secondary) font-normal">{summary}</span>}</span>
+          <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} aria-hidden />
+        </button>
+      </h3>
+      <div id={`${id}-painel`} className={`grid transition-[grid-template-rows] duration-200 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`} inert={!open}>
+        <div className="overflow-hidden"><div className="pt-2 pb-1">{children}</div></div>
+      </div>
     </div>
   );
 }
 
-// Fase 14.1 — "ver cálculo": mostra a retenção efetiva do documento + todas
-// as políticas candidatas consideradas (mesmo padrão do Explain Access da
-// Fase 9.3, aplicado à retenção em vez de permissões).
+function MetadataSection({ doc, companyId, canEdit, onSaved }: { doc: Document; companyId: string; canEdit: boolean; onSaved: (fieldId: string, value: string) => void }) {
+  const [fields, setFields] = useState<ResolvedField[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [savedFieldIds, setSavedFieldIds] = useState<Set<string>>(new Set());
+  const [fieldStatus, setFieldStatus] = useState<Record<string, FieldSaveStatus>>({});
+  const [fieldError, setFieldError] = useState<Record<string, string>>({});
+  const debounceRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const uid = useId();
+
+  const load = useCallback(() => {
+    if (!doc.folder_id) { setFields([]); return; }
+    setFields(null);
+    setFailed(false);
+    Promise.all([
+      api.get<ResolvedField[]>("/folder-fields/resolved", { params: { company_id: companyId, folder_id: doc.folder_id } }),
+      api.get<DocFieldValueRow[]>(`/documents/${doc.id}/field-values`),
+    ]).then(([fRes, vRes]) => {
+      const fetched = Array.isArray(fRes.data) ? [...fRes.data].sort((a, b) => a.display_order - b.display_order) : [];
+      const vmap: Record<string, string> = {};
+      const saved = new Set<string>();
+      for (const row of Array.isArray(vRes.data) ? vRes.data : []) { vmap[row.custom_field_id] = row.value_text; saved.add(row.custom_field_id); }
+      for (const f of fetched) if (!saved.has(f.custom_field_id) && f.default_value) vmap[f.custom_field_id] = f.default_value;
+      setFields(fetched); setValues(vmap); setSavedFieldIds(saved); setFieldStatus({}); setFieldError({});
+    }).catch(() => { setFailed(true); setFields([]); });
+  }, [doc.id, doc.folder_id, companyId]);
+  useEffect(load, [load]);
+  useEffect(() => () => { Object.values(debounceRefs.current).forEach(clearTimeout); }, []);
+
+  async function saveField(f: ResolvedField, rawValue: string) {
+    const trimmed = rawValue.trim();
+    const invalid = validateValue(f.type as FieldType, trimmed);
+    if (invalid) { setFieldError((s) => ({ ...s, [f.custom_field_id]: invalid })); setFieldStatus((s) => ({ ...s, [f.custom_field_id]: "idle" })); return; }
+    setFieldError((s) => { const n = { ...s }; delete n[f.custom_field_id]; return n; });
+    if (!trimmed) { setFieldStatus((s) => ({ ...s, [f.custom_field_id]: "idle" })); return; }
+    setFieldStatus((s) => ({ ...s, [f.custom_field_id]: "saving" }));
+    try {
+      await api.put(`/documents/${doc.id}/field-values`, [{ custom_field_id: f.custom_field_id, value: trimmed }], { params: { company_id: companyId } });
+      setFieldStatus((s) => ({ ...s, [f.custom_field_id]: "saved" }));
+      setSavedFieldIds((s) => new Set(s).add(f.custom_field_id));
+      onSaved(f.custom_field_id, trimmed);
+      window.setTimeout(() => setFieldStatus((s) => (s[f.custom_field_id] === "saved" ? { ...s, [f.custom_field_id]: "idle" } : s)), 2500);
+    } catch (e: any) {
+      setFieldStatus((s) => ({ ...s, [f.custom_field_id]: "error" }));
+      setFieldError((s) => ({ ...s, [f.custom_field_id]: e?.response?.data?.detail ?? "Não salvou. Confira o valor e tente de novo." }));
+    }
+  }
+
+  if (fields === null) {
+    return <div className="border-t border-(--border-default) pt-3 space-y-2" aria-label="Carregando metadados">{[0, 1].map((i) => <div key={i} className="h-9 rounded-(--radius-control) bg-(--bg-hover) animate-pulse" />)}</div>;
+  }
+  if (failed) {
+    return <p role="alert" className="border-t border-(--border-default) pt-3 text-mac-body text-(--text-secondary)">Não carregou os metadados. <button onClick={load} className="font-medium text-(--text-accent) underline underline-offset-2">Tentar de novo</button></p>;
+  }
+  const visible = fields.filter((f) => !f.condition_field_id || (values[f.condition_field_id] ?? "") === (f.condition_value ?? ""));
+  if (visible.length === 0) return null;
+
+  return (
+    <section aria-labelledby={`${uid}-meta`} className="border-t border-(--border-default) pt-3 space-y-3">
+      <h3 id={`${uid}-meta`} className="text-mac-body font-semibold text-(--text-primary)">Metadados</h3>
+      {visible.map((f) => {
+        const fid = `${uid}-${f.custom_field_id}`;
+        const err = fieldError[f.custom_field_id];
+        const status = fieldStatus[f.custom_field_id] ?? "idle";
+        const brokeInheritance = f.default_value != null && savedFieldIds.has(f.custom_field_id) && values[f.custom_field_id] !== f.default_value;
+        const fromDefault = f.default_value != null && !savedFieldIds.has(f.custom_field_id) && values[f.custom_field_id] === f.default_value;
+        return (
+          <div key={f.custom_field_id}>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <label htmlFor={fid} className="text-mac-caption font-medium text-(--text-secondary) flex items-center gap-1">
+                {f.label}{f.required && <span className="text-(--text-danger)" aria-label="obrigatório">*</span>}
+                {brokeInheritance && <span className="text-(--text-warning) inline-flex" title={`Diferente do padrão da pasta ("${f.default_value}")`}><GitBranch className="w-3 h-3" aria-hidden /><span className="sr-only">diferente do padrão da pasta</span></span>}
+                {fromDefault && <span className="text-(--text-secondary) font-normal">· padrão da pasta</span>}
+              </label>
+              <span aria-live="polite"><FieldStatusIndicator status={status} message={status === "error" ? "não salvou" : undefined} /></span>
+            </div>
+            {f.type === "selecao" ? (
+              <Dropdown
+                id={fid}
+                value={values[f.custom_field_id] ?? ""}
+                onChange={(v) => { setValues((s) => ({ ...s, [f.custom_field_id]: v })); saveField(f, v); }}
+                placeholder="Escolha"
+                disabled={!canEdit}
+                ariaLabel={f.label}
+                options={((f.format_config?.options as string[]) ?? []).map((o) => ({ value: o, label: o }))}
+              />
+            ) : (
+              <input
+                id={fid}
+                type="text"
+                inputMode={INPUT_MODE[f.type as FieldType]}
+                value={values[f.custom_field_id] ?? ""}
+                readOnly={!canEdit}
+                aria-invalid={err ? true : undefined}
+                aria-describedby={err ? `${fid}-erro` : undefined}
+                aria-required={f.required || undefined}
+                onChange={(e) => {
+                  const v = maskValue(f.type as FieldType, e.target.value);
+                  setValues((s) => ({ ...s, [f.custom_field_id]: v }));
+                  setFieldStatus((s) => ({ ...s, [f.custom_field_id]: "idle" }));
+                  if (debounceRefs.current[f.custom_field_id]) clearTimeout(debounceRefs.current[f.custom_field_id]);
+                  debounceRefs.current[f.custom_field_id] = setTimeout(() => saveField(f, v), 900);
+                }}
+                onBlur={(e) => {
+                  if (debounceRefs.current[f.custom_field_id]) clearTimeout(debounceRefs.current[f.custom_field_id]);
+                  saveField(f, e.target.value);
+                }}
+                placeholder={PLACEHOLDER[f.type as FieldType]}
+                className={`w-full h-9 pointer-coarse:h-11 px-3 text-mac-body pointer-coarse:text-[16px] bg-(--bg-card) border rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring) read-only:bg-(--bg-hover) ${err ? "border-red-500" : "border-(--border-control)"}`}
+              />
+            )}
+            {err && <p id={`${fid}-erro`} className="mt-1 text-mac-caption text-(--text-danger)">{err}</p>}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
 interface RetentionCandidate {
   policy_id: string; policy_name: string; locked: boolean; is_indeterminate: boolean;
   expires_at: string | null; company_wide: boolean; eligible: boolean; is_winner: boolean;
 }
 
+const brDate = (iso: string | null) => (iso ? new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString("pt-BR") : "—");
+
 function DocumentRetentionSection({ docId }: { docId: string }) {
-  const [open, setOpen] = useState(false);
-  const [showCalc, setShowCalc] = useState(false);
-  const [info, setInfo] = useState<{ policy_name: string | null; expires_at: string | null; is_indeterminate: boolean | null; locked: boolean; under_hold: boolean } | null>(null);
+  const [info, setInfo] = useState<{ policy_name: string | null; expires_at: string | null; is_indeterminate: boolean | null; locked: boolean; under_hold: boolean } | null | "erro">(null);
   const [candidates, setCandidates] = useState<RetentionCandidate[] | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    setLoading(true);
-    api.get(`/documents/${docId}/retention`)
-      .then((r) => setInfo(r.data))
-      .catch(() => setInfo(null))
-      .finally(() => setLoading(false));
-  }, [open, docId]);
-
-  useEffect(() => {
-    if (!showCalc) return;
-    api.get<{ candidates: RetentionCandidate[] }>(`/documents/${docId}/retention/explain`)
-      .then((r) => setCandidates(r.data.candidates))
-      .catch(() => setCandidates([]));
-  }, [showCalc, docId]);
-
+  const [showCalc, setShowCalc] = useState(false);
+  const load = () => { setInfo(null); api.get(`/documents/${docId}/retention`).then((r) => setInfo(r.data)).catch(() => setInfo("erro")); };
+  useEffect(() => { if (showCalc) api.get<{ candidates: RetentionCandidate[] }>(`/documents/${docId}/retention/explain`).then((r) => setCandidates(r.data.candidates)).catch(() => setCandidates([])); }, [showCalc, docId]);
   return (
-    <div className="border-t border-(--border-default) pt-3">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between text-mac-body text-(--text-primary) hover:text-teal-500 transition-colors duration-fast"
-      >
-        <span className="flex items-center gap-2">
-          <Archive className="w-4 h-4" />
-          Retenção
-        </span>
-        {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-      </button>
-      {open && (
-        <div className="mt-3 space-y-2">
-          {loading ? (
-            <div className="h-10 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />
-          ) : !info?.policy_name ? (
-            <p className="text-mac-caption text-(--text-tertiary)">Nenhuma política de retenção se aplica a este documento.</p>
+    <Disclosure icon={<Archive className="w-4 h-4" aria-hidden />} title="Retenção" onOpen={load}>
+      {info === null ? (
+        <div className="h-10 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />
+      ) : info === "erro" ? (
+        <p role="alert" className="text-mac-caption text-(--text-secondary)">Não foi possível conferir a retenção agora. Não descarte o documento sem conferir. <button onClick={load} className="font-medium text-(--text-accent) underline underline-offset-2">Tentar de novo</button></p>
+      ) : (
+        <div className="text-mac-caption text-(--text-secondary) space-y-1.5">
+          {info.under_hold && <p className="flex items-center gap-1.5 text-(--text-warning) font-medium"><Lock className="w-3.5 h-3.5" aria-hidden /> Sob retenção legal (legal hold): não pode ser excluído.</p>}
+          {!info.policy_name ? (
+            <p>Nenhuma política de retenção se aplica a este documento.</p>
           ) : (
-            <div className="text-mac-caption text-(--text-secondary) space-y-1">
-              <p>
-                Política: <span className="font-medium text-(--text-primary)">{info.policy_name}</span>
-                {info.locked && <Lock className="w-3 h-3 inline ml-1 text-amber-500" />}
-              </p>
-              <p>{info.is_indeterminate ? "Prazo indeterminado" : `Expira em ${info.expires_at}`}</p>
-              {info.under_hold && <p className="text-amber-500">Sob legal hold — descarte bloqueado.</p>}
-              <button
-                onClick={() => setShowCalc((v) => !v)}
-                className="text-teal-500 hover:text-teal-600 transition-colors duration-fast"
-              >
-                {showCalc ? "Ocultar cálculo" : "Ver cálculo"}
+            <>
+              <p>Política: <span className="font-medium text-(--text-primary)">{info.policy_name}</span>{info.locked && <span className="ml-1">(obrigatória)</span>}</p>
+              <p>{info.is_indeterminate ? "Guarda por prazo indeterminado." : `Pode ser descartado a partir de ${brDate(info.expires_at)}.`}</p>
+              <button onClick={() => setShowCalc((v) => !v)} aria-expanded={showCalc} className="font-medium text-(--text-accent) underline-offset-2 hover:underline min-h-6 pointer-coarse:min-h-11">
+                {showCalc ? "Ocultar como foi calculado" : "Ver como foi calculado"}
               </button>
               {showCalc && (
                 <ul className="space-y-1 pt-1">
-                  {candidates === null ? (
-                    <li className="h-8 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />
-                  ) : candidates.length === 0 ? (
-                    <li className="text-(--text-tertiary)">Nenhuma política atribuída (empresa ou pasta) encontrada.</li>
-                  ) : (
-                    candidates.map((c) => (
-                      <li key={c.policy_id} className={`flex items-start gap-1.5 ${c.is_winner ? "text-(--text-primary)" : "text-(--text-tertiary) line-through decoration-(--border-default)"}`}>
-                        {c.is_winner ? <Check className="w-3 h-3 text-teal-500 shrink-0 mt-0.5" /> : <span className="w-3 h-3 shrink-0" />}
-                        <span>
-                          {c.policy_name} {c.locked && "(trava)"} — {c.is_indeterminate ? "indeterminado" : c.expires_at} · {c.company_wide ? "empresa toda" : "por pasta"}
-                        </span>
-                      </li>
-                    ))
-                  )}
+                  {candidates === null ? <li className="h-8 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" /> : candidates.length === 0 ? (
+                    <li>Nenhuma política atribuída à empresa ou às pastas deste documento.</li>
+                  ) : candidates.map((c) => (
+                    <li key={c.policy_id} className="flex items-start gap-1.5">
+                      {c.is_winner ? <Check className="w-3.5 h-3.5 text-(--text-success) shrink-0 mt-0.5" aria-hidden /> : <span className="w-3.5 shrink-0" />}
+                      <span className={c.is_winner ? "text-(--text-primary)" : ""}>
+                        {c.policy_name}{c.locked ? " (obrigatória)" : ""} — {c.is_indeterminate ? "indeterminado" : brDate(c.expires_at)} · {c.company_wide ? "empresa toda" : "pasta"}
+                        {c.is_winner ? <strong className="ml-1 text-(--text-success)">vale esta</strong> : !c.eligible ? " · perde para a obrigatória" : " · prazo menor"}
+                      </span>
+                    </li>
+                  ))}
                 </ul>
               )}
-            </div>
+            </>
           )}
         </div>
       )}
-    </div>
+    </Disclosure>
   );
 }
 
-// Fase 2.6: mesmo componente ActivityFeed do painel de administração
-// (Activity.tsx), só trocando o filtro inicial (item_id = este documento) —
-// colapsado por padrão, carrega só quando aberto (padrão igual ao de Versões).
-function DocumentActivitySection({ docId, companyId }: { docId: string; companyId: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="border-t border-(--border-default) pt-3">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between text-mac-body text-(--text-primary) hover:text-teal-500 transition-colors duration-fast"
-      >
-        <span className="flex items-center gap-2">
-          <Clock className="w-4 h-4" />
-          Atividade
-        </span>
-        {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-      </button>
-      {open && (
-        <div className="mt-3">
-          <ActivityFeed companyId={companyId} itemId={docId} pageSize={20} groupByDay={false} emptyDescription="Nenhuma atividade registrada neste documento ainda." />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function DetailDrawer({ doc, companyId, variant = "modal", onClose, onFavorite, onPreview, onDelete, onChanged }: {
-  doc: Document; companyId: string; variant?: "modal" | "panel";
-  onClose: () => void; onFavorite: () => void; onPreview: () => void; onDelete: () => void; onChanged: () => void;
+function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit, onClose, onFavorite, onPreview, onMenu, onChanged, onFieldSaved }: {
+  doc: Document; companyId: string; variant?: "modal" | "panel"; path: string; canEdit: boolean;
+  onClose: () => void; onFavorite: () => void; onPreview: () => void; onMenu: (el: HTMLElement) => void; onChanged: () => void;
+  onFieldSaved: (docId: string, fieldId: string, value: string) => void;
 }) {
   const { success, error: showError } = useToast();
-  const containerRef = useRef<HTMLDivElement>(null);
-  // Painel lateral não bloqueia o resto da tela (não é modal) — trap de foco
-  // só faz sentido pro modal mobile, senão Tab fica preso no painel e nunca
-  // volta pra tabela.
-  useFocusTrap(containerRef, variant === "modal");
   const [favorited, setFavorited] = useState(doc.favorited ?? false);
   const [sharing, setSharing] = useState(false);
   const [shareCount, setShareCount] = useState(doc.active_share_count ?? 0);
-  // GET /favorites não expõe favorite_id em Document (só o boolean `favorited`) —
-  // o endpoint de remoção precisa do id do registro, então buscamos em paralelo
-  // assim que o modal abre (se já favoritado), pra desancorar poder ser otimista
-  // sem round-trip extra no clique.
-  const [favoriteId, setFavoriteId] = useState<string | null>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
 
-  useEffect(() => { setFavorited(doc.favorited ?? false); }, [doc.id, doc.favorited]);
-  useEffect(() => { setShareCount(doc.active_share_count ?? 0); }, [doc.id, doc.active_share_count]);
-  useEffect(() => {
-    setFavoriteId(null);
-    if (!doc.favorited) return;
-    let cancelled = false;
-    api.get<{ id: string; document_id: string | null }[]>("/favorites").then((r) => {
-      if (cancelled) return;
-      const match = r.data.find((f) => f.document_id === doc.id);
-      if (match) setFavoriteId(match.id);
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [doc.id, doc.favorited]);
+  useEffect(() => { setFavorited(doc.favorited ?? false); setShareCount(doc.active_share_count ?? 0); }, [doc.id, doc.favorited, doc.active_share_count]);
 
-  // Otimista: o ícone muda na hora do clique. Ancorar/desancorar é uma ação
-  // trivialmente reversível (ver Fase 1.4 do plano), então não precisa da
-  // janela de "Desfazer" com atraso usada em ações destrutivas — só rollback
-  // com motivo se a chamada falhar (nunca silencioso).
   async function toggleFavorite() {
     const goingTo = !favorited;
     setFavorited(goingTo);
     try {
-      if (goingTo) {
-        const r = await api.post("/favorites", { document_id: doc.id });
-        setFavoriteId(r.data.id);
-        success(`"${doc.name}" adicionado aos ancorados.`);
-      } else {
-        let idToDelete = favoriteId;
-        if (!idToDelete) {
-          const list = await api.get<{ id: string; document_id: string | null }[]>("/favorites");
-          idToDelete = list.data.find((f) => f.document_id === doc.id)?.id ?? null;
-        }
-        if (!idToDelete) throw new Error("favorite_id não encontrado");
-        await api.delete(`/favorites/${idToDelete}`);
-        setFavoriteId(null);
+      if (goingTo) { await api.post("/favorites", { document_id: doc.id }); success(`"${doc.name}" ancorado.`); }
+      else {
+        const list = await api.get<{ id: string; document_id: string | null }[]>("/favorites");
+        const id = list.data.find((f) => f.document_id === doc.id)?.id;
+        if (id) await api.delete(`/favorites/${id}`);
       }
       onFavorite();
     } catch (e: any) {
-      setFavorited(!goingTo); // rollback
-      if (goingTo && e?.response?.status === 409) { setFavorited(true); return; } // já estava ancorado, ok
-      showError(goingTo ? "Não foi possível ancorar. Tente novamente." : "Não foi possível remover a ancoragem. Tente novamente.");
+      if (goingTo && e?.response?.status === 409) return;
+      setFavorited(!goingTo);
+      showError(goingTo ? "Não foi possível ancorar. Tente de novo." : "Não foi possível desancorar. Tente de novo.");
     }
   }
 
@@ -1143,154 +1034,87 @@ function DetailDrawer({ doc, companyId, variant = "modal", onClose, onFavorite, 
       a.href = r.data.download_url;
       a.download = doc.name;
       a.click();
-    } catch {
-      showError("Erro ao baixar o documento.");
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível baixar."));
     }
   }
 
-  // Fase 8.1: o mesmo conteúdo alimenta tanto o modal (mobile) quanto o painel
-  // lateral persistente (desktop) — só a moldura muda entre os dois.
+  const s = getFileStyle(doc.name);
+  const FileIcon = s.icon;
+  const action = "flex flex-col items-center justify-center gap-1 h-14 pointer-coarse:h-16 rounded-(--radius-control) text-mac-caption text-(--text-primary) hover:bg-(--bg-hover) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)";
+
   const body = (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="flex items-start gap-3">
-        {(() => { const s = getFileStyle(doc.name); const Icon = s.icon; return (
-          <div className={`w-10 h-10 rounded-(--radius-control) flex items-center justify-center shrink-0 ${s.bgColor}`}>
-            <Icon className={`w-5 h-5 ${s.iconColor} ${s.fillColor}`} />
-          </div>
-        ); })()}
+        <div className={`w-11 h-11 rounded-(--radius-control) flex items-center justify-center shrink-0 ${s.bgColor}`}>
+          <FileIcon className={`w-5 h-5 ${s.iconColor} ${s.fillColor}`} aria-hidden />
+        </div>
         <div className="flex-1 min-w-0">
-          <p className="text-mac-body font-medium text-(--text-primary) wrap-break-word">{doc.name}</p>
-          <p className="text-mac-caption text-(--text-secondary) mt-0.5">{fmtSize(doc.size_bytes)}</p>
+          <h2 ref={headingRef} tabIndex={-1} className="text-mac-body font-semibold text-(--text-primary) break-words focus:outline-hidden">{doc.name}</h2>
+          <p className="text-mac-caption text-(--text-secondary) mt-0.5 break-words">{path}</p>
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Row label="Tipo" value={doc.mime_type} />
-        <Row label="Tamanho" value={fmtSize(doc.size_bytes)} />
-        <Row label="Criado em" value={fmtDateFull(doc.created_at)} />
-        <div className="flex justify-between py-1">
-          <span className="text-mac-caption text-(--text-secondary)">OCR</span>
-          {ocrBadge(doc.ocr_status)}
-        </div>
+      <div className="grid grid-cols-4 gap-1" role="group" aria-label="Ações do documento">
+        <button onClick={onPreview} className={`${action} text-(--text-accent) font-medium`}><Eye className="w-4 h-4" aria-hidden />Abrir</button>
+        <button onClick={download} className={action}><Download className="w-4 h-4" aria-hidden />Baixar</button>
+        <button onClick={toggleFavorite} aria-pressed={favorited} className={action}><Anchor className={`w-4 h-4 ${favorited ? "fill-current text-(--text-accent)" : ""}`} aria-hidden />{favorited ? "Ancorado" : "Ancorar"}</button>
+        <button onClick={(e) => onMenu(e.currentTarget)} aria-haspopup="menu" className={action}><MoreHorizontal className="w-4 h-4" aria-hidden />Mais</button>
       </div>
+      {canEdit && (
+        <button onClick={() => setSharing(true)} className="w-full flex items-center justify-center gap-2 h-9 pointer-coarse:h-11 rounded-full border border-(--border-control) text-mac-body text-(--text-primary) hover:bg-(--bg-hover)">
+          <Share2 className="w-4 h-4" aria-hidden />{shareCount > 0 ? `Compartilhado em ${shareCount} ${shareCount === 1 ? "link" : "links"}` : "Compartilhar por link"}
+        </button>
+      )}
 
-      <div className="flex flex-col gap-2 pt-2 border-t border-(--border-default)">
-        <button
-          onClick={onPreview}
-          className="w-full h-9 flex items-center justify-center gap-2 text-mac-body bg-teal-600 text-white rounded-full hover:bg-teal-500 transition-colors duration-fast"
-        >
-          <Eye className="w-4 h-4" />
-          Visualizar
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-mac-caption">
+        <dt className="text-(--text-secondary)">Tipo</dt><dd className="text-(--text-primary) text-right">{kindLabel(doc.name)}</dd>
+        <dt className="text-(--text-secondary)">Tamanho</dt><dd className="text-(--text-primary) text-right tabular-nums">{fmtSize(doc.size_bytes)}</dd>
+        <dt className="text-(--text-secondary)">Enviado</dt><dd className="text-(--text-primary) text-right">{fmtDateFull(doc.created_at)}{doc.uploaded_by_name ? ` por ${doc.uploaded_by_name}` : ""}</dd>
+        {doc.updated_at && <><dt className="text-(--text-secondary)">Modificado</dt><dd className="text-(--text-primary) text-right">{fmtDateFull(doc.updated_at)}</dd></>}
+        <dt className="text-(--text-secondary)">Texto</dt><dd className="text-right">{ocrBadge(doc.ocr_status)}</dd>
+      </dl>
+      {doc.ocr_status === "failed" && canEdit && (
+        <button onClick={() => api.post(`/documents/${doc.id}/retry-ocr`).then(() => { success("O texto vai ser lido de novo."); onChanged(); }).catch((e) => showError(friendlyError(e, "Não foi possível pôr na fila.")))}
+          className="w-full h-9 pointer-coarse:h-11 rounded-full border border-(--border-control) text-mac-body text-(--text-primary) hover:bg-(--bg-hover)">
+          Ler o texto de novo
         </button>
-        <button
-          onClick={download}
-          className="w-full h-9 flex items-center justify-center gap-2 text-mac-body border border-(--border-default) rounded-full text-(--text-primary) hover:bg-(--bg-hover) transition-colors duration-fast"
-        >
-          <Download className="w-4 h-4" />
-          Baixar
-        </button>
-        <button
-          onClick={toggleFavorite}
-          className={`w-full h-9 flex items-center justify-center gap-2 text-mac-body border rounded-full transition-colors duration-fast ${
-            favorited
-              ? "border-teal-200 dark:border-teal-900/40 text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20"
-              : "border-(--border-default) text-(--text-primary) hover:bg-(--bg-hover)"
-          }`}
-        >
-          <Anchor className={`w-4 h-4 ${favorited ? "fill-current" : ""}`} />
-          {favorited ? "Remover ancoragem" : "Ancorar como favorito"}
-        </button>
-        <button
-          onClick={() => setSharing(true)}
-          className={`w-full h-9 flex items-center justify-center gap-2 text-mac-body border rounded-full transition-colors duration-fast ${
-            shareCount > 0
-              ? "border-teal-200 dark:border-teal-900/40 text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20"
-              : "border-(--border-default) text-(--text-primary) hover:bg-(--bg-hover)"
-          }`}
-        >
-          <Share2 className="w-4 h-4" />
-          {shareCount > 0 ? `Compartilhado (${shareCount})` : "Compartilhar"}
-        </button>
-        <button
-          onClick={onDelete}
-          className="w-full h-9 flex items-center justify-center gap-2 text-mac-body border border-red-200 dark:border-red-900/40 rounded-full text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors duration-fast"
-        >
-          <Trash2 className="w-4 h-4" />
-          Excluir
-        </button>
-      </div>
+      )}
 
-      <MetadataSection doc={doc} companyId={companyId} onChanged={onChanged} />
-
+      <MetadataSection doc={doc} companyId={companyId} canEdit={canEdit} onSaved={(fid, v) => onFieldSaved(doc.id, fid, v)} />
       <VersionsPanel documentId={doc.id} documentName={doc.name} onChanged={onChanged} />
-
       <DocumentRetentionSection docId={doc.id} />
-
-      <DocumentActivitySection docId={doc.id} companyId={companyId} />
+      <Disclosure icon={<Clock className="w-4 h-4" aria-hidden />} title="Atividade">
+        <ActivityFeed companyId={companyId} itemId={doc.id} pageSize={20} groupByDay={false} emptyDescription="Nenhuma atividade registrada neste documento ainda." />
+      </Disclosure>
     </div>
   );
 
   const shareModal = sharing && (
-    <ShareModal
-      resourceType="document"
-      resourceId={doc.id}
-      name={doc.name}
-      onClose={() => setSharing(false)}
-      onChanged={setShareCount}
-    />
+    <ShareModal resourceType="document" resourceId={doc.id} name={doc.name} onClose={() => setSharing(false)} onChanged={setShareCount} />
   );
 
   if (variant === "panel") {
-    // Painel fixo — vive dentro da mesma janela de vidro da tabela, nunca
-    // cobre o conteúdo (Fase 8.1, consenso das 11 rodadas: "painel lateral
-    // persistente, nunca modal"). Só desktop (lg+): no mobile não há largura
-    // sobrando pra split view, então o modal centralizado continua sendo o
-    // único jeito de ver detalhes.
+    // Painel lateral persistente (não modal), entra deslizando (A5-05).
     return (
-      <div className="hidden lg:flex flex-col w-[340px] shrink-0 border-l border-(--border-default) overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-(--border-default) shrink-0">
-          <h2 className="text-mac-body font-semibold text-(--text-primary)">Detalhes</h2>
-          <button onClick={onClose} className="p-1 rounded-full text-(--text-secondary) hover:bg-(--bg-hover)">
-            <X className="w-4 h-4" />
+      <aside aria-label={`Detalhes de ${doc.name}`} className="panel-in hidden lg:flex flex-col w-[340px] shrink-0 border-l border-(--border-default) overflow-hidden">
+        <div className="flex items-center justify-between px-5 h-12 border-b border-(--border-default) shrink-0">
+          <p className="text-mac-body font-semibold text-(--text-secondary)">Detalhes</p>
+          <button onClick={onClose} aria-label="Fechar detalhes" className="w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)">
+            <X className="w-4 h-4" aria-hidden />
           </button>
         </div>
-        <div ref={containerRef} className="flex-1 overflow-y-auto p-5">
-          {body}
-        </div>
+        <div className="flex-1 overflow-y-auto p-5">{body}</div>
         {shareModal}
-      </div>
+      </aside>
     );
   }
 
   return (
-    <Portal>
-    <div
-      className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4 lg:hidden"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[420px] max-h-[85vh] overflow-y-auto">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-(--border-default)">
-        <h2 className="text-mac-body font-semibold text-(--text-primary)">Detalhes</h2>
-        <button onClick={onClose} className="p-1 rounded-full text-(--text-secondary) hover:bg-(--bg-hover)">
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-      <div className="p-5">
-        {body}
-      </div>
-      </div>
+    <>
+      <Dialog onClose={onClose} title={`Detalhes de ${doc.name}`} hideTitle size="md">{body}</Dialog>
       {shareModal}
-    </div>
-    </Portal>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between py-1">
-      <span className="text-mac-caption text-(--text-secondary)">{label}</span>
-      <span className="text-mac-caption text-(--text-primary) truncate max-w-[180px] text-right">{value}</span>
-    </div>
+    </>
   );
 }
 
@@ -3462,11 +3286,14 @@ export default function Documents() {
           doc={detailDoc}
           companyId={current.id}
           variant={isDesktop ? "panel" : "modal"}
+          path={`${current.name} › ${breadcrumbs.slice(1).map((b) => b.name).join(" › ") || "Início"}`}
+          canEdit={canWrite}
           onClose={() => setDetailDoc(null)}
           onPreview={() => setPreviewDoc(detailDoc)}
-          onFavorite={loadSidebarFavorites}
-          onDelete={() => { deleteDocuments([detailDoc.id]); setDetailDoc(null); }}
+          onFavorite={() => { loadSidebarFavorites(); setDocuments((prev) => prev.map((d) => (d.id === detailDoc.id ? { ...d, favorited: !d.favorited } : d))); }}
+          onMenu={(el) => openMenuAt(el, "document", detailDoc)}
           onChanged={load}
+          onFieldSaved={(docId, fieldId, value) => setFieldValues((prev) => ({ ...prev, [docId]: { ...(prev[docId] ?? {}), [fieldId]: value } }))}
         />
       )}
 

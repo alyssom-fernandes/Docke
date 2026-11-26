@@ -569,6 +569,10 @@ input[type="number"] {
   .dialog-panel-out { animation: dialog-pop-out 150ms ease-in both; }
 }
 
+/* ─── Painel lateral (detalhes): desliza 12 px da direita em 200 ms ─── */
+@keyframes panel-in { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
+.panel-in { animation: panel-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
 /* ─── Menu e popover (Menu.tsx): aparecem 4 px acima do ponto, em 140 ms ─── */
 @keyframes menu-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
 .menu-in { animation: menu-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1) both; transform-origin: top left; }
