@@ -60,6 +60,7 @@ async def base(admin: asyncpg.Connection):
     yield {"co": co, "adm": adm, "pessoa": pessoa, "docs": docs}
     await admin.execute("DELETE FROM auth.sessions WHERE user_id = ANY($1::uuid[])", [adm, pessoa])
     await admin.execute("DELETE FROM public.activity_log WHERE company_id = $1", co)
+    await admin.execute("DELETE FROM public.documents WHERE company_id = $1", co)
     await admin.execute("DELETE FROM public.companies WHERE id = $1", co)
     for uid in (adm, pessoa):
         await admin.execute("DELETE FROM public.users WHERE id = $1", uid)
