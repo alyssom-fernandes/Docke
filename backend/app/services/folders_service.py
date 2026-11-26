@@ -595,52 +595,63 @@ class FoldersService:
         return count
 
     @staticmethod
+    async def copy_documents(
+        conn: asyncpg.Connection, *, docs: list[asyncpg.Record], target_folder_id: UUID,
+        target_company_id: UUID, uploaded_by: str,
+    ) -> list[str]:
+        """
+        Duplica documentos numa pasta: copia o arquivo no storage (servidor a
+        servidor) e cria a linha nova com o MESMO hash do original e a marca
+        copied_from (migration 20261127000003). Antes a cópia ficava sem hash:
+        sumia das listas e a limpeza de envios incompletos a apagaria em 6 h.
+        OCR não é refeito: é o mesmo arquivo, o texto vem junto.
+        """
+        novos: list[str] = []
+        for doc in docs:
+            new_document_id = uuid4()
+            dot_idx = doc["name"].rfind(".")
+            ext = doc["name"][dot_idx + 1:] if dot_idx != -1 else "bin"
+            new_storage_path = storage_service.storage_key(str(target_company_id), str(new_document_id), ext)
+            storage_service.copy_object(doc["storage_path"], new_storage_path)
+            final_name = await DocumentsService.resolve_unique_name(conn, target_folder_id, doc["name"])
+            await conn.execute(
+                """
+                INSERT INTO public.documents
+                  (id, folder_id, company_id, name, mime_type, file_type, size_bytes, storage_path, content_hash, copied_from,
+                   sector, competencia, tipo_fiscal, ocr_status, ocr_text, ocr_completed_at, uploaded_by)
+                VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, $10::uuid, $11, $12, $13, $14, $15, $16, $17::uuid)
+                """,
+                new_document_id, target_folder_id, target_company_id, final_name,
+                doc["mime_type"], doc["file_type"], doc["size_bytes"], new_storage_path, doc["content_hash"], doc["id"],
+                doc["sector"], doc["competencia"], doc["tipo_fiscal"],
+                doc["ocr_status"], doc["ocr_text"], doc["ocr_completed_at"], uploaded_by,
+            )
+            novos.append(str(new_document_id))
+        return novos
+
+    _COPY_COLS = """
+        id::text, name, mime_type, file_type, size_bytes, storage_path, content_hash,
+        sector, competencia, tipo_fiscal, ocr_status, ocr_text, ocr_completed_at
+    """
+
+    @staticmethod
     async def copy_folder_documents(
         conn: asyncpg.Connection, *, id_map: dict[str, str], target_company_id: UUID, uploaded_by: str,
     ) -> int:
-        """
-        Duplica os documentos de cada pasta copiada — copia o arquivo físico no
-        storage (sem passar pelo fluxo de upload do usuário) e cria uma linha
-        nova em documents. content_hash fica NULL propositalmente: a constraint
-        uq_document_hash_per_company é por empresa, e copiar o hash original
-        poderia colidir (cópia pra mesma empresa) ou interferir na detecção de
-        duplicata de uploads futuros — deduplicação não é o objetivo aqui.
-        OCR não é reenfileirado: é literalmente o mesmo arquivo, o texto já
-        extraído (ocr_text/ocr_status/ocr_completed_at) é copiado direto.
-        """
+        """Duplica os documentos (completos) de cada pasta copiada na pasta nova correspondente."""
         count = 0
         for old_folder_id, new_folder_id in id_map.items():
             docs = await conn.fetch(
-                """
-                SELECT name, mime_type, file_type, size_bytes, storage_path,
-                       sector, competencia, tipo_fiscal, ocr_status, ocr_text, ocr_completed_at
+                f"""
+                SELECT {FoldersService._COPY_COLS}
                 FROM public.documents
-                WHERE folder_id = $1::uuid AND deleted_at IS NULL
+                WHERE folder_id = $1::uuid AND deleted_at IS NULL AND content_hash IS NOT NULL
                 """,
                 old_folder_id,
             )
-            for doc in docs:
-                new_document_id = uuid4()
-                dot_idx = doc["name"].rfind(".")
-                ext = doc["name"][dot_idx + 1:] if dot_idx != -1 else "bin"
-                new_storage_path = storage_service.storage_key(str(target_company_id), str(new_document_id), ext)
-                storage_service.copy_object(doc["storage_path"], new_storage_path)
-
-                final_name = await DocumentsService.resolve_unique_name(conn, UUID(new_folder_id), doc["name"])
-
-                await conn.execute(
-                    """
-                    INSERT INTO public.documents
-                      (id, folder_id, company_id, name, mime_type, file_type, size_bytes, storage_path,
-                       sector, competencia, tipo_fiscal, ocr_status, ocr_text, ocr_completed_at, uploaded_by)
-                    VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::uuid)
-                    """,
-                    new_document_id, UUID(new_folder_id), target_company_id, final_name,
-                    doc["mime_type"], doc["file_type"], doc["size_bytes"], new_storage_path,
-                    doc["sector"], doc["competencia"], doc["tipo_fiscal"],
-                    doc["ocr_status"], doc["ocr_text"], doc["ocr_completed_at"], uploaded_by,
-                )
-                count += 1
+            count += len(await FoldersService.copy_documents(
+                conn, docs=docs, target_folder_id=UUID(new_folder_id), target_company_id=target_company_id, uploaded_by=uploaded_by,
+            ))
         return count
 
     @staticmethod

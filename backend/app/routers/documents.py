@@ -2,6 +2,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
+import json
 import os
 import tempfile
 import zipfile
@@ -12,7 +13,7 @@ import asyncio
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.dependencies import get_current_user, get_db, get_db_admin
 from app.config import settings
@@ -39,6 +40,11 @@ class BulkDownloadRequest(BaseModel):
 
 class BulkMoveRequest(BaseModel):
     document_ids: list[UUID]
+    target_folder_id: UUID
+
+
+class BulkCopyRequest(BaseModel):
+    document_ids: list[UUID] = Field(min_length=1, max_length=200)
     target_folder_id: UUID
 
 
@@ -788,6 +794,51 @@ async def bulk_download(
             "Content-Length": str(os.path.getsize(caminho)),
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /documents/bulk-copy — copia documentos para uma pasta (Alt ao arrastar, A4-38)
+# ---------------------------------------------------------------------------
+
+@router.post("/bulk-copy")
+async def bulk_copy(
+    body: BulkCopyRequest,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    from app.services.folders_service import FoldersService
+
+    user_id = claims["sub"]
+    alvo = await conn.fetchrow(
+        "SELECT id, company_id, path::text, name FROM public.folders WHERE id = $1 AND deleted_at IS NULL",
+        body.target_folder_id,
+    )
+    if alvo is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta de destino não encontrada.")
+    nivel = await FoldersService.check_permission(conn, user_id, alvo["path"], alvo["company_id"])
+    if nivel not in ("admin", "operador"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para adicionar documentos nesta pasta.")
+    docs = await conn.fetch(
+        f"""
+        SELECT {FoldersService._COPY_COLS}
+        FROM public.documents
+        WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL AND content_hash IS NOT NULL
+        """,
+        [str(i) for i in body.document_ids],
+    )
+    if not docs:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nenhum documento encontrado para copiar.")
+    novos = await FoldersService.copy_documents(
+        conn, docs=docs, target_folder_id=alvo["id"], target_company_id=alvo["company_id"], uploaded_by=user_id,
+    )
+    await conn.execute(
+        """
+        INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, metadata)
+        VALUES ($1::uuid, $2, 'copy', 'folder', $3, $4, $5::jsonb)
+        """,
+        user_id, alvo["company_id"], alvo["id"], alvo["name"], json.dumps({"documentos": len(novos)}),
+    )
+    return {"copied": len(novos), "document_ids": novos, "target_name": alvo["name"]}
 
 
 # ---------------------------------------------------------------------------

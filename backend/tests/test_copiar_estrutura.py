@@ -63,3 +63,27 @@ async def test_previa_nao_grava_e_copia_leva_lgpd_acessos_e_documentos(api, admi
         await admin.execute("DELETE FROM public.user_company_access WHERE user_id = $1", outra)
         await admin.execute("DELETE FROM public.users WHERE id = $1", outra)
         await admin.execute("DELETE FROM auth.users WHERE id = $1", outra)
+
+
+@pytest.mark.asyncio
+async def test_copia_aparece_na_lista_tem_hash_e_sobrevive_a_limpeza(api, admin, empresa):  # noqa: F811
+    from app.workers.maintenance_worker import _cleanup_stale_pending_uploads
+
+    h, co = _token(empresa["user"]), empresa["co"]
+    original = await _doc(admin, empresa, empresa["sub"], "Contrato.pdf", "texto")
+    hash_original = await admin.fetchval("SELECT content_hash FROM public.documents WHERE id = $1", uuid.UUID(original))
+
+    # Cópia na mesma empresa (o hash se repete) pela rota de cópia em lote.
+    r = await api.post(API + "/documents/bulk-copy", json={"document_ids": [original], "target_folder_id": empresa["raiz"]}, headers=h)
+    assert r.status_code == 200, r.text
+    copia = r.json()["document_ids"][0]
+    linha = await admin.fetchrow("SELECT content_hash, copied_from::text FROM public.documents WHERE id = $1", uuid.UUID(copia))
+    assert linha["content_hash"] == hash_original and linha["copied_from"] == original
+
+    r = await api.get(API + "/documents", params={"folder_id": empresa["raiz"], "company_id": co}, headers=h)
+    assert copia in [d["id"] for d in r.json()]
+
+    # A limpeza de envios incompletos não toca em cópias, por mais antigas que sejam.
+    await admin.execute("UPDATE public.documents SET created_at = now() - interval '2 days' WHERE id = $1", uuid.UUID(copia))
+    await _cleanup_stale_pending_uploads(admin)
+    assert await admin.fetchval("SELECT count(*) FROM public.documents WHERE id = $1", uuid.UUID(copia)) == 1
