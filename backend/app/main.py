@@ -35,6 +35,7 @@ from app.routers import (
     lgpd_requests,
     views,
     pages,
+    comments,
 )
 
 # Sem configuração, o Python descarta tudo abaixo de WARNING, e o que passa sai
@@ -180,6 +181,7 @@ app.include_router(templates.router, prefix=PREFIX)
 app.include_router(lgpd_requests.router, prefix=PREFIX)
 app.include_router(views.router, prefix=PREFIX)
 app.include_router(pages.router, prefix=PREFIX)
+app.include_router(comments.router, prefix=PREFIX)
 
 
 @app.get("/health", tags=["health"])

@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Search as SearchIcon, X, AlertTriangle, RefreshCw, Clock, ChevronLeft, ChevronRight, FileWarning, Bookmark } from "lucide-react";
+import { Search as SearchIcon, X, AlertTriangle, RefreshCw, Clock, ChevronLeft, ChevronRight, FileWarning, Bookmark, MessageSquare, MapPin } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { getFileStyle } from "@/lib/fileType";
 import api from "@/lib/api";
@@ -220,6 +220,14 @@ export default function Search() {
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const filtros = !!(pasta || periodo || tipo || setor);
   const results = data?.results ?? [];
+  // Também nos comentários e anotações (B2.6.7), só dos documentos que a pessoa enxerga.
+  const [notas, setNotas] = useState<{ comment_id: string; document_id: string; document_name: string; folder_id: string; folder_path_label: string | null; body: string; page: number | null; anotacao: boolean; author: string }[]>([]);
+  useEffect(() => {
+    if (!current || !q || q.trim().length < 2 || pagina > 1) { setNotas([]); return; }
+    let vivo = true;
+    api.get(`/companies/${current.id}/comments/search`, { params: { q } }).then((r) => { if (vivo) setNotas(r.data ?? []); }).catch(() => { if (vivo) setNotas([]); });
+    return () => { vivo = false; };
+  }, [current?.id, q, pagina]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="space-y-5 max-w-[1280px] w-full mx-auto">
@@ -396,6 +404,21 @@ export default function Search() {
                     <Input label="Nome" value={nomeSalva} onChange={(e) => setNomeSalva(e.target.value)} maxLength={80} autoFocus placeholder="Ex.: Notas do fornecedor X em 2026" />
                   </form>
                 </Dialog>
+              )}
+              {notas.length > 0 && (
+                <section aria-labelledby="busca-notas" className="glass-panel glass-blur-card rounded-(--radius-panel) p-4 space-y-2">
+                  <h2 id="busca-notas" className="flex items-center gap-2 text-mac-body font-semibold text-(--text-primary)"><MessageSquare className="w-4 h-4 text-(--text-accent)" aria-hidden />Em comentários e anotações <span className="font-normal text-(--text-tertiary)">· {notas.length}</span></h2>
+                  <ul className="divide-y divide-(--border-default)">
+                    {notas.slice(0, 10).map((n) => (
+                      <li key={n.comment_id}>
+                        <Link to={`/documents?folder_id=${n.folder_id}&doc=${n.document_id}`} className="block py-2 hover:bg-(--bg-hover) rounded-sm px-1">
+                          <span className="block text-mac-body text-(--text-primary) truncate">{n.document_name}{n.page ? <span className="text-(--text-tertiary)"> · {n.anotacao && <MapPin className="inline w-3 h-3" aria-hidden />} página {n.page}</span> : null}</span>
+                          <span className="block text-mac-caption text-(--text-secondary) truncate">{n.author}: “{n.body}”{n.folder_path_label ? ` · ${n.folder_path_label}` : ""}</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
               )}
               <ul className={`glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden transition-opacity duration-fast ${state === "loading" ? "opacity-60" : ""}`}>
                 {results.map((r) => {

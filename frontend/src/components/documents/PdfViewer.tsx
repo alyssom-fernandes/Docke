@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, AlertCircle, PanelLeft, Maximize2, Printer, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, AlertCircle, PanelLeft, Maximize2, Printer, Loader2, MapPin } from "lucide-react";
 import * as pdfjsLib from "pdfjs-dist";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
@@ -22,6 +22,12 @@ interface Props {
   /** Página do resultado ativo da busca (rola até ela). */
   focusPage?: number | null;
   onLoaded?: (numPages: number) => void;
+  /** Anotações (B2.4.6): pinos numa camada por cima da página, em coordenadas de 0 a 1. */
+  pins?: { id: string; page: number; x: number; y: number; label: string; active?: boolean }[];
+  /** Modo anotar: o próximo clique na página devolve o ponto. */
+  annotating?: boolean;
+  onPagePoint?: (page: number, x: number, y: number) => void;
+  onPinClick?: (id: string) => void;
 }
 
 type Fit = "largura" | "pagina";
@@ -33,7 +39,7 @@ type Fit = "largura" | "pagina";
  * girar, ajustar à largura ou à página, zoom e atalhos (PageUp/PageDown,
  * Home/End, Ctrl + e Ctrl -). Redesenha ao redimensionar a janela.
  */
-const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer({ url, query = "", focusPage = null, onLoaded }, ref) {
+const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer({ url, query = "", focusPage = null, onLoaded, pins, annotating = false, onPagePoint, onPinClick }, ref) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -204,8 +210,22 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer({ url, q
           ) : (
             <div className="flex flex-col items-center gap-6">
               {sizes.map((_, i) => (
-                <div key={i} data-page={i + 1} aria-label={`Página ${i + 1} de ${sizes.length}`} role="region">
+                <div key={i} data-page={i + 1} aria-label={`Página ${i + 1} de ${sizes.length}`} role="region"
+                  className={`relative ${annotating && rotation === 0 ? "cursor-crosshair" : ""}`}
+                  onClick={annotating && rotation === 0 && onPagePoint ? (e) => {
+                    const r = e.currentTarget.getBoundingClientRect();
+                    onPagePoint(i + 1, Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)));
+                  } : undefined}>
                   <PdfPage pdf={pdf} index={i} scale={scaleFor(i)} rotation={rotation} query={query} />
+                  {/* Camada de anotações: o PDF não muda. Com a página girada na tela, os pinos ficam ocultos. */}
+                  {rotation === 0 && pins?.filter((p) => p.page === i + 1).map((p) => (
+                    <button key={p.id} type="button" title={p.label} aria-label={`Anotação na página ${i + 1}: ${p.label}`}
+                      onClick={(e) => { e.stopPropagation(); onPinClick?.(p.id); }}
+                      className={`absolute -translate-x-1/2 -translate-y-full drop-shadow-md focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) rounded-full ${p.active ? "text-amber-500 scale-125" : "text-teal-600"}`}
+                      style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}>
+                      <MapPin className="w-6 h-6 fill-white" aria-hidden />
+                    </button>
+                  ))}
                 </div>
               ))}
             </div>
