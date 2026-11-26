@@ -14,6 +14,7 @@ _INTERVALO = 30
 async def thumbnail_worker_loop() -> None:
     from app.services.busy import busy
     from app.services.heartbeat import beat
+    from app.services.access_expiry import expirar as expirar_acessos
     from app.services.nfe_service import processar_pendentes as ler_nfes
     from app.services.thumbnail_service import generate_pending
 
@@ -29,6 +30,10 @@ async def thumbnail_worker_loop() -> None:
                         feitos = await generate_pending(conn)
                         # XML de NF-e recém-enviado: lê a chave e o cabeçalho da nota.
                         notas = await ler_nfes(conn)
+                        # Acesso temporário vencido sai sozinho (B3.1.8).
+                        vencidos = await expirar_acessos(conn)
+                        if vencidos:
+                            logger.info("Acessos temporários vencidos retirados: %d", vencidos)
                 if notas:
                     logger.info("XMLs de NF-e lidos: %d", notas)
                 if feitos:

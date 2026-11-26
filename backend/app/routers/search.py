@@ -4,6 +4,7 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 
 from app.dependencies import get_db
 from app.services.search_service import SearchService
@@ -82,3 +83,53 @@ async def quick_search(
     if not normalized:
         return []
     return await SearchService.quick_search(conn, q=q, normalized=normalized, company_id=company_id)
+
+
+# ---------------------------------------------------------------------------
+# Buscas salvas (B2.1.5): a consulta com filtros, por pessoa e empresa.
+# ---------------------------------------------------------------------------
+
+class SavedSearchCreate(BaseModel):
+    company_id: UUID
+    name: str = Field(min_length=1, max_length=80)
+    query: str = Field(min_length=1, max_length=2000)
+
+
+@router.get("/saved")
+async def list_saved_searches(
+    company_id: UUID = Query(...),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> list[dict]:
+    rows = await conn.fetch(
+        "SELECT id::text, name, query, created_at FROM public.saved_searches WHERE company_id = $1 AND user_id = auth.uid() ORDER BY lower(name)",
+        company_id,
+    )
+    return [dict(r) for r in rows]
+
+
+@router.post("/saved", status_code=201)
+async def create_saved_search(
+    body: SavedSearchCreate,
+    conn: asyncpg.Connection = Depends(get_db),
+) -> dict:
+    total = await conn.fetchval("SELECT count(*) FROM public.saved_searches WHERE company_id = $1 AND user_id = auth.uid()", body.company_id)
+    if total >= 50:
+        raise HTTPException(status_code=409, detail="Limite de 50 buscas salvas nesta empresa. Apague alguma antes.")
+    try:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO public.saved_searches (user_id, company_id, name, query)
+            VALUES (auth.uid(), $1, $2, $3)
+            ON CONFLICT (user_id, company_id, name) DO UPDATE SET query = EXCLUDED.query, created_at = now()
+            RETURNING id::text, name, query, created_at
+            """,
+            body.company_id, body.name.strip(), body.query.lstrip("?"),
+        )
+    except asyncpg.InsufficientPrivilegeError:
+        raise HTTPException(status_code=403, detail="Você não acessa esta empresa.")
+    return dict(row)
+
+
+@router.delete("/saved/{saved_id}", status_code=204)
+async def delete_saved_search(saved_id: UUID, conn: asyncpg.Connection = Depends(get_db)) -> None:
+    await conn.execute("DELETE FROM public.saved_searches WHERE id = $1 AND user_id = auth.uid()", saved_id)
