@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Building2, Plus, Image as ImageIcon, ChevronRight, ScrollText } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { useFocusTrap } from "@/hooks/useFocusTrap";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
@@ -10,7 +9,9 @@ import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/shared/EmptyState";
 import ConfirmModal from "@/components/ui/ConfirmModal";
-import Portal from "@/components/ui/Portal";
+import Dialog from "@/components/ui/Dialog";
+import Input from "@/components/ui/Input";
+import { validateValue } from "@/components/documents/fieldMasks";
 import Dropdown from "@/components/ui/Dropdown";
 import DataSection from "@/components/settings/DataSection";
 
@@ -38,11 +39,42 @@ function OrgModal({ org, onClose, onDone }: { org: Org | null; onClose: () => vo
   const [name, setName] = useState(org?.name ?? "");
   const [cnpj, setCnpj] = useState(org?.cnpj ? formatCnpj(org.cnpj) : "");
   const [saving, setSaving] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(containerRef);
+  const [touched, setTouched] = useState(false);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const cnpjError = cnpj ? validateValue("cnpj", cnpj) : null;
+  const nameError = !name.trim() ? "Dê um nome à empresa." : null;
+
+  useEffect(() => {
+    if (!org?.logo_key) return;
+    api.get(`/companies/${org.id}/logo-url`).then((r) => setLogoUrl(r.data.logo_url)).catch(() => setLogoUrl(null));
+  }, [org?.id, org?.logo_key]);
+
+  // Logo (A9-09): o backend devolve a URL assinada; o arquivo vai direto ao storage.
+  async function uploadLogo(file: File) {
+    if (!org) return;
+    if (!["image/png", "image/jpeg", "image/svg+xml", "image/webp"].includes(file.type)) { showError("Use PNG, JPG, SVG ou WebP."); return; }
+    if (file.size > 2 * 1024 * 1024) { showError("O logo pode ter até 2 MB."); return; }
+    setUploading(true);
+    try {
+      const { data } = await api.post(`/companies/${org.id}/logo-upload-url`, { content_type: file.type });
+      const put = await fetch(data.upload_url, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      if (!put.ok) throw new Error("upload");
+      await api.patch(`/companies/${org.id}`, { logo_key: data.logo_key });
+      setLogoUrl(URL.createObjectURL(file));
+      success("Logo atualizado.");
+      onDone();
+    } catch {
+      showError("Não foi possível enviar o logo. Tente de novo.");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function save() {
-    if (!name.trim()) return;
+    setTouched(true);
+    if (nameError || cnpjError) return;
     setSaving(true);
     try {
       if (org) {
@@ -55,56 +87,37 @@ function OrgModal({ org, onClose, onDone }: { org: Org | null; onClose: () => vo
       onDone();
       onClose();
     } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Erro ao salvar empresa.");
+      showError(e?.response?.data?.detail ?? "Não foi possível salvar a empresa.");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Portal>
-    <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[560px]">
-        <div className="px-5 py-4 border-b border-(--border-default)">
-          <h2 className="text-mac-body font-semibold text-(--text-primary)">{org ? "Editar empresa" : "Nova empresa"}</h2>
-        </div>
-        <div className="p-5 space-y-4">
-          <div>
-            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Nome</label>
-            <input
-              autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ex: Minha Empresa Ltda."
-              className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-            />
+    <Dialog onClose={onClose} title={org ? `Editar ${org.name}` : "Nova empresa"} size="md" busy={saving || uploading}
+      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={saving} onClick={save}>{org ? "Salvar" : "Criar"}</Button></>}>
+      <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); save(); }}>
+        <Input label="Nome" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Posto Central Ltda." maxLength={120} error={touched ? nameError ?? undefined : undefined} autoFocus />
+        {org && (
+          <Input label="CNPJ" inputMode="numeric" value={cnpj} onChange={(e) => setCnpj(formatCnpj(e.target.value))} placeholder="00.000.000/0000-00" maxLength={18}
+            error={(touched || cnpj.replace(/\D/g, "").length === 14) ? cnpjError ?? undefined : undefined} />
+        )}
+        {org && (
+          <div className="flex items-center gap-3">
+            <span className="w-14 h-14 rounded-(--radius-control) border border-(--border-default) bg-(--bg-hover) flex items-center justify-center overflow-hidden shrink-0">
+              {logoUrl ? <img src={logoUrl} alt={`Logo de ${org.name}`} className="max-w-full max-h-full object-contain" /> : <ImageIcon className="w-5 h-5 text-(--text-secondary)" aria-hidden="true" />}
+            </span>
+            <div>
+              <Button type="button" variant="secondary" size="sm" loading={uploading} onClick={() => fileRef.current?.click()}>{logoUrl ? "Trocar logo" : "Enviar logo"}</Button>
+              <p className="mt-1 text-mac-caption text-(--text-secondary)">PNG, JPG, SVG ou WebP, até 2 MB. Aparece no topo e nos relatórios.</p>
+              <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="sr-only" tabIndex={-1}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); e.target.value = ""; }} />
+            </div>
           </div>
-          <div>
-            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">CNPJ</label>
-            <input
-              value={cnpj}
-              onChange={(e) => setCnpj(formatCnpj(e.target.value))}
-              placeholder="00.000.000/0000-00"
-              maxLength={18}
-              className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-            />
-          </div>
-          {org && (
-            <p className="text-mac-caption text-(--text-tertiary) flex items-center gap-1.5">
-              <ImageIcon className="w-3.5 h-3.5" />
-              Upload de logo em breve — envie por aqui assim que disponível.
-            </p>
-          )}
-        </div>
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default)">
-          <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
-          <Button size="sm" loading={saving} onClick={save} disabled={!name.trim()}>
-            {org ? "Salvar" : "Criar"}
-          </Button>
-        </div>
-      </div>
-    </div>
-    </Portal>
+        )}
+        <button type="submit" className="sr-only">Salvar</button>
+      </form>
+    </Dialog>
   );
 }
 
@@ -133,16 +146,19 @@ const TIPO_JURIDICO_LABEL: Record<string, string> = {
 const UFS = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
 
 function FiscalProfileSection({ companyId, companyName, isAdmin }: { companyId: string; companyName: string; isAdmin: boolean }) {
-  const { success, error: showError } = useToast();
+  const { error: showError } = useToast();
   const [profile, setProfile] = useState<FiscalProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<keyof FiscalProfile | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
 
   function load() {
     setLoading(true);
+    setFailed(false);
     api.get<FiscalProfile>(`/companies/${companyId}/fiscal-profile`)
       .then((r) => setProfile(r.data))
-      .catch(() => setProfile({ regime_tributario: null, faixa_funcionarios: null, uf: null, tipo_juridico: null }))
+      .catch(() => { setProfile(null); setFailed(true); })
       .finally(() => setLoading(false));
   }
 
@@ -152,16 +168,25 @@ function FiscalProfileSection({ companyId, companyName, isAdmin }: { companyId: 
     if (!profile) return;
     const next = { ...profile, [field]: value || null };
     setProfile(next);
-    setSaving(true);
+    setSaving(field);
     try {
       await api.put(`/companies/${companyId}/fiscal-profile`, next);
-      success("Perfil fiscal atualizado.");
+      setSavedAt(new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }));
     } catch (e: any) {
       showError(e?.response?.data?.detail ?? "Não foi possível salvar o perfil fiscal.");
       load();
     } finally {
-      setSaving(false);
+      setSaving(null);
     }
+  }
+
+  if (failed) {
+    return (
+      <div role="alert" className="glass-panel glass-blur-card rounded-(--radius-panel) flex flex-wrap items-center gap-3 px-5 py-4">
+        <p className="flex-1 text-mac-body text-(--text-primary)">Não foi possível carregar o perfil fiscal de {companyName}.</p>
+        <Button variant="secondary" size="sm" onClick={load}>Tentar de novo</Button>
+      </div>
+    );
   }
 
   if (loading || !profile) {
@@ -177,46 +202,52 @@ function FiscalProfileSection({ companyId, companyName, isAdmin }: { companyId: 
         </h2>
       </div>
       <p className="text-mac-caption text-(--text-secondary)">
-        Específico desta empresa — cada empresa da organização tem o próprio perfil. Para editar outra, troque a empresa selecionada no topo da tela. Usado pelas regras condicionais de obrigações (ex.: empresas do Simples Nacional não precisam de ECD). Deixe em branco o que não souber agora — nenhuma obrigação fica escondida por falta de preenchimento.
+        Decide quais obrigações valem para esta empresa (ex.: o DAS só para o Simples). Em branco, nada fica escondido.
+        <span className="sr-only" role="status" aria-live="polite">{savedAt ? `Salvo às ${savedAt}` : ""}</span>
+        {savedAt && <span className="ml-1 text-(--text-success)">Salvo às {savedAt}.</span>}
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Regime tributário</label>
+          <label id="fp-regime_tributario" className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Regime tributário</label>
           <Dropdown
+            ariaLabelledby="fp-regime_tributario"
             value={profile.regime_tributario ?? ""}
             onChange={(v) => update("regime_tributario", v)}
             placeholder="Não informado"
-            disabled={!isAdmin || saving}
+            disabled={!isAdmin || !!saving}
             options={[{ value: "", label: "Não informado" }, ...Object.entries(REGIME_LABEL).map(([value, label]) => ({ value, label }))]}
           />
         </div>
         <div>
-          <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Quantidade de funcionários</label>
+          <label id="fp-faixa_funcionarios" className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Quantidade de funcionários</label>
           <Dropdown
+            ariaLabelledby="fp-faixa_funcionarios"
             value={profile.faixa_funcionarios ?? ""}
             onChange={(v) => update("faixa_funcionarios", v)}
             placeholder="Não informado"
-            disabled={!isAdmin || saving}
+            disabled={!isAdmin || !!saving}
             options={[{ value: "", label: "Não informado" }, ...Object.entries(FAIXA_LABEL).map(([value, label]) => ({ value, label }))]}
           />
         </div>
         <div>
-          <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">UF</label>
+          <label id="fp-uf" className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">UF</label>
           <Dropdown
+            ariaLabelledby="fp-uf"
             value={profile.uf ?? ""}
             onChange={(v) => update("uf", v)}
             placeholder="Não informado"
-            disabled={!isAdmin || saving}
+            disabled={!isAdmin || !!saving}
             options={[{ value: "", label: "Não informado" }, ...UFS.map((uf) => ({ value: uf, label: uf }))]}
           />
         </div>
         <div>
-          <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Tipo jurídico</label>
+          <label id="fp-tipo_juridico" className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Tipo jurídico</label>
           <Dropdown
+            ariaLabelledby="fp-tipo_juridico"
             value={profile.tipo_juridico ?? ""}
             onChange={(v) => update("tipo_juridico", v)}
             placeholder="Não informado"
-            disabled={!isAdmin || saving}
+            disabled={!isAdmin || !!saving}
             options={[{ value: "", label: "Não informado" }, ...Object.entries(TIPO_JURIDICO_LABEL).map(([value, label]) => ({ value, label }))]}
           />
         </div>
@@ -239,11 +270,13 @@ export default function Organization() {
   const isSupremo = user?.role === "supremo";
   const isCurrentAdmin = current?.permission_level === "admin" || current?.permission_level === "supremo";
 
+  const [listFailed, setListFailed] = useState(false);
   function load() {
     setLoading(true);
+    setListFailed(false);
     api.get<Org[]>("/companies/organizations")
       .then((r) => setOrgs(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setOrgs([]))
+      .catch(() => setListFailed(true))
       .finally(() => setLoading(false));
   }
 
@@ -282,6 +315,11 @@ export default function Organization() {
       {loading ? (
         <div className="space-y-2">
           {[0, 1].map((i) => <div key={i} className="h-14 bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) animate-pulse" />)}
+        </div>
+      ) : listFailed ? (
+        <div role="alert" className="glass-panel glass-blur-card rounded-(--radius-panel) flex flex-wrap items-center gap-3 px-5 py-4">
+          <p className="flex-1 text-mac-body text-(--text-primary)">Não foi possível carregar as empresas.</p>
+          <Button variant="secondary" size="sm" onClick={load}>Tentar de novo</Button>
         </div>
       ) : orgs.length === 0 ? (
         <EmptyState title="Nenhuma empresa cadastrada" icon={<Building2 className="w-6 h-6" />} />
