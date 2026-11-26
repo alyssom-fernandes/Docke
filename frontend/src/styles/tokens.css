@@ -145,6 +145,7 @@ html, body {
   --glass-bg-strong: rgba(255,255,255,0.80);
   --glass-border: rgba(0,0,0,0.14);
   --glass-panel-bg: rgba(255,255,255,0.94);
+  --material-content: rgba(255,255,255,0.96);
   /* Deslocamento vertical baixo + desfoque maior = sombra ambiente que se espalha
      quase igual em todas as direções (painel "flutuando", não "apoiado embaixo").
      Um offset alto (ex: 24px) faz sentido pra painéis no meio da tela, mas some
@@ -226,6 +227,7 @@ html, body {
   --glass-bg-strong: rgba(38,38,40,0.72);
   --glass-border: rgba(255,255,255,0.14);
   --glass-panel-bg: rgba(38,38,40,0.60);
+  --material-content: rgba(40,40,42,0.94);
   --glass-shadow: inset 0 0.5px 0 rgba(255,255,255,0.12),
                   inset 0 -0.5px 0 rgba(0,0,0,0.30),
                   0 0.5px 1px rgba(0,0,0,0.10),
@@ -363,6 +365,16 @@ html, body {
 }
 
 .glass-shadow { box-shadow: var(--glass-shadow); }
+
+/* ─── Vidro só na navegação (B4.7.1, B4.7.2) ───
+   Liquid Glass fica na camada de navegação e nos controles (barra do topo,
+   Dock, menus, diálogos). Cartões de CONTEÚDO dentro da página usam material
+   sólido: sem desfoque próprio, para não empilhar vidro sobre vidro. */
+.glass-panel.glass-blur-card {
+  background: var(--material-content);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
 
 /* ─── Glass hover — subtle, no translation (macOS style) ─── */
 .glass-interactive {
@@ -695,6 +707,23 @@ input[type="number"] {
     border: 1px solid var(--text-primary) !important;
   }
   :root { --text-secondary: var(--text-primary); --border-default: var(--text-secondary); }
+}
+/* Reduzir transparência (B4.7.3): pelo sistema (prefers-reduced-transparency)
+   ou pelo interruptor em Ajustes → Preferências (classe no <html>, para os
+   navegadores que ainda não leem a preferência do sistema). */
+@media (prefers-reduced-transparency: reduce) {
+  .glass-panel, .glass-dialog, .glass-blur-panel, .glass-blur-strong, .glass-blur-card, .glass-blur-pill, .glass-blur-table {
+    background: var(--bg-card) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+html.reduce-transparency .glass-panel, html.reduce-transparency .glass-dialog, html.reduce-transparency .glass-blur-panel,
+html.reduce-transparency .glass-blur-strong, html.reduce-transparency .glass-blur-card, html.reduce-transparency .glass-blur-pill,
+html.reduce-transparency .glass-blur-table {
+  background: var(--bg-card) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 /* forced-colors (Alto Contraste do Windows): o sistema escolhe as cores; só
    garantimos contorno visível no foco e nas superfícies sem borda. */

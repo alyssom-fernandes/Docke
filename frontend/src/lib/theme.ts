@@ -18,6 +18,7 @@ export function getTheme(): "light" | "dark" {
  */
 export function applyTheme(theme: "light" | "dark", persist = true) {
   document.documentElement.classList.toggle("dark", theme === "dark");
+  document.documentElement.classList.toggle("reduce-transparency", getReduceTransparency());
   if (persist) {
     localStorage.setItem(KEY, theme);
     localStorage.removeItem(KEY + "-system");
@@ -59,4 +60,13 @@ export function useIsDark(): boolean {
     return () => window.removeEventListener(EVENT, on);
   }, []);
   return dark;
+}
+
+/** Reduzir transparência (B4.7.3): vidro vira fundo sólido. Guardado no aparelho. */
+export function getReduceTransparency(): boolean {
+  try { return localStorage.getItem("docke-reduce-transparency") === "1"; } catch { return false; }
+}
+export function setReduceTransparency(on: boolean) {
+  try { if (on) localStorage.setItem("docke-reduce-transparency", "1"); else localStorage.removeItem("docke-reduce-transparency"); } catch { /* sem armazenamento */ }
+  document.documentElement.classList.toggle("reduce-transparency", on);
 }
