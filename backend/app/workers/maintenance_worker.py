@@ -84,6 +84,7 @@ async def _run_once() -> None:
         await _notify_trash_expiring_soon(conn)
         await _purge_expired_trash(conn)
         await _cleanup_stale_pending_uploads(conn)
+        await _cleanup_old_notifications(conn)
         from app.workers.export_worker import purge_expired_exports
         await purge_expired_exports(conn)
         # Recorrência (A7-07): competências mensais e anuais aparecem sozinhas.
@@ -102,6 +103,17 @@ async def _run_once() -> None:
                 logger.info("Trilha: %d partição(ões) mensal(is) criada(s).", criadas)
         except Exception as exc:  # noqa: BLE001 — não pode parar a manutenção
             logger.exception("Falha ao garantir partições da trilha: %s", exc)
+
+
+async def _cleanup_old_notifications(conn) -> None:
+    """Avisos lidos há mais de 90 dias saem da caixa (B4.4.7): ela não cresce
+    sem fim. Os não lidos ficam até alguém ler."""
+    st = await conn.execute(
+        "DELETE FROM public.notifications WHERE read_at IS NOT NULL AND read_at < now() - interval '90 days'"
+    )
+    n = int(st.split()[-1]) if st else 0
+    if n:
+        logger.info("Limpeza: %d aviso(s) lido(s) antigo(s) removido(s).", n)
 
 
 async def _cleanup_stale_pending_uploads(conn) -> None:
