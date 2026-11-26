@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, ClipboardCheck, CalendarClock, FileWarning, Archive, Link2, CheckCircle2, RefreshCw, Building2, ChevronRight } from "lucide-react";
 import api from "@/lib/api";
@@ -26,20 +26,31 @@ const br = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("pt-B
  * Erro de carga mostra erro, nunca "tudo em dia" (A3-03).
  */
 export default function TodayPanel() {
-  const { current, companies, setCurrent } = useCompany();
+  const { current, companies, setCurrent, loading: companiesLoading } = useCompany();
   const navigate = useNavigate();
   const [data, setData] = useState<Today | null>(null);
   const [group, setGroup] = useState<GroupRow[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [verFalhas, setVerFalhas] = useState(false);
+  const seq = useRef(0);
 
+  // Só pede depois que a lista de empresas confirmou a empresa guardada: na
+  // demo, o reset troca os ids e o id antigo do localStorage dava 404 (e o
+  // painel ficava em erro). Respostas de pedidos antigos são ignoradas.
   const load = useCallback(() => {
-    if (!current) return;
+    if (!current || companiesLoading) return;
+    const n = ++seq.current;
     setFailed(false);
     setData(null);
-    api.get<Today>(`/today/company/${current.id}`).then((r) => setData(r.data)).catch(() => setFailed(true));
-    if ((companies?.length ?? 0) > 1) api.get<GroupRow[]>("/today/group").then((r) => setGroup(r.data)).catch(() => setGroup(null));
-  }, [current?.id, companies?.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    api.get<Today>(`/today/company/${current.id}`)
+      .then((r) => { if (n === seq.current) setData(r.data); })
+      .catch(() => { if (n === seq.current) setFailed(true); });
+    if ((companies?.length ?? 0) > 1) {
+      api.get<GroupRow[]>("/today/group")
+        .then((r) => { if (n === seq.current) setGroup(r.data); })
+        .catch(() => { if (n === seq.current) setGroup(null); });
+    }
+  }, [current?.id, companies?.length, companiesLoading]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(load, [load]);
 
   if (failed) {

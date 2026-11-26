@@ -137,7 +137,7 @@ export default function Preferences() {
             <p className="text-mac-caption text-(--text-secondary) mb-3 max-w-[420px]">
               Restaura as 3 empresas de exemplo ao estado padrão, apagando qualquer
               documento, pasta, usuário ou link criado durante o uso. Roda sozinho
-              a cada 24h — use este botão se quiser uma demonstração limpa agora.
+              a cada 6 horas — use este botão se quiser uma demonstração limpa agora.
             </p>
             <button
               onClick={() => setConfirmingReset(true)}
