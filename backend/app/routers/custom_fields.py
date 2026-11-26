@@ -207,6 +207,18 @@ class CustomFieldCopy(BaseModel):
     target_company_id: UUID
 
 
+class CustomFieldCopySelected(CustomFieldCopy):
+    # A8-28: quais campos (None = todos) e se a aplicação nas pastas vai junto.
+    field_ids: list[UUID] | None = None
+    include_tree: bool = False
+
+
+class FolderRulesCopy(BaseModel):
+    company_id: UUID
+    source_folder_id: UUID
+    target_folder_id: UUID
+
+
 class FolderFieldUpsert(BaseModel):
     company_id: UUID
     folder_id: UUID | None = None  # None = aplica na raiz (empresa toda)
@@ -368,6 +380,73 @@ async def copy_custom_fields(
         conn, source_company_id=body.source_company_id, target_company_id=body.target_company_id, created_by=user_id,
     )
     return [dict(r) for r in rows]
+
+
+@router.post("/custom-fields/copy/preview")
+async def preview_copy_custom_fields(
+    body: CustomFieldCopy,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> list[dict[str, Any]]:
+    """Prévia da cópia (A8-28): o que é novo, o que já existe no destino e
+    quantas aplicações em pasta encontram pasta equivalente."""
+    role = await get_app_role(conn, claims)
+    await _require_company_admin(conn, claims["sub"], body.source_company_id, role)
+    await _require_company_admin(conn, claims["sub"], body.target_company_id, role)
+    return await CustomFieldsService.copy_preview(
+        conn, source_company_id=body.source_company_id, target_company_id=body.target_company_id,
+    )
+
+
+@router.post("/custom-fields/copy-selected")
+async def copy_selected_custom_fields(
+    body: CustomFieldCopySelected,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Copia os campos escolhidos (e a aplicação nas pastas de mesmo nome) e
+    devolve o relatório do que foi feito."""
+    user_id = claims["sub"]
+    role = await get_app_role(conn, claims)
+    await _require_company_admin(conn, user_id, body.source_company_id, role)
+    await _require_company_admin(conn, user_id, body.target_company_id, role)
+    rel = await CustomFieldsService.copy_selected(
+        conn, source_company_id=body.source_company_id, target_company_id=body.target_company_id,
+        field_ids=body.field_ids, include_tree=body.include_tree, created_by=user_id,
+    )
+    await _log_config(conn, user_id, body.target_company_id, "fields_copy", body.target_company_id,
+                      "Campos de metadados", {"de_empresa": str(body.source_company_id), **{k: (len(v) if isinstance(v, list) else v) for k, v in rel.items()}})
+    return rel
+
+
+@router.post("/folder-fields/copy")
+async def copy_folder_field_rules(
+    body: FolderRulesCopy,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Copia as regras próprias de uma pasta para outra da mesma empresa (A8-28)."""
+    user_id = claims["sub"]
+    role = await get_app_role(conn, claims)
+    await _require_company_admin(conn, user_id, body.company_id, role)
+    if body.source_folder_id == body.target_folder_id:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Escolha uma pasta de destino diferente da de origem.")
+    origem = await conn.fetchrow(
+        "SELECT path::text, name FROM public.folders WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL",
+        body.source_folder_id, body.company_id,
+    )
+    destino = await conn.fetchrow(
+        "SELECT path::text, name FROM public.folders WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL",
+        body.target_folder_id, body.company_id,
+    )
+    if origem is None or destino is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada nesta empresa.")
+    n = await CustomFieldsService.copy_folder_rules(
+        conn, company_id=body.company_id, source_path=origem["path"], target_path=destino["path"], created_by=user_id,
+    )
+    await _log_config(conn, user_id, body.company_id, "field_rules_copy", body.target_folder_id, destino["name"],
+                      {"de_pasta": origem["name"], "regras": n})
+    return {"regras_copiadas": n, "destino": destino["name"]}
 
 
 # ---------------------------------------------------------------------------

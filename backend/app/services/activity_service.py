@@ -69,6 +69,8 @@ _ACTION_LABELS: dict[str, str] = {
     "field_archive": "Campo arquivado",
     "field_restore": "Campo reativado",
     "field_rule_apply": "Campo aplicado em pasta",
+    "fields_copy": "Campos copiados de outra empresa",
+    "field_rules_copy": "Regras de metadados copiadas de outra pasta",
     "field_rule_exclude": "Campo tirado de pasta",
 }
 

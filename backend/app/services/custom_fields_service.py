@@ -184,6 +184,158 @@ class CustomFieldsService:
         )
         return [_decode_field_row(r) for r in rows]
 
+    # ─── Cópia com escolha, prévia e relatório (A8-28) ───────────────────────
+
+    @staticmethod
+    async def _trilhas(conn: asyncpg.Connection, company_id: UUID) -> dict[str, str]:
+        """path → "Fiscal / Notas" (nomes do topo até a pasta)."""
+        rows = await conn.fetch(
+            "SELECT id::text, parent_id::text, name, path::text FROM public.folders WHERE company_id = $1 AND deleted_at IS NULL",
+            company_id,
+        )
+        por_id = {r["id"]: r for r in rows}
+        cache: dict[str, str] = {}
+
+        def trilha(fid: str) -> str:
+            if fid in cache:
+                return cache[fid]
+            r = por_id[fid]
+            pai = r["parent_id"]
+            t = (trilha(pai) + " / " if pai and pai in por_id else "") + r["name"].strip().lower()
+            cache[fid] = t
+            return t
+
+        return {r["path"]: trilha(r["id"]) for r in rows}
+
+    @staticmethod
+    async def copy_preview(conn: asyncpg.Connection, *, source_company_id: UUID, target_company_id: UUID) -> list[dict[str, Any]]:
+        """Cada campo da origem: se já existe no destino (mesma chave) e quantas
+        aplicações em pasta teriam pasta equivalente (mesmo caminho de nomes)."""
+        campos = await conn.fetch(
+            """
+            SELECT cf.id::text, cf.label, cf.field_key, cf.type,
+                   EXISTS (SELECT 1 FROM public.custom_field t WHERE t.company_id = $2 AND t.field_key = cf.field_key) AS existe
+            FROM public.custom_field cf
+            WHERE cf.company_id = $1 AND cf.archived_at IS NULL
+            ORDER BY lower(cf.label)
+            """,
+            source_company_id, target_company_id,
+        )
+        regras = await conn.fetch(
+            "SELECT custom_field_id::text, folder_path::text FROM public.folder_field WHERE company_id = $1",
+            source_company_id,
+        )
+        origem = await CustomFieldsService._trilhas(conn, source_company_id)
+        destino = set((await CustomFieldsService._trilhas(conn, target_company_id)).values())
+        out = []
+        for c in campos:
+            minhas = [r for r in regras if r["custom_field_id"] == c["id"]]
+            casam = sum(1 for r in minhas if r["folder_path"] is None or origem.get(r["folder_path"]) in destino)
+            out.append({
+                "id": c["id"], "label": c["label"], "type": c["type"], "existe": c["existe"],
+                "aplicacoes": len(minhas), "aplicacoes_com_pasta": casam,
+            })
+        return out
+
+    @staticmethod
+    async def copy_selected(
+        conn: asyncpg.Connection, *, source_company_id: UUID, target_company_id: UUID,
+        field_ids: list[UUID] | None, include_tree: bool, created_by: str,
+    ) -> dict[str, Any]:
+        """Copia os campos escolhidos e, se pedido, a aplicação nas pastas de
+        mesmo caminho de nomes. Nunca sobrescreve: campo com a mesma chave no
+        destino é reaproveitado; regra que já existe na pasta fica como está."""
+        ids = [str(i) for i in field_ids] if field_ids else None
+        campos = await conn.fetch(
+            """
+            SELECT id::text, label, field_key, type, format_config, condition_value
+            FROM public.custom_field
+            WHERE company_id = $1 AND archived_at IS NULL AND ($2::uuid[] IS NULL OR id = ANY($2::uuid[]))
+            """,
+            source_company_id, ids,
+        )
+        criados: list[str] = []
+        existentes: list[str] = []
+        mapa: dict[str, str] = {}
+        for c in campos:
+            alvo = await conn.fetchrow(
+                "SELECT id::text, archived_at FROM public.custom_field WHERE company_id = $1 AND field_key = $2",
+                target_company_id, c["field_key"],
+            )
+            if alvo is None:
+                novo = await conn.fetchval(
+                    """
+                    INSERT INTO public.custom_field (company_id, label, field_key, type, format_config, created_by)
+                    VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+                    RETURNING id::text
+                    """,
+                    target_company_id, c["label"], c["field_key"], c["type"], c["format_config"], created_by,
+                )
+                criados.append(c["label"])
+                mapa[c["id"]] = novo
+            else:
+                existentes.append(c["label"])
+                if alvo["archived_at"] is None:
+                    mapa[c["id"]] = alvo["id"]
+
+        copiadas = 0
+        sem_pasta = 0
+        if include_tree and mapa:
+            regras = await conn.fetch(
+                """
+                SELECT custom_field_id::text, folder_path::text, mode, required, display_order, column_width, default_value
+                FROM public.folder_field
+                WHERE company_id = $1 AND custom_field_id = ANY($2::uuid[])
+                """,
+                source_company_id, list(mapa.keys()),
+            )
+            origem = await CustomFieldsService._trilhas(conn, source_company_id)
+            destino_por_trilha = {t: p for p, t in (await CustomFieldsService._trilhas(conn, target_company_id)).items()}
+            for r in regras:
+                if r["folder_path"] is None:
+                    novo_path = None
+                else:
+                    novo_path = destino_por_trilha.get(origem.get(r["folder_path"], ""))
+                    if novo_path is None:
+                        sem_pasta += 1
+                        continue
+                st = await conn.execute(
+                    """
+                    INSERT INTO public.folder_field
+                      (company_id, folder_path, custom_field_id, mode, required, display_order, column_width, created_by, default_value)
+                    VALUES ($1, $2::ltree, $3::uuid, $4, $5, $6, $7, $8, $9)
+                    ON CONFLICT (company_id, folder_path, custom_field_id) DO NOTHING
+                    """,
+                    target_company_id, novo_path, mapa[r["custom_field_id"]], r["mode"], r["required"],
+                    r["display_order"], r["column_width"], created_by, r["default_value"],
+                )
+                copiadas += int(st.split()[-1])
+        return {
+            "criados": criados, "existentes": existentes,
+            "aplicacoes_copiadas": copiadas, "aplicacoes_sem_pasta": sem_pasta,
+        }
+
+    @staticmethod
+    async def copy_folder_rules(
+        conn: asyncpg.Connection, *, company_id: UUID, source_path: str, target_path: str, created_by: str,
+    ) -> int:
+        """As regras próprias de uma pasta passam a valer também noutra pasta da
+        mesma empresa (substitui as do destino para os mesmos campos)."""
+        st = await conn.execute(
+            """
+            INSERT INTO public.folder_field
+              (company_id, folder_path, custom_field_id, mode, required, display_order, column_width, created_by, default_value)
+            SELECT company_id, $3::ltree, custom_field_id, mode, required, display_order, column_width, $4, default_value
+            FROM public.folder_field
+            WHERE company_id = $1 AND folder_path = $2::ltree
+            ON CONFLICT (company_id, folder_path, custom_field_id)
+            DO UPDATE SET mode = EXCLUDED.mode, required = EXCLUDED.required, display_order = EXCLUDED.display_order,
+                          column_width = EXCLUDED.column_width, default_value = EXCLUDED.default_value
+            """,
+            company_id, source_path, target_path, created_by,
+        )
+        return int(st.split()[-1])
+
     # ─── Aplicação na árvore (folder_field) ─────────────────────────────────
 
     @staticmethod
