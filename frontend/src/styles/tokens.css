@@ -136,7 +136,13 @@ html, body {
      terem contra o que "flutuar" — Apple tem um degrau tonal claro entre a
      tela (cinza médio) e os cards (branco). Nem #ECECEC frio/chapado, nem
      #F5F5F0 lavado demais. */
-  --wallpaper: radial-gradient(ellipse at 80% 90%, rgba(0,0,0,0.04) 0%, transparent 55%),
+  /* Papel de parede do Docke (estética P1): luz da marca no canto de cima,
+     areia quente embaixo e uma textura de papel quase invisível. Dá ao vidro
+     da barra e do Dock algo para refratar sem tirar a legibilidade. */
+  --wallpaper: radial-gradient(1100px 760px at 0% 0%, rgba(13,148,136,0.11), transparent 62%),
+               radial-gradient(900px 680px at 100% 100%, rgba(190,160,110,0.16), transparent 60%),
+               radial-gradient(ellipse at 80% 90%, rgba(0,0,0,0.04) 0%, transparent 55%),
+               url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='r'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23r)'/%3E%3C/svg%3E"),
                #E9E9E3;
 
   /* Liquid Glass — macOS 27 style. Cards de conteúdo quase sólidos (0.94) pra
@@ -224,9 +230,11 @@ html, body {
   /* Dark: cinza-carvão com highlights sutis de LUZ (não de cor).
      Apple no dark mode usa apenas variação de brilho, sem tinta saturada —
      é o wallpaper padrão do sistema (preto/carvão) que fica atrás do vidro. */
-  --wallpaper: radial-gradient(ellipse at 20% 10%, rgba(255,255,255,0.06) 0%, transparent 50%),
+  --wallpaper: radial-gradient(1100px 760px at 0% 0%, rgba(45,212,191,0.09), transparent 62%),
+               radial-gradient(ellipse at 20% 10%, rgba(255,255,255,0.05) 0%, transparent 50%),
                radial-gradient(ellipse at 80% 90%, rgba(255,255,255,0.04) 0%, transparent 55%),
-               #1E1E1E;
+               url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='r'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23r)'/%3E%3C/svg%3E"),
+               #1C1D1E;
 
   --glass-bg: rgba(255,255,255,0.05);
   --glass-bg-strong: rgba(38,38,40,0.72);
@@ -374,6 +382,35 @@ html, body {
 }
 
 .glass-shadow { box-shadow: var(--glass-shadow); }
+
+/* ─── Tipografia de exibição (estética P1) ───
+   Inter com os traços alternativos (a de um andar, algarismos abertos) e
+   espaçamento negativo: dá voz própria aos títulos grandes e aos números sem
+   carregar outra fonte. */
+.display-type {
+  font-feature-settings: "cv11" 1, "ss01" 1, "calt" 1;
+  letter-spacing: -0.028em;
+}
+
+/* ─── Movimento coreografado (estética P2) ───
+   Os filhos de .cascade entram em sequência, subindo 6 px e ganhando
+   opacidade (35 ms entre eles). Respeita "reduzir movimento". */
+@keyframes docke-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.cascade > * { animation: docke-rise 380ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.cascade > *:nth-child(2) { animation-delay: 35ms; }
+.cascade > *:nth-child(3) { animation-delay: 70ms; }
+.cascade > *:nth-child(4) { animation-delay: 105ms; }
+.cascade > *:nth-child(5) { animation-delay: 140ms; }
+.cascade > *:nth-child(6) { animation-delay: 175ms; }
+.cascade > *:nth-child(n+7) { animation-delay: 210ms; }
+/* Estado vazio: o ícone flutua e a órbita tracejada gira devagar. */
+@keyframes empty-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes empty-orbit { to { transform: rotate(360deg); } }
+.empty-float { animation: empty-float 4.5s ease-in-out infinite; }
+.empty-orbit { transform-origin: 64px 64px; animation: empty-orbit 60s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .cascade > *, .empty-float, .empty-orbit { animation: none; }
+}
 
 /* ─── Vidro só na navegação (B4.7.1, B4.7.2) ───
    Liquid Glass fica na camada de navegação e nos controles (barra do topo,

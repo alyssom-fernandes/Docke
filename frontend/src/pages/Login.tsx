@@ -325,7 +325,7 @@ export default function Login() {
           <div className="brand-wordmark block w-[124px] h-[36px]" role="img" aria-label="Docke" />
           <h1
             id="titulo"
-            className="mt-8 max-w-[22ch] text-[30px] leading-[36px] font-bold tracking-[-0.022em] text-(--text-primary) sm:text-[34px] sm:leading-[40px] lg:mt-12 lg:text-[42px] lg:leading-[48px] 2xl:text-[48px] 2xl:leading-[54px]"
+            className="mt-8 max-w-[22ch] text-[30px] leading-[36px] font-bold tracking-[-0.022em] text-(--text-primary) sm:text-[34px] sm:leading-[40px] lg:mt-12 lg:text-[42px] lg:leading-[48px] 2xl:text-[48px] 2xl:leading-[54px] display-type"
             style={{ textWrap: "balance" } as CSSProperties}
           >
             Os documentos das suas empresas, achados em segundos.

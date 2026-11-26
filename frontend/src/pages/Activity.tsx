@@ -142,7 +142,7 @@ export default function Activity() {
     <div className="space-y-5 max-w-[1100px] w-full mx-auto">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-mac-title1 sm:text-mac-large font-bold tracking-[-0.02em] text-(--text-primary)">Atividade</h1>
+          <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Atividade</h1>
           <p className="text-mac-caption text-(--text-secondary) mt-0.5">Quem fez o quê, quando. Cada registro fica encadeado ao anterior e não pode ser alterado.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

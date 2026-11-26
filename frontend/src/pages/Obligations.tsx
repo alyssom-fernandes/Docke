@@ -181,7 +181,7 @@ export default function Obligations() {
     <div className="space-y-5 sm:space-y-6 max-w-[1440px] w-full mx-auto">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-mac-title1 sm:text-mac-large font-bold tracking-[-0.02em] text-(--text-primary)">Obrigações</h1>
+          <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Obrigações</h1>
           <p className="text-mac-caption text-(--text-secondary) mt-0.5">
             {grupo ? `Todas as ${companies.length} empresas que você acessa` : current.name} · o que precisa ser comprovado, até quando e por quem.
           </p>

@@ -174,10 +174,29 @@ function FileBadge({ name }: { name: string }) {
  * e diz se a semana foi maior ou menor que a anterior. Mesma altura no
  * esqueleto e no cartão pronto, para a tela não pular (A3-04).
  */
+/** Número que conta até o valor na primeira vez (700 ms, desacelerando). Sem animação com "reduzir movimento". */
+function useCountUp(alvo: number) {
+  const [v, setV] = useState(() => (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? alvo : 0));
+  useEffect(() => {
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || alvo <= 0) { setV(alvo); return; }
+    let quadro = 0;
+    const inicio = performance.now();
+    const passo = (t: number) => {
+      const k = Math.min(1, (t - inicio) / 700);
+      setV(Math.round(alvo * (1 - Math.pow(1 - k, 3))));
+      if (k < 1) quadro = requestAnimationFrame(passo);
+    };
+    quadro = requestAnimationFrame(passo);
+    return () => cancelAnimationFrame(quadro);
+  }, [alvo]);
+  return v;
+}
+
 function StatCard({ to, label, value, icon: Icon, context, trend, ariaLabel }: {
   to: string; label: string; value: number; icon: ElementType; context?: string; trend?: "up" | "down" | "same"; ariaLabel: string;
 }) {
   const TrendIcon = trend === "up" ? ArrowUpRight : trend === "down" ? ArrowDownRight : Minus;
+  const shown = useCountUp(value);
   return (
     <Link
       to={to}
@@ -186,7 +205,8 @@ function StatCard({ to, label, value, icon: Icon, context, trend, ariaLabel }: {
     >
       <Icon className="hidden sm:block w-5 h-5 shrink-0 mt-1 text-(--text-accent)" strokeWidth={1.5} aria-hidden="true" />
       <span className="min-w-0">
-        <span className="block text-mac-title2 sm:text-[30px] sm:leading-[34px] font-semibold tracking-[-0.03em] text-(--text-primary) tabular-nums">{value.toLocaleString("pt-BR")}</span>
+        <span className="block text-mac-title2 sm:text-[30px] sm:leading-[34px] font-semibold display-type text-(--text-primary) tabular-nums" aria-hidden="true">{shown.toLocaleString("pt-BR")}</span>
+        <span className="sr-only">{value.toLocaleString("pt-BR")}</span>
         <span className="block text-mac-caption2 sm:text-mac-caption text-(--text-secondary) leading-tight">{label}</span>
         {context && (
           <span className="mt-0.5 hidden sm:flex items-center gap-1 text-mac-caption text-(--text-accent)">
@@ -321,10 +341,10 @@ export default function Dashboard() {
   const totalDaily = (daily.data ?? []).reduce((a, d) => a + d.count, 0);
 
   return (
-    <div className="flex flex-col gap-5 sm:gap-6 max-w-[1440px] w-full mx-auto">
+    <div className="cascade flex flex-col gap-5 sm:gap-6 max-w-[1440px] w-full mx-auto">
       <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
         <div>
-          <h1 className="text-mac-title1 sm:text-mac-large font-bold tracking-[-0.02em] text-(--text-primary)">Início</h1>
+          <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Início</h1>
           <p className="text-mac-caption text-(--text-secondary)">{current.name}</p>
         </div>
         <div className="flex items-center gap-1">
@@ -356,7 +376,7 @@ export default function Dashboard() {
             {[0, 1, 2, 3].map((i) => <div key={i} className="min-h-[68px] sm:min-h-[96px] rounded-(--radius-panel) bg-(--bg-hover) animate-pulse" />)}
           </div>
         ) : (
-          <section aria-label="Números da empresa" className="grid grid-cols-4 gap-2 sm:gap-5">
+          <section aria-label="Números da empresa" className="cascade grid grid-cols-4 gap-2 sm:gap-5">
             <StatCard
               to="/documents" label="Documentos" value={s.total_documents} icon={FileText}
               context={s.documents_today > 0 ? `+${s.documents_today.toLocaleString("pt-BR")} hoje` : "nenhum envio hoje"}
