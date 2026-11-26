@@ -27,10 +27,12 @@ function fmtDayLabel(iso: string) {
 const plural = (n: number, um: string, varios: string) => `${n.toLocaleString("pt-BR")} ${n === 1 ? um : varios}`;
 
 /**
- * Envios por dia. Preenche a largura do cartão (achado A3-17), com datas no
- * eixo, o pico e o total do período; o ponto em destaque responde ao mouse,
- * ao toque e às setas do teclado (A3-19), e uma tabela oculta entrega os
- * mesmos números a leitores de tela.
+ * Envios por dia em colunas (J1-07): contagem de cada dia é um número inteiro,
+ * então cada dia é uma coluna (a linha ligando os pontos sugeria um contínuo
+ * que não existe). Dia sem envio tem uma marca baixa para o dia aparecer; o
+ * dia de hoje fica destacado. Preenche a largura do cartão (A3-17); a coluna
+ * em foco responde ao mouse, ao toque e às setas (A3-19), e uma tabela oculta
+ * entrega os números a leitores de tela.
  */
 export function UploadsLineChart({ data }: { data: DailyUpload[] }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
@@ -49,25 +51,23 @@ export function UploadsLineChart({ data }: { data: DailyUpload[] }) {
 
   const W = width;
   const H = 96;
-  const padX = 6;
   const padTop = 14;
-  const padBottom = 6;
+  const padBottom = 1;
   const max = Math.max(1, ...data.map((d) => d.count));
-  const stepX = (W - padX * 2) / Math.max(1, data.length - 1);
-  const points = data.map((d, i) => ({
-    x: padX + i * stepX,
-    y: H - padBottom - (d.count / max) * (H - padTop - padBottom),
-    ...d,
-  }));
-  const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
-  const areaPath = `${linePath} L ${points[points.length - 1].x} ${H} L ${points[0].x} ${H} Z`;
+  const slot = W / data.length;
+  const barW = Math.max(2, Math.min(28, slot * 0.68));
+  const todayIso = new Date().toLocaleDateString("sv-SE"); // AAAA-MM-DD no fuso local
+  const points = data.map((d, i) => {
+    const h = d.count > 0 ? Math.max(3, (d.count / max) * (H - padTop - padBottom)) : 2;
+    return { x: slot * i + slot / 2, y: H - padBottom - h, h, today: d.date === todayIso, ...d };
+  });
   const peak = data.reduce((a, b) => (b.count > a.count ? b : a), data[0]);
   const hover = hoverIdx !== null ? points[hoverIdx] : null;
   const ticks = [0, Math.floor((data.length - 1) / 2), data.length - 1];
 
   function pick(clientX: number, rect: DOMRect) {
     const relX = ((clientX - rect.left) / rect.width) * W;
-    setHoverIdx(Math.min(points.length - 1, Math.max(0, Math.round((relX - padX) / stepX))));
+    setHoverIdx(Math.min(points.length - 1, Math.max(0, Math.floor(relX / slot))));
   }
 
   return (
@@ -98,15 +98,19 @@ export function UploadsLineChart({ data }: { data: DailyUpload[] }) {
           aria-hidden="true"
         >
           <line x1={0} x2={W} y1={padTop} y2={padTop} stroke="var(--border-default)" strokeDasharray="2,3" />
+          {points.map((p, i) => (
+            <rect
+              key={p.date}
+              x={p.x - barW / 2}
+              y={p.y}
+              width={barW}
+              height={p.h}
+              rx={Math.min(3, barW / 2)}
+              fill={p.count === 0 ? "var(--border-control)" : "var(--chart-line)"}
+              opacity={hoverIdx === null || hoverIdx === i ? 1 : 0.45}
+            />
+          ))}
           <line x1={0} x2={W} y1={H - padBottom} y2={H - padBottom} stroke="var(--border-default)" />
-          <path d={areaPath} fill="var(--chart-area)" stroke="none" />
-          <path d={linePath} fill="none" stroke="var(--chart-line)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-          {hover && (
-            <>
-              <line x1={hover.x} y1={0} x2={hover.x} y2={H} stroke="var(--border-control)" strokeWidth={1} strokeDasharray="2,2" />
-              <circle cx={hover.x} cy={hover.y} r={4} fill="var(--chart-line)" stroke="var(--bg-card)" strokeWidth={2} />
-            </>
-          )}
         </svg>
         <span className="absolute left-0 top-0 -translate-y-1/2 text-mac-caption2 text-(--text-secondary) tabular-nums bg-(--bg-card) pr-1">
           {max.toLocaleString("pt-BR")}
@@ -120,7 +124,7 @@ export function UploadsLineChart({ data }: { data: DailyUpload[] }) {
             }}
             role="status"
           >
-            {fmtDayLabel(hover.date)} · {plural(hover.count, "documento", "documentos")}
+            {hover.today ? "Hoje" : fmtDayLabel(hover.date)} · {plural(hover.count, "documento", "documentos")}
           </div>
         )}
       </div>
@@ -131,7 +135,7 @@ export function UploadsLineChart({ data }: { data: DailyUpload[] }) {
             className="absolute top-0 whitespace-nowrap"
             style={{ left: `${(points[i].x / W) * 100}%`, transform: k === 0 ? "none" : k === 2 ? "translateX(-100%)" : "translateX(-50%)" }}
           >
-            {fmtDayLabel(data[i].date)}
+            {points[i].today ? "hoje" : fmtDayLabel(data[i].date)}
           </span>
         ))}
       </div>
