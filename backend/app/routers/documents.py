@@ -1199,6 +1199,14 @@ async def delete_document(
         raise HTTPException(status_code=status.HTTP_423_LOCKED, detail="Documento bloqueado para exclusão — está sob retenção legal (legal hold).")
 
     await DocumentsService.soft_delete_single(admin_conn, document_id)
+    # A exclusão de um documento só também entra na trilha (antes só a em lote).
+    await admin_conn.execute(
+        """
+        INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot)
+        SELECT $1::uuid, company_id, 'delete', 'document', id, name FROM public.documents WHERE id = $2
+        """,
+        user_id, document_id,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1239,6 +1247,13 @@ async def restore_document(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão na pasta de destino.")
 
     row = await DocumentsService.restore_single(admin_conn, document_id, target_folder["id"])
+    await admin_conn.execute(
+        """
+        INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot)
+        VALUES ($1::uuid, $2::uuid, 'restore', 'document', $3::uuid, $4)
+        """,
+        user_id, str(row["company_id"]), str(row["id"]), row["name"],
+    )
     return dict(row)
 
 
