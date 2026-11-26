@@ -13,6 +13,7 @@ import Dropdown from "@/components/ui/Dropdown";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import Checkbox from "@/components/ui/Checkbox";
 import Input from "@/components/ui/Input";
+import VersionsPolicyCard from "@/components/shared/VersionsPolicyCard";
 import { friendly, fmtDate } from "@/components/obligations/shared";
 
 // Retenção e descarte: quanto tempo cada documento precisa ser guardado,
@@ -640,6 +641,7 @@ function WhereTab({ companyId, isAdmin, policies, folders, assignments, initialF
       )}
 
       {isAdmin && <HealthCheck companyId={companyId} assinatura={assignments.map((a) => a.id).join(",")} />}
+      {isAdmin && <VersionsPolicyCard companyId={companyId} />}
 
       {removing && (
         <ConfirmModal

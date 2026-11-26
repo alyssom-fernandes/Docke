@@ -1261,3 +1261,44 @@ async def group_impact(
         company_id, group_id,
     )
     return {"membros": len(rows), "ficam_sem_acesso": [r["full_name"] for r in rows if r["fica_sem_acesso"]]}
+
+
+class VersionsPolicy(BaseModel):
+    keep_days: int | None = None  # None = para sempre
+
+
+@router.get("/{company_id}/versions-policy")
+async def get_versions_policy(
+    company_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    row = await conn.fetchrow("SELECT versions_keep_days FROM public.companies WHERE id = $1", company_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empresa não encontrada.")
+    return {"keep_days": row["versions_keep_days"], "can_edit": await get_app_role(conn, claims) == "supremo"}
+
+
+@router.put("/{company_id}/versions-policy")
+async def put_versions_policy(
+    company_id: UUID,
+    body: VersionsPolicy,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Retenção do histórico de versões (B1.4.9). Apaga dado: só o administrador geral muda."""
+    if await get_app_role(conn, claims) != "supremo":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Só o administrador geral muda por quanto tempo as versões antigas ficam guardadas.")
+    if body.keep_days is not None and not (30 <= body.keep_days <= 3650):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="O prazo vai de 30 a 3.650 dias (ou para sempre).")
+    antes = await admin_conn.fetchval("SELECT versions_keep_days FROM public.companies WHERE id = $1", company_id)
+    await admin_conn.execute("UPDATE public.companies SET versions_keep_days = $2 WHERE id = $1", company_id, body.keep_days)
+    await admin_conn.execute(
+        """
+        INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, event_category, metadata)
+        VALUES ($1::uuid, $2, 'versions_policy', 'config', $2, 'Histórico de versões', 'config', jsonb_build_object('antes', $3::int, 'depois', $4::int))
+        """,
+        claims["sub"], company_id, antes, body.keep_days,
+    )
+    return {"keep_days": body.keep_days, "can_edit": True}

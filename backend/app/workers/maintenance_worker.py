@@ -85,6 +85,10 @@ async def _run_once() -> None:
         await _purge_expired_trash(conn)
         await _cleanup_stale_pending_uploads(conn)
         await _cleanup_old_notifications(conn)
+        try:
+            await _purge_old_versions(conn)
+        except Exception as exc:  # noqa: BLE001 — não pode parar a manutenção
+            logger.exception("Falha ao aplicar a retenção de versões: %s", exc)
         from app.workers.export_worker import purge_expired_exports
         await purge_expired_exports(conn)
         # Recorrência (A7-07): competências mensais e anuais aparecem sozinhas.
@@ -476,3 +480,64 @@ async def _purge_expired_folders(conn, expire_shares_for_resource) -> None:
         await conn.execute("DELETE FROM public.folders WHERE id = $1", folder["id"])
         await expire_shares_for_resource(conn, "folder", folder["id"])
         logger.info("Purga automática — pasta %s (%s) removida por retenção.", folder["id"], folder["name"])
+
+
+async def _purge_old_versions(conn) -> int:
+    """
+    Retenção do histórico de versões (B1.4.9): nas empresas que definiram um
+    prazo, apaga a versão antiga substituída há mais tempo que ele (nunca a
+    atual; legal hold e retenção travada protegem, e o gatilho do banco
+    recusa). Fica na trilha como ação do sistema. Até 200 por volta.
+    """
+    import asyncio
+    import json
+
+    from app.services import storage_service
+
+    rows = await conn.fetch(
+        """
+        SELECT v.id, v.document_id, v.version_number, v.storage_key, d.company_id, d.name, c.versions_keep_days,
+               coalesce(d.uploaded_by, (SELECT u.id FROM public.users u WHERE u.role = 'supremo' ORDER BY u.created_at LIMIT 1)) AS ator
+        FROM public.document_versions v
+        JOIN public.documents d ON d.id = v.document_id
+        JOIN public.companies c ON c.id = d.company_id
+        WHERE c.versions_keep_days IS NOT NULL
+          AND d.current_version_id IS DISTINCT FROM v.id
+          AND v.storage_key IS DISTINCT FROM d.storage_path
+          AND public.document_deletion_block_reason(d.id) IS NULL
+          AND EXISTS (
+            SELECT 1 FROM public.document_versions n
+            WHERE n.document_id = v.document_id AND n.version_number > v.version_number
+              AND n.created_at < now() - make_interval(days => c.versions_keep_days)
+          )
+        ORDER BY v.created_at
+        LIMIT 200
+        """
+    )
+    apagadas = 0
+    for r in rows:
+        try:
+            await conn.execute("DELETE FROM public.document_versions WHERE id = $1", r["id"])
+        except Exception:  # noqa: BLE001 — bloqueio que surgiu no meio: fica para a próxima
+            continue
+        apagadas += 1
+        if r["ator"] is not None:
+            await conn.execute(
+                """
+                INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, actor_type, metadata)
+                VALUES ($1, $2, 'version_delete', 'document', $3, $4, 'system', $5::jsonb)
+                """,
+                r["ator"], r["company_id"], r["document_id"], r["name"],
+                json.dumps({"versao": int(r["version_number"]), "motivo": f"política: versões antigas guardadas por {r['versions_keep_days']} dias"}),
+            )
+        ainda = await conn.fetchval("SELECT EXISTS (SELECT 1 FROM public.document_versions WHERE storage_key = $1)", r["storage_key"])
+        if not ainda:
+            for key in (r["storage_key"], storage_service.derivative_pdf_key(r["storage_key"]),
+                        storage_service.ocr_pdf_key(r["storage_key"]), storage_service.thumb_key(r["storage_key"])):
+                try:
+                    await asyncio.to_thread(storage_service.delete_object, key)
+                except Exception:  # noqa: BLE001 — melhor esforço; o órfão é recolhido pela varredura do R2
+                    pass
+    if apagadas:
+        logger.info("Versões antigas apagadas pela política da empresa: %d", apagadas)
+    return apagadas
