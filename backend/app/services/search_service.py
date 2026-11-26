@@ -154,7 +154,7 @@ class SearchService:
             limiar = 0.75 if len(letras) <= 5 else 0.6 if len(letras) <= 7 else 0.5
             await conn.execute(f"SET LOCAL pg_trgm.word_similarity_threshold = {limiar}")
             rows = await conn.fetch(
-                f"""
+                """
                 SELECT
                   d.id::text, d.name, d.file_type, d.size_bytes, d.sector, d.competencia, d.tipo_fiscal,
                   d.ocr_status, d.folder_id::text, d.company_id::text, d.created_at, f.name AS folder_name,
