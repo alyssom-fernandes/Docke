@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, useCallback, useId, type ElementType, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, useCallback, useId, type ElementType, type ReactNode, useMemo } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -2328,7 +2328,21 @@ export default function Documents() {
   // na ordenação salva, só restringe o que é exibido/alcançável por clique.
   const filterQ = filterQuery.trim().toLowerCase();
   const visibleFolders = filterQ ? sortedFolders.filter((f) => f.name.toLowerCase().includes(filterQ)) : sortedFolders;
-  const visibleDocuments = filterQ ? sortedDocuments.filter((d) => d.name.toLowerCase().includes(filterQ)) : sortedDocuments;
+  // Campos obrigatórios vazios por documento (X2-20): aviso na linha e filtro rápido.
+  const missingRequired = useMemo(() => {
+    const req = resolvedFields.filter((f) => f.required);
+    const map = new Map<string, string[]>();
+    if (!req.length) return map;
+    for (const d of sortedDocuments) {
+      const vals = fieldValues[d.id] ?? {};
+      const faltam = req.filter((f) => !(vals[f.custom_field_id] ?? "").trim()).map((f) => f.label);
+      if (faltam.length) map.set(d.id, faltam);
+    }
+    return map;
+  }, [resolvedFields, fieldValues, sortedDocuments]);
+  const [onlyMissing, setOnlyMissing] = useState(false);
+  const visibleDocuments = (filterQ ? sortedDocuments.filter((d) => d.name.toLowerCase().includes(filterQ)) : sortedDocuments)
+    .filter((d) => !onlyMissing || missingRequired.has(d.id));
 
   // Pastas sempre no topo (convenção de gerenciador de arquivos); só os documentos respeitam a ordenação escolhida
   const items: Item[] = [
@@ -2948,7 +2962,12 @@ export default function Documents() {
                         <span className="text-mac-caption text-(--text-tertiary) shrink-0">{splitExt(d.name)[1]}</span>
                       </div>
                     ) : (
-                      <span className={`text-mac-caption text-center leading-tight w-full line-clamp-2 break-words [hyphens:none] ${isSelected ? "text-white" : "text-(--text-primary)"}`} title={d.name}>{d.name}</span>
+                      // Nome em até duas linhas sem perder a extensão (A4-21): a base corta
+                      // com reticências e a extensão fica sempre visível embaixo.
+                      <span className={`text-mac-caption text-center leading-tight w-full flex flex-col items-center ${isSelected ? "text-white" : "text-(--text-primary)"}`} title={d.name}>
+                        <span className="w-full line-clamp-2 break-words [hyphens:none]">{splitExt(d.name)[0]}</span>
+                        {splitExt(d.name)[1] && <span className={`shrink-0 ${isSelected ? "text-white/80" : "text-(--text-secondary)"}`}>{splitExt(d.name)[1]}</span>}
+                      </span>
                     )}
                   </div>
                 );
@@ -3271,11 +3290,19 @@ export default function Documents() {
                             </div>
                           ) : (
                             <div className="min-w-0 flex-1">
-                              <TruncatedFileName
-                                name={d.name}
-                                className={`text-mac-body ${isSelected ? "text-white" : "text-(--text-primary)"}`}
-                                inverted={isSelected}
-                              />
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <TruncatedFileName
+                                  name={d.name}
+                                  className={`text-mac-body ${isSelected ? "text-white" : "text-(--text-primary)"}`}
+                                  inverted={isSelected}
+                                />
+                                {missingRequired.has(d.id) && (
+                                  <span className={`shrink-0 inline-flex ${isSelected ? "text-white" : "text-(--text-warning)"}`} title={`Falta preencher: ${missingRequired.get(d.id)!.join(", ")}`}>
+                                    <AlertTriangle className="w-3.5 h-3.5" aria-hidden />
+                                    <span className="sr-only">Falta preencher: {missingRequired.get(d.id)!.join(", ")}</span>
+                                  </span>
+                                )}
+                              </div>
                               {/* Celular: data, tamanho e situação do texto sob o nome (A4-17). */}
                               <span className={`sm:hidden block text-mac-caption truncate ${isSelected ? "text-white/85" : "text-(--text-secondary)"}`}>
                                 {fmtDate(d.created_at)} · {fmtSize(d.size_bytes)}{d.ocr_status === "failed" ? " · texto não lido" : ""}
@@ -3383,6 +3410,14 @@ export default function Documents() {
               </>
             )}
           </span>
+          {/* Pendentes de classificação (X2-20): filtra quem tem campo obrigatório vazio. */}
+          {(missingRequired.size > 0 || onlyMissing) && (
+            <button onClick={() => setOnlyMissing((v) => !v)} aria-pressed={onlyMissing}
+              className={`shrink-0 ml-2 inline-flex items-center gap-1 rounded-full px-2 min-h-6 pointer-coarse:min-h-9 ${onlyMissing ? "bg-amber-500/15 text-(--text-primary)" : "text-(--text-warning) hover:bg-(--bg-hover)"}`}>
+              <AlertTriangle className="w-3 h-3" aria-hidden />
+              {onlyMissing ? "Mostrar todos" : `${missingRequired.size} com campo obrigatório vazio`}
+            </button>
+          )}
         </div>
       </div>
 
