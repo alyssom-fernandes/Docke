@@ -323,7 +323,7 @@ export default function Search() {
                   const Icon = s.icon;
                   return (
                     <li key={r.id} className="border-b border-(--border-default) last:border-0">
-                      <Link to={`/documents?folder_id=${r.folder_id ?? ""}&doc=${r.id}`}
+                      <Link to={`/documents?folder_id=${r.folder_id ?? ""}&doc=${r.id}&busca=${encodeURIComponent(q)}`}
                         onMouseEnter={() => setAtivo(r)} onFocus={() => setAtivo(r)}
                         aria-current={ativo?.id === r.id ? "true" : undefined}
                         className="flex items-start gap-3 px-4 sm:px-5 py-3 hover:bg-(--bg-hover) transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-(--focus-ring)">

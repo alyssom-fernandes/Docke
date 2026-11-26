@@ -1038,11 +1038,15 @@ export default function Documents() {
   // Deep link vindo da busca: /documents?folder_id=<id>&doc=<id>
   const [searchParams, setSearchParams] = useSearchParams();
   const [pendingDocId, setPendingDocId] = useState<string | null>(null);
+  // Termo vindo da Busca (B2.6.6): abre a prévia com a busca interna preenchida.
+  const [pendingBusca, setPendingBusca] = useState<string | null>(null);
+  const [previewQuery, setPreviewQuery] = useState<string | null>(null);
   useEffect(() => {
     const linkedFolderId = searchParams.get("folder_id");
     const linkedDocId = searchParams.get("doc");
     if (!linkedFolderId || !current) return;
     if (linkedDocId) setPendingDocId(linkedDocId);
+    setPendingBusca(searchParams.get("busca"));
 
     api.get<Array<Folder & { path: string }>>("/folders", { params: { company_id: current.id, flat: true } })
       .then((res) => {
@@ -1076,8 +1080,11 @@ export default function Documents() {
   useEffect(() => {
     if (!pendingDocId || loading) return;
     const doc = documents.find((d) => d.id === pendingDocId);
-    if (doc) setDetailDoc(doc);
-  }, [documents, loading, pendingDocId]);
+    if (doc) {
+      setDetailDoc(doc);
+      if (pendingBusca) { setPreviewQuery(pendingBusca); setPreviewDoc(doc); setPendingBusca(null); }
+    }
+  }, [documents, loading, pendingDocId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ações vindas do ⌘K (?acao=enviar | nova-pasta).
   const acaoParam = searchParams.get("acao");
@@ -2790,7 +2797,8 @@ export default function Documents() {
         <PreviewModal
           doc={previewDoc}
           docs={visibleDocuments.some((d) => d.id === previewDoc.id) ? visibleDocuments : undefined}
-          onClose={() => setPreviewDoc(null)}
+          onClose={() => { setPreviewDoc(null); setPreviewQuery(null); }}
+          initialQuery={previewQuery}
           origin={(() => {
             // Quick Look cresce a partir do item clicado (A5-38).
             const r = rowRefs.current.get(previewDoc.id)?.getBoundingClientRect();
