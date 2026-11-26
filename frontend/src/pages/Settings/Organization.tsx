@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Building2, Plus, Image as ImageIcon, ChevronRight, ScrollText } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import { friendlyError } from "@/lib/errors";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
@@ -291,7 +292,7 @@ export default function Organization() {
       load();
       reloadCompanies();
     } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Erro ao atualizar empresa.");
+      showError(friendlyError(e, "Não foi possível atualizar a empresa. Tente de novo."));
     } finally {
       setBusy(false);
     }

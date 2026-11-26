@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Check } from "lucide-react";
 
 /**
  * Menu acessível (achados A4-22, X1-07): role="menu" com itens role="menuitem",
@@ -19,6 +20,8 @@ export interface MenuItem {
   /** Linha divisória antes deste item. */
   separatorBefore?: boolean;
   hint?: string;
+  /** Item marcável (menuitemcheckbox): mostra o visto quando marcado. */
+  checked?: boolean;
 }
 
 interface MenuProps {
@@ -146,7 +149,8 @@ export default function Menu({ items, onClose, anchor, label, align = "start" }:
           <button
             ref={(el) => { itemRefs.current[i] = el; }}
             type="button"
-            role="menuitem"
+            role={it.checked === undefined ? "menuitem" : "menuitemcheckbox"}
+            aria-checked={it.checked === undefined ? undefined : it.checked}
             tabIndex={i === active ? 0 : -1}
             disabled={it.disabled}
             aria-disabled={it.disabled || undefined}
@@ -156,9 +160,11 @@ export default function Menu({ items, onClose, anchor, label, align = "start" }:
               ${sheet ? "h-12 px-3.5 active:bg-(--bg-hover) focus-visible:bg-(--bg-hover)" : "h-7 pointer-coarse:h-11"}
               ${it.danger ? "text-(--text-danger)" : "text-(--text-primary)"}
               ${!sheet && i === active ? (it.danger ? "bg-red-600 text-white" : "bg-teal-600 text-white") : ""}
-              disabled:opacity-40 disabled:cursor-not-allowed`}
+              disabled:opacity-(--opacity-disabled) disabled:cursor-not-allowed`}
           >
-            {it.icon && <span className={`flex w-4 shrink-0 items-center justify-center ${sheet ? "[&_svg]:h-4 [&_svg]:w-4" : "[&_svg]:h-3.5 [&_svg]:w-3.5"}`} aria-hidden>{it.icon}</span>}
+            {it.checked !== undefined
+              ? <span className="flex w-4 shrink-0 items-center justify-center" aria-hidden>{it.checked && <Check className="h-3.5 w-3.5" />}</span>
+              : it.icon && <span className={`flex w-4 shrink-0 items-center justify-center ${sheet ? "[&_svg]:h-4 [&_svg]:w-4" : "[&_svg]:h-3.5 [&_svg]:w-3.5"}`} aria-hidden>{it.icon}</span>}
             <span className="min-w-0 flex-1 truncate">{it.label}</span>
             {it.hint && <span className={`shrink-0 text-mac-caption ${!sheet && i === active ? "text-white/80" : "text-(--text-secondary)"}`}>{it.hint}</span>}
             {it.shortcut && !sheet && (

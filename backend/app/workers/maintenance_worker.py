@@ -115,7 +115,7 @@ async def _cleanup_stale_pending_uploads(conn) -> None:
     rows = await conn.fetch(
         """
         DELETE FROM public.documents
-        WHERE content_hash IS NULL AND created_at < now() - interval '6 hours'
+        WHERE content_hash IS NULL AND copied_from IS NULL AND created_at < now() - interval '6 hours'
         RETURNING id, storage_path
         """
     )

@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useCallback, type ElementType } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, Upload, FileSearch, Archive, Download, X, CheckCircle2, AlertCircle, Loader2, RotateCcw, RefreshCw, ChevronRight } from "lucide-react";
+import { Bell, Upload, FileSearch, Archive, Download, Copy, X, CheckCircle2, AlertCircle, Loader2, RotateCcw, RefreshCw, ChevronRight } from "lucide-react";
 import { useTaskCenter, type Task, type TaskKind } from "@/lib/TaskContext";
 import { useCompany } from "@/lib/CompanyContext";
 import api from "@/lib/api";
@@ -12,6 +12,7 @@ const KIND_ICON: Record<TaskKind, ElementType> = {
   ocr: FileSearch,
   zip: Archive,
   export: Download,
+  copy: Copy,
 };
 
 interface Notification {
@@ -275,7 +276,7 @@ export default function TaskCenter() {
                 <div role="alert" className="flex items-center gap-2 px-4 py-3 text-mac-caption text-(--text-warning)">
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                   <span className="flex-1">Não deu para carregar os avisos agora.</span>
-                  <button onClick={loadNotifications} disabled={loading} className="inline-flex items-center gap-1 text-(--text-accent) font-medium hover:underline disabled:opacity-50 min-h-6 pointer-coarse:min-h-11">
+                  <button onClick={loadNotifications} disabled={loading} className="inline-flex items-center gap-1 text-(--text-accent) font-medium hover:underline disabled:opacity-(--opacity-disabled) min-h-6 pointer-coarse:min-h-11">
                     <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} aria-hidden="true" /> Tentar de novo
                   </button>
                 </div>

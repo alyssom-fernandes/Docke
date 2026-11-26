@@ -3,7 +3,7 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.dependencies import get_current_user, get_db, get_db_admin
 from app.services.folders_service import FoldersService
@@ -30,6 +30,21 @@ class FolderCopyStructure(BaseModel):
     target_parent_id: UUID | None = None
     include_metadata: bool = False
     include_documents: bool = False
+    # A4-47: escolhas finas e prévia sem gravar nada.
+    include_privacy: bool = True
+    include_access: bool = False
+    include_retention: bool = False
+    dry_run: bool = False
+
+
+class FolderPair(BaseModel):
+    source_folder_id: UUID
+    target_folder_id: UUID
+
+
+class FolderCopyDocuments(BaseModel):
+    target_company_id: UUID
+    pairs: list[FolderPair] = Field(min_length=1, max_length=50)
 
 
 # ---------------------------------------------------------------------------
@@ -263,6 +278,7 @@ async def copy_folder_structure(
     folder_id: UUID,
     body: FolderCopyStructure,
     conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
@@ -299,6 +315,17 @@ async def copy_folder_structure(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para copiar pastas para o destino escolhido.")
 
     subtree = await FoldersService.get_subtree(conn, company_id=source["company_id"], path=source["path"])
+    same_company = str(body.target_company_id) == source["company_id"]
+
+    if body.dry_run:
+        preview = await FoldersService.preview_copy(
+            conn, subtree=subtree, source=source,
+            target_company_id=body.target_company_id, target_parent_id=body.target_parent_id,
+        )
+        extra = {"access_grants": 0, "retention_assignments": 0}
+        if same_company:
+            extra = await FoldersService.count_access_and_retention(admin_conn, company_id=source["company_id"], path=source["path"])
+        return {**preview, **extra}
 
     id_map, path_map, new_root = await FoldersService.copy_folder_tree(
         conn,
@@ -321,16 +348,81 @@ async def copy_folder_structure(
             conn, id_map=id_map, target_company_id=body.target_company_id, uploaded_by=user_id,
         )
 
+    sensitivity_copied = await FoldersService.copy_sensitivity(conn, id_map) if body.include_privacy else 0
+
     await FoldersService.log_copy_activity(
         conn, folder_id=new_root["id"], company_id=str(body.target_company_id), name=new_root["name"],
     )
+
+    # Acessos e retenção por último (conexão de admin): só na mesma empresa,
+    # onde as pessoas, os grupos e as regras existem.
+    copied_extra = {"access_copied": 0, "retention_copied": 0}
+    if same_company and (body.include_access or body.include_retention):
+        copied_extra = await FoldersService.copy_access_and_retention(
+            admin_conn, company_id=source["company_id"], path_map=path_map, granted_by=user_id,
+            include_access=body.include_access, include_retention=body.include_retention,
+        )
 
     return {
         **dict(new_root),
         "folders_copied": len(id_map),
         "fields_copied": fields_copied,
         "documents_copied": documents_copied,
+        "sensitivity_copied": sensitivity_copied,
+        **copied_extra,
+        "root_renamed": new_root["name"] != source["name"],
+        "source_name": source["name"],
+        # Para a cópia dos documentos em partes (A4-48): origem → pasta nova.
+        "pairs": [{"source_folder_id": o, "target_folder_id": n} for o, n in id_map.items()],
     }
+
+
+# ---------------------------------------------------------------------------
+# POST /folders/:id/copy-structure/preview — a prévia em rota própria: uma API
+# antiga, que não conhece "dry_run", responde 404 aqui em vez de copiar.
+# ---------------------------------------------------------------------------
+
+@router.post("/{folder_id}/copy-structure/preview")
+async def preview_folder_structure_copy(
+    folder_id: UUID,
+    body: FolderCopyStructure,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    return await copy_folder_structure(
+        folder_id, body.model_copy(update={"dry_run": True}), conn=conn, admin_conn=admin_conn, claims=claims,
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /folders/copy-documents — copia os documentos de pares de pastas
+# (origem → destino) em partes, para o cliente mostrar progresso e poder
+# cancelar entre uma parte e outra (A4-48).
+# ---------------------------------------------------------------------------
+
+@router.post("/copy-documents")
+async def copy_documents_between_folders(
+    body: FolderCopyDocuments,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    user_id = claims["sub"]
+    id_map: dict[str, str] = {}
+    for p in body.pairs:
+        src = await FoldersService.get_folder_for_copy(conn, p.source_folder_id)
+        if src is None or src["permission"] is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta de origem não encontrada ou sem acesso.")
+        tgt = await FoldersService.get_target_parent(conn, p.target_folder_id, body.target_company_id)
+        if tgt is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta de destino não encontrada.")
+        if await FoldersService.check_permission(conn, user_id, tgt["path"], body.target_company_id) != "admin":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para copiar para a pasta de destino.")
+        id_map[str(p.source_folder_id)] = str(p.target_folder_id)
+    copied = await FoldersService.copy_folder_documents(
+        conn, id_map=id_map, target_company_id=body.target_company_id, uploaded_by=user_id,
+    )
+    return {"documents_copied": copied}
 
 
 # ---------------------------------------------------------------------------

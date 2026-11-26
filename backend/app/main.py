@@ -1,11 +1,15 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from typing import Any
 
 import asyncpg
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import settings
 from app.routers import (
@@ -48,6 +52,8 @@ async def lifespan(app: FastAPI):
     if settings.ENABLE_OCR_WORKER:
         from app.workers.ocr_worker import ocr_worker_loop
         tasks.append(asyncio.create_task(ocr_worker_loop()))
+        from app.workers.thumbnail_worker import thumbnail_worker_loop
+        tasks.append(asyncio.create_task(thumbnail_worker_loop()))
     from app.workers.maintenance_worker import maintenance_worker_loop, stats_refresh_loop
     tasks.append(asyncio.create_task(maintenance_worker_loop()))
     tasks.append(asyncio.create_task(stats_refresh_loop()))
@@ -89,6 +95,40 @@ _MENSAGEM_BLOQUEIO = {
         "ser excluído antes do prazo. O prazo aparece em Detalhes → Retenção."
     ),
 }
+
+
+# Erros com código estável (achado X3-16): o corpo segue o formato
+# problem+json (RFC 9457) e mantém o "detail" de sempre, que o frontend mostra.
+_CODIGOS_HTTP = {
+    400: "requisicao_invalida", 401: "nao_autenticado", 403: "sem_permissao", 404: "nao_encontrado",
+    405: "metodo_nao_permitido", 409: "conflito", 410: "expirado", 413: "grande_demais",
+    415: "formato_nao_aceito", 422: "dados_invalidos", 423: "bloqueado", 429: "muitas_tentativas",
+    500: "erro_interno", 502: "servico_externo", 503: "indisponivel", 504: "tempo_esgotado",
+}
+
+
+def _problema(status_code: int, detail: Any, headers: dict | None = None) -> JSONResponse:
+    from http import HTTPStatus
+
+    try:
+        titulo = HTTPStatus(status_code).phrase
+    except ValueError:
+        titulo = "Erro"
+    corpo = {
+        "type": "about:blank", "title": titulo, "status": status_code,
+        "code": _CODIGOS_HTTP.get(status_code, f"http_{status_code}"), "detail": detail,
+    }
+    return JSONResponse(status_code=status_code, content=corpo, headers=headers, media_type="application/problem+json")
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_error_handler(request: Request, exc: StarletteHTTPException):
+    return _problema(exc.status_code, exc.detail, getattr(exc, "headers", None))
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    return _problema(422, jsonable_encoder(exc.errors()))
 
 
 @app.exception_handler(asyncpg.exceptions.RaiseError)

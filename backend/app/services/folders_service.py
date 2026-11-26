@@ -3,6 +3,7 @@ FoldersService — CRUD de pastas, move com ltree, templates de pasta.
 NUNCA lida com permissões reais (isso é RLS) nem com documentos (isso é
 documents_service) — só orquestra as queries que folders.py precisa.
 """
+from typing import Any
 from uuid import UUID, uuid4
 
 import asyncpg
@@ -395,6 +396,147 @@ class FoldersService:
         return id_map, path_map, new_root
 
     @staticmethod
+    async def preview_copy(
+        conn: asyncpg.Connection, *,
+        subtree: list[asyncpg.Record], source: asyncpg.Record,
+        target_company_id: UUID, target_parent_id: UUID | None,
+    ) -> dict[str, Any]:
+        """Prévia da cópia (A4-47): o que vai ser criado e reaproveitado, sem
+        gravar nada. Os acessos e a retenção só contam na mesma empresa, onde
+        podem ser levados."""
+        ids = [r["id"] for r in subtree]
+        same = str(target_company_id) == source["company_id"]
+        root_name = await FoldersService.resolve_unique_folder_name(
+            conn, parent_id=target_parent_id, company_id=str(target_company_id), name=source["name"],
+        )
+        docs = await conn.fetchrow(
+            """
+            SELECT count(*)::int AS n, COALESCE(sum(size_bytes), 0)::bigint AS bytes
+            FROM public.documents
+            WHERE folder_id = ANY($1::uuid[]) AND deleted_at IS NULL
+            """,
+            ids,
+        )
+        fields = await conn.fetch(
+            """
+            SELECT DISTINCT cf.field_key,
+                   EXISTS (SELECT 1 FROM public.custom_field t
+                           WHERE t.company_id = $3::uuid AND t.field_key = cf.field_key AND t.archived_at IS NULL) AS existe
+            FROM public.folder_field ff
+            JOIN public.custom_field cf ON cf.id = ff.custom_field_id
+            WHERE ff.company_id = $1::uuid AND ff.folder_path IS NOT NULL AND ff.folder_path <@ $2::ltree
+              AND cf.archived_at IS NULL
+            """,
+            source["company_id"], source["path"], target_company_id,
+        )
+        aplicacoes = await conn.fetchval(
+            """
+            SELECT count(*)::int FROM public.folder_field ff
+            JOIN public.custom_field cf ON cf.id = ff.custom_field_id
+            WHERE ff.company_id = $1::uuid AND ff.folder_path IS NOT NULL AND ff.folder_path <@ $2::ltree
+              AND cf.archived_at IS NULL
+            """,
+            source["company_id"], source["path"],
+        )
+        sensitive = await conn.fetchval(
+            "SELECT count(*)::int FROM public.folders WHERE id = ANY($1::uuid[]) AND sensitivity <> 'normal'", ids,
+        )
+        return {
+            "folders": len(subtree),
+            "root_name": root_name,
+            "root_renamed": root_name != source["name"],
+            "documents": docs["n"],
+            "documents_bytes": int(docs["bytes"]),
+            "field_applications": aplicacoes or 0,
+            "fields_new": sum(1 for f in fields if not f["existe"]),
+            "fields_reused": sum(1 for f in fields if f["existe"]),
+            "sensitive_folders": sensitive or 0,
+            "same_company": same,
+        }
+
+    @staticmethod
+    async def count_access_and_retention(admin_conn: asyncpg.Connection, *, company_id: str, path: str) -> dict[str, int]:
+        """Concessões (pessoas e grupos) e regras de retenção presas à subárvore."""
+        row = await admin_conn.fetchrow(
+            """
+            SELECT
+              (SELECT count(*) FROM public.user_company_access
+                WHERE company_id = $1::uuid AND folder_path IS NOT NULL AND folder_path <@ $2::ltree)::int
+            + (SELECT count(*) FROM public.group_access
+                WHERE company_id = $1::uuid AND folder_path IS NOT NULL AND folder_path <@ $2::ltree)::int AS acessos,
+              (SELECT count(*) FROM public.retention_policy_assignments
+                WHERE company_id = $1::uuid AND folder_path IS NOT NULL AND folder_path <@ $2::ltree)::int AS retencao
+            """,
+            company_id, path,
+        )
+        return {"access_grants": row["acessos"], "retention_assignments": row["retencao"]}
+
+    @staticmethod
+    async def copy_sensitivity(conn: asyncpg.Connection, id_map: dict[str, str]) -> int:
+        """Leva a classificação LGPD (pasta sensível continua sensível na cópia)."""
+        if not id_map:
+            return 0
+        olds = list(id_map.keys())
+        news = [id_map[o] for o in olds]
+        return int((await conn.execute(
+            """
+            UPDATE public.folders n SET sensitivity = o.sensitivity
+            FROM unnest($1::uuid[], $2::uuid[]) AS m(old_id, new_id)
+            JOIN public.folders o ON o.id = m.old_id
+            WHERE n.id = m.new_id AND o.sensitivity <> 'normal'
+            """,
+            olds, news,
+        )).split()[-1])
+
+    @staticmethod
+    async def copy_access_and_retention(
+        admin_conn: asyncpg.Connection, *, company_id: str, path_map: dict[str, str], granted_by: str,
+        include_access: bool, include_retention: bool,
+    ) -> dict[str, int]:
+        """Na mesma empresa: as mesmas pessoas, grupos e regras de retenção nas
+        pastas novas (A4-47). Só roda depois de conferido que quem copia é admin
+        do destino."""
+        olds = list(path_map.keys())
+        news = [path_map[o] for o in olds]
+        out = {"access_copied": 0, "retention_copied": 0}
+        if include_access and olds:
+            r1 = await admin_conn.execute(
+                """
+                INSERT INTO public.user_company_access (user_id, company_id, folder_path, permission_level, granted_by)
+                SELECT a.user_id, a.company_id, m.new_path::ltree, a.permission_level, $4::uuid
+                FROM unnest($2::text[], $3::text[]) AS m(old_path, new_path)
+                JOIN public.user_company_access a ON a.company_id = $1::uuid AND a.folder_path = m.old_path::ltree
+                ON CONFLICT DO NOTHING
+                """,
+                company_id, olds, news, granted_by,
+            )
+            r2 = await admin_conn.execute(
+                """
+                INSERT INTO public.group_access (group_id, company_id, folder_path, permission_level, role_id, granted_by)
+                SELECT g.group_id, g.company_id, m.new_path::ltree, g.permission_level, g.role_id, $4::uuid
+                FROM unnest($2::text[], $3::text[]) AS m(old_path, new_path)
+                JOIN public.group_access g ON g.company_id = $1::uuid AND g.folder_path = m.old_path::ltree
+                ON CONFLICT DO NOTHING
+                """,
+                company_id, olds, news, granted_by,
+            )
+            out["access_copied"] = int(r1.split()[-1]) + int(r2.split()[-1])
+        if include_retention and olds:
+            r3 = await admin_conn.execute(
+                """
+                INSERT INTO public.retention_policy_assignments
+                  (company_id, folder_path, policy_id, created_by, match_tipo_fiscal, match_field_id, match_field_value)
+                SELECT r.company_id, m.new_path::ltree, r.policy_id, $4::uuid, r.match_tipo_fiscal, r.match_field_id, r.match_field_value
+                FROM unnest($2::text[], $3::text[]) AS m(old_path, new_path)
+                JOIN public.retention_policy_assignments r ON r.company_id = $1::uuid AND r.folder_path = m.old_path::ltree
+                ON CONFLICT DO NOTHING
+                """,
+                company_id, olds, news, granted_by,
+            )
+            out["retention_copied"] = int(r3.split()[-1])
+        return out
+
+    @staticmethod
     async def copy_folder_fields(
         conn: asyncpg.Connection, *,
         source_company_id: str, source_path: str, path_map: dict[str, str],
@@ -453,52 +595,63 @@ class FoldersService:
         return count
 
     @staticmethod
+    async def copy_documents(
+        conn: asyncpg.Connection, *, docs: list[asyncpg.Record], target_folder_id: UUID,
+        target_company_id: UUID, uploaded_by: str,
+    ) -> list[str]:
+        """
+        Duplica documentos numa pasta: copia o arquivo no storage (servidor a
+        servidor) e cria a linha nova com o MESMO hash do original e a marca
+        copied_from (migration 20261127000003). Antes a cópia ficava sem hash:
+        sumia das listas e a limpeza de envios incompletos a apagaria em 6 h.
+        OCR não é refeito: é o mesmo arquivo, o texto vem junto.
+        """
+        novos: list[str] = []
+        for doc in docs:
+            new_document_id = uuid4()
+            dot_idx = doc["name"].rfind(".")
+            ext = doc["name"][dot_idx + 1:] if dot_idx != -1 else "bin"
+            new_storage_path = storage_service.storage_key(str(target_company_id), str(new_document_id), ext)
+            storage_service.copy_object(doc["storage_path"], new_storage_path)
+            final_name = await DocumentsService.resolve_unique_name(conn, target_folder_id, doc["name"])
+            await conn.execute(
+                """
+                INSERT INTO public.documents
+                  (id, folder_id, company_id, name, mime_type, file_type, size_bytes, storage_path, content_hash, copied_from,
+                   sector, competencia, tipo_fiscal, ocr_status, ocr_text, ocr_completed_at, uploaded_by)
+                VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, $10::uuid, $11, $12, $13, $14, $15, $16, $17::uuid)
+                """,
+                new_document_id, target_folder_id, target_company_id, final_name,
+                doc["mime_type"], doc["file_type"], doc["size_bytes"], new_storage_path, doc["content_hash"], doc["id"],
+                doc["sector"], doc["competencia"], doc["tipo_fiscal"],
+                doc["ocr_status"], doc["ocr_text"], doc["ocr_completed_at"], uploaded_by,
+            )
+            novos.append(str(new_document_id))
+        return novos
+
+    _COPY_COLS = """
+        id::text, name, mime_type, file_type, size_bytes, storage_path, content_hash,
+        sector, competencia, tipo_fiscal, ocr_status, ocr_text, ocr_completed_at
+    """
+
+    @staticmethod
     async def copy_folder_documents(
         conn: asyncpg.Connection, *, id_map: dict[str, str], target_company_id: UUID, uploaded_by: str,
     ) -> int:
-        """
-        Duplica os documentos de cada pasta copiada — copia o arquivo físico no
-        storage (sem passar pelo fluxo de upload do usuário) e cria uma linha
-        nova em documents. content_hash fica NULL propositalmente: a constraint
-        uq_document_hash_per_company é por empresa, e copiar o hash original
-        poderia colidir (cópia pra mesma empresa) ou interferir na detecção de
-        duplicata de uploads futuros — deduplicação não é o objetivo aqui.
-        OCR não é reenfileirado: é literalmente o mesmo arquivo, o texto já
-        extraído (ocr_text/ocr_status/ocr_completed_at) é copiado direto.
-        """
+        """Duplica os documentos (completos) de cada pasta copiada na pasta nova correspondente."""
         count = 0
         for old_folder_id, new_folder_id in id_map.items():
             docs = await conn.fetch(
-                """
-                SELECT name, mime_type, file_type, size_bytes, storage_path,
-                       sector, competencia, tipo_fiscal, ocr_status, ocr_text, ocr_completed_at
+                f"""
+                SELECT {FoldersService._COPY_COLS}
                 FROM public.documents
-                WHERE folder_id = $1::uuid AND deleted_at IS NULL
+                WHERE folder_id = $1::uuid AND deleted_at IS NULL AND content_hash IS NOT NULL
                 """,
                 old_folder_id,
             )
-            for doc in docs:
-                new_document_id = uuid4()
-                dot_idx = doc["name"].rfind(".")
-                ext = doc["name"][dot_idx + 1:] if dot_idx != -1 else "bin"
-                new_storage_path = storage_service.storage_key(str(target_company_id), str(new_document_id), ext)
-                storage_service.copy_object(doc["storage_path"], new_storage_path)
-
-                final_name = await DocumentsService.resolve_unique_name(conn, UUID(new_folder_id), doc["name"])
-
-                await conn.execute(
-                    """
-                    INSERT INTO public.documents
-                      (id, folder_id, company_id, name, mime_type, file_type, size_bytes, storage_path,
-                       sector, competencia, tipo_fiscal, ocr_status, ocr_text, ocr_completed_at, uploaded_by)
-                    VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::uuid)
-                    """,
-                    new_document_id, UUID(new_folder_id), target_company_id, final_name,
-                    doc["mime_type"], doc["file_type"], doc["size_bytes"], new_storage_path,
-                    doc["sector"], doc["competencia"], doc["tipo_fiscal"],
-                    doc["ocr_status"], doc["ocr_text"], doc["ocr_completed_at"], uploaded_by,
-                )
-                count += 1
+            count += len(await FoldersService.copy_documents(
+                conn, docs=docs, target_folder_id=UUID(new_folder_id), target_company_id=target_company_id, uploaded_by=uploaded_by,
+            ))
         return count
 
     @staticmethod

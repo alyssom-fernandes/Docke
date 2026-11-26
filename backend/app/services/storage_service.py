@@ -359,9 +359,14 @@ def ocr_pdf_key(original_key: str) -> str:
     return f"derivatives/{original_key}.ocr.pdf"
 
 
+def thumb_key(original_key: str) -> str:
+    """Miniatura da grade (WEBP), gerada pelo worker de miniaturas."""
+    return f"derivatives/{original_key}.thumb.webp"
+
+
 def delete_derivatives(original_key: str) -> None:
-    """Melhor esforço: apaga os derivados de um objeto (PDF do LibreOffice e PDF do OCR)."""
-    for key in (derivative_pdf_key(original_key), ocr_pdf_key(original_key)):
+    """Melhor esforço: apaga os derivados de um objeto (PDF do LibreOffice, PDF do OCR e miniatura)."""
+    for key in (derivative_pdf_key(original_key), ocr_pdf_key(original_key), thumb_key(original_key)):
         try:
             delete_object(key)
         except Exception:

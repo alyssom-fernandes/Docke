@@ -68,7 +68,7 @@ export default function Privacy() {
       a.click();
       URL.revokeObjectURL(a.href);
     } catch {
-      showError("Não foi possível montar o ZIP agora.");
+      showError("Não foi possível montar o ZIP agora. Tente de novo em alguns instantes ou baixe a lista em CSV.");
     }
   }
 

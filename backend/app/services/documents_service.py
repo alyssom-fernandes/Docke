@@ -439,6 +439,7 @@ class DocumentsService:
         order = {
             "name": "lower(d.name)", "size": "d.size_bytes", "created_at": "d.created_at",
             "updated_at": "d.updated_at", "kind": "d.file_type", "ocr": "d.ocr_status",
+            "uploader": "lower(u.full_name)",
         }.get(sort, "lower(d.name)")
         direction = "DESC" if direction == "desc" else "ASC"
         where = """
@@ -463,9 +464,11 @@ class DocumentsService:
                 WHERE s.resource_type = 'document' AND s.resource_id = d.id
                   AND s.revoked_at IS NULL
                   AND (s.expires_at IS NULL OR s.expires_at > now())
-              ) AS active_share_count
+              ) AS active_share_count,
+              (th.storage_path IS NOT NULL) AS has_thumb
             FROM public.documents d
             LEFT JOIN public.users u ON u.id = d.uploaded_by
+            LEFT JOIN public.document_thumbnails th ON th.storage_path = d.storage_path AND th.ok
             WHERE {where}
             ORDER BY {order} {direction}, d.id
             LIMIT $4 OFFSET $5

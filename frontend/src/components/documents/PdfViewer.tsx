@@ -148,7 +148,7 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer({ url, q
     );
   }
 
-  const btn = "h-8 w-8 pointer-coarse:h-11 pointer-coarse:w-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) disabled:opacity-30 disabled:pointer-events-none";
+  const btn = "h-8 w-8 pointer-coarse:h-11 pointer-coarse:w-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) disabled:opacity-(--opacity-disabled) disabled:pointer-events-none";
 
   return (
     <div className="w-full h-full flex bg-(--bg-page)">

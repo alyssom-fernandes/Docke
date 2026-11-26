@@ -220,7 +220,7 @@ export default function InstanceDialog({
                     const v = e.target.value;
                     if (v && v !== data.due_date.slice(0, 10)) run(() => api.patch(`/obligations/instances/${data.id}`, { due_date: v }), "Vencimento alterado.", "Não foi possível alterar o vencimento.");
                   }}
-                  className="h-9 pointer-coarse:h-11 w-full rounded-(--radius-control) border border-(--border-control) bg-(--bg-card) px-3 text-mac-body text-(--text-primary) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring) disabled:opacity-60"
+                  className="h-9 pointer-coarse:h-11 w-full rounded-(--radius-control) border border-(--border-control) bg-(--bg-card) px-3 text-mac-body text-(--text-primary) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring) disabled:opacity-(--opacity-disabled)"
                 />
               </div>
               <div className="sm:col-span-2">
@@ -229,7 +229,7 @@ export default function InstanceDialog({
                   id={`${uid}-obs`} value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} maxLength={2000} disabled={!canOperate}
                   placeholder="Ex.: pedir a guia ao contador até o dia 10."
                   onBlur={() => { if ((data.notes ?? "") !== notes) run(() => api.patch(`/obligations/instances/${data.id}`, { notes: notes.trim() || null }), "Observação salva.", "Não foi possível salvar a observação."); }}
-                  className="w-full rounded-(--radius-control) border border-(--border-control) bg-(--bg-card) px-3 py-2 text-mac-body pointer-coarse:text-[16px] text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring) disabled:opacity-60"
+                  className="w-full rounded-(--radius-control) border border-(--border-control) bg-(--bg-card) px-3 py-2 text-mac-body pointer-coarse:text-[16px] text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring) disabled:opacity-(--opacity-disabled)"
                 />
               </div>
             </section>

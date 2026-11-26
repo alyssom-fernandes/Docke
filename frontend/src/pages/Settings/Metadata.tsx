@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Tags, Plus, Archive, FolderTree, Copy, Trash2 } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import { friendlyError } from "@/lib/errors";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
@@ -178,42 +179,156 @@ function NewFieldModal({ companyId, existingFields, onClose, onCreated }: {
 
 // ─── Modal: copiar de outra empresa ───────────────────────────────────────────
 
+interface CopyPreviewRow { id: string; label: string; type: string; existe: boolean; aplicacoes: number; aplicacoes_com_pasta: number }
+interface CopyReport { criados: string[]; existentes: string[]; aplicacoes_copiadas: number; aplicacoes_sem_pasta: number }
+
+// Copiar campos de outra empresa (A8-28): só empresas que a pessoa administra,
+// prévia de cada campo (novo ou já existente), escolha de quais levar, opção de
+// levar a aplicação nas pastas de mesmo nome e relatório no fim.
 function CopyFieldsModal({ companies, targetCompanyId, onClose, onCopied }: {
-  companies: { id: string; name: string }[]; targetCompanyId: string; onClose: () => void; onCopied: () => void;
+  companies: { id: string; name: string; permission_level?: string }[]; targetCompanyId: string; onClose: () => void; onCopied: () => void;
 }) {
-  const { success, error: showError } = useToast();
+  const { error: showError } = useToast();
   const [sourceId, setSourceId] = useState("");
   const [saving, setSaving] = useState(false);
-  const options = companies.filter((c) => c.id !== targetCompanyId);
+  const [preview, setPreview] = useState<CopyPreviewRow[] | null>(null);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [includeTree, setIncludeTree] = useState(true);
+  const [report, setReport] = useState<CopyReport | null>(null);
+  const options = companies.filter((c) => c.id !== targetCompanyId && (c.permission_level === "admin" || c.permission_level === "supremo"));
+
+  useEffect(() => {
+    if (!sourceId) { setPreview(null); return; }
+    let vivo = true;
+    setPreview(null);
+    setPreviewFailed(false);
+    api.post<CopyPreviewRow[]>("/custom-fields/copy/preview", { source_company_id: sourceId, target_company_id: targetCompanyId })
+      .then((r) => { if (!vivo) return; setPreview(r.data); setSel(new Set(r.data.filter((c) => !c.existe).map((c) => c.id))); })
+      .catch(() => { if (vivo) setPreviewFailed(true); });
+    return () => { vivo = false; };
+  }, [sourceId, targetCompanyId]);
 
   async function copy() {
-    if (!sourceId) return;
+    if (!sourceId || !sel.size) return;
     setSaving(true);
     try {
-      const { data } = await api.post("/custom-fields/copy", { source_company_id: sourceId, target_company_id: targetCompanyId });
-      success(`${data.length} campo(s) copiado(s).`);
+      const { data } = await api.post<CopyReport>("/custom-fields/copy-selected", {
+        source_company_id: sourceId, target_company_id: targetCompanyId, field_ids: [...sel], include_tree: includeTree,
+      });
+      setReport(data);
       onCopied();
-      onClose();
     } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Não foi possível copiar os campos.");
+      showError(e?.response?.data?.detail ?? "Não foi possível copiar os campos. Tente de novo.");
     } finally {
       setSaving(false);
     }
   }
 
+  if (report) {
+    return (
+      <Dialog onClose={onClose} title="Campos copiados" size="sm"
+        footer={<Button onClick={onClose}>Concluir</Button>}>
+        <ul className="space-y-1.5 text-mac-body text-(--text-primary)" role="status">
+          <li>{report.criados.length ? `${report.criados.length} campo(s) novo(s): ${report.criados.join(", ")}.` : "Nenhum campo novo."}</li>
+          {report.existentes.length > 0 && <li className="text-(--text-secondary)">Já existiam e foram reaproveitados: {report.existentes.join(", ")}.</li>}
+          {includeTree && <li>{report.aplicacoes_copiadas} aplicação(ões) em pasta copiadas.</li>}
+          {report.aplicacoes_sem_pasta > 0 && (
+            <li className="text-(--text-warning)">{report.aplicacoes_sem_pasta} aplicação(ões) ficaram de fora porque não há pasta com o mesmo caminho nesta empresa. Aplique pela aba “Aplicação na árvore”.</li>
+          )}
+        </ul>
+      </Dialog>
+    );
+  }
+
+  const todos = preview ?? [];
   return (
-    <Dialog onClose={onClose} title="Copiar campos de outra empresa" size="sm" busy={saving}
-      description="Copia o catálogo (nome, tipo e opções). Campos com o mesmo nome não são duplicados; a aplicação nas pastas não vem junto."
-      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={saving} onClick={copy} disabled={!sourceId}>Copiar</Button></>}>
-      <label id="cf-origem" className="block text-mac-body font-medium text-(--text-secondary) mb-1">Empresa de origem</label>
-      <Dropdown ariaLabelledby="cf-origem" value={sourceId} placeholder="Selecione…" onChange={setSourceId} options={options.map((c) => ({ value: c.id, label: c.name }))} />
+    <Dialog onClose={onClose} title="Copiar campos de outra empresa" size="md" busy={saving}
+      description="Escolha os campos. Campo com o mesmo nome no destino é reaproveitado, nunca duplicado."
+      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={saving} onClick={copy} disabled={!sourceId || !sel.size}>{sel.size ? `Copiar ${sel.size}` : "Copiar"}</Button></>}>
+      <div className="space-y-4">
+        <div>
+          <label id="cf-origem" className="block text-mac-body font-medium text-(--text-secondary) mb-1">Empresa de origem</label>
+          {options.length ? (
+            <Dropdown ariaLabelledby="cf-origem" value={sourceId} placeholder="Selecione…" onChange={setSourceId} options={options.map((c) => ({ value: c.id, label: c.name }))} />
+          ) : (
+            <p className="text-mac-caption text-(--text-secondary)">Você não administra outra empresa para copiar campos.</p>
+          )}
+        </div>
+        {sourceId && (
+          previewFailed ? (
+            <p role="alert" className="text-mac-caption text-(--text-danger)">Não foi possível ler os campos dessa empresa. Tente de novo.</p>
+          ) : !preview ? (
+            <div className="space-y-1.5" aria-label="Carregando campos">{[0, 1, 2].map((k) => <div key={k} className="h-8 rounded-[6px] bg-(--bg-hover) animate-pulse" />)}</div>
+          ) : todos.length === 0 ? (
+            <p className="text-mac-caption text-(--text-secondary)">Essa empresa não tem campos ativos.</p>
+          ) : (
+            <fieldset>
+              <legend className="text-mac-caption font-medium text-(--text-secondary) mb-1">Campos ({sel.size} de {todos.length})</legend>
+              <ul className="max-h-[240px] overflow-y-auto rounded-(--radius-control) border border-(--border-default) divide-y divide-(--border-default)">
+                {todos.map((c) => (
+                  <li key={c.id}>
+                    <label className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-(--bg-hover)">
+                      <Checkbox checked={sel.has(c.id)} onChange={() => setSel((prev) => { const n = new Set(prev); n.has(c.id) ? n.delete(c.id) : n.add(c.id); return n; })} />
+                      <span className="flex-1 min-w-0">
+                        <span className="block truncate text-mac-body text-(--text-primary)">{c.label}</span>
+                        <span className="block text-mac-caption text-(--text-secondary)">
+                          {TYPE_LABEL[c.type as keyof typeof TYPE_LABEL] ?? c.type}
+                          {c.existe ? " · já existe aqui (será reaproveitado)" : " · novo"}
+                          {c.aplicacoes ? ` · ${c.aplicacoes_com_pasta} de ${c.aplicacoes} aplicação(ões) com pasta equivalente` : ""}
+                        </span>
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </fieldset>
+          )
+        )}
+        <label className="flex items-start gap-2 text-mac-body text-(--text-primary) cursor-pointer">
+          <Checkbox checked={includeTree} onChange={(e) => setIncludeTree(e.target.checked)} />
+          <span>Levar também a aplicação nas pastas de mesmo nome (ex.: “Fiscal / Notas”)</span>
+        </label>
+      </div>
+    </Dialog>
+  );
+}
+
+// Copiar as regras da pasta aberta para outra pasta da mesma empresa (A8-28).
+function CopyRulesModal({ companyId, sourceFolder, folders, onClose, onCopied }: {
+  companyId: string; sourceFolder: FolderOption; folders: FolderOption[]; onClose: () => void; onCopied: () => void;
+}) {
+  const { success, error: showError } = useToast();
+  const [targetId, setTargetId] = useState("");
+  const [saving, setSaving] = useState(false);
+  async function copy() {
+    if (!targetId) return;
+    setSaving(true);
+    try {
+      const { data } = await api.post("/folder-fields/copy", { company_id: companyId, source_folder_id: sourceFolder.id, target_folder_id: targetId });
+      success(`${data.regras_copiadas} regra(s) copiada(s) para “${data.destino}”.`);
+      onCopied();
+      onClose();
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível copiar as regras. Tente de novo.");
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <Dialog onClose={onClose} title={`Copiar regras de “${sourceFolder.name}”`} size="sm" busy={saving}
+      description="Os campos aplicados (e os não herdados) desta pasta passam a valer também na pasta escolhida. Regras do destino para os mesmos campos são substituídas."
+      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={saving} onClick={copy} disabled={!targetId}>Copiar regras</Button></>}>
+      <label id="cr-destino" className="block text-mac-body font-medium text-(--text-secondary) mb-1">Pasta de destino</label>
+      <Dropdown ariaLabelledby="cr-destino" value={targetId} placeholder="Selecione…" onChange={setTargetId}
+        options={folders.filter((f) => f.id !== sourceFolder.id).map((f) => ({ value: f.id, label: f.name, depth: Math.max(0, folderDepth(f.path) - 1) }))} />
     </Dialog>
   );
 }
 
 // ─── Aba: Catálogo ────────────────────────────────────────────────────────────
 
-function CatalogTab({ companyId, companies }: { companyId: string; companies: { id: string; name: string }[] }) {
+function CatalogTab({ companyId, companies }: { companyId: string; companies: { id: string; name: string; permission_level?: string }[] }) {
   const { success, error: showError } = useToast();
   const [fields, setFields] = useState<CustomField[]>([]);
   const [loading, setLoading] = useState(true);
@@ -270,8 +385,8 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
       await api.post(`/custom-fields/${archiving.id}/archive`);
       success("Campo arquivado.");
       load();
-    } catch {
-      showError("Erro ao arquivar campo.");
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível arquivar o campo. Tente de novo."));
     } finally {
       setArchiving(null);
     }
@@ -284,23 +399,22 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
       success(`"${deleting.label}" excluído.`);
       load();
     } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Erro ao excluir campo.");
+      showError(friendlyError(e, "Não foi possível excluir o campo. Se ele já foi preenchido em algum documento, arquive em vez de excluir."));
     } finally {
       setDeleting(null);
     }
   }
 
   return (
-    <div>
-      {/* flex-col no mobile — em linha única (row) os dois botões com
-          shrink-0 nunca cediam espaço, empurrando o parágrafo pra uma
-          coluna estreitíssima e o botão "Novo campo" pra fora da tela
-          (overflow horizontal real, com scrollbar lateral). */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+    <div className="@container">
+      {/* A linha depende da largura do cartão, não da janela (A8-17): em
+          768 px o cartão tem ~410 px e a linha única empurrava "Novo campo"
+          para fora. Só fica em linha quando o cartão tem espaço (@2xl). */}
+      <div className="flex flex-col @2xl:flex-row @2xl:items-center @2xl:justify-between gap-3 mb-4">
         <p className="text-mac-caption text-(--text-tertiary)">
           Campos personalizados disponíveis para aplicar nas pastas (aba "Aplicação na árvore").
         </p>
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+        <div className="flex flex-col @sm:flex-row items-stretch @sm:items-center gap-2 shrink-0">
           <Button variant="secondary" size="sm" onClick={() => setShowCopy(true)}>
             <Copy className="w-3.5 h-3.5" /> Copiar de outra empresa
           </Button>
@@ -410,6 +524,7 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
   const [loading, setLoading] = useState(true);
   const [addFieldId, setAddFieldId] = useState("");
   const [removing, setRemoving] = useState<FolderFieldRule | null>(null);
+  const [copyingRules, setCopyingRules] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -421,7 +536,7 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
     }).catch(() => {
       setFolders([]);
       setAllFields([]);
-      showError("Não foi possível carregar as pastas ou os campos.");
+      showError("Não foi possível carregar as pastas ou os campos. Recarregue a página para tentar de novo.");
     });
   }, [companyId]);
 
@@ -464,8 +579,8 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
         default_value: rule.default_value,
       });
       load();
-    } catch {
-      showError("Erro ao atualizar o campo.");
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível atualizar o campo. Tente de novo."));
     }
   }
 
@@ -481,8 +596,8 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
         default_value: trimmed || null,
       });
       load();
-    } catch {
-      showError("Erro ao salvar o valor padrão.");
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível salvar o valor padrão. Confira o formato do campo e tente de novo."));
     }
   }
 
@@ -494,8 +609,8 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
       });
       success("Herança removida nesta pasta.");
       load();
-    } catch {
-      showError("Erro ao remover herança.");
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível deixar de herdar o campo aqui. Tente de novo."));
     }
   }
 
@@ -505,8 +620,8 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
       await api.delete(`/folder-fields/${removing.id}`, { params: { company_id: companyId } });
       success("Regra removida — volta a herdar do ancestral, se houver.");
       load();
-    } catch {
-      showError("Erro ao remover a regra.");
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível remover a regra. Tente de novo."));
     } finally {
       setRemoving(null);
     }
@@ -529,6 +644,15 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
         <p className="text-mac-caption text-(--text-tertiary) mt-1.5">
           Campos aplicados aqui valem para esta pasta e todas as subpastas, a não ser que uma subpasta tenha sua própria regra.
         </p>
+        {folderId && rules.length > 0 && (
+          <Button variant="ghost" size="sm" className="mt-1.5" onClick={() => setCopyingRules(true)}>
+            <Copy className="w-3.5 h-3.5" aria-hidden /> Copiar as regras desta pasta para outra…
+          </Button>
+        )}
+        {copyingRules && folders.find((f) => f.id === folderId) && (
+          <CopyRulesModal companyId={companyId} sourceFolder={folders.find((f) => f.id === folderId)!} folders={folders}
+            onClose={() => setCopyingRules(false)} onCopied={load} />
+        )}
       </div>
 
       {loading ? (

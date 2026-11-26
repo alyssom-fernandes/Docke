@@ -88,6 +88,8 @@ export const ACTION_LABELS: Record<string, string> = {
   field_archive: "arquivou o campo",
   field_restore: "reativou o campo",
   field_rule_apply: "aplicou o campo",
+  fields_copy: "copiou campos de outra empresa para",
+  field_rules_copy: "copiou regras de metadados para a pasta",
   field_rule_exclude: "tirou de uma pasta o campo",
 };
 

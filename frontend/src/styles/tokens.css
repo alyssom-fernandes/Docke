@@ -41,6 +41,16 @@
 
   --default-transition-timing-function: cubic-bezier(0, 0, 0.2, 1);
 
+  /* Movimento (A2-47): curvas nomeadas e durações de entrada e saída. A
+     saída é sempre mais curta que a entrada (o que some não pede atenção). */
+  --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --dur-enter: 200ms;
+  --dur-exit: 150ms;
+
+  /* Estado desabilitado único em todo controle (A2-49). */
+  --opacity-disabled: 0.45;
+
   --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.06);
   --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.1);
   --shadow-modal: 0 8px 24px rgba(0, 0, 0, 0.12);
@@ -329,7 +339,6 @@ html, body {
 .glass-blur-panel {
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
-  will-change: backdrop-filter;
 }
 .glass-blur-table {
   backdrop-filter: blur(12px) saturate(160%);
@@ -338,17 +347,14 @@ html, body {
 .glass-blur-card {
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
-  will-change: backdrop-filter;
 }
 .glass-blur-strong {
   backdrop-filter: blur(28px) saturate(180%);
   -webkit-backdrop-filter: blur(28px) saturate(180%);
-  will-change: backdrop-filter;
 }
 .glass-blur-pill {
   backdrop-filter: blur(32px) saturate(180%);
   -webkit-backdrop-filter: blur(32px) saturate(180%);
-  will-change: backdrop-filter;
 }
 
 .glass-scroll-active.glass-blur-table {
@@ -423,10 +429,13 @@ html, body {
   mask-image: url("/brand/docke-wordmark-450.png");
 }
 
-/* ─── Theme transition ─── */
-* {
+/* ─── Theme transition ───
+   Só controles e superfícies trocam de cor com transição (A2-47): antes o
+   "*" animava a cor de todo texto e ícone da página a cada troca. */
+:where(a, button, input, select, textarea, summary, label, [role="button"], [role="menuitem"], [role="tab"],
+       [role="option"], [role="row"], tr, .glass-panel, .glass-dialog) {
   transition-property: background-color, color, border-color, box-shadow;
-  transition-duration: 150ms;
+  transition-duration: var(--dur-exit);
   transition-timing-function: ease-out;
 }
 
@@ -524,7 +533,7 @@ input[type="number"] {
   to   { opacity: 1; transform: translateY(0); }
 }
 .page-enter {
-  animation: page-enter 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: page-enter var(--dur-enter) var(--ease-standard);
 }
 
 /* ─── Toast slide-in ─── */
@@ -533,14 +542,14 @@ input[type="number"] {
   to   { opacity: 1; transform: translateX(0); }
 }
 .toast-in {
-  animation: toast-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: toast-in var(--dur-enter) var(--ease-standard) both;
 }
 @keyframes toast-out {
   from { opacity: 1; transform: none; }
   to   { opacity: 0; transform: translateX(12px); }
 }
 .toast-out {
-  animation: toast-out 160ms ease-in both;
+  animation: toast-out var(--dur-exit) var(--ease-exit) both;
 }
 
 /* ─── Modal card animation (spring-like) ─── */
@@ -549,7 +558,7 @@ input[type="number"] {
   to   { opacity: 1; transform: scale(1.0); }
 }
 .modal-card {
-  animation: modal-in 250ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: modal-in 250ms var(--ease-standard) both;
   /* Cards de vidro (glass-blur-*) combinam backdrop-filter com o scale() dessa
      animação no MESMO elemento — sem forçar a camada de composição antes do
      primeiro frame, o Chromium/WebKit às vezes renderiza o blur "desalinhado"
@@ -572,25 +581,25 @@ input[type="number"] {
 @keyframes sheet-in { from { transform: translateY(100%); } to { transform: none; } }
 @keyframes sheet-out { from { transform: none; } to { transform: translateY(100%); } }
 .dialog-scrim-in { animation: dialog-scrim-in 200ms ease-out both; }
-.dialog-scrim-out { animation: dialog-scrim-out 150ms ease-in both; }
-.dialog-panel-in { animation: sheet-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
-.dialog-panel-out { animation: sheet-out 150ms ease-in both; }
+.dialog-scrim-out { animation: dialog-scrim-out var(--dur-exit) var(--ease-exit) both; }
+.dialog-panel-in { animation: sheet-in 260ms var(--ease-standard) both; }
+.dialog-panel-out { animation: sheet-out var(--dur-exit) var(--ease-exit) both; }
 @media (min-width: 640px) {
-  .dialog-panel-in { animation: dialog-pop-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
-  .dialog-panel-out { animation: dialog-pop-out 150ms ease-in both; }
+  .dialog-panel-in { animation: dialog-pop-in 220ms var(--ease-standard) both; }
+  .dialog-panel-out { animation: dialog-pop-out var(--dur-exit) var(--ease-exit) both; }
 }
 
 /* ─── Painel lateral (detalhes): desliza 12 px da direita em 200 ms ─── */
 @keyframes panel-in { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
-.panel-in { animation: panel-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.panel-in { animation: panel-in var(--dur-enter) var(--ease-standard) both; }
 
 /* ─── Menu e popover (Menu.tsx): aparecem 4 px acima do ponto, em 140 ms ─── */
 @keyframes menu-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
-.menu-in { animation: menu-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1) both; transform-origin: top left; }
+.menu-in { animation: menu-in 140ms var(--ease-standard) both; transform-origin: top left; }
 /* Saída dos popovers e menus (J1-06, A2-03): some em 120 ms, sem salto. */
 @keyframes menu-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-4px) scale(0.98); } }
-.menu-out { animation: menu-out 120ms ease-in both; transform-origin: top left; pointer-events: none; }
-.sheet-out { animation: sheet-out 150ms ease-in both; pointer-events: none; }
+.menu-out { animation: menu-out 120ms var(--ease-exit) both; transform-origin: top left; pointer-events: none; }
+.sheet-out { animation: sheet-out var(--dur-exit) var(--ease-exit) both; pointer-events: none; }
 
 /* ─── Anchor Drop animation ─── */
 @keyframes anchor-drop {
@@ -632,11 +641,11 @@ input[type="number"] {
 /* Entrada da tela de login: apresentação, cartão e trilha em sequência curta
    (até 300 ms cada); mensagens que surgem no cartão deslizam 4 px. */
 @keyframes login-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-.login-enter { animation: login-enter 300ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.login-enter { animation: login-enter 300ms var(--ease-standard) both; }
 .login-enter-2 { animation-delay: 70ms; }
 .login-enter-3 { animation-delay: 140ms; }
 @keyframes reveal { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-.login-reveal, .reveal { animation: reveal 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.login-reveal, .reveal { animation: reveal 180ms var(--ease-standard) both; }
 @keyframes login-node { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
   .login-chain::before, .login-chain > li { animation: none !important; }
@@ -694,3 +703,30 @@ input[type="number"] {
   :focus-visible { outline: 2px solid Highlight !important; outline-offset: 2px; }
   .brand-mark, .brand-wordmark { background-color: CanvasText; forced-color-adjust: none; }
 }
+
+/* Arrastar (A4-39): fantasma com os tokens da marca e o piscar do
+   spring-loaded avisando que a pasta vai abrir. */
+.drag-ghost {
+  position: fixed; top: -1000px; left: -1000px;
+  padding: 6px 14px; border-radius: 999px;
+  background: var(--color-teal-600); color: #fff;
+  font-family: inherit; font-size: var(--text-mac-body, 13px); font-weight: 500;
+  white-space: nowrap; box-shadow: 0 4px 12px rgb(0 0 0 / 0.35);
+}
+@keyframes spring-blink {
+  0%, 70% { outline-color: var(--color-teal-400); }
+  78% { outline-color: transparent; }
+  86% { outline-color: var(--color-teal-400); }
+  93% { outline-color: transparent; }
+  100% { outline-color: var(--color-teal-400); }
+}
+.spring-target { animation: spring-blink 1.2s linear 1; }
+@media (prefers-reduced-motion: reduce) { .spring-target { animation: none; } }
+
+/* Pasta que acabou de receber itens (A4-38): pulso curto confirmando. */
+@keyframes drop-pulse {
+  0% { box-shadow: inset 0 0 0 2px var(--color-teal-400); background-color: color-mix(in srgb, var(--color-teal-500) 18%, transparent); }
+  100% { box-shadow: inset 0 0 0 2px transparent; background-color: transparent; }
+}
+.drop-pulse { animation: drop-pulse 480ms var(--ease-standard) 1; }
+@media (prefers-reduced-motion: reduce) { .drop-pulse { animation: none; } }

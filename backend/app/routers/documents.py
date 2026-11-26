@@ -2,6 +2,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
+import json
 import os
 import tempfile
 import zipfile
@@ -12,7 +13,7 @@ import asyncio
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.dependencies import get_current_user, get_db, get_db_admin
 from app.config import settings
@@ -39,6 +40,11 @@ class BulkDownloadRequest(BaseModel):
 
 class BulkMoveRequest(BaseModel):
     document_ids: list[UUID]
+    target_folder_id: UUID
+
+
+class BulkCopyRequest(BaseModel):
+    document_ids: list[UUID] = Field(min_length=1, max_length=200)
     target_folder_id: UUID
 
 
@@ -791,6 +797,51 @@ async def bulk_download(
 
 
 # ---------------------------------------------------------------------------
+# POST /documents/bulk-copy — copia documentos para uma pasta (Alt ao arrastar, A4-38)
+# ---------------------------------------------------------------------------
+
+@router.post("/bulk-copy")
+async def bulk_copy(
+    body: BulkCopyRequest,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    from app.services.folders_service import FoldersService
+
+    user_id = claims["sub"]
+    alvo = await conn.fetchrow(
+        "SELECT id, company_id, path::text, name FROM public.folders WHERE id = $1 AND deleted_at IS NULL",
+        body.target_folder_id,
+    )
+    if alvo is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta de destino não encontrada.")
+    nivel = await FoldersService.check_permission(conn, user_id, alvo["path"], alvo["company_id"])
+    if nivel not in ("admin", "operador"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para adicionar documentos nesta pasta.")
+    docs = await conn.fetch(
+        f"""
+        SELECT {FoldersService._COPY_COLS}
+        FROM public.documents
+        WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL AND content_hash IS NOT NULL
+        """,
+        [str(i) for i in body.document_ids],
+    )
+    if not docs:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nenhum documento encontrado para copiar.")
+    novos = await FoldersService.copy_documents(
+        conn, docs=docs, target_folder_id=alvo["id"], target_company_id=alvo["company_id"], uploaded_by=user_id,
+    )
+    await conn.execute(
+        """
+        INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, metadata)
+        VALUES ($1::uuid, $2, 'copy', 'folder', $3, $4, $5::jsonb)
+        """,
+        user_id, alvo["company_id"], alvo["id"], alvo["name"], json.dumps({"documentos": len(novos)}),
+    )
+    return {"copied": len(novos), "document_ids": novos, "target_name": alvo["name"]}
+
+
+# ---------------------------------------------------------------------------
 # POST /documents/bulk-move — move múltiplos documentos para uma pasta destino
 # ---------------------------------------------------------------------------
 
@@ -1060,7 +1111,7 @@ async def get_preview_url(
     Retorna URL pré-assinada para abrir o documento inline no browser.
     - Expiração: 5 minutos.
     - Content-Disposition: inline (abre no browser, não faz download).
-    - Documentos > 10MB: retorna inline=false e orientação para download.
+    - Documentos acima do limite de envio: retorna inline=false e orientação para download.
     """
     doc = await DocumentsService.get_document_for_preview(conn, document_id)
     if doc is None:
@@ -1073,7 +1124,7 @@ async def get_preview_url(
             "expires_at": None,
             "size_bytes": doc["size_bytes"],
             "size_limit_bytes": _PREVIEW_SIZE_LIMIT,
-            "message": f"Arquivo com {doc['size_bytes'] // 1_048_576}MB excede o limite de 10MB para preview inline. Use o download.",
+            "message": f"Arquivo com {doc['size_bytes'] // 1_048_576} MB passa do limite de {_PREVIEW_SIZE_LIMIT // 1_048_576} MB para abrir aqui. Use Baixar.",
         }
 
     ext = doc["name"].rsplit(".", 1)[-1].lower() if "." in doc["name"] else ""
@@ -1204,7 +1255,14 @@ async def list_documents(
         conn, folder_id, company_id, limit=limit, offset=offset, sort=sort, direction=dir, q=(q or "").strip() or None,
     )
     response.headers["X-Total-Count"] = str(total)
-    return [dict(r) for r in rows]
+    from app.services.thumbnail_service import thumb_url
+    out = []
+    for r in rows:
+        d = dict(r)
+        # Miniatura da grade (A4-20): URL assinada por 1 h, só quando existe.
+        d["thumb_url"] = thumb_url(d["storage_path"]) if d.pop("has_thumb", False) else None
+        out.append(d)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -1219,7 +1277,31 @@ async def get_document(
     row = await DocumentsService.get_document_detail(conn, document_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
-    return dict(row)
+    # X3-16: o caminho interno do storage não sai da API, e o texto lido vem
+    # só como trecho (o texto inteiro tem rota própria, sob demanda).
+    d = dict(row)
+    d.pop("storage_path", None)
+    texto = d.pop("ocr_text", None) or ""
+    d["ocr_excerpt"] = texto[:600]
+    d["ocr_text_length"] = len(texto)
+    return d
+
+
+# ---------------------------------------------------------------------------
+# GET /documents/:id/text — texto lido do documento, sob demanda (A5-64)
+# ---------------------------------------------------------------------------
+
+@router.get("/{document_id}/text")
+async def get_document_text(
+    document_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    texto = await conn.fetchrow(
+        "SELECT ocr_text, ocr_status FROM public.documents WHERE id = $1 AND deleted_at IS NULL", document_id,
+    )
+    if texto is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+    return {"text": texto["ocr_text"] or "", "ocr_status": texto["ocr_status"]}
 
 
 # ---------------------------------------------------------------------------

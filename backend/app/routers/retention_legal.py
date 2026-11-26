@@ -143,6 +143,42 @@ class AssignmentCreate(BaseModel):
     company_id: UUID
     folder_id: UUID | None = None  # None = empresa toda
     policy_id: UUID
+    # A7-89: além da pasta, só um tipo de documento e/ou um valor de metadado.
+    match_tipo_fiscal: str | None = Field(None, max_length=60)
+    match_field_id: UUID | None = None
+    match_field_value: str | None = Field(None, max_length=200)
+
+
+def _filtros(tipo: str | None, campo: UUID | None, valor: str | None) -> tuple[str | None, UUID | None, str | None]:
+    tipo = (tipo or "").strip() or None
+    valor = (valor or "").strip() or None
+    if (campo is None) != (valor is None):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="Para filtrar por metadado, escolha o campo e informe o valor.")
+    return tipo, campo, valor
+
+
+async def _campo_da_empresa(conn: asyncpg.Connection, campo: UUID | None, company_id: UUID) -> None:
+    if campo is None:
+        return
+    ok = await conn.fetchval(
+        "SELECT EXISTS (SELECT 1 FROM public.custom_field WHERE id = $1 AND company_id = $2 AND archived_at IS NULL)",
+        campo, company_id,
+    )
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campo de metadado não encontrado nesta empresa.")
+
+
+def _onde(alvo: Any) -> str:
+    """Descrição de onde a atribuição vale (pasta, tipo e metadado)."""
+    if alvo is None:
+        return "Empresa toda"
+    partes = [alvo["folder_label"] or "Empresa toda"]
+    if alvo.get("match_tipo_fiscal"):
+        partes.append(f"tipo {alvo['match_tipo_fiscal']}")
+    if alvo.get("match_field_id"):
+        partes.append(f"{alvo.get('match_field_label') or 'campo'} = {alvo['match_field_value']}")
+    return " · ".join(partes)
 
 
 class HoldCreate(BaseModel):
@@ -387,6 +423,9 @@ async def simulate_assignment(
     company_id: UUID,
     policy_id: UUID = Query(...),
     folder_id: UUID | None = Query(None),
+    match_tipo_fiscal: str | None = Query(None, max_length=60),
+    match_field_id: UUID | None = Query(None),
+    match_field_value: str | None = Query(None, max_length=200),
     conn: asyncpg.Connection = Depends(get_db),
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
@@ -403,8 +442,11 @@ async def simulate_assignment(
     if policy is None or UUID(str(policy["company_id"])) != company_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Política de retenção não encontrada nesta empresa.")
 
+    tipo, campo, valor = _filtros(match_tipo_fiscal, match_field_id, match_field_value)
+    await _campo_da_empresa(conn, campo, company_id)
     return await RetentionService.simulate_assignment_impact(
         conn, company_id=company_id, policy_id=policy_id, folder_path=folder_path,
+        match_tipo_fiscal=tipo, match_field_id=campo, match_field_value=valor,
     )
 
 
@@ -429,15 +471,18 @@ async def create_assignment(
     if policy is None or UUID(str(policy["company_id"])) != company_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Política de retenção não encontrada nesta empresa.")
 
+    tipo, campo, valor = _filtros(body.match_tipo_fiscal, body.match_field_id, body.match_field_value)
+    await _campo_da_empresa(conn, campo, company_id)
     try:
         row = await RetentionService.create_assignment(
             conn, company_id=company_id, folder_path=folder_path, policy_id=body.policy_id, created_by=user_id,
+            match_tipo_fiscal=tipo, match_field_id=campo, match_field_value=valor,
         )
     except asyncpg.UniqueViolationError:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Essa política já está atribuída a esta pasta.")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Essa política já está atribuída aqui com os mesmos filtros.")
     alvo = await RetentionService.get_assignment(conn, row["id"])
     await RetentionService.log(conn, user_id=user_id, company_id=company_id, action="retention_assign", item_id=body.policy_id,
-                               name=policy["name"], metadata={"onde": (alvo["folder_label"] if alvo else None) or "Empresa toda"})
+                               name=policy["name"], metadata={"onde": _onde(dict(alvo) if alvo else None)})
     return dict(row)
 
 
@@ -456,7 +501,7 @@ async def remove_assignment(
     await RetentionService.remove_assignment(conn, assignment_id)
     await RetentionService.log(conn, user_id=claims["sub"], company_id=company_id, action="retention_unassign",
                                item_id=alvo["policy_id"], name=alvo["policy_name"],
-                               metadata={"onde": alvo["folder_label"] or "Empresa toda"})
+                               metadata={"onde": _onde(dict(alvo))})
 
 
 @router.get("/retention/assignments/{assignment_id}/impact")
@@ -473,7 +518,7 @@ async def assignment_impact(
     if alvo is None or alvo["company_id"] != company_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Atribuição não encontrada.")
     n = await RetentionService.winner_count(conn, company_id, alvo["policy_id"], str(alvo["folder_path"]) if alvo["folder_path"] else None)
-    return {"documents": n, "policy_name": alvo["policy_name"], "where": alvo["folder_label"] or "Empresa toda"}
+    return {"documents": n, "policy_name": alvo["policy_name"], "where": _onde(dict(alvo))}
 
 
 # ---------------------------------------------------------------------------
@@ -761,7 +806,8 @@ async def retention_summary(
               AND EXISTS (SELECT 1 FROM public.retention_policy_assignments rpa
                           JOIN public.retention_policies rp ON rp.id = rpa.policy_id
                           WHERE rpa.company_id = $1 AND rp.active AND rp.archived_at IS NULL
-                            AND (rpa.folder_path IS NULL OR rpa.folder_path @> f.path))) AS cobertos
+                            AND (rpa.folder_path IS NULL OR rpa.folder_path @> f.path)
+                            AND public.retention_assignment_applies(rpa.match_tipo_fiscal, rpa.match_field_id, rpa.match_field_value, d.id, d.tipo_fiscal))) AS cobertos
         """,
         company_id,
     )
