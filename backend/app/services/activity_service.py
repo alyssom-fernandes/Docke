@@ -76,6 +76,8 @@ _ACTION_LABELS: dict[str, str] = {
     "mfa_reset": "Verificação em duas etapas zerada",
     "sessions_end": "Sessões encerradas",
     "upload_request": "Pedido de arquivos criado",
+    "share_create": "Link público criado",
+    "share_revoke": "Link público desativado",
     "audit_verify": "Integridade da trilha verificada",
     "field_rules_copy": "Regras de metadados copiadas de outra pasta",
     "field_rule_exclude": "Campo tirado de pasta",
@@ -129,7 +131,7 @@ class ActivityService:
               ON al.item_type = 'document' AND cur_d.id = al.item_id AND cur_d.deleted_at IS NULL
             WHERE al.company_id = $1
               AND ($2::uuid IS NULL OR al.user_id    = $2)
-              AND ($3::text IS NULL OR al.action     = $3)
+              AND ($3::text IS NULL OR al.action = ANY(string_to_array($3, ',')))
               AND ($4::text IS NULL OR al.item_type  = $4)
               AND ($5::date IS NULL OR al.created_at >= $5::date)
               AND ($6::date IS NULL OR al.created_at <  ($6 + interval '1 day')::date)
@@ -182,7 +184,7 @@ class ActivityService:
             LEFT JOIN public.users u ON u.id = al.user_id
             WHERE al.company_id = $1
               AND ($2::uuid IS NULL OR al.user_id    = $2)
-              AND ($3::text IS NULL OR al.action     = $3)
+              AND ($3::text IS NULL OR al.action = ANY(string_to_array($3, ',')))
               AND ($4::text IS NULL OR al.item_type  = $4)
               AND ($5::date IS NULL OR al.created_at >= $5::date)
               AND ($6::date IS NULL OR al.created_at <  ($6 + interval '1 day')::date)

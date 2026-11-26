@@ -1190,3 +1190,42 @@ async def end_member_sessions(
     await CompaniesService.log_access(admin_conn, actor_id=claims["sub"], company_id=company_id, action="sessions_end",
                                       target_id=member_id, target_name=nome, metadata={"encerradas": n})
     return {"user_id": str(member_id), "encerradas": n}
+
+
+@router.get("/{company_id}/people/{member_id}/reach")
+async def person_reach(
+    company_id: UUID,
+    member_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Busca reversa (FA-A9-07): o que esta pessoa acessa nesta empresa, pasta a
+    pasta, com o papel que vale em cada uma (direto, herdado ou por grupo).
+    """
+    role = await get_app_role(conn, claims)
+    if not await _can_manage_company(conn, claims["sub"], company_id, role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Só quem administra a empresa vê o alcance de outra pessoa.")
+    empresa_toda = await admin_conn.fetchval(
+        "SELECT public.user_has_access($1, NULL::ltree, $2)", member_id, company_id,
+    )
+    rows = await admin_conn.fetch(
+        """
+        SELECT f.id::text, f.name, f.path::text AS path, nlevel(f.path) AS depth,
+               public.user_has_access($1, f.path, $2) AS role,
+               public.folder_effective_sensitivity(f.id) AS sensitivity
+        FROM public.folders f
+        WHERE f.company_id = $2 AND f.deleted_at IS NULL
+        ORDER BY f.path
+        LIMIT 2000
+        """,
+        member_id, company_id,
+    )
+    pastas = [dict(r) for r in rows if r["role"]]
+    return {
+        "company_role": empresa_toda,
+        "folders": pastas,
+        "total_folders": len(rows),
+        "sensitive_count": sum(1 for p in pastas if p["sensitivity"] in ("pessoal", "sensivel")),
+    }

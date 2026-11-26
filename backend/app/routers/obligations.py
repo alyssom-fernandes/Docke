@@ -840,3 +840,55 @@ async def update_fiscal_profile(
         uf=body.uf, tipo_juridico=body.tipo_juridico, updated_by=claims["sub"],
     )
     return dict(row)
+
+
+# ---------------------------------------------------------------------------
+# Calendário (B3.5.10): as obrigações em aberto em .ics (Google Agenda,
+# Outlook, celular) ou CSV, de uma empresa ou de todas as que a pessoa acessa.
+# ---------------------------------------------------------------------------
+
+def _ics_texto(s: str) -> str:
+    return (s or "").replace("\\", "\\\\").replace(";", r"\;").replace(",", r"\,").replace("\n", r"\n")
+
+
+@router.get("/obligations/calendar")
+async def obligations_calendar(
+    company_id: UUID | None = Query(None),
+    formato: str = Query("ics", pattern="^(ics|csv)$"),
+    mine: bool = Query(False),
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+):
+    from fastapi.responses import Response
+
+    rows = [_instance_out(r) for r in await ObligationsService.list_group_open(conn, claims["sub"], owner_only=mine)]
+    if company_id is not None:
+        rows = [r for r in rows if str(r["company_id"]) == str(company_id)]
+    rows.sort(key=lambda r: (r["due_date"], r["company_name"] or "", r["template_name"] or ""))
+    hoje = datetime.date.today().strftime("%Y%m%d")
+
+    if formato == "csv":
+        linhas = [["Vencimento", "Empresa", "Obrigação", "Competência", "Situação", "Responsável"]]
+        for r in rows:
+            linhas.append([r["due_date"].strftime("%d/%m/%Y"), r["company_name"] or "", r["template_name"] or "",
+                           r["period_label"], r.get("effective_status") or r.get("status") or "", r.get("owner_name") or ""])
+        corpo = "\ufeff" + "\r\n".join(";".join('"' + str(c).replace('"', '""') + '"' for c in linha) for linha in linhas)
+        return Response(corpo, media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="obrigacoes_{hoje}.csv"'})
+
+    agora = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    ev = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Docke//Obrigacoes//PT-BR", "CALSCALE:GREGORIAN",
+          "X-WR-CALNAME:Obrigações (Docke)", "X-WR-TIMEZONE:America/Sao_Paulo"]
+    for r in rows:
+        ini = r["due_date"]
+        fim = ini + datetime.timedelta(days=1)
+        titulo = f"{r['template_name']} · {r['period_label']}" + (f" ({r['company_name']})" if company_id is None else "")
+        desc = f"Situação: {r.get('effective_status') or r.get('status')}" + (f"\nResponsável: {r['owner_name']}" if r.get("owner_name") else "")
+        ev += ["BEGIN:VEVENT", f"UID:{r['id']}@docke", f"DTSTAMP:{agora}",
+               f"DTSTART;VALUE=DATE:{ini.strftime('%Y%m%d')}", f"DTEND;VALUE=DATE:{fim.strftime('%Y%m%d')}",
+               f"SUMMARY:{_ics_texto(titulo)}", f"DESCRIPTION:{_ics_texto(desc)}",
+               "BEGIN:VALARM", "TRIGGER:-P3D", "ACTION:DISPLAY", f"DESCRIPTION:{_ics_texto(titulo)}", "END:VALARM",
+               "END:VEVENT"]
+    ev.append("END:VCALENDAR")
+    return Response("\r\n".join(ev) + "\r\n", media_type="text/calendar; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="obrigacoes_{hoje}.ics"'})
