@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import ConformityMatrix from "@/components/obligations/ConformityMatrix";
+import AsoMatrix from "@/components/obligations/AsoMatrix";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useAuthContext } from "@/lib/AuthContext";
@@ -24,7 +25,7 @@ import {
   STATUS, StatusChip, URGENCY, OPEN_STATUSES, CRIT_LABEL, MESES, dueText, scheduleText, friendly,
 } from "@/components/obligations/shared";
 
-type Tab = "pendencias" | "calendario" | "configuracao" | "matriz";
+type Tab = "pendencias" | "calendario" | "configuracao" | "matriz" | "aso";
 type Load<T> = { state: "loading" | "ok" | "error"; data: T };
 
 const GROUPS: { id: string; title: string; statuses: string[] }[] = [
@@ -65,7 +66,7 @@ export default function Obligations() {
   const [params, setParams] = useSearchParams();
   const uid = useId();
 
-  const tab = (["pendencias", "calendario", "configuracao", "matriz"].includes(params.get("aba") ?? "") ? params.get("aba") : "pendencias") as Tab;
+  const tab = (["pendencias", "calendario", "configuracao", "matriz", "aso"].includes(params.get("aba") ?? "") ? params.get("aba") : "pendencias") as Tab;
   const grupo = params.get("escopo") === "grupo" && companies.length > 1;
   const mine = params.get("minhas") === "1";
   const prazo = params.get("prazo");
@@ -201,8 +202,8 @@ export default function Obligations() {
       {/* Abas e escopo */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div role="tablist" aria-label="Visões de obrigações" className="flex items-center gap-0.5 p-0.5 rounded-full bg-(--bg-hover)">
-          {([["pendencias", "Pendências"], ["matriz", "Matriz"], ["calendario", "Calendário"], ["configuracao", "Cadastro"]] as const)
-            .filter(([id]) => (grupo ? id === "pendencias" || id === "matriz" : id !== "matriz"))
+          {([["pendencias", "Pendências"], ["matriz", "Matriz"], ["calendario", "Calendário"], ["configuracao", "Cadastro"], ["aso", "Exames (ASO)"]] as const)
+            .filter(([id]) => (grupo ? id === "pendencias" || id === "matriz" : id !== "matriz" && (id !== "aso" || isAdmin)))
             .map(([id, label]) => (
               <button key={id} role="tab" aria-selected={tab === id} onClick={() => setParam({ aba: id === "pendencias" ? null : id })}
                 className={`px-3 h-8 pointer-coarse:h-10 rounded-full text-mac-body font-medium transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${tab === id ? "bg-(--bg-card) text-(--text-primary) shadow-sm" : "text-(--text-secondary) hover:text-(--text-primary)"}`}>
@@ -249,6 +250,8 @@ export default function Obligations() {
         </div>
       ) : tab === "matriz" && grupo ? (
         <ConformityMatrix />
+      ) : tab === "aso" && !grupo && current && isAdmin ? (
+        <AsoMatrix companyId={current.id} />
       ) : tab === "pendencias" ? (
         <>
           {instances.state === "error" ? (
