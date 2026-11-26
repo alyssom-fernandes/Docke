@@ -31,10 +31,10 @@ const icons: Record<ToastType, typeof CheckCircle2> = {
 };
 
 const iconBg: Record<ToastType, string> = {
-  success: "bg-emerald-500/12",
-  error: "bg-red-500/12",
-  warning: "bg-amber-500/12",
-  info: "bg-teal-500/12",
+  success: "bg-(--tint-success)",
+  error: "bg-(--tint-danger)",
+  warning: "bg-(--tint-warning)",
+  info: "bg-(--tint-accent)",
 };
 
 const iconColors: Record<ToastType, string> = {

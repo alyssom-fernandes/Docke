@@ -84,7 +84,7 @@ export default function CatalogDialog({ companyId, companyName, members, onClose
         </>
       }
     >
-      <p className="mb-4 flex items-start gap-2 rounded-(--radius-control) bg-amber-500/10 px-3 py-2 text-mac-caption text-(--text-primary)">
+      <p className="mb-4 flex items-start gap-2 rounded-(--radius-control) bg-(--tint-warning) px-3 py-2 text-mac-caption text-(--text-primary)">
         <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-(--text-warning)" aria-hidden="true" />
         Prazos e validades são sugestões e mudam por estado, município e regime. Confira com a contabilidade antes de confiar nos avisos.
       </p>

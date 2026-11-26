@@ -100,7 +100,7 @@ export default function TitularChannel() {
                     className={`min-h-9 rounded-[6px] text-mac-body transition-colors focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${aba === v ? "bg-(--bg-card) text-(--text-primary) shadow-sm" : "text-(--text-secondary)"}`}>{t}</button>
                 ))}
               </div>
-              {erro && <p role="alert" className="mb-3 rounded-(--radius-control) bg-red-500/10 px-3 py-2 text-mac-caption text-(--text-primary)">{erro}</p>}
+              {erro && <p role="alert" className="mb-3 rounded-(--radius-control) bg-(--tint-danger) px-3 py-2 text-mac-caption text-(--text-primary)">{erro}</p>}
               {aba === "pedir" && (recibo ? (
                 <div className="reveal space-y-3" role="status">
                   <p className="text-mac-body text-(--text-primary)">Pedido recebido. Guarde estes dados para acompanhar:</p>

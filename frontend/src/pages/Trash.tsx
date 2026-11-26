@@ -154,7 +154,7 @@ export default function Trash() {
               return (
                 <li key={k} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 sm:px-5 py-3 border-b border-(--border-default) last:border-0">
                   <Checkbox aria-label={`Selecionar ${item.name}`} checked={sel.has(k)} onChange={() => setSel((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; })} />
-                  <span className={`w-8 h-8 rounded-badge flex items-center justify-center shrink-0 ${item.item_type === "folder" ? "bg-teal-500/12" : fs.bgColor}`} aria-hidden="true">
+                  <span className={`w-8 h-8 rounded-badge flex items-center justify-center shrink-0 ${item.item_type === "folder" ? "bg-(--tint-accent)" : fs.bgColor}`} aria-hidden="true">
                     <Icon className={`w-4 h-4 ${item.item_type === "folder" ? "text-(--text-accent)" : `${fs.iconColor} ${fs.fillColor}`}`} />
                   </span>
                   <div className="flex-1 min-w-[14rem]">

@@ -223,7 +223,7 @@ function IntegritySection() {
         Verificar agora
       </Button>
       {result && (
-        <div role="status" key={`${result.total_events}-${result.broken_count}`} className={`reveal mt-4 flex items-start gap-2 p-3 rounded-(--radius-control) ${result.intact ? "bg-emerald-500/10" : "bg-red-500/10"}`}>
+        <div role="status" key={`${result.total_events}-${result.broken_count}`} className={`reveal mt-4 flex items-start gap-2 p-3 rounded-(--radius-control) ${result.intact ? "bg-(--tint-success)" : "bg-(--tint-danger)"}`}>
           {result.intact ? (
             <ShieldCheck className="w-4 h-4 text-(--text-success) shrink-0 mt-0.5" />
           ) : (

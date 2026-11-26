@@ -26,7 +26,7 @@ interface Colab {
 const KIND: Record<string, string> = { admissional: "Admissional", periodico: "Periódico", retorno: "Retorno ao trabalho", mudanca_risco: "Mudança de risco", demissional: "Demissional" };
 const RESULT: Record<string, string> = { apto: "Apto", apto_restricao: "Apto com restrição", inapto: "Inapto" };
 const TOM: Record<Estado, string> = {
-  ok: "bg-emerald-500/12 text-(--text-success)", vence_logo: "bg-amber-500/15 text-(--text-warning)", atrasado: "bg-red-500/12 text-(--text-danger)",
+  ok: "bg-(--tint-success) text-(--text-success)", vence_logo: "bg-(--tint-warning) text-(--text-warning)", atrasado: "bg-(--tint-danger) text-(--text-danger)",
   pendente: "bg-(--bg-hover) text-(--text-secondary)", nao_se_aplica: "text-(--text-tertiary)",
 };
 const erro = (e: any, p: string) => (typeof e?.response?.data?.detail === "string" ? e.response.data.detail : p);

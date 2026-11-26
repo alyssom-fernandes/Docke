@@ -208,7 +208,7 @@ export default function PublicShare() {
               className="reveal flex flex-col items-stretch gap-4 py-2"
             >
               <div className="flex flex-col items-center gap-2 text-center">
-                <div className="w-12 h-12 bg-amber-500/10 rounded-card flex items-center justify-center">
+                <div className="w-12 h-12 bg-(--tint-warning) rounded-card flex items-center justify-center">
                   <Lock className="w-6 h-6 text-(--text-warning)" aria-hidden="true" />
                 </div>
                 <p className="text-mac-body text-(--text-primary) font-medium wrap-break-word">“{info.name}” está protegido por senha</p>

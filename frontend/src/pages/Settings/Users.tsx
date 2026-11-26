@@ -175,7 +175,7 @@ export default function Users() {
               options={[{ value: "ativas", label: "Contas ativas" }, { value: "desativadas", label: "Desativadas" }, { value: "grupo", label: "Com acesso por grupo" }, { value: "todas", label: "Todas" }]} /></div>
             {folderFilter && (
               <button onClick={() => setParams((p) => { const n = new URLSearchParams(p); n.delete("folder"); return n; }, { replace: true })}
-                className="h-9 px-3 rounded-full bg-teal-500/12 text-mac-caption font-medium text-(--text-accent)">Com acesso a {folderName ?? "pasta"} ✕</button>
+                className="h-9 px-3 rounded-full bg-(--tint-accent) text-mac-caption font-medium text-(--text-accent)">Com acesso a {folderName ?? "pasta"} ✕</button>
             )}
           </div>
           <p className="sr-only" role="status" aria-live="polite">{visible.length} pessoas</p>
@@ -301,7 +301,7 @@ function PersonDialog({ companyId, person, folders, isSelf, onClose, onChanged }
     <>
       <Dialog onClose={onClose} title={person.full_name} description={`${person.email ?? person.username}${person.company_count > 1 ? ` · acessa ${person.company_count} empresas` : ""}`} size="lg" busy={busy}>
         <div className="space-y-6">
-          {!person.is_active && <p className="rounded-(--radius-control) bg-red-500/10 px-3 py-2 text-mac-body text-(--text-primary)">Conta desativada: não entra no Docke. O histórico e os documentos dela continuam.</p>}
+          {!person.is_active && <p className="rounded-(--radius-control) bg-(--tint-danger) px-3 py-2 text-mac-body text-(--text-primary)">Conta desativada: não entra no Docke. O histórico e os documentos dela continuam.</p>}
 
           <section aria-labelledby={`${uid}-dir`} className="space-y-2">
             <h3 id={`${uid}-dir`} className="text-mac-body font-semibold text-(--text-primary)">Acessos diretos</h3>

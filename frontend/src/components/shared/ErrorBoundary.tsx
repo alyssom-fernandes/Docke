@@ -57,7 +57,7 @@ export default class ErrorBoundary extends Component<Props, State> {
     const chunk = isChunkError(error);
     const body = (
       <div role="alert" className="reveal mx-auto flex max-w-[460px] flex-col items-start gap-3 px-6 py-16">
-        <div className="w-11 h-11 rounded-full bg-amber-500/12 flex items-center justify-center">
+        <div className="w-11 h-11 rounded-full bg-(--tint-warning) flex items-center justify-center">
           {chunk ? <WifiOff className="w-5 h-5 text-(--text-warning)" aria-hidden /> : <RefreshCw className="w-5 h-5 text-(--text-warning)" aria-hidden />}
         </div>
         <h1 ref={this.headingRef} tabIndex={-1} className="text-mac-title2 font-bold text-(--text-primary) focus:outline-hidden">

@@ -271,7 +271,7 @@ function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
               <div key={`g${k}`} className="my-1 px-4 text-(--text-secondary) select-none" aria-hidden="true">⋯</div>
             ) : (
               <div key={v} data-line={v}
-                className={`flex gap-2 px-4 whitespace-pre-wrap break-words ${lines[v].type === "add" ? "bg-emerald-500/12" : lines[v].type === "remove" ? "bg-red-500/12" : ""} ${changeStarts[cursor] === v ? "ring-2 ring-inset ring-(--focus-ring)" : ""}`}>
+                className={`flex gap-2 px-4 whitespace-pre-wrap break-words ${lines[v].type === "add" ? "bg-(--tint-success)" : lines[v].type === "remove" ? "bg-(--tint-danger)" : ""} ${changeStarts[cursor] === v ? "ring-2 ring-inset ring-(--focus-ring)" : ""}`}>
                 <span aria-hidden="true" className={`w-3 shrink-0 select-none ${lines[v].type === "add" ? "text-(--text-success)" : lines[v].type === "remove" ? "text-(--text-danger)" : "text-(--text-secondary)"}`}>{lines[v].type === "add" ? "+" : lines[v].type === "remove" ? "−" : ""}</span>
                 {lines[v].type !== "same" && <span className="sr-only">{lines[v].type === "add" ? "Entrou: " : "Saiu: "}</span>}
                 <span className={`flex-1 ${lines[v].type === "same" ? "text-(--text-secondary)" : "text-(--text-primary)"}`}><LineText line={lines[v]} /></span>
@@ -498,7 +498,7 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
           {full && <p className="text-mac-caption text-(--text-warning)">Limite de {MAX_VERSIONS} versões atingido: exclua uma antiga para enviar ou restaurar outra.</p>}
 
           {pickFor && (
-            <div role="status" className="flex items-center gap-2 rounded-(--radius-control) bg-teal-500/10 px-3 py-2 text-mac-caption text-(--text-primary)">
+            <div role="status" className="flex items-center gap-2 rounded-(--radius-control) bg-(--tint-accent) px-3 py-2 text-mac-caption text-(--text-primary)">
               <GitCompare className="w-3.5 h-3.5 text-(--text-accent)" aria-hidden="true" />
               <span className="flex-1">Escolha a versão para comparar com a {pickFor.version_number}.</span>
               <button onClick={() => setPickFor(null)} aria-label="Cancelar comparação" className={iconBtn}><X className="w-3.5 h-3.5" aria-hidden="true" /></button>
@@ -517,7 +517,7 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
                 <li
                   key={v.id}
                   className={`${fresh === v.id ? "reveal" : ""} flex items-start gap-1.5 pl-3 pr-1 py-2 rounded-(--radius-control) text-mac-caption ${
-                    v.is_current ? "bg-teal-500/10 border border-teal-500/30" : "bg-(--bg-page) border border-transparent"
+                    v.is_current ? "bg-(--tint-accent) border border-teal-500/30" : "bg-(--bg-page) border border-transparent"
                   }`}
                 >
                   <div className="flex-1 min-w-0 py-0.5">

@@ -601,7 +601,7 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
               <li className="text-mac-caption text-(--text-secondary) px-2 py-1">Nada encontrado no texto reconhecido da imagem.</li>
             ) : matches.map((m, i) => (
               <li key={i}><button onClick={() => setActive(i)} aria-current={i === active || undefined}
-                className={`w-full text-left px-2 py-1.5 rounded-[6px] text-mac-caption ${i === active ? "bg-teal-500/15 text-(--text-primary)" : "text-(--text-secondary) hover:bg-(--bg-hover)"}`}>{m.snippet}</button></li>
+                className={`w-full text-left px-2 py-1.5 rounded-[6px] text-mac-caption ${i === active ? "bg-(--tint-accent) text-(--text-primary)" : "text-(--text-secondary) hover:bg-(--bg-hover)"}`}>{m.snippet}</button></li>
             ))}
           </ul>
         )}

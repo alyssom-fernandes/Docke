@@ -168,7 +168,7 @@ export default function Activity() {
       </div>
 
       {integrity && (
-        <p role="status" className={`flex items-center gap-2 rounded-(--radius-control) px-3 py-2 text-mac-body ${integrity.intact ? "bg-green-600/10 text-(--text-primary)" : "bg-red-500/10 text-(--text-primary)"}`}>
+        <p role="status" className={`flex items-center gap-2 rounded-(--radius-control) px-3 py-2 text-mac-body ${integrity.intact ? "bg-green-600/10 text-(--text-primary)" : "bg-(--tint-danger) text-(--text-primary)"}`}>
           {integrity.intact ? <ShieldCheck className="w-4 h-4 text-(--text-success)" aria-hidden="true" /> : <ShieldAlert className="w-4 h-4 text-(--text-danger)" aria-hidden="true" />}
           {integrity.intact
             ? `Trilha íntegra: ${integrity.total_events.toLocaleString("pt-BR")} registros conferidos, nenhum alterado.`

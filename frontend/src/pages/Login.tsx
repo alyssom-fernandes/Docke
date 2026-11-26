@@ -157,7 +157,7 @@ export default function Login() {
       ref={formErrorRef}
       tabIndex={-1}
       role="alert"
-      className="login-reveal rounded-(--radius-control) border border-red-500/30 bg-red-500/8 px-3 py-2.5 text-mac-body leading-[19px] text-(--text-primary) focus:outline-hidden"
+      className="login-reveal rounded-(--radius-control) border border-red-500/30 bg-(--tint-danger) px-3 py-2.5 text-mac-body leading-[19px] text-(--text-primary) focus:outline-hidden"
     >
       {formError}
     </div>
@@ -340,7 +340,7 @@ export default function Login() {
                   )}
                 </div>
                 {demo === "error" && (
-                  <div role="alert" className="login-reveal mt-3.5 rounded-(--radius-control) border border-red-500/30 bg-red-500/8 px-4 py-3.5">
+                  <div role="alert" className="login-reveal mt-3.5 rounded-(--radius-control) border border-red-500/30 bg-(--tint-danger) px-4 py-3.5">
                     <p className="text-mac-body leading-[19px] text-(--text-secondary)">
                       <strong className="mb-1 block font-semibold text-(--text-primary)">Não foi possível abrir a demonstração agora.</strong>
                       O servidor não respondeu a tempo. Tente de novo em alguns minutos.

@@ -217,7 +217,7 @@ export default function FolderTree({
   return (
     <div className="py-1">
       {failed && (
-        <div role="alert" className="mx-1 mb-1 rounded-[6px] bg-amber-500/10 px-2.5 py-2 text-mac-caption text-(--text-primary)">
+        <div role="alert" className="mx-1 mb-1 rounded-[6px] bg-(--tint-warning) px-2.5 py-2 text-mac-caption text-(--text-primary)">
           Não carregou a árvore de pastas.{" "}
           <button onClick={load} className="inline-flex items-center gap-1 font-medium text-(--text-accent) underline-offset-2 hover:underline">
             <RefreshCw className="w-3 h-3" aria-hidden /> Tentar de novo
@@ -271,8 +271,8 @@ export default function FolderTree({
               style={{ paddingLeft: `${8 + depth * 16}px` }}
               className={`relative flex items-center gap-1.5 h-8 pointer-coarse:h-11 pr-2 text-mac-body rounded-[6px] cursor-pointer select-none outline-none transition-colors duration-fast
                 focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-(--focus-ring)
-                ${isActive ? "bg-teal-500/12 text-(--text-accent) font-medium" : "text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)"}
-                ${isDragOver ? "ring-2 ring-inset ring-teal-500 bg-teal-500/10" : ""}`}
+                ${isActive ? "bg-(--tint-accent) text-(--text-accent) font-medium" : "text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)"}
+                ${isDragOver ? "ring-2 ring-inset ring-teal-500 bg-(--tint-accent)" : ""}`}
             >
               <span
                 className="w-4 h-4 shrink-0 flex items-center justify-center"
@@ -292,7 +292,7 @@ export default function FolderTree({
           onDragOver={(e) => { e.preventDefault(); setDragOverId("__raiz__"); }}
           onDragLeave={() => setDragOverId(null)}
           onDrop={(e) => { e.preventDefault(); setDragOverId(null); if (dragSrcId) moveFolder(dragSrcId, null); setDragSrcId(null); }}
-          className={`mt-1 mx-1 rounded-[6px] border border-dashed px-2 py-2 text-center text-mac-caption ${dragOverId === "__raiz__" ? "border-teal-500 bg-teal-500/10 text-(--text-accent)" : "border-(--border-control) text-(--text-secondary)"}`}
+          className={`mt-1 mx-1 rounded-[6px] border border-dashed px-2 py-2 text-center text-mac-caption ${dragOverId === "__raiz__" ? "border-teal-500 bg-(--tint-accent) text-(--text-accent)" : "border-(--border-control) text-(--text-secondary)"}`}
         >
           Soltar aqui para levar ao início
         </div>

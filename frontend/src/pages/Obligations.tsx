@@ -276,7 +276,7 @@ export default function Obligations() {
                       return (
                         <li key={e.company_id}>
                           <button aria-pressed={on} onClick={() => setParam({ empresa: on ? null : e.company_id })}
-                            className={`text-left rounded-(--radius-control) border px-3 py-2 min-h-11 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${on ? "border-teal-600 bg-teal-500/10" : "border-(--border-default) hover:bg-(--bg-hover)"}`}>
+                            className={`text-left rounded-(--radius-control) border px-3 py-2 min-h-11 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${on ? "border-teal-600 bg-(--tint-accent)" : "border-(--border-default) hover:bg-(--bg-hover)"}`}>
                             <span className="block text-mac-body font-medium text-(--text-primary)">{e.name}</span>
                             <span className="block text-mac-caption text-(--text-secondary)">
                               {e.overdue > 0 ? <span className="text-(--text-danger) font-medium">{e.overdue} atrasada{e.overdue > 1 ? "s" : ""}</span> : "nada atrasado"}

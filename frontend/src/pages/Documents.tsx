@@ -157,7 +157,7 @@ function SaveViewDialog({ folderName, onClose, onSave }: { folderName: string; o
   const [scope, setScope] = useState<"pasta" | "todas">("pasta");
   const [shared, setShared] = useState(true);
   const [busy, setBusy] = useState(false);
-  const opcao = (ativo: boolean) => `text-left rounded-(--radius-control) border px-3 py-2 text-mac-body transition-colors focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${ativo ? "border-teal-600 bg-teal-500/10 text-(--text-primary)" : "border-(--border-control) text-(--text-secondary) hover:bg-(--bg-hover)"}`;
+  const opcao = (ativo: boolean) => `text-left rounded-(--radius-control) border px-3 py-2 text-mac-body transition-colors focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${ativo ? "border-teal-600 bg-(--tint-accent) text-(--text-primary)" : "border-(--border-control) text-(--text-secondary) hover:bg-(--bg-hover)"}`;
   return (
     <Dialog onClose={onClose} size="sm" busy={busy} title="Salvar vista"
       description="Guarda a ordenação, as colunas, o agrupamento e o filtro por metadado de agora."
@@ -1850,7 +1850,7 @@ export default function Documents() {
                 onClick={navigateHome}
                 className={`w-full flex items-center gap-1.5 h-8 pl-3 pr-2 text-mac-body rounded-[6px] transition-colors duration-fast text-left ${
                   currentFolderId === null
-                    ? "bg-teal-500/10 text-(--text-accent) font-medium"
+                    ? "bg-(--tint-accent) text-(--text-accent) font-medium"
                     : "text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)"
                 }`}
               >
@@ -1922,7 +1922,7 @@ export default function Documents() {
             </h1>
             {currentPrivacy !== "normal" && (
               <span title={currentPrivacy === "sensivel" ? "Dado sensível (LGPD): link público bloqueado" : "Dado pessoal (LGPD)"}
-                className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-mac-caption2 font-medium ${currentPrivacy === "sensivel" ? "bg-red-500/12 text-(--text-danger)" : "bg-amber-500/12 text-(--text-warning)"}`}>
+                className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-mac-caption2 font-medium ${currentPrivacy === "sensivel" ? "bg-(--tint-danger) text-(--text-danger)" : "bg-(--tint-warning) text-(--text-warning)"}`}>
                 <ShieldAlert className="w-3 h-3" aria-hidden />{PRIVACY_LABEL[currentPrivacy]}
               </span>
             )}
@@ -2134,7 +2134,7 @@ export default function Documents() {
           ) : loadError ? (
             <div className="flex items-center justify-center h-full px-6">
               <div role="alert" className="reveal flex max-w-sm flex-col items-center text-center gap-2">
-                <div className="w-11 h-11 rounded-full bg-amber-500/12 flex items-center justify-center">
+                <div className="w-11 h-11 rounded-full bg-(--tint-warning) flex items-center justify-center">
                   <AlertTriangle className="w-5 h-5 text-(--text-warning)" aria-hidden />
                 </div>
                 <p className="text-mac-callout font-semibold text-(--text-primary)">Não foi possível abrir esta pasta.</p>
@@ -2205,7 +2205,7 @@ export default function Documents() {
                       onFocus={() => setFocusedId(f.id)}
                       className={`group relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-(--radius-control) cursor-pointer transition-colors duration-fast outline-none focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${
                         selected.has(f.id) ? "bg-teal-600" : "hover:bg-(--bg-hover)"
-                      } ${isDropTarget ? "spring-target bg-teal-500/10 outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""} ${dragFolderIds?.includes(f.id) ? "opacity-40" : ""} ${droppedOn === f.id ? "drop-pulse" : ""}`}
+                      } ${isDropTarget ? "spring-target bg-(--tint-accent) outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""} ${dragFolderIds?.includes(f.id) ? "opacity-40" : ""} ${droppedOn === f.id ? "drop-pulse" : ""}`}
                       onClick={(e) => selectDocClick(e, f.id)}
                       onDoubleClick={() => openFolder(f)}
                       onContextMenu={(e) => openContextMenu(e, "folder", f)}
@@ -2441,7 +2441,7 @@ export default function Documents() {
                         onFocus={() => setFocusedId(f.id)}
                         className={`border-b border-(--border-default) transition-colors duration-fast group cursor-pointer outline-none focus-visible:shadow-[inset_3px_0_0_var(--focus-ring)] ${
                           isFolderSel ? "bg-teal-600" : "odd:bg-black/4 dark:odd:bg-white/[0.035] hover:bg-(--bg-hover) focus-visible:bg-teal-500/12"
-                        } ${isDropTarget ? "spring-target bg-teal-500/10 outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""} ${dragFolderIds?.includes(f.id) ? "opacity-40" : ""} ${droppedOn === f.id ? "drop-pulse" : ""}`}
+                        } ${isDropTarget ? "spring-target bg-(--tint-accent) outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""} ${dragFolderIds?.includes(f.id) ? "opacity-40" : ""} ${droppedOn === f.id ? "drop-pulse" : ""}`}
                         onClick={(e) => selectDocClick(e, f.id)}
                         onDoubleClick={() => openFolder(f)}
                         onContextMenu={(e) => openContextMenu(e, "folder", f)}
@@ -2765,7 +2765,7 @@ export default function Documents() {
           )}
           {dragBox && (
             <div
-              className="absolute border border-teal-500 bg-teal-500/10 pointer-events-none z-20 rounded-[4px]"
+              className="absolute border border-teal-500 bg-(--tint-accent) pointer-events-none z-20 rounded-[4px]"
               style={{
                 left: Math.min(dragBox.x1, dragBox.x2),
                 top: Math.min(dragBox.y1, dragBox.y2),
@@ -2798,7 +2798,7 @@ export default function Documents() {
                   }}
                   onDragLeave={() => setDragOverFolderId((v) => (v === `crumb-${idx}` ? null : v))}
                   onDrop={(e) => { e.preventDefault(); dropOnTarget({ id: crumb.id ?? null, name: idx === 0 ? "Início" : crumb.name }, e.altKey); }}
-                  className={`text-mac-caption hover:text-(--text-accent) transition-colors duration-fast rounded-[4px] px-0.5 ${dragOverFolderId === `crumb-${idx}` ? "bg-teal-500/15 text-(--text-accent) outline-solid outline-1 outline-teal-400" : ""} ${
+                  className={`text-mac-caption hover:text-(--text-accent) transition-colors duration-fast rounded-[4px] px-0.5 ${dragOverFolderId === `crumb-${idx}` ? "bg-(--tint-accent) text-(--text-accent) outline-solid outline-1 outline-teal-400" : ""} ${
                     idx === breadcrumbs.length - 1
                       ? "text-(--text-primary) font-medium"
                       : "text-(--text-secondary)"
@@ -2829,7 +2829,7 @@ export default function Documents() {
           {/* Pendentes de classificação (X2-20): filtra quem tem campo obrigatório vazio. */}
           {(missingRequired.size > 0 || onlyMissing) && (
             <button onClick={() => setOnlyMissing((v) => !v)} aria-pressed={onlyMissing}
-              className={`shrink-0 ml-2 inline-flex items-center gap-1 rounded-full px-2 min-h-6 pointer-coarse:min-h-9 ${onlyMissing ? "bg-amber-500/15 text-(--text-primary)" : "text-(--text-warning) hover:bg-(--bg-hover)"}`}>
+              className={`shrink-0 ml-2 inline-flex items-center gap-1 rounded-full px-2 min-h-6 pointer-coarse:min-h-9 ${onlyMissing ? "bg-(--tint-warning) text-(--text-primary)" : "text-(--text-warning) hover:bg-(--bg-hover)"}`}>
               <AlertTriangle className="w-3 h-3" aria-hidden />
               {onlyMissing ? "Mostrar todos" : `${missingRequired.size} com campo obrigatório vazio`}
             </button>
@@ -2837,7 +2837,7 @@ export default function Documents() {
           {/* Metadado navegável (B1.2.7): clicar num valor da coluna filtra; aqui limpa. */}
           {fieldFilter && (
             <button onClick={() => setFieldFilter(null)} aria-label={`Tirar o filtro ${fieldFilter.label} = ${fieldFilter.value}`}
-              className="shrink-0 ml-2 inline-flex items-center gap-1 rounded-full px-2 min-h-6 pointer-coarse:min-h-9 bg-teal-500/15 text-(--text-primary) hover:bg-teal-500/25">
+              className="shrink-0 ml-2 inline-flex items-center gap-1 rounded-full px-2 min-h-6 pointer-coarse:min-h-9 bg-(--tint-accent) text-(--text-primary) hover:bg-teal-500/25">
               {fieldFilter.label} = {fieldFilter.value} <X className="w-3 h-3" aria-hidden />
             </button>
           )}
@@ -2926,7 +2926,7 @@ export default function Documents() {
         <Dialog onClose={() => setShowTreeDrawer(false)} title="Pastas" size="sm" bodyClassName="px-2 py-2">
           <button
             onClick={() => { navigateHome(); setShowTreeDrawer(false); }}
-            className={`w-full flex items-center gap-1.5 h-9 pointer-coarse:h-11 pl-3 pr-2 text-mac-body rounded-[6px] text-left ${currentFolderId === null ? "bg-teal-500/12 text-(--text-accent) font-medium" : "text-(--text-primary) hover:bg-(--bg-hover)"}`}
+            className={`w-full flex items-center gap-1.5 h-9 pointer-coarse:h-11 pl-3 pr-2 text-mac-body rounded-[6px] text-left ${currentFolderId === null ? "bg-(--tint-accent) text-(--text-accent) font-medium" : "text-(--text-primary) hover:bg-(--bg-hover)"}`}
           >
             <Home className="w-4 h-4 shrink-0" aria-hidden /> Início
           </button>

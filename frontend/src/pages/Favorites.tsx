@@ -130,7 +130,7 @@ export default function Favorites() {
                 return (
                   <li key={fav.id} className="group flex items-center border-b border-(--border-default) last:border-0">
                     <Link to={href(fav)} className="flex-1 min-w-0 flex items-center gap-3 px-4 sm:px-5 py-2.5 min-h-14 hover:bg-(--bg-hover) transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-(--focus-ring)">
-                      <span className={`w-8 h-8 rounded-badge flex items-center justify-center shrink-0 ${fav.item_type === "folder" ? "bg-teal-500/12" : s.bgColor}`} aria-hidden="true">
+                      <span className={`w-8 h-8 rounded-badge flex items-center justify-center shrink-0 ${fav.item_type === "folder" ? "bg-(--tint-accent)" : s.bgColor}`} aria-hidden="true">
                         <Icon className={`w-4 h-4 ${fav.item_type === "folder" ? "text-(--text-accent) fill-teal-500/25" : `${s.iconColor} ${s.fillColor}`}`} />
                       </span>
                       <span className="flex-1 min-w-0">
