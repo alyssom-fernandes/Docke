@@ -5,6 +5,7 @@ usuário (chamada ao Supabase Auth) precisam ocorrer antes de qualquer
 contexto RLS do novo recurso existir; gestão de acesso de outros usuários
 nunca pode depender da sessão RLS do próprio ator.
 """
+import json
 from typing import Any
 from uuid import UUID
 
@@ -424,6 +425,125 @@ class CompaniesService:
     @staticmethod
     async def delete_access_grant(admin_conn: asyncpg.Connection, access_id: UUID) -> None:
         await admin_conn.execute("DELETE FROM public.user_company_access WHERE id = $1", access_id)
+
+    @staticmethod
+    async def list_people(admin_conn: asyncpg.Connection, company_id: UUID) -> list[dict[str, Any]]:
+        """
+        Pessoas da empresa com tudo que define o que cada uma vê (A9-18):
+        concessões diretas, acessos recebidos por grupo, se a conta está
+        ativa e o último acesso. Quem só tem acesso por grupo também aparece.
+        """
+        rows = await admin_conn.fetch(
+            """
+            WITH quem AS (
+              SELECT user_id FROM public.user_company_access WHERE company_id = $1
+              UNION
+              SELECT gm.user_id FROM public.group_member gm
+              JOIN public."group" g ON g.id = gm.group_id
+              JOIN public.group_access ga ON ga.group_id = g.id AND ga.company_id = $1
+              WHERE g.company_id = $1
+            )
+            SELECT u.id::text AS user_id, u.username, u.full_name, u.is_active, u.role,
+                   u.must_change_password, au.email::text AS email, au.last_sign_in_at,
+                   COALESCE((
+                     SELECT json_agg(json_build_object(
+                       'access_id', a.id::text, 'role', a.permission_level, 'folder_id', f.id::text,
+                       'folder_name', f.name, 'created_at', a.created_at) ORDER BY a.folder_path NULLS FIRST)
+                     FROM public.user_company_access a
+                     LEFT JOIN public.folders f ON f.company_id = a.company_id AND f.path = a.folder_path AND f.deleted_at IS NULL
+                     WHERE a.user_id = u.id AND a.company_id = $1
+                   ), '[]') AS grants,
+                   COALESCE((
+                     SELECT json_agg(json_build_object(
+                       'group_id', g.id::text, 'group_name', g.name, 'role', ga.permission_level,
+                       'folder_id', f.id::text, 'folder_name', f.name))
+                     FROM public.group_member gm
+                     JOIN public."group" g ON g.id = gm.group_id AND g.company_id = $1
+                     JOIN public.group_access ga ON ga.group_id = g.id AND ga.company_id = $1
+                     LEFT JOIN public.folders f ON f.company_id = ga.company_id AND f.path = ga.folder_path AND f.deleted_at IS NULL
+                     WHERE gm.user_id = u.id
+                   ), '[]') AS via_groups,
+                   (SELECT count(DISTINCT c.company_id) FROM (
+                      SELECT company_id FROM public.user_company_access WHERE user_id = u.id
+                      UNION SELECT ga.company_id FROM public.group_member gm
+                            JOIN public.group_access ga ON ga.group_id = gm.group_id WHERE gm.user_id = u.id
+                   ) c) AS company_count
+            FROM quem q
+            JOIN public.users u ON u.id = q.user_id
+            LEFT JOIN auth.users au ON au.id = u.id
+            ORDER BY u.is_active DESC, lower(u.full_name)
+            """,
+            company_id,
+        )
+        out = []
+        for r in rows:
+            d = dict(r)
+            for k in ("grants", "via_groups"):
+                if isinstance(d[k], str):
+                    d[k] = json.loads(d[k])
+            out.append(d)
+        return out
+
+    @staticmethod
+    async def manages_all_companies_of(admin_conn: asyncpg.Connection, actor_id: str, target_id: UUID) -> bool:
+        """
+        Desativar a conta ou trocar a senha valem para TODAS as empresas da
+        pessoa: só quem administra todas elas pode (ou o supremo, checado fora).
+        """
+        return bool(await admin_conn.fetchval(
+            """
+            SELECT NOT EXISTS (
+              SELECT c.company_id FROM (
+                SELECT company_id FROM public.user_company_access WHERE user_id = $2
+                UNION SELECT ga.company_id FROM public.group_member gm
+                      JOIN public.group_access ga ON ga.group_id = gm.group_id WHERE gm.user_id = $2
+              ) c
+              WHERE NOT EXISTS (
+                SELECT 1 FROM public.user_company_access a
+                WHERE a.user_id = $1::uuid AND a.company_id = c.company_id
+                  AND a.permission_level = 'admin' AND a.folder_path IS NULL
+              )
+            )
+            """,
+            actor_id, target_id,
+        ))
+
+    @staticmethod
+    async def has_group_access(admin_conn: asyncpg.Connection, user_id, company_id: UUID) -> bool:
+        return bool(await admin_conn.fetchval(
+            """
+            SELECT EXISTS (SELECT 1 FROM public.group_member gm
+                           JOIN public.group_access ga ON ga.group_id = gm.group_id
+                           WHERE gm.user_id = $1 AND ga.company_id = $2)
+            """,
+            user_id, company_id,
+        ))
+
+    @staticmethod
+    async def company_admin_count(admin_conn: asyncpg.Connection, company_id: UUID) -> int:
+        return int(await admin_conn.fetchval(
+            """
+            SELECT count(DISTINCT a.user_id) FROM public.user_company_access a
+            JOIN public.users u ON u.id = a.user_id AND u.is_active
+            WHERE a.company_id = $1 AND a.permission_level = 'admin' AND a.folder_path IS NULL
+            """,
+            company_id,
+        ) or 0)
+
+    @staticmethod
+    async def log_access(
+        admin_conn: asyncpg.Connection, *, actor_id: str, company_id: UUID | str, action: str, target_id: UUID | str,
+        target_name: str, metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Mudanças de acesso entram na trilha (X2-13, A8-T2)."""
+        await admin_conn.execute(
+            """
+            INSERT INTO public.activity_log
+              (user_id, company_id, action, item_type, item_id, item_name_snapshot, event_category, metadata)
+            VALUES ($1::uuid, $2::uuid, $3, 'access', $4::uuid, $5, 'access', $6::jsonb)
+            """,
+            actor_id, str(company_id), action, str(target_id), target_name, json.dumps(metadata or {}, default=str),
+        )
 
     @staticmethod
     async def delete_member(admin_conn: asyncpg.Connection, member_id: UUID, company_id: UUID) -> None:

@@ -74,6 +74,13 @@ export const ACTION_LABELS: Record<string, string> = {
   retention_queue_approved: "aprovou o descarte de",
   retention_queue_rejected: "manteve",
   retention_queue_deferred: "adiou a decisão sobre",
+  access_grant: "deu acesso a",
+  access_revoke: "tirou um acesso de",
+  access_role_change: "trocou o papel de",
+  member_remove: "removeu da empresa",
+  account_deactivate: "desativou a conta de",
+  account_activate: "reativou a conta de",
+  account_password_reset: "gerou senha provisória para",
 };
 
 /** Verbo para o resumo de um grupo de eventos iguais ("enviou 5 documentos"). */
@@ -131,6 +138,7 @@ function clusterSummary(c: Cluster): { verbo: string; nomes: string } {
 /** Destino do deep-link, ou null se o item não existe mais. */
 export function activityTarget(ev: ActivityEvent): string | null {
   if (ev.item_type === "retention") return "/settings/retention";
+  if (ev.item_type === "access") return "/settings/users";
   if (ev.item_type === "obligation") {
     return ev.metadata?.tipo === "competencia" ? `/obligations?instancia=${ev.item_id}` : "/obligations?aba=configuracao";
   }
@@ -171,6 +179,7 @@ const META_LABEL: Record<string, string> = {
   prazo: "Prazo", prazo_antes: "Prazo antes", prazo_depois: "Prazo depois", depende_de: "Depende de",
   versao: "Versão", vencimento: "Vencimento", valido_ate: "Válido até", adiado_para: "Adiado para",
   documentos_afetados: "Documentos afetados", modelo_pronto: "Modelo pronto", policy_name: "Prazo de guarda",
+  papel: "Papel",
 };
 
 /** Detalhe do evento em português, sem ids nem chaves internas (achado A6-25). */

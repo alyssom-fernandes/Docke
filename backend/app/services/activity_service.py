@@ -54,6 +54,13 @@ _ACTION_LABELS: dict[str, str] = {
     "retention_queue_approved": "Descarte aprovado",
     "retention_queue_rejected": "Documento mantido",
     "retention_queue_deferred": "Decisão adiada",
+    "access_grant": "Acesso concedido",
+    "access_revoke": "Acesso retirado",
+    "access_role_change": "Papel trocado",
+    "member_remove": "Pessoa removida da empresa",
+    "account_deactivate": "Conta desativada",
+    "account_activate": "Conta reativada",
+    "account_password_reset": "Senha provisória gerada",
 }
 
 REVERSIBLE_ACTIONS = {"move", "rename", "delete", "favorite"}

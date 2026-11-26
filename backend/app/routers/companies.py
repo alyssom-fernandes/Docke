@@ -66,6 +66,19 @@ async def _can_manage_scope(conn: asyncpg.Connection, user_id: str, company_id: 
     return target_path == admin_path or target_path.startswith(admin_path + ".")
 
 
+def _cnpj_ok(d: str) -> bool:
+    """Dígitos verificadores do CNPJ (A9-10)."""
+    if len(d) != 14 or d == d[0] * 14:
+        return False
+
+    def calc(n: int) -> int:
+        pesos = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2] if n == 12 else [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+        r = sum(int(d[i]) * pesos[i] for i in range(n)) % 11
+        return 0 if r < 2 else 11 - r
+
+    return calc(12) == int(d[12]) and calc(13) == int(d[13])
+
+
 @router.get("")
 async def list_companies(
     conn: asyncpg.Connection = Depends(get_db),
@@ -278,8 +291,8 @@ async def update_company(
 
     if body.cnpj is not None:
         digits = "".join(ch for ch in body.cnpj if ch.isdigit())
-        if digits and len(digits) != 14:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="CNPJ deve ter 14 dígitos.")
+        if digits and (len(digits) != 14 or not _cnpj_ok(digits)):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="CNPJ inválido: confira os dígitos.")
         body.cnpj = digits or None
 
     row = await CompaniesService.update_company(
@@ -471,12 +484,189 @@ async def add_access_grant(
     if not await _can_manage_scope(conn, user_id, company_id, role, folder_path):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra este escopo.")
 
-    row = await CompaniesService.insert_access_grant(
-        admin_conn,
-        user_id=member_id, company_id=company_id,
-        permission_level=body.permission_level, folder_path=folder_path, granted_by=user_id,
-    )
+    try:
+        async with admin_conn.transaction():
+            row = await CompaniesService.insert_access_grant(
+                admin_conn,
+                user_id=member_id, company_id=company_id,
+                permission_level=body.permission_level, folder_path=folder_path, granted_by=user_id,
+            )
+    except asyncpg.UniqueViolationError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A pessoa já tem acesso neste lugar. Para mudar o que ela pode fazer, troque o papel da concessão existente.",
+        )
+    nome = await admin_conn.fetchval("SELECT full_name FROM public.users WHERE id = $1", member_id)
+    await CompaniesService.log_access(admin_conn, actor_id=user_id, company_id=company_id, action="access_grant",
+                                      target_id=member_id, target_name=nome or "pessoa",
+                                      metadata={"papel": body.permission_level, "onde": await _scope_label(admin_conn, company_id, folder_path)})
     return dict(row)
+
+
+async def _scope_label(admin_conn: asyncpg.Connection, company_id: UUID, folder_path: str | None) -> str:
+    if not folder_path:
+        return "Empresa toda"
+    return await admin_conn.fetchval(
+        """
+        SELECT string_agg(anc.name, ' / ' ORDER BY nlevel(anc.path)) FROM public.folders anc
+        WHERE anc.company_id = $1 AND anc.path @> $2::ltree
+        """,
+        company_id, folder_path,
+    ) or "pasta"
+
+
+class AccessGrantUpdate(BaseModel):
+    permission_level: str
+
+
+@router.patch("/{company_id}/access/{access_id}")
+async def update_access_grant(
+    company_id: UUID,
+    access_id: UUID,
+    body: AccessGrantUpdate,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Troca o papel de uma concessão no mesmo lugar (A9-17)."""
+    user_id = claims["sub"]
+    role = await get_app_role(conn, claims)
+    if body.permission_level not in ("visualizador", "operador", "admin"):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Papel inválido.")
+    grant = await admin_conn.fetchrow(
+        "SELECT id, user_id, folder_path::text, permission_level FROM public.user_company_access WHERE id = $1 AND company_id = $2",
+        access_id, company_id,
+    )
+    if grant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Concessão não encontrada.")
+    if not await _can_manage_scope(conn, user_id, company_id, role, grant["folder_path"]):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra este escopo.")
+    if grant["permission_level"] == body.permission_level:
+        return {"id": str(access_id), "permission_level": body.permission_level}
+    if (
+        grant["permission_level"] == "admin" and grant["folder_path"] is None
+        and await CompaniesService.company_admin_count(admin_conn, company_id) <= 1
+    ):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Esta é a única pessoa que administra a empresa. Dê o papel de admin a outra antes.")
+    await admin_conn.execute("UPDATE public.user_company_access SET permission_level = $2 WHERE id = $1", access_id, body.permission_level)
+    nome = await admin_conn.fetchval("SELECT full_name FROM public.users WHERE id = $1", grant["user_id"])
+    await CompaniesService.log_access(admin_conn, actor_id=user_id, company_id=company_id, action="access_role_change",
+                                      target_id=grant["user_id"], target_name=nome or "pessoa",
+                                      metadata={"de": grant["permission_level"], "para": body.permission_level,
+                                                "onde": await _scope_label(admin_conn, company_id, grant["folder_path"])})
+    return {"id": str(access_id), "permission_level": body.permission_level}
+
+
+@router.get("/{company_id}/people")
+async def list_people(
+    company_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> list[dict[str, Any]]:
+    """Pessoas com concessões diretas e por grupo, estado da conta e último acesso (A9-18). Só quem administra a empresa."""
+    role = await get_app_role(conn, claims)
+    if not await _can_manage_company(conn, claims["sub"], company_id, role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
+    return await CompaniesService.list_people(admin_conn, company_id)
+
+
+async def _require_account_control(conn, admin_conn, actor_id: str, company_id: UUID, role: str, target_id: UUID) -> str:
+    """Valida quem pode desativar/trocar senha de alguém e devolve o nome da pessoa."""
+    if not await _can_manage_company(conn, actor_id, company_id, role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
+    if str(target_id) == str(actor_id):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Use Ajustes → Segurança para a sua própria conta.")
+    target = await admin_conn.fetchrow("SELECT full_name, role FROM public.users WHERE id = $1", target_id)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pessoa não encontrada.")
+    if target["role"] == "supremo" and role != "supremo":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Só o administrador geral altera a conta de outro administrador geral.")
+    if role != "supremo" and not await CompaniesService.manages_all_companies_of(admin_conn, actor_id, target_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Esta pessoa também acessa empresas que você não administra. Remova o acesso dela a esta empresa ou peça ao administrador geral.",
+        )
+    return target["full_name"]
+
+
+@router.post("/{company_id}/members/{member_id}/deactivate")
+async def deactivate_member(
+    company_id: UUID,
+    member_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Desativa a conta sem apagar nada (A9-16): a pessoa não entra mais e as
+    sessões abertas param na próxima chamada (a API recusa conta inativa).
+    O histórico e os documentos dela continuam.
+    """
+    role = await get_app_role(conn, claims)
+    nome = await _require_account_control(conn, admin_conn, claims["sub"], company_id, role, member_id)
+    # A API recusa conta inativa em toda chamada e na renovação do token:
+    # as sessões abertas param na próxima ação da pessoa.
+    await admin_conn.execute("UPDATE public.users SET is_active = false WHERE id = $1", member_id)
+    await CompaniesService.log_access(admin_conn, actor_id=claims["sub"], company_id=company_id, action="account_deactivate",
+                                      target_id=member_id, target_name=nome)
+    return {"user_id": str(member_id), "is_active": False}
+
+
+@router.post("/{company_id}/members/{member_id}/activate")
+async def activate_member(
+    company_id: UUID,
+    member_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    role = await get_app_role(conn, claims)
+    nome = await _require_account_control(conn, admin_conn, claims["sub"], company_id, role, member_id)
+    await admin_conn.execute("UPDATE public.users SET is_active = true WHERE id = $1", member_id)
+    await CompaniesService.log_access(admin_conn, actor_id=claims["sub"], company_id=company_id, action="account_activate",
+                                      target_id=member_id, target_name=nome)
+    return {"user_id": str(member_id), "is_active": True}
+
+
+@router.post("/{company_id}/members/{member_id}/reset-password")
+async def reset_member_password(
+    company_id: UUID,
+    member_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Senha provisória (A9-16): gerada aqui, mostrada uma vez ao admin para
+    entregar à pessoa, que troca no primeiro acesso. Não depende de e-mail.
+    """
+    import secrets as _secrets
+
+    role = await get_app_role(conn, claims)
+    nome = await _require_account_control(conn, admin_conn, claims["sub"], company_id, role, member_id)
+    email = await admin_conn.fetchval("SELECT email FROM auth.users WHERE id = $1", member_id)
+    if email and email.lower() == settings.DEMO_EMAIL.lower():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="A conta de demonstração não troca de senha por aqui.")
+    alfabeto = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    provisoria = "-".join("".join(_secrets.choice(alfabeto) for _ in range(4)) for _ in range(3))
+    async with httpx.AsyncClient() as client:
+        resp = await client.put(
+            f"{settings.SUPABASE_URL}/auth/v1/admin/users/{member_id}",
+            headers={
+                "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
+                "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={"password": provisoria},
+            timeout=10.0,
+        )
+    if resp.status_code not in (200, 201):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Não foi possível trocar a senha agora. Tente de novo.")
+    await admin_conn.execute("UPDATE public.users SET must_change_password = true WHERE id = $1", member_id)
+    await CompaniesService.log_access(admin_conn, actor_id=claims["sub"], company_id=company_id, action="account_password_reset",
+                                      target_id=member_id, target_name=nome)
+    return {"temporary_password": provisoria}
 
 
 @router.delete("/{company_id}/access/{access_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -500,7 +690,8 @@ async def remove_access_grant(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra este escopo.")
 
     remaining = await CompaniesService.count_grants_for_user(admin_conn, grant["user_id"], company_id)
-    if remaining <= 1:
+    # Quem também recebe acesso por grupo pode ficar sem concessão direta (A9-37).
+    if remaining <= 1 and not await CompaniesService.has_group_access(admin_conn, grant["user_id"], company_id):
         if str(grant["user_id"]) == str(user_id):
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Você não pode remover seu último acesso a esta empresa.")
         # Remover a última concessão de outro usuário o deixaria sem nenhum
@@ -511,7 +702,15 @@ async def remove_access_grant(
             detail="Esta é a última concessão deste usuário. Para removê-lo por completo, use \"Remover membro\" em vez de remover a concessão.",
         )
 
+    detalhe = await admin_conn.fetchrow(
+        "SELECT permission_level, folder_path::text FROM public.user_company_access WHERE id = $1", access_id,
+    )
     await CompaniesService.delete_access_grant(admin_conn, access_id)
+    nome = await admin_conn.fetchval("SELECT full_name FROM public.users WHERE id = $1", grant["user_id"])
+    await CompaniesService.log_access(admin_conn, actor_id=user_id, company_id=company_id, action="access_revoke",
+                                      target_id=grant["user_id"], target_name=nome or "pessoa",
+                                      metadata={"papel": detalhe["permission_level"] if detalhe else None,
+                                                "onde": await _scope_label(admin_conn, company_id, detalhe["folder_path"] if detalhe else None)})
 
 
 @router.delete("/{company_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -530,7 +729,18 @@ async def remove_member(
     if str(member_id) == str(user_id):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Você não pode remover o próprio acesso.")
 
+    nome = await admin_conn.fetchval("SELECT full_name FROM public.users WHERE id = $1", member_id)
     await CompaniesService.delete_member(admin_conn, member_id, company_id)
+    # Sai também dos grupos desta empresa: senão continuaria vendo pelo grupo.
+    await admin_conn.execute(
+        """
+        DELETE FROM public.group_member gm USING public."group" g
+        WHERE gm.group_id = g.id AND g.company_id = $2 AND gm.user_id = $1
+        """,
+        member_id, company_id,
+    )
+    await CompaniesService.log_access(admin_conn, actor_id=user_id, company_id=company_id, action="member_remove",
+                                      target_id=member_id, target_name=nome or "pessoa")
 
 
 # ---------------------------------------------------------------------------

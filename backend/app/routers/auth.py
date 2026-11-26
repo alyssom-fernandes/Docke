@@ -7,7 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from app.config import settings
-from app.dependencies import get_current_user, get_db
+from app.dependencies import get_current_user, get_db, get_db_admin
 from app.services import rate_limit
 from app.services.auth_service import AuthService
 
@@ -322,6 +322,7 @@ async def change_password(
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
     conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
 ) -> dict[str, str]:
     """
     Troca a senha do usuário autenticado.
@@ -380,4 +381,7 @@ async def change_password(
         if update.status_code != 200:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Não foi possível atualizar a senha.")
 
+    # Senha provisória trocada: não pede mais no próximo acesso.
+    me = await conn.fetchval("SELECT auth.uid()::text")
+    await admin_conn.execute("UPDATE public.users SET must_change_password = false WHERE id = $1::uuid", me)
     return {"status": "ok"}

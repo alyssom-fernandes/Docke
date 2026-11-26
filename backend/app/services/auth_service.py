@@ -18,6 +18,7 @@ class AuthService:
               u.full_name,
               u.role,
               u.is_active,
+              u.must_change_password,
               auth.email()::text AS email
             FROM public.users u
             WHERE u.id = auth.uid()
