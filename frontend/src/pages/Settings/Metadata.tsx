@@ -340,6 +340,7 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
   const [archived, setArchived] = useState<CustomField[]>([]);
   const [renaming, setRenaming] = useState<CustomField | null>(null);
   const [applying, setApplying] = useState<CustomField | null>(null);
+  const [retyping, setRetyping] = useState<CustomField | null>(null);
   const [newLabel, setNewLabel] = useState("");
 
   function load() {
@@ -445,6 +446,7 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
               </div>
               <Button variant="ghost" size="sm" onClick={() => setApplying(f)} aria-label={`Aplicar ${f.label} em pastas`}>Aplicar em pastas…</Button>
               <Button variant="ghost" size="sm" onClick={() => { setRenaming(f); setNewLabel(f.label); }} aria-label={`Renomear ${f.label}`}>Renomear</Button>
+              <Button variant="ghost" size="sm" onClick={() => setRetyping(f)} aria-label={`Trocar o tipo de ${f.label}`}>Trocar tipo…</Button>
               <Button variant="ghost" size="sm" onClick={() => setArchiving(f)} aria-label={`Arquivar ${f.label}`}><Archive className="w-3.5 h-3.5" aria-hidden="true" /> Arquivar</Button>
               <Button variant="ghost" size="sm" onClick={() => setDeleting(f)} aria-label={`Excluir ${f.label}`}><Trash2 className="w-3.5 h-3.5 text-(--text-danger)" aria-hidden="true" /> Excluir</Button>
             </li>
@@ -467,6 +469,7 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
       )}
 
       {applying && <ApplyFieldDialog companyId={companyId} field={applying} onClose={() => setApplying(null)} />}
+      {retyping && <ChangeTypeDialog field={retyping} onClose={() => setRetyping(null)} onDone={() => { setRetyping(null); load(); }} />}
 
       {renaming && (
         <Dialog onClose={() => setRenaming(null)} title={`Renomear “${renaming.label}”`} size="sm"
@@ -515,6 +518,7 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
 // ─── Aba: Aplicação na árvore ─────────────────────────────────────────────────
 
 function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFolderId?: string }) {
+  const [applyingDefault, setApplyingDefault] = useState<{ rule: FolderFieldRule; label: string } | null>(null);
   const { success, error: showError } = useToast();
   const [folders, setFolders] = useState<FolderOption[]>([]);
   const [allFields, setAllFields] = useState<CustomField[]>([]);
@@ -686,6 +690,9 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
                           onBlur={(e) => saveDefaultValue(ownRule, e.target.value)}
                           className="w-32 h-8 px-2.5 text-mac-caption bg-(--bg-card) border border-(--border-default) rounded-[6px] text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
                         />
+                        {ownRule.default_value && (
+                          <Button variant="ghost" size="sm" onClick={() => setApplyingDefault({ rule: ownRule, label: f.label })}>Aplicar aos existentes…</Button>
+                        )}
                         <label className="flex items-center gap-1.5 text-mac-caption text-(--text-secondary)">
                           Obrigatório
                           <Switch checked={ownRule.required} onChange={() => toggleRequired(ownRule)} label="Obrigatório" />
@@ -743,6 +750,7 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
         </>
       )}
 
+      {applyingDefault && <ApplyDefaultDialog rule={applyingDefault.rule} label={applyingDefault.label} onClose={() => { setApplyingDefault(null); load(); }} />}
       {removing && (
         <ConfirmModal
           title={removing.mode === "exclude" ? `Voltar a herdar "${removing.label}" aqui?` : `Remover "${removing.label}" desta pasta?`}
@@ -864,6 +872,101 @@ function ApplyFieldDialog({ companyId, field, onClose }: { companyId: string; fi
           </label>
         </div>
       )}
+    </Dialog>
+  );
+}
+
+
+/** Trocar o tipo do campo convertendo os valores (B1.3.10): prévia do que converte e do que se perde. */
+function ChangeTypeDialog({ field, onClose, onDone }: { field: CustomField; onClose: () => void; onDone: () => void }) {
+  const { success, error: showError } = useToast();
+  const [tipo, setTipo] = useState<string>("");
+  const [previa, setPrevia] = useState<{ total: number; convertidos: number; perdidos: number; exemplos_perdidos: { documento: string; valor: string; motivo: string }[]; opcoes?: string[] | null } | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    setPrevia(null);
+    if (!tipo) return;
+    api.post(`/custom-fields/${field.id}/change-type`, { new_type: tipo, aplicar: false }).then((r) => setPrevia(r.data))
+      .catch((e) => showError(friendlyError(e, "Não foi possível calcular a prévia.")));
+  }, [tipo]); // eslint-disable-line react-hooks/exhaustive-deps
+  async function aplicar() {
+    setBusy(true);
+    try {
+      const r = await api.post(`/custom-fields/${field.id}/change-type`, { new_type: tipo, aplicar: true });
+      success(`Agora é ${TYPE_LABEL[tipo as FieldType]}: ${r.data.convertidos} ${r.data.convertidos === 1 ? "valor convertido" : "valores convertidos"}${r.data.perdidos ? `, ${r.data.perdidos} apagados` : ""}.`);
+      onDone();
+    } catch (e) {
+      showError(friendlyError(e, "Não foi possível trocar o tipo."));
+    } finally {
+      setBusy(false);
+    }
+  }
+  const opcoes = (Object.keys(TYPE_LABEL) as FieldType[]).filter((t) => t !== field.type).map((t) => ({ value: t, label: TYPE_LABEL[t] }));
+  return (
+    <Dialog onClose={onClose} title={`Trocar o tipo de “${field.label}”`} size="md" busy={busy}
+      description={`Hoje é ${TYPE_LABEL[field.type]}. Os valores já preenchidos são convertidos; o que não servir no tipo novo aparece antes de você confirmar.`}
+      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button disabled={!previa} loading={busy} variant={previa?.perdidos ? "danger" : "primary"} onClick={aplicar}>{previa?.perdidos ? `Trocar e apagar ${previa.perdidos}` : "Trocar o tipo"}</Button></>}>
+      <div className="space-y-3">
+        <Dropdown ariaLabel="Tipo novo" value={tipo} onChange={setTipo} options={[{ value: "", label: "Escolha o tipo novo" }, ...opcoes]} />
+        {tipo && !previa && <div className="h-12 rounded-(--radius-control) bg-(--bg-hover) animate-pulse" />}
+        {previa && (
+          <div aria-live="polite" className="space-y-2 text-mac-body text-(--text-primary)">
+            <p>{previa.total === 0 ? "Nenhum documento tem valor neste campo: a troca não perde nada." : `${previa.convertidos} de ${previa.total} ${previa.total === 1 ? "valor converte" : "valores convertem"}.`}</p>
+            {previa.opcoes && <p className="text-mac-caption text-(--text-secondary)">As opções da seleção passam a ser: {previa.opcoes.join(", ") || "nenhuma"}.</p>}
+            {previa.perdidos > 0 && (
+              <div className="rounded-(--radius-control) border border-(--border-default) bg-(--bg-hover) px-3 py-2">
+                <p className="font-medium text-(--text-danger)">{previa.perdidos} {previa.perdidos === 1 ? "valor não converte e será apagado" : "valores não convertem e serão apagados"}:</p>
+                <ul className="mt-1 space-y-0.5 text-mac-caption text-(--text-secondary)">
+                  {previa.exemplos_perdidos.map((x, i) => <li key={i}>{x.documento}: “{x.valor}” ({x.motivo})</li>)}
+                  {previa.perdidos > previa.exemplos_perdidos.length && <li>e mais {previa.perdidos - previa.exemplos_perdidos.length}.</li>}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
+/** Aplicar o valor padrão aos documentos que já existem (FA-A8-09), com prévia. */
+function ApplyDefaultDialog({ rule, label, onClose }: { rule: FolderFieldRule; label: string; onClose: () => void }) {
+  const { success, error: showError } = useToast();
+  const [modo, setModo] = useState<"vazios" | "sobrescrever">("vazios");
+  const [previa, setPrevia] = useState<{ documentos: number; vazios: number; diferentes: number; vao_mudar: number; valor: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    setPrevia(null);
+    api.post(`/folder-fields/${rule.id}/apply-default`, { modo, aplicar: false }).then((r) => setPrevia(r.data))
+      .catch((e) => showError(friendlyError(e, "Não foi possível calcular a prévia.")));
+  }, [modo, rule.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  async function aplicar() {
+    setBusy(true);
+    try {
+      const r = await api.post(`/folder-fields/${rule.id}/apply-default`, { modo, aplicar: true });
+      success(`${r.data.vao_mudar} ${r.data.vao_mudar === 1 ? "documento atualizado" : "documentos atualizados"} com “${r.data.valor}”.`);
+      onClose();
+    } catch (e) {
+      showError(friendlyError(e, "Não foi possível aplicar."));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Dialog onClose={onClose} title={`Aplicar o padrão de “${label}” aos documentos`} size="sm" busy={busy}
+      description={`Os documentos que já estão nesta pasta (e nas subpastas sem regra própria) recebem “${rule.default_value}”.`}
+      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!previa || previa.vao_mudar === 0} onClick={aplicar}>{previa ? `Aplicar em ${previa.vao_mudar}` : "Aplicar"}</Button></>}>
+      <fieldset className="space-y-2">
+        <legend className="sr-only">O que atualizar</legend>
+        {([["vazios", "Só os documentos sem valor neste campo"], ["sobrescrever", "Também trocar os valores diferentes"]] as const).map(([v, l]) => (
+          <label key={v} className="flex items-center gap-2 text-mac-body text-(--text-primary)">
+            <input type="radio" name="modo-padrao" checked={modo === v} onChange={() => setModo(v)} /> {l}
+          </label>
+        ))}
+      </fieldset>
+      <p aria-live="polite" className="mt-3 text-mac-caption text-(--text-secondary)">
+        {previa ? `${previa.documentos} ${previa.documentos === 1 ? "documento" : "documentos"} na regra: ${previa.vazios} sem valor, ${previa.diferentes} com valor diferente. Vão mudar ${previa.vao_mudar}.` : "Calculando…"}
+      </p>
     </Dialog>
   );
 }

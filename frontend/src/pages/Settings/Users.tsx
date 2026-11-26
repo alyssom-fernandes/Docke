@@ -495,6 +495,13 @@ function GroupsTab({ companyId, people, folders, onChanged }: { companyId: strin
   const [name, setName] = useState("");
   const [open, setOpen] = useState<GroupSummary | null>(null);
   const [removing, setRemoving] = useState<GroupSummary | null>(null);
+  // Prévia de impacto (B3.1.5): quem fica sem nenhum acesso se o grupo sair.
+  const [impacto, setImpacto] = useState<string[] | null>(null);
+  useEffect(() => {
+    setImpacto(null);
+    if (!removing) return;
+    api.get(`/companies/${companyId}/groups/${removing.id}/impact`).then((r) => setImpacto(r.data.ficam_sem_acesso ?? [])).catch(() => setImpacto(null));
+  }, [removing, companyId]);
   const [busy, setBusy] = useState(false);
   function load() { setFailed(false); api.get<GroupSummary[]>(`/companies/${companyId}/groups`).then((r) => setGroups(r.data ?? [])).catch(() => setFailed(true)); }
   useEffect(load, [companyId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -534,7 +541,10 @@ function GroupsTab({ companyId, people, folders, onChanged }: { companyId: strin
       {open && <GroupDialog companyId={companyId} group={open} people={people} folders={folders} onClose={() => { setOpen(null); load(); onChanged(); }} />}
       {removing && (
         <ConfirmModal title={`Excluir o grupo “${removing.name}”?`} confirmLabel="Excluir" danger loading={busy}
-          description={`${removing.member_count} ${removing.member_count === 1 ? "pessoa perde" : "pessoas perdem"} os acessos que vinham dele (os diretos continuam).`}
+          description={<>
+            {removing.member_count} {removing.member_count === 1 ? "pessoa perde" : "pessoas perdem"} os acessos que vinham dele (os diretos continuam).
+            {impacto && impacto.length > 0 && <> <strong>{impacto.length === 1 ? "Fica sem nenhum acesso à empresa:" : `Ficam sem nenhum acesso à empresa (${impacto.length}):`}</strong> {impacto.join(", ")}.</>}
+          </>}
           onClose={() => setRemoving(null)}
           onConfirm={async () => {
             setBusy(true);
