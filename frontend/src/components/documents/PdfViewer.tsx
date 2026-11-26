@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, AlertCircle, PanelLeft, Maximize2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, AlertCircle, PanelLeft, Maximize2, Printer, Loader2 } from "lucide-react";
 import * as pdfjsLib from "pdfjs-dist";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
@@ -46,6 +46,30 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer({ url, q
   const [page, setPage] = useState(1);
   const [thumbs, setThumbs] = useState(false);
   const [pageInput, setPageInput] = useState("1");
+  // Imprimir (FA-A5-02): o PDF vira um blob do próprio site num quadro escondido e o navegador abre a impressão.
+  const [imprimindo, setImprimindo] = useState(false);
+  async function imprimir() {
+    setImprimindo(true);
+    try {
+      const blob = await (await fetch(url)).blob();
+      const href = URL.createObjectURL(blob);
+      const quadro = document.createElement("iframe");
+      quadro.style.position = "fixed";
+      quadro.style.width = "0";
+      quadro.style.height = "0";
+      quadro.style.border = "0";
+      quadro.src = href;
+      quadro.onload = () => {
+        try { quadro.contentWindow?.focus(); quadro.contentWindow?.print(); } catch { window.open(href, "_blank"); }
+        window.setTimeout(() => { quadro.remove(); URL.revokeObjectURL(href); }, 60_000);
+      };
+      document.body.appendChild(quadro);
+    } catch {
+      window.open(url, "_blank");
+    } finally {
+      setImprimindo(false);
+    }
+  }
   const textCache = useRef<Map<number, string>>(new Map());
 
   useEffect(() => {
@@ -208,6 +232,9 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer({ url, q
               <Maximize2 className="w-4 h-4" aria-hidden />
             </button>
             <button className={btn} onClick={() => setRotation((r) => (r + 90) % 360)} aria-label="Girar 90°"><RotateCw className="w-4 h-4" aria-hidden /></button>
+            <button className={`${btn} hidden sm:flex`} onClick={imprimir} disabled={imprimindo} aria-label="Imprimir" title="Imprimir">
+              {imprimindo ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : <Printer className="w-4 h-4" aria-hidden />}
+            </button>
           </div>
         </div>
       </div>
