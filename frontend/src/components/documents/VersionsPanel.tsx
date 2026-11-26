@@ -89,6 +89,54 @@ function ImageOverlay({ documentId, documentName, older, newer }: { documentId: 
   );
 }
 
+/** O que mudou, por parte (B2.7.5): arquivo, páginas, anotações e metadados. */
+interface Partes {
+  arquivo: { tamanho_antes: number; tamanho_depois: number; identico: boolean };
+  paginas: { antes: number; depois: number; alteradas: number[]; incluidas: number[]; removidas: number[] } | null;
+  anotacoes: { antes: { body: string; page: number | null }[]; depois: { body: string; page: number | null }[] };
+  metadados: { created_at: string; autor: string | null; campo: string | null; antes: string | null; depois: string | null }[];
+}
+
+function ResumoPartes({ documentId, a, b }: { documentId: string; a: string; b: string }) {
+  const [p, setP] = useState<Partes | null>(null);
+  const [aberto, setAberto] = useState(false);
+  useEffect(() => {
+    api.get<Partes>(`/documents/${documentId}/versions/compare-summary`, { params: { a, b } }).then((r) => setP(r.data)).catch(() => setP(null));
+  }, [documentId, a, b]);
+  if (!p) return null;
+  const lista = (ns: number[]) => (ns.length > 6 ? `${ns.slice(0, 6).join(", ")} e mais ${ns.length - 6}` : ns.join(", "));
+  const pag = p.paginas;
+  const textoPag = !pag ? null
+    : pag.alteradas.length + pag.incluidas.length + pag.removidas.length === 0 ? `Páginas: ${pag.depois}, sem mudança de texto`
+    : [`Páginas: ${pag.antes} → ${pag.depois}`, pag.alteradas.length ? `texto mudou na ${lista(pag.alteradas)}` : "", pag.incluidas.length ? `entraram ${lista(pag.incluidas)}` : "", pag.removidas.length ? `saíram ${lista(pag.removidas)}` : ""].filter(Boolean).join("; ");
+  const textoAnot = `Anotações: ${p.anotacoes.antes.length} na anterior, ${p.anotacoes.depois.length} nesta`;
+  const textoMeta = p.metadados.length ? `Metadados: ${p.metadados.length} ${p.metadados.length === 1 ? "alteração" : "alterações"} entre as duas` : "Metadados: sem alteração entre as duas";
+  return (
+    <div className="px-4 py-2 border-b border-(--border-default) text-mac-caption">
+      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-(--text-secondary)" aria-label="O que mudou, por parte">
+        <li>{p.arquivo.identico ? "Arquivo idêntico (mesma impressão digital)" : `Arquivo: ${fmtSize(p.arquivo.tamanho_antes)} → ${fmtSize(p.arquivo.tamanho_depois)}`}</li>
+        {textoPag && <li>{textoPag}</li>}
+        <li>{textoAnot}</li>
+        <li>{textoMeta}</li>
+      </ul>
+      {(p.metadados.length > 0 || p.anotacoes.antes.length + p.anotacoes.depois.length > 0) && (
+        <button type="button" onClick={() => setAberto((v) => !v)} aria-expanded={aberto} className="mt-1 text-(--text-accent) hover:underline">{aberto ? "Esconder detalhes" : "Ver detalhes"}</button>
+      )}
+      {aberto && (
+        <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-3 text-(--text-primary)">
+          {p.metadados.length > 0 && (
+            <ul className="space-y-0.5">{p.metadados.map((m, i) => <li key={i}>{m.campo}: “{m.antes ?? "vazio"}” → “{m.depois ?? "vazio"}”{m.autor ? ` (${m.autor})` : ""}</li>)}</ul>
+          )}
+          <ul className="space-y-0.5">
+            {p.anotacoes.antes.map((x, i) => <li key={`a${i}`}>Anterior{x.page ? `, pág. ${x.page}` : ""}: {x.body}</li>)}
+            {p.anotacoes.depois.map((x, i) => <li key={`d${i}`}>Esta{x.page ? `, pág. ${x.page}` : ""}: {x.body}</li>)}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
   documentId: string; documentName: string; versionA: Version; versionB: Version; onClose: () => void;
 }) {
@@ -184,6 +232,7 @@ function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
           <Button onClick={onClose}>Fechar</Button>
         </>
       ) : undefined}>
+      <ResumoPartes documentId={documentId} a={older.id} b={newer.id} />
       {summary && (
         <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-(--border-default)">
           <p role="status" className="flex-1 min-w-[12rem] text-mac-caption font-medium text-(--text-primary)">{summary}</p>
