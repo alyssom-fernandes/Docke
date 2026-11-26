@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState } from "react";
-import { X, Folder, Home, Loader2 } from "lucide-react";
-import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { useEffect, useState } from "react";
+import { Folder, Home, Loader2 } from "lucide-react";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
 import Button from "@/components/ui/Button";
-import Portal from "@/components/ui/Portal";
+import Dialog from "@/components/ui/Dialog";
 import Dropdown from "@/components/ui/Dropdown";
 import Checkbox from "@/components/ui/Checkbox";
 
@@ -54,8 +53,6 @@ export default function CopyStructureModal({
 }) {
   const { companies, current } = useCompany();
   const { success, error: showError } = useToast();
-  const containerRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(containerRef);
 
   // Só empresas onde o usuário é admin fazem sentido como destino — criar
   // pasta exige admin (mesma regra de POST /folders), então nem oferecemos
@@ -115,20 +112,13 @@ export default function CopyStructureModal({
   }
 
   return (
-    <Portal>
-      <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-        <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[440px] max-h-[85vh] overflow-y-auto">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-(--border-default)">
-            <h2 className="text-mac-body font-semibold text-(--text-primary)">Copiar estrutura de "{sourceFolderName}"</h2>
-            <button onClick={onClose} className="p-1 rounded-full text-(--text-secondary) hover:bg-(--bg-hover)">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="p-5 space-y-4">
+    <Dialog onClose={onClose} title={`Copiar estrutura de “${sourceFolderName}”`} size="md" busy={submitting}
+      footer={<><Button variant="secondary" onClick={onClose} disabled={submitting}>Cancelar</Button><Button loading={submitting} onClick={submit} disabled={!targetCompanyId}>Copiar</Button></>}>
+          <div className="space-y-4">
             <div>
-              <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Empresa de destino</label>
+              <label id="cs-empresa" className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Empresa de destino</label>
               <Dropdown
+                ariaLabelledby="cs-empresa"
                 value={targetCompanyId}
                 onChange={setTargetCompanyId}
                 placeholder="Selecione a empresa"
@@ -137,8 +127,8 @@ export default function CopyStructureModal({
             </div>
 
             <div>
-              <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Pasta de destino</label>
-              <div className="border border-(--border-default) rounded-(--radius-control) max-h-[220px] overflow-y-auto bg-(--bg-card)">
+              <p id="cs-pasta" className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Pasta de destino</p>
+              <div role="radiogroup" aria-labelledby="cs-pasta" className="border border-(--border-default) rounded-(--radius-control) max-h-[220px] overflow-y-auto bg-(--bg-card)">
                 {loadingFolders ? (
                   <div className="flex items-center justify-center py-6">
                     <Loader2 className="w-4 h-4 animate-spin text-(--text-placeholder)" />
@@ -146,8 +136,9 @@ export default function CopyStructureModal({
                 ) : (
                   <>
                     <button
+                      role="radio" aria-checked={targetParentId === null}
                       onClick={() => setTargetParentId(null)}
-                      className={`w-full flex items-center gap-2 h-8 px-3 text-mac-body text-left transition-colors duration-fast ${
+                      className={`w-full flex items-center gap-2 h-8 pointer-coarse:h-11 px-3 text-mac-body text-left transition-colors duration-fast ${
                         targetParentId === null ? "bg-teal-500/10 text-teal-500 font-medium" : "text-(--text-primary) hover:bg-(--bg-hover)"
                       }`}
                     >
@@ -159,11 +150,12 @@ export default function CopyStructureModal({
                       return (
                         <button
                           key={f.id}
+                          role="radio" aria-checked={targetParentId === f.id}
                           disabled={disabled}
                           onClick={() => setTargetParentId(f.id)}
                           style={{ paddingLeft: `${12 + f.depth * 16}px` }}
                           title={disabled ? "Não é possível copiar para dentro da própria pasta" : undefined}
-                          className={`w-full flex items-center gap-2 h-8 pr-3 text-mac-body text-left transition-colors duration-fast ${
+                          className={`w-full flex items-center gap-2 h-8 pointer-coarse:h-11 pr-3 text-mac-body text-left transition-colors duration-fast ${
                             disabled
                               ? "text-(--text-placeholder) cursor-not-allowed"
                               : targetParentId === f.id
@@ -193,14 +185,6 @@ export default function CopyStructureModal({
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default)">
-            <Button variant="secondary" size="sm" onClick={onClose} disabled={submitting}>Cancelar</Button>
-            <Button size="sm" loading={submitting} onClick={submit} disabled={!targetCompanyId}>
-              Copiar
-            </Button>
-          </div>
-        </div>
-      </div>
-    </Portal>
+    </Dialog>
   );
 }
