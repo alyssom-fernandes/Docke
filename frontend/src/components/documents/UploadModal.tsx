@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { getFileStyle } from "@/lib/fileType";
-import { Folder, Upload, X, FolderUp } from "lucide-react";
+import { Folder, Upload, X, FolderUp, Camera } from "lucide-react";
 import api from "@/lib/api";
 import { useTaskCenter } from "@/lib/TaskContext";
 import { useToast } from "@/lib/toast";
 import Button from "@/components/ui/Button";
+import CameraCapture from "@/components/documents/CameraCapture";
 import Dialog from "@/components/ui/Dialog";
 import FolderPickerDialog from "@/components/documents/FolderPickerDialog";
 import { friendlyError } from "@/lib/errors";
@@ -94,6 +95,7 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone }
   const [dest, setDest] = useState<{ id: string | null; name: string }>({ id: folderId, name: folderName });
   const [picking, setPicking] = useState(false);
   const folderInputRef = useRef<HTMLInputElement>(null);
+  const [camera, setCamera] = useState(false);
 
   // Escolher uma pasta inteira pelo botão (antes só arrastando — achado A4-52).
   useEffect(() => {
@@ -320,6 +322,7 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone }
       }
     >
       <div className="space-y-3">
+        {camera && <CameraCapture onClose={() => setCamera(false)} onReady={(file) => addFiles([{ file, relativePath: "" }])} />}
         <label
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
@@ -342,6 +345,10 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone }
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" size="sm" type="button" onClick={() => folderInputRef.current?.click()} disabled={uploading}>
             <FolderUp className="w-3.5 h-3.5" aria-hidden /> Escolher uma pasta inteira
+          </Button>
+          {/* Captura pela câmera (B1.1.7): fotos viram um PDF. */}
+          <Button variant="secondary" size="sm" type="button" onClick={() => setCamera(true)} disabled={uploading}>
+            <Camera className="w-3.5 h-3.5" aria-hidden /> Digitalizar com a câmera
           </Button>
           <input
             ref={folderInputRef}

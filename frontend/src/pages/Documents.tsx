@@ -54,6 +54,7 @@ import ConfirmModal from "@/components/ui/ConfirmModal";
 import PreviewModal from "@/components/documents/PreviewModal";
 import ShareModal from "@/components/documents/ShareModal";
 import RequestFilesModal from "@/components/documents/RequestFilesModal";
+import { RequestAccessBanner } from "@/components/shared/AccessRequests";
 import CopyStructureModal from "@/components/documents/CopyStructureModal";
 import FolderTree from "@/components/documents/FolderTree";
 import Dialog from "@/components/ui/Dialog";
@@ -1043,6 +1044,8 @@ export default function Documents() {
   // Deep link vindo da busca: /documents?folder_id=<id>&doc=<id>
   const [searchParams, setSearchParams] = useSearchParams();
   const [pendingDocId, setPendingDocId] = useState<string | null>(null);
+  // Pedido de acesso (B3.1.6): link de uma pasta que a pessoa não acessa.
+  const [semAcesso, setSemAcesso] = useState<string | null>(null);
   // Termo vindo da Busca (B2.6.6): abre a prévia com a busca interna preenchida.
   const [pendingBusca, setPendingBusca] = useState<string | null>(null);
   const [previewQuery, setPreviewQuery] = useState<string | null>(null);
@@ -1057,7 +1060,7 @@ export default function Documents() {
       .then((res) => {
         const all = Array.isArray(res.data) ? res.data : [];
         const target = all.find((f) => f.id === linkedFolderId);
-        if (!target) return;
+        if (!target) { setSemAcesso(linkedFolderId); return; }
 
         const chain: Array<{ id: string | null; name: string }> = [{ id: null, name: "Início" }];
         const ancestorIds: string[] = [];
@@ -2711,6 +2714,11 @@ export default function Documents() {
       )}
       {sharingFolder && (
         <ShareModal resourceType="folder" resourceId={sharingFolder.id} name={sharingFolder.name} onClose={() => setSharingFolder(null)} />
+      )}
+      {semAcesso && (
+        <Dialog onClose={() => setSemAcesso(null)} title="Pasta sem acesso" size="sm">
+          <RequestAccessBanner folderId={semAcesso} onClose={() => setSemAcesso(null)} />
+        </Dialog>
       )}
       {requestingFolder && current && (
         <RequestFilesModal companyId={current.id} folder={requestingFolder} onClose={() => setRequestingFolder(null)} />

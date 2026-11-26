@@ -68,6 +68,8 @@ class ShareCreate(BaseModel):
     # Achado A5-77: limite de aberturas e "só visualizar" (sem botão de baixar).
     max_views: int | None = None
     allow_download: bool = True
+    # B3.2.5: termo de confidencialidade que o visitante aceita, com o nome, antes de abrir.
+    terms_text: str | None = None
 
 
 class SharePolicy(BaseModel):
@@ -185,6 +187,11 @@ async def create_share(
         pin_to_version_id=pin_to_version_id, created_by=user_id,
         max_views=body.max_views, allow_download=body.allow_download,
     )
+    termo = (body.terms_text or "").strip() or None
+    if termo:
+        if len(termo) > 4000:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="O termo pode ter até 4.000 caracteres.")
+        await conn.execute("UPDATE public.shares SET terms_text = $2 WHERE id = $1::uuid", row["id"], termo)
     await _log_link(conn, user_id, company_id, "share_create", body.resource_type, body.resource_id, {
         "validade": expires_at.isoformat() if expires_at else None, "senha": password_hash is not None,
         "limite_aberturas": body.max_views, "permite_baixar": body.allow_download,
@@ -232,7 +239,7 @@ async def list_resource_accesses(
     """
     rows = await conn.fetch(
         """
-        SELECT a.id::text, a.accessed_at, a.success, a.user_agent, s.id::text AS share_id,
+        SELECT a.id::text, a.accessed_at, a.success, a.user_agent, a.visitor_name, s.id::text AS share_id,
                s.revoked_at IS NOT NULL AS share_revoked
         FROM public.share_accesses a
         JOIN public.shares s ON s.id = a.share_id
@@ -260,7 +267,7 @@ async def list_share_accesses(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link não encontrado.")
     rows = await conn.fetch(
         """
-        SELECT id::text, accessed_at, success, user_agent
+        SELECT id::text, accessed_at, success, user_agent, visitor_name
         FROM public.share_accesses WHERE share_id = $1
         ORDER BY accessed_at DESC LIMIT 100
         """,
@@ -436,6 +443,7 @@ async def share_info(
         "resource_type": share["resource_type"],
         "name": name,
         "has_password": share["password_hash"] is not None,
+        "terms_text": share.get("terms_text"),
         "allow_download": share["allow_download"],
         "views_left": (share["max_views"] - (share["view_count"] or 0)) if share["max_views"] else None,
         "expires_at": share["expires_at"].isoformat() if share["expires_at"] else None,
@@ -447,6 +455,18 @@ async def share_info(
 
 class UnlockRequest(BaseModel):
     password: str | None = None
+    # Termo de confidencialidade (B3.2.5): nome de quem abre e o aceite.
+    visitor_name: str | None = None
+    accepted_terms: bool = False
+
+
+def _exigir_termo(share: dict[str, Any], body: UnlockRequest) -> str | None:
+    """Link com termo só abre com o aceite e o nome; o nome vai para o registro do acesso."""
+    nome = (body.visitor_name or "").strip()[:120] or None
+    if share.get("terms_text") and not (body.accepted_terms and nome):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Leia o termo, informe o seu nome e aceite para abrir.",
+                            headers={"X-Docke-Code": "termo_pendente"})
+    return nome
 
 
 async def _verify_password(
@@ -467,10 +487,10 @@ async def _verify_password(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Senha incorreta.")
 
 
-async def _log_access(conn: asyncpg.Connection, request: Request, share_id: str, success: bool) -> None:
+async def _log_access(conn: asyncpg.Connection, request: Request, share_id: str, success: bool, visitor_name: str | None = None) -> None:
     await SharesService.insert_access_log(
         conn, share_id=share_id, ip_hash=rate_limit.client_ip_hash(request),
-        user_agent=request.headers.get("user-agent", "")[:500], success=success,
+        user_agent=request.headers.get("user-agent", "")[:500], success=success, visitor_name=visitor_name,
     )
     if success:
         await SharesService.register_successful_access(conn, share_id)
@@ -488,6 +508,7 @@ async def share_content(
     """Retorna o conteúdo do link — documento (com URL de download) ou listagem de pasta."""
     share = await _resolve_share(conn, token)
     await _verify_password(conn, request, token, share, body.password)
+    visitante = _exigir_termo(share, body)
 
     if share["resource_type"] == "document":
         version_id = share["pin_to_version_id"]
@@ -500,7 +521,7 @@ async def share_content(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Versão do documento não encontrada.")
 
         download_url, expires_at = storage_service.generate_preview_url(key=version["storage_key"], content_type=version["mime_type"])
-        await _log_access(conn, request, share["id"], True)
+        await _log_access(conn, request, share["id"], True, visitante)
         return {"type": "document", "name": doc["name"], "mime_type": version["mime_type"], "preview_url": download_url,
                 "allow_download": share["allow_download"], "document_id": str(share["resource_id"])}
 
@@ -516,7 +537,7 @@ async def share_content(
 
     subfolders = await SharesService.list_subfolders(conn, current["id"])
     documents = await SharesService.list_documents_in_folder(conn, current["id"])
-    await _log_access(conn, request, share["id"], True)
+    await _log_access(conn, request, share["id"], True, visitante)
     return {
         "type": "folder",
         "allow_download": share["allow_download"],
@@ -539,6 +560,7 @@ async def share_download(
     """Download de um documento específico dentro de uma pasta compartilhada."""
     share = await _resolve_share(conn, token)
     await _verify_password(conn, request, token, share, body.password)
+    visitante = _exigir_termo(share, body)
     if not share["allow_download"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Este link permite só visualizar.")
 
@@ -560,5 +582,5 @@ async def share_download(
     download_url, expires_at = storage_service.generate_download_url(
         key=doc["storage_path"], filename=doc["name"], content_type=doc["mime_type"],
     )
-    await _log_access(conn, request, share["id"], True)
+    await _log_access(conn, request, share["id"], True, visitante)
     return {"download_url": download_url, "name": doc["name"]}

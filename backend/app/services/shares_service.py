@@ -89,7 +89,7 @@ class SharesService:
             """
             SELECT s.id, s.resource_type, s.resource_id, s.company_id, s.password_hash,
                    s.expires_at, s.revoked_at, s.expired_at, s.pin_to_version_id,
-                   s.view_count, s.max_views, s.allow_download
+                   s.view_count, s.max_views, s.allow_download, s.terms_text
             FROM public.shares s
             WHERE s.token_hash = $1
             """,
@@ -105,10 +105,11 @@ class SharesService:
         return await admin_conn.fetchrow("SELECT name, deleted_at FROM public.folders WHERE id = $1", folder_id)
 
     @staticmethod
-    async def insert_access_log(admin_conn: asyncpg.Connection, *, share_id: str, ip_hash: str, user_agent: str, success: bool) -> None:
+    async def insert_access_log(admin_conn: asyncpg.Connection, *, share_id: str, ip_hash: str, user_agent: str, success: bool,
+                                visitor_name: str | None = None) -> None:
         await admin_conn.execute(
-            "INSERT INTO public.share_accesses (share_id, ip_hash, user_agent, success) VALUES ($1, $2, $3, $4)",
-            share_id, ip_hash, user_agent, success,
+            "INSERT INTO public.share_accesses (share_id, ip_hash, user_agent, success, visitor_name) VALUES ($1, $2, $3, $4, $5)",
+            share_id, ip_hash, user_agent, success, visitor_name,
         )
 
     @staticmethod

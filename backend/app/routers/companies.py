@@ -1302,3 +1302,162 @@ async def put_versions_policy(
         claims["sub"], company_id, antes, body.keep_days,
     )
     return {"keep_days": body.keep_days, "can_edit": True}
+
+
+# ---------------------------------------------------------------------------
+# Pedido de acesso (B3.1.6)
+# ---------------------------------------------------------------------------
+
+class AccessRequestCreate(BaseModel):
+    folder_id: UUID
+    message: str | None = None
+
+
+@router.post("/access-requests", status_code=status.HTTP_201_CREATED)
+async def create_access_request(
+    body: AccessRequestCreate,
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Quem é da empresa e não acessa a pasta pede acesso. Para quem não é da
+    empresa a pasta "não existe" (não confirma nem o nome).
+    """
+    uid = claims["sub"]
+    if not rate_limit.check_and_record(f"access-req:{uid}", 20, 3600):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Muitos pedidos em pouco tempo. Tente mais tarde.")
+    pasta = await admin_conn.fetchrow(
+        "SELECT id, company_id, path, name FROM public.folders WHERE id = $1 AND deleted_at IS NULL", body.folder_id,
+    )
+    membro = pasta is not None and await admin_conn.fetchval(
+        """
+        SELECT EXISTS (SELECT 1 FROM public.user_company_access WHERE user_id = $1 AND company_id = $2)
+            OR EXISTS (SELECT 1 FROM public.group_member gm JOIN public.group_access ga ON ga.group_id = gm.group_id
+                       WHERE gm.user_id = $1 AND ga.company_id = $2)
+        """,
+        uid, pasta["company_id"],
+    )
+    if not membro:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada.")
+    if await admin_conn.fetchval("SELECT public.user_has_access($1, $2, $3)", uid, pasta["path"], pasta["company_id"]):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Você já acessa esta pasta.")
+    try:
+        row = await admin_conn.fetchrow(
+            """
+            INSERT INTO public.access_requests (company_id, folder_id, requester_id, message)
+            VALUES ($1, $2, $3, $4) RETURNING id::text, created_at
+            """,
+            pasta["company_id"], pasta["id"], uid, (body.message or "").strip()[:500] or None,
+        )
+    except asyncpg.UniqueViolationError:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Você já pediu acesso a esta pasta; o pedido está com o admin da empresa.")
+    nome = await admin_conn.fetchval("SELECT full_name FROM public.users WHERE id = $1", uid)
+    admins = await admin_conn.fetch(
+        """
+        SELECT DISTINCT user_id FROM public.user_company_access
+        WHERE company_id = $1 AND permission_level = 'admin' AND folder_path IS NULL AND user_id <> $2
+        """,
+        pasta["company_id"], uid,
+    )
+    for a in admins:
+        await admin_conn.execute(
+            """
+            INSERT INTO public.notifications (user_id, company_id, type, resource_type, resource_id, actor_user_id, message)
+            VALUES ($1, $2, 'access_request', 'folder', $3, $4, $5)
+            """,
+            a["user_id"], pasta["company_id"], pasta["id"], uid, f'{nome} pediu acesso à pasta "{pasta["name"]}". Responda em Pessoas e acessos.',
+        )
+    return dict(row) | {"status": "pendente"}
+
+
+@router.get("/{company_id}/access-requests")
+async def list_access_requests(
+    company_id: UUID,
+    status_filtro: str = Query("pendente", alias="status"),
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> list[dict[str, Any]]:
+    role = await get_app_role(conn, claims)
+    if not await _can_manage_company(conn, claims["sub"], company_id, role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
+    rows = await admin_conn.fetch(
+        """
+        SELECT r.id::text, r.folder_id::text, f.name AS folder_name, r.requester_id::text, u.full_name AS requester_name,
+               r.message, r.status, r.created_at, r.decided_at, d.full_name AS decided_by_name, r.role_granted,
+               (SELECT string_agg(anc.name, ' / ' ORDER BY nlevel(anc.path)) FROM public.folders anc
+                 WHERE anc.company_id = f.company_id AND anc.path @> f.path) AS folder_path_label
+        FROM public.access_requests r
+        JOIN public.folders f ON f.id = r.folder_id
+        JOIN public.users u ON u.id = r.requester_id
+        LEFT JOIN public.users d ON d.id = r.decided_by
+        WHERE r.company_id = $1 AND ($2 = 'todos' OR r.status = $2)
+        ORDER BY r.created_at DESC
+        LIMIT 200
+        """,
+        company_id, status_filtro,
+    )
+    return [dict(r) for r in rows]
+
+
+class AccessRequestDecision(BaseModel):
+    aprovar: bool
+    permission_level: str = "visualizador"
+    expires_on: date | None = None
+
+
+@router.post("/access-requests/{request_id}/decide")
+async def decide_access_request(
+    request_id: UUID,
+    body: AccessRequestDecision,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    pedido = await admin_conn.fetchrow(
+        """
+        SELECT r.id, r.company_id, r.folder_id, r.requester_id, r.status, f.path, f.name AS folder_name
+        FROM public.access_requests r JOIN public.folders f ON f.id = r.folder_id WHERE r.id = $1
+        """,
+        request_id,
+    )
+    if pedido is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pedido não encontrado.")
+    role = await get_app_role(conn, claims)
+    if not await _can_manage_scope(conn, claims["sub"], pedido["company_id"], role, str(pedido["path"])):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra este lugar.")
+    if pedido["status"] != "pendente":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Este pedido já foi respondido.")
+    if body.aprovar:
+        if body.permission_level not in ("visualizador", "operador", "admin"):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Papel inválido.")
+        _validar_prazo(body.expires_on)
+        try:
+            async with admin_conn.transaction():
+                row = await CompaniesService.insert_access_grant(
+                    admin_conn, user_id=pedido["requester_id"], company_id=pedido["company_id"],
+                    permission_level=body.permission_level, folder_path=str(pedido["path"]), granted_by=claims["sub"],
+                )
+                await _gravar_prazo(admin_conn, row["id"], body.expires_on)
+        except asyncpg.UniqueViolationError:
+            pass  # já tinha a concessão neste lugar: o pedido só é marcado como aprovado
+        nome = await admin_conn.fetchval("SELECT full_name FROM public.users WHERE id = $1", pedido["requester_id"])
+        await CompaniesService.log_access(admin_conn, actor_id=claims["sub"], company_id=pedido["company_id"], action="access_grant",
+                                          target_id=pedido["requester_id"], target_name=nome or "pessoa",
+                                          metadata={"papel": body.permission_level, "onde": pedido["folder_name"], "origem": "pedido de acesso",
+                                                    "ate": body.expires_on.isoformat() if body.expires_on else None})
+    await admin_conn.execute(
+        "UPDATE public.access_requests SET status = $2, decided_by = $3, decided_at = now(), role_granted = $4 WHERE id = $1",
+        request_id, "aprovado" if body.aprovar else "recusado", claims["sub"], body.permission_level if body.aprovar else None,
+    )
+    papel = {"visualizador": "visualizador", "operador": "operador", "admin": "administrador"}.get(body.permission_level, body.permission_level)
+    msg = (f'Seu pedido de acesso à pasta "{pedido["folder_name"]}" foi aprovado ({papel}).' if body.aprovar
+           else f'Seu pedido de acesso à pasta "{pedido["folder_name"]}" foi recusado.')
+    await admin_conn.execute(
+        """
+        INSERT INTO public.notifications (user_id, company_id, type, resource_type, resource_id, actor_user_id, message)
+        VALUES ($1, $2, 'access_request_decided', 'folder', $3, $4, $5)
+        """,
+        pedido["requester_id"], pedido["company_id"], pedido["folder_id"], claims["sub"], msg,
+    )
+    return {"status": "aprovado" if body.aprovar else "recusado"}

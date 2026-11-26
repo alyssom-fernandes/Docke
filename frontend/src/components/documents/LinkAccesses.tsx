@@ -3,7 +3,7 @@ import { Link2 } from "lucide-react";
 import api from "@/lib/api";
 import { relativeDate, fullDate } from "@/lib/date";
 
-interface Access { id: string; accessed_at: string; success: boolean; user_agent: string | null; share_id: string; share_revoked: boolean }
+interface Access { id: string; accessed_at: string; success: boolean; user_agent: string | null; visitor_name?: string | null; share_id: string; share_revoked: boolean }
 
 /** "Chrome no Android", sem expor o texto cru do navegador. */
 export function describeAgent(ua: string | null): string {
@@ -39,7 +39,7 @@ export default function LinkAccesses({ documentId }: { documentId: string }) {
         {rows.map((a) => (
           <li key={a.id} className="flex items-baseline justify-between gap-2 text-mac-caption">
             <span className={a.success ? "text-(--text-primary)" : "text-(--text-warning)"}>
-              {a.success ? "Abriu" : "Tentou abrir (senha errada ou link vencido)"} · {describeAgent(a.user_agent)}{a.share_revoked ? " · link já revogado" : ""}
+              {a.success ? (a.visitor_name ? `${a.visitor_name} abriu (aceitou o termo)` : "Abriu") : "Tentou abrir (senha errada ou link vencido)"} · {describeAgent(a.user_agent)}{a.share_revoked ? " · link já revogado" : ""}
             </span>
             <time dateTime={a.accessed_at} title={fullDate(a.accessed_at)} className="shrink-0 text-(--text-secondary)">{relativeDate(a.accessed_at)}</time>
           </li>

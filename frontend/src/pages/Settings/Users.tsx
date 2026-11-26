@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import GroupPeopleDialog from "@/components/shared/GroupPeopleDialog";
+import { AccessRequestsPanel } from "@/components/shared/AccessRequests";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
@@ -138,6 +139,8 @@ export default function Users() {
           </div>
         )}
       </div>
+
+      <AccessRequestsPanel companyId={current.id} onChanged={load} />
 
       <div role="tablist" aria-label="Pessoas ou grupos" className="flex items-center gap-0.5 p-0.5 rounded-full bg-(--bg-hover) w-fit">
         {([["pessoas", "Pessoas"], ["grupos", "Grupos"]] as const).map(([v, l]) => (
