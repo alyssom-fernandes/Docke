@@ -83,7 +83,7 @@ export default function SettingsLayout() {
       return (
         <div key={location.pathname} className="panel-in flex flex-col h-[calc(100%+3rem)] -mt-6 py-2">
           <div className="px-1 pb-3 shrink-0">
-            <h1 className="text-mac-title-2 font-bold text-(--text-primary)">Configurações</h1>
+            <h1 className="text-mac-title1 sm:text-mac-large font-bold tracking-[-0.02em] text-(--text-primary)">Configurações</h1>
           </div>
           {/* No iOS real o conteúdo fica sempre no topo, mesmo quando é
               curto — o fundo simplesmente continua vazio até o fim da tela,
@@ -144,7 +144,7 @@ export default function SettingsLayout() {
             (evita duplicar "Perfil"/"Segurança" tanto no header quanto no
             corpo). Conteúdo fica no topo (como no iOS real) — não centraliza. */}
         {activeTab && (
-          <h2 className="px-1 pb-3 text-mac-title-2 font-bold text-(--text-primary) shrink-0">{activeTab.label}</h2>
+          <h2 className="px-1 pb-3 text-mac-title1 font-bold tracking-[-0.01em] text-(--text-primary) shrink-0">{activeTab.label}</h2>
         )}
         <div className="flex-1 min-h-0 overflow-y-auto">
           <Outlet />

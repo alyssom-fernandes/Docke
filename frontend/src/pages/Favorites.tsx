@@ -79,7 +79,7 @@ export default function Favorites() {
   return (
     <div className="space-y-5 max-w-[1100px] w-full mx-auto">
       <div>
-        <h1 className="text-mac-title2 font-semibold text-(--text-primary)">Ancorados</h1>
+        <h1 className="text-mac-title1 sm:text-mac-large font-bold tracking-[-0.02em] text-(--text-primary)">Ancorados</h1>
         <p className="text-mac-caption text-(--text-secondary) mt-0.5">Os documentos e pastas que você usa todo dia, a um clique. Só você vê os seus.</p>
       </div>
 

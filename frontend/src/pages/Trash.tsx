@@ -117,7 +117,7 @@ export default function Trash() {
   return (
     <div className="space-y-5 max-w-[1100px] w-full mx-auto">
       <div>
-        <h1 className="text-mac-title2 font-semibold text-(--text-primary)">Lixeira</h1>
+        <h1 className="text-mac-title1 sm:text-mac-large font-bold tracking-[-0.02em] text-(--text-primary)">Lixeira</h1>
         <p className="text-mac-caption text-(--text-secondary) mt-0.5">O que foi excluído fica aqui por um tempo e volta para o lugar de origem ao restaurar. Depois do prazo, sai sozinho.</p>
       </div>
 

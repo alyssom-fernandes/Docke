@@ -186,7 +186,7 @@ function StatCard({ to, label, value, icon: Icon, context, trend, ariaLabel }: {
     >
       <Icon className="hidden sm:block w-5 h-5 shrink-0 mt-1 text-(--text-accent)" strokeWidth={1.5} aria-hidden="true" />
       <span className="min-w-0">
-        <span className="block text-mac-title3 sm:text-mac-title1 font-semibold text-(--text-primary) tabular-nums">{value.toLocaleString("pt-BR")}</span>
+        <span className="block text-mac-title2 sm:text-[30px] sm:leading-[34px] font-semibold tracking-[-0.03em] text-(--text-primary) tabular-nums">{value.toLocaleString("pt-BR")}</span>
         <span className="block text-mac-caption2 sm:text-mac-caption text-(--text-secondary) leading-tight">{label}</span>
         {context && (
           <span className="mt-0.5 hidden sm:flex items-center gap-1 text-mac-caption text-(--text-accent)">
@@ -324,7 +324,7 @@ export default function Dashboard() {
     <div className="flex flex-col gap-5 sm:gap-6 max-w-[1440px] w-full mx-auto">
       <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
         <div>
-          <h1 className="text-mac-title2 font-semibold text-(--text-primary)">Início</h1>
+          <h1 className="text-mac-title1 sm:text-mac-large font-bold tracking-[-0.02em] text-(--text-primary)">Início</h1>
           <p className="text-mac-caption text-(--text-secondary)">{current.name}</p>
         </div>
         <div className="flex items-center gap-1">

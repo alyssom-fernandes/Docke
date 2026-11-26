@@ -106,13 +106,18 @@ const SEM_VALOR = "Sem valor";
 // Colunas opcionais da lista (A4-16): a pessoa escolhe quais ver (clique
 // direito no cabeçalho ou no botão de visualização); todas ordenam.
 type OptCol = "created" | "updated" | "uploader" | "size" | "kind" | "ocr";
-const OPT_COLS: { key: OptCol; label: string; menu: string; sortKey: SortKey; align?: "right"; cls: string }[] = [
-  { key: "created", label: "Criado em", menu: "Criado em", sortKey: "created_at", cls: "hidden sm:table-cell" },
-  { key: "updated", label: "Modificado em", menu: "Modificado em", sortKey: "updated_at", cls: "hidden sm:table-cell" },
-  { key: "uploader", label: "Enviado por", menu: "Enviado por", sortKey: "uploader", cls: "hidden md:table-cell" },
-  { key: "size", label: "Tamanho", menu: "Tamanho", sortKey: "size", align: "right", cls: "hidden sm:table-cell" },
-  { key: "kind", label: "Tipo", menu: "Tipo", sortKey: "kind", cls: "hidden lg:table-cell" },
-  { key: "ocr", label: "OCR", menu: "Texto lido (OCR)", sortKey: "ocr", cls: "hidden sm:table-cell" },
+// colCls por extenso: o Tailwind só gera classes que aparecem literalmente no
+// código. Antes a classe da <col> era montada trocando "table-cell" por
+// "table-column", e md:/lg:table-column nunca existiam: as colunas "Enviado
+// por" e "Tipo" ficavam sem largura e as seguintes se deslocavam (cortando
+// "Tamanho" e deixando o OCR com a sobra).
+const OPT_COLS: { key: OptCol; label: string; menu: string; sortKey: SortKey; align?: "right"; cls: string; colCls: string }[] = [
+  { key: "created", label: "Criado em", menu: "Criado em", sortKey: "created_at", cls: "hidden sm:table-cell", colCls: "hidden sm:table-column" },
+  { key: "updated", label: "Modificado em", menu: "Modificado em", sortKey: "updated_at", cls: "hidden sm:table-cell", colCls: "hidden sm:table-column" },
+  { key: "uploader", label: "Enviado por", menu: "Enviado por", sortKey: "uploader", cls: "hidden md:table-cell", colCls: "hidden md:table-column" },
+  { key: "size", label: "Tamanho", menu: "Tamanho", sortKey: "size", align: "right", cls: "hidden sm:table-cell", colCls: "hidden sm:table-column" },
+  { key: "kind", label: "Tipo", menu: "Tipo", sortKey: "kind", cls: "hidden lg:table-cell", colCls: "hidden lg:table-column" },
+  { key: "ocr", label: "OCR", menu: "Texto lido (OCR)", sortKey: "ocr", cls: "hidden sm:table-cell", colCls: "hidden sm:table-column" },
 ];
 const DEFAULT_VISIBLE_COLS: OptCol[] = ["created", "size", "kind", "ocr"];
 const OCR_ORDER: Record<string, number> = { failed: 0, pending: 1, processing: 2, skipped: 3, done: 4 };
@@ -2362,7 +2367,7 @@ export default function Documents() {
                 {selectionMode && <col style={{ width: 40 }} />}
                 <col style={{ width: colWidths.name }} />
                 {shownCols.map((c) => (
-                  <col key={c.key} className={c.cls.replace("table-cell", "table-column")} style={{ width: colWidths[c.key] }} />
+                  <col key={c.key} className={c.colCls} style={{ width: colWidths[c.key] }} />
                 ))}
                 {resolvedFields.map((f) => (
                   <col key={f.custom_field_id} className="hidden sm:table-column" style={{ width: f.column_width ?? 130 }} />
