@@ -1288,6 +1288,7 @@ async def get_document(
     from app.services import nfe_service
 
     d["nfe"] = await nfe_service.da_nota(conn, document_id)
+    d["nfe_evento"] = None if d["nfe"] else await nfe_service.do_evento(conn, document_id)
     return d
 
 

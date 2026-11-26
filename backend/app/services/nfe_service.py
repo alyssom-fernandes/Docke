@@ -102,6 +102,61 @@ async def gravar(conn: asyncpg.Connection, document_id, company_id, campos: dict
     )
 
 
+
+_TIPOS_EVENTO = {
+    "110111": "Cancelamento",
+    "110110": "Carta de correção",
+    "110112": "Cancelamento por substituição",
+    "210200": "Confirmação da operação",
+    "210210": "Ciência da operação",
+    "210220": "Desconhecimento da operação",
+    "210240": "Operação não realizada",
+}
+
+
+def ler_evento(xml_bytes: bytes) -> dict[str, Any] | None:
+    """Evento de NF-e (procEventoNFe ou evento): chave, tipo, data, texto e protocolo; None se não for."""
+    from app.services.documents_service import _NFE_NS
+    from app.services.file_signature import safe_xml_fromstring
+
+    try:
+        root = safe_xml_fromstring(xml_bytes)
+    except Exception:
+        return None
+    inf = root.find(".//nfe:evento/nfe:infEvento", _NFE_NS)
+    if inf is None:
+        inf = root.find(".//nfe:infEvento", _NFE_NS)
+    if inf is None:
+        return None
+
+    def t(el, path: str) -> str | None:
+        x = el.find(path, _NFE_NS)
+        return x.text.strip() if x is not None and x.text else None
+
+    chave = "".join(ch for ch in (t(inf, "nfe:chNFe") or "") if ch.isdigit())
+    tipo = t(inf, "nfe:tpEvento")
+    if len(chave) != 44 or not tipo:
+        return None
+    ret = root.find(".//nfe:retEvento/nfe:infEvento", _NFE_NS)
+    return {
+        "chave": chave, "tipo": tipo,
+        "descricao": _TIPOS_EVENTO.get(tipo) or t(inf, "nfe:detEvento/nfe:descEvento") or f"Evento {tipo}",
+        "texto": t(inf, "nfe:detEvento/nfe:xCorrecao") or t(inf, "nfe:detEvento/nfe:xJust"),
+        "protocolo": t(ret, "nfe:nProt") if ret is not None else None,
+        "data": _data(t(inf, "nfe:dhEvento")),
+    }
+
+
+async def gravar_evento(conn: asyncpg.Connection, document_id, company_id, ev: dict[str, Any]) -> None:
+    await conn.execute(
+        """
+        INSERT INTO public.nfe_eventos (company_id, document_id, chave, tipo, descricao, texto, protocolo, data_evento)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (document_id, tipo, chave) DO NOTHING
+        """,
+        company_id, document_id, ev["chave"], ev["tipo"], ev["descricao"], ev["texto"], ev["protocolo"], ev["data"],
+    )
+
 async def processar_pendentes(conn: asyncpg.Connection) -> int:
     """Lê os XMLs ainda não lidos (novos primeiro). Devolve quantos leu."""
     from app.services import storage_service
@@ -127,7 +182,13 @@ async def processar_pendentes(conn: asyncpg.Connection) -> int:
             continue
         if dados is None:
             continue
-        await gravar(conn, r["id"], r["company_id"], ler(dados))
+        campos = ler(dados)
+        if campos is None:
+            # Não é nota: pode ser evento dela (cancelamento, carta de correção…) — B2.5.9.
+            ev = ler_evento(dados)
+            if ev is not None:
+                await gravar_evento(conn, r["id"], r["company_id"], ev)
+        await gravar(conn, r["id"], r["company_id"], campos)
         feitos += 1
     return feitos
 
@@ -161,6 +222,42 @@ async def da_nota(conn: asyncpg.Connection, document_id) -> dict[str, Any] | Non
             nota["company_id"], nota["chave"], document_id,
         )
         duplicatas = [dict(d) for d in dups]
+    eventos: list[dict[str, Any]] = []
+    if nota["chave"]:
+        evs = await conn.fetch(
+            """
+            SELECT e.tipo, e.descricao, e.texto, e.protocolo, e.data_evento, d.id::text AS document_id, d.folder_id::text, d.name
+            FROM public.nfe_eventos e JOIN public.documents d ON d.id = e.document_id AND d.deleted_at IS NULL
+            WHERE e.company_id = $1 AND e.chave = $2
+            ORDER BY e.data_evento NULLS LAST
+            """,
+            nota["company_id"], nota["chave"],
+        )
+        eventos = [dict(e) for e in evs]
     nota.pop("company_id")
     nota["duplicatas"] = duplicatas
+    nota["eventos"] = eventos
+    nota["cancelada"] = any(e["tipo"] in ("110111", "110112") for e in eventos)
     return nota
+
+
+async def do_evento(conn: asyncpg.Connection, document_id) -> dict[str, Any] | None:
+    """Quando o documento é um evento de NF-e: o que é e a nota a que se refere (se estiver no acervo)."""
+    ev = await conn.fetchrow(
+        "SELECT company_id, chave, tipo, descricao, texto, protocolo, data_evento FROM public.nfe_eventos WHERE document_id = $1 LIMIT 1",
+        document_id,
+    )
+    if ev is None:
+        return None
+    nota = await conn.fetchrow(
+        """
+        SELECT d.id::text, d.name, d.folder_id::text, n.numero, n.serie
+        FROM public.document_nfe n JOIN public.documents d ON d.id = n.document_id AND d.deleted_at IS NULL
+        WHERE n.company_id = $1 AND n.chave = $2 AND n.reconhecida
+        ORDER BY d.created_at LIMIT 1
+        """,
+        ev["company_id"], ev["chave"],
+    )
+    out = {k: ev[k] for k in ("chave", "tipo", "descricao", "texto", "protocolo", "data_evento")}
+    out["nota"] = dict(nota) if nota else None
+    return out

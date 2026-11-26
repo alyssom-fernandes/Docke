@@ -293,6 +293,12 @@ interface NotaFiscal {
   chave: string | null; modelo: string | null; numero: string | null; serie: string | null; data_emissao: string | null;
   emitente_cnpj: string | null; emitente_nome: string | null; destinatario_doc: string | null; destinatario_nome: string | null;
   valor_total: number | null; duplicatas: { id: string; name: string; folder_id: string; folder_name: string }[];
+  cancelada?: boolean;
+  eventos?: { tipo: string; descricao: string; texto: string | null; protocolo: string | null; data_evento: string | null; document_id: string; folder_id: string; name: string }[];
+}
+interface EventoNfe {
+  chave: string; tipo: string; descricao: string; texto: string | null; protocolo: string | null; data_evento: string | null;
+  nota: { id: string; name: string; folder_id: string; numero: string | null; serie: string | null } | null;
 }
 
 function fmtDoc(v: string | null) {
@@ -305,20 +311,50 @@ function fmtDoc(v: string | null) {
 /** NF-e lida no envio (FA-A4-12, B2.5.6): dados da nota e aviso quando a mesma chave já está no acervo. */
 export function DocumentNfe({ docId, name }: { docId: string; name: string }) {
   const [nota, setNota] = useState<NotaFiscal | null>(null);
+  const [evento, setEvento] = useState<EventoNfe | null>(null);
   const [copiada, setCopiada] = useState(false);
   const ehXml = /\.xml$/i.test(name);
   useEffect(() => {
     if (!ehXml) return;
     let vivo = true;
     setNota(null);
-    api.get(`/documents/${docId}`).then((r) => { if (vivo) setNota(r.data?.nfe ?? null); }).catch(() => {});
+    setEvento(null);
+    api.get(`/documents/${docId}`).then((r) => { if (vivo) { setNota(r.data?.nfe ?? null); setEvento(r.data?.nfe_evento ?? null); } }).catch(() => {});
     return () => { vivo = false; };
   }, [docId, ehXml]);
+  if (ehXml && !nota && evento) {
+    // Evento de NF-e (B2.5.9): o que é e a nota a que se refere.
+    return (
+      <section aria-label="Evento de nota fiscal" className="space-y-1.5 border-t border-(--border-default) pt-3">
+        <h3 className="text-mac-body font-semibold text-(--text-primary)">{evento.descricao}</h3>
+        <p className="text-mac-caption text-(--text-secondary)">
+          {evento.data_evento ? `${fmtDateFull(evento.data_evento)} · ` : ""}{evento.protocolo ? `protocolo ${evento.protocolo}` : "sem protocolo no arquivo"}
+        </p>
+        {evento.texto && <p className="text-mac-caption text-(--text-primary) whitespace-pre-line">{evento.texto}</p>}
+        {evento.nota
+          ? <p className="text-mac-caption">Da nota <Link to={`/documents?folder_id=${evento.nota.folder_id}&doc=${evento.nota.id}`} className="text-(--text-accent) hover:underline">NF-e {evento.nota.numero}{evento.nota.serie ? `/${evento.nota.serie}` : ""}</Link></p>
+          : <p className="text-mac-caption text-(--text-secondary)">A nota deste evento ainda não está no acervo.</p>}
+      </section>
+    );
+  }
   if (!ehXml || !nota) return null;
   const chaveFmt = nota.chave ? nota.chave.replace(/(\d{4})(?=\d)/g, "$1 ") : null;
   return (
     <section aria-label="Nota fiscal" className="space-y-2 border-t border-(--border-default) pt-3">
-      <h3 className="text-mac-body font-semibold text-(--text-primary)">{nota.modelo === "65" ? "NFC-e" : "NF-e"} {nota.numero}{nota.serie ? ` · série ${nota.serie}` : ""}</h3>
+      <h3 className="flex flex-wrap items-center gap-2 text-mac-body font-semibold text-(--text-primary)">
+        {nota.modelo === "65" ? "NFC-e" : "NF-e"} {nota.numero}{nota.serie ? ` · série ${nota.serie}` : ""}
+        {nota.cancelada && <span className="rounded-full bg-red-500/12 px-2 py-0.5 text-mac-caption font-medium text-(--text-danger)">Cancelada</span>}
+      </h3>
+      {!!nota.eventos?.length && (
+        <ul className="space-y-0.5 text-mac-caption text-(--text-secondary)" aria-label="Eventos da nota">
+          {nota.eventos.map((e) => (
+            <li key={e.document_id + e.tipo}>
+              <Link to={`/documents?folder_id=${e.folder_id}&doc=${e.document_id}`} className="text-(--text-accent) hover:underline">{e.descricao}</Link>
+              {e.data_evento ? ` em ${new Date(e.data_evento).toLocaleDateString("pt-BR")}` : ""}{e.texto ? `: ${e.texto.slice(0, 120)}` : ""}
+            </li>
+          ))}
+        </ul>
+      )}
       {nota.duplicatas.length > 0 && (
         <div role="status" className="rounded-(--radius-control) border border-(--border-default) bg-(--bg-hover) px-3 py-2 text-mac-caption text-(--text-primary)">
           <p className="font-medium text-(--text-warning)">Esta nota já está no acervo {nota.duplicatas.length === 1 ? "em outro arquivo" : `em ${nota.duplicatas.length} outros arquivos`}:</p>
