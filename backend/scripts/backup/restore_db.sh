@@ -35,6 +35,9 @@ if [ -n "$COUNTS" ]; then
     GOT="$(psql "$DB_URL" -At -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM $TABLE")"
     if [ "$GOT" != "$EXPECTED" ]; then
       echo "DIVERGE: $TABLE esperado=$EXPECTED restaurado=$GOT"
+      # Diagnóstico: o que está na tabela agora e o que o dump trazia dela.
+      psql "$DB_URL" -v ON_ERROR_STOP=1 -c "SELECT * FROM $TABLE LIMIT 5" || true
+      gunzip -c "$DUMP" | grep -n -A3 "^COPY $TABLE \|$TABLE" | head -20 || true
       FAIL=1
     fi
   done < "$COUNTS"
