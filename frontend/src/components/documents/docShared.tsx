@@ -27,6 +27,8 @@ export interface Document {
   active_share_count?: number;
   /** Miniatura da grade (A4-20): URL assinada, quando já foi gerada. */
   thumb_url?: string | null;
+  /** Documento-modelo (B1.5.6): aparece em "Novo a partir de modelo". */
+  is_template?: boolean;
 }
 
 // Metadados personalizados (ADENDO-08) — campo resolvido pra pasta atual

@@ -40,6 +40,8 @@ import {
   RefreshCw,
   AlertTriangle,
   Inbox,
+  LayoutTemplate,
+  FilePlus,
 } from "lucide-react";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
@@ -56,6 +58,7 @@ import ShareModal from "@/components/documents/ShareModal";
 import RequestFilesModal from "@/components/documents/RequestFilesModal";
 import { RequestAccessBanner } from "@/components/shared/AccessRequests";
 import CopyStructureModal from "@/components/documents/CopyStructureModal";
+import { SaveTemplateDialog, ApplyTemplateDialog, NewFromTemplateDialog } from "@/components/documents/Templates";
 import FolderTree from "@/components/documents/FolderTree";
 import Dialog from "@/components/ui/Dialog";
 import Menu, { type MenuItem } from "@/components/ui/Menu";
@@ -350,6 +353,10 @@ export default function Documents() {
   const [sharingDoc, setSharingDoc] = useState<Document | null>(null);
   const [showTreeDrawer, setShowTreeDrawer] = useState(false);
   const [copyingFolder, setCopyingFolder] = useState<Folder | null>(null);
+  // Modelos (B1.5.4, B1.5.6, B1.5.8).
+  const [savingTemplate, setSavingTemplate] = useState<Folder | null>(null);
+  const [applyingTemplate, setApplyingTemplate] = useState<Folder | null>(null);
+  const [newFromTemplate, setNewFromTemplate] = useState<Folder | null>(null);
   // Menu de contexto (clique direito, toque longo ou botão "…") no primitivo
   // Menu acessível (achados A4-31..A4-35): teclado, leitor de tela, atalhos.
   type MenuTarget =
@@ -402,6 +409,7 @@ export default function Documents() {
       if (canWrite) {
         list.push({ label: "Mover para…", icon: <FolderInput />, separatorBefore: true, onSelect: () => setPicker({ kind: "documents", ids }) });
         if (!multi) list.push({ label: "Renomear", icon: <Pencil />, shortcut: "F2", onSelect: () => startRename("document", d.id, d.name) });
+        if (!multi && canAdmin) list.push({ label: d.is_template ? "Deixar de ser modelo" : "Marcar como modelo", icon: <LayoutTemplate />, onSelect: () => toggleDocTemplate(d) });
         list.push({ label: multi ? `Excluir ${ids.length}` : "Excluir", icon: <Trash2 />, shortcut: "Del", danger: true, separatorBefore: true, onSelect: () => deleteDocuments(ids) });
       }
       return list;
@@ -411,10 +419,13 @@ export default function Documents() {
     list.push({ label: "Compartilhar…", icon: <Share2 />, disabled: !canWrite, onSelect: () => setSharingFolder(f) });
     // Link de envio para alguém de fora mandar arquivos para a pasta (FA-A4-11).
     list.push({ label: "Pedir arquivos…", icon: <Inbox />, disabled: !canWrite, onSelect: () => setRequestingFolder(f) });
+    list.push({ label: "Novo a partir de modelo…", icon: <FilePlus />, disabled: !canWrite, onSelect: () => setNewFromTemplate(f) });
     if (canAdmin) {
       list.push({ label: "Mover para…", icon: <FolderInput />, separatorBefore: true, onSelect: () => setPicker({ kind: "folder", folder: f }) });
       list.push({ label: "Renomear", icon: <Pencil />, shortcut: "F2", onSelect: () => startRename("folder", f.id, f.name) });
       list.push({ label: "Copiar estrutura para…", icon: <Copy />, onSelect: () => setCopyingFolder(f) });
+      list.push({ label: "Salvar como modelo…", icon: <LayoutTemplate />, onSelect: () => setSavingTemplate(f) });
+      list.push({ label: "Aplicar modelo…", icon: <LayoutTemplate />, onSelect: () => setApplyingTemplate(f) });
       list.push({ label: "Permissões desta pasta", icon: <Shield />, separatorBefore: true, onSelect: () => navigate(`/settings/users?folder=${f.id}`) });
       list.push({ label: "Metadados desta pasta", icon: <Tags />, onSelect: () => navigate(`/settings/metadata?tab=tree&folder=${f.id}`) });
       list.push({ label: "Retenção desta pasta", icon: <Archive />, onSelect: () => navigate(`/settings/retention?folder=${f.id}`) });
@@ -1475,6 +1486,16 @@ export default function Documents() {
     setDocuments((prev) => prev.map((d) => (ids.includes(d.id) ? { ...d, favorited: true } : d)));
     loadSidebarFavorites();
     success(`${plural(ok, "documento ancorado", "documentos ancorados")}.`);
+  }
+
+  async function toggleDocTemplate(doc: Document) {
+    try {
+      await api.put(`/documents/${doc.id}/template`, { is_template: !doc.is_template });
+      success(doc.is_template ? `"${doc.name}" deixou de ser modelo.` : `"${doc.name}" agora é modelo: aparece em "Novo a partir de modelo".`);
+      load();
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível mudar o modelo.");
+    }
   }
 
   function copyLink(doc: Document) {
@@ -2799,6 +2820,17 @@ export default function Documents() {
       {privacyFolder && (
         <PrivacyDialog folderId={privacyFolder.id} folderName={privacyFolder.name} onClose={() => setPrivacyFolder(null)}
           onSaved={() => { if (currentFolderId) api.get(`/folders/${currentFolderId}/privacy`).then((r) => setCurrentPrivacy(r.data.effective ?? "normal")).catch(() => {}); }} />
+      )}
+      {savingTemplate && current && (
+        <SaveTemplateDialog companyId={current.id} folder={savingTemplate} onClose={() => setSavingTemplate(null)} />
+      )}
+      {applyingTemplate && current && (
+        <ApplyTemplateDialog companyId={current.id} folder={applyingTemplate} onClose={() => setApplyingTemplate(null)}
+          onDone={() => { setFolderTreeVersion((v) => v + 1); load(); }} />
+      )}
+      {newFromTemplate && current && (
+        <NewFromTemplateDialog companyId={current.id} folder={newFromTemplate} onClose={() => setNewFromTemplate(null)}
+          onDone={() => { if (newFromTemplate.id === currentFolderId) load(); }} />
       )}
       {copyingFolder && current && (
         <CopyStructureModal
