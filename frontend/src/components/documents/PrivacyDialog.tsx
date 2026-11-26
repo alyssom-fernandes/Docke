@@ -4,6 +4,7 @@ import api from "@/lib/api";
 import { useToast } from "@/lib/toast";
 import Dialog from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
+import Dropdown from "@/components/ui/Dropdown";
 
 type Sens = "normal" | "pessoal" | "sensivel";
 const OPCOES: { v: Sens; titulo: string; texto: string }[] = [
@@ -22,18 +23,21 @@ export default function PrivacyDialog({ folderId, folderName, onClose, onSaved }
   folderId: string; folderName: string; onClose: () => void; onSaved?: (effective: Sens) => void;
 }) {
   const { success, error: showError } = useToast();
-  const [atual, setAtual] = useState<{ sensitivity: Sens; effective: Sens; inherited: boolean } | null>(null);
+  const [atual, setAtual] = useState<{ sensitivity: Sens; effective: Sens; inherited: boolean; legal_basis?: string | null; purpose?: string | null; bases_legais?: string[] } | null>(null);
   const [escolha, setEscolha] = useState<Sens>("normal");
+  // B3.7.6: base legal e finalidade do tratamento (opcionais).
+  const [base, setBase] = useState("");
+  const [finalidade, setFinalidade] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    api.get(`/folders/${folderId}/privacy`).then((r) => { setAtual(r.data); setEscolha(r.data.sensitivity); }).catch(() => setAtual({ sensitivity: "normal", effective: "normal", inherited: false }));
+    api.get(`/folders/${folderId}/privacy`).then((r) => { setAtual(r.data); setEscolha(r.data.sensitivity); setBase(r.data.legal_basis ?? ""); setFinalidade(r.data.purpose ?? ""); }).catch(() => setAtual({ sensitivity: "normal", effective: "normal", inherited: false }));
   }, [folderId]);
 
   async function salvar() {
     setBusy(true);
     try {
-      const r = await api.put(`/folders/${folderId}/privacy`, { sensitivity: escolha });
+      const r = await api.put(`/folders/${folderId}/privacy`, { sensitivity: escolha, legal_basis: base || null, purpose: finalidade || null });
       success(`"${folderName}": ${OPCOES.find((o) => o.v === escolha)?.titulo.toLowerCase()}.`);
       onSaved?.(r.data.effective);
       onClose();
@@ -63,6 +67,22 @@ export default function PrivacyDialog({ folderId, folderName, onClose, onSaved }
           </button>
         ))}
       </div>
+      {escolha !== "normal" && (
+        <div className="mt-4 space-y-3">
+          <div>
+            <span id="priv-base" className="block mb-1 text-mac-body font-medium text-(--text-secondary)">Base legal (opcional)</span>
+            <Dropdown ariaLabelledby="priv-base" value={base} onChange={setBase}
+              options={[{ value: "", label: "Não informada" }, ...(atual?.bases_legais ?? []).map((b) => ({ value: b, label: b })), ...(base && !(atual?.bases_legais ?? []).includes(base) ? [{ value: base, label: base }] : [])]} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="priv-fin" className="text-mac-body font-medium text-(--text-secondary)">Finalidade (opcional)</label>
+            <textarea id="priv-fin" rows={2} maxLength={500} value={finalidade} onChange={(e) => setFinalidade(e.target.value)}
+              placeholder="Ex.: folha de pagamento e obrigações trabalhistas (eSocial)."
+              className="w-full rounded-(--radius-control) border border-(--border-control) bg-(--bg-card) px-3 py-2 text-mac-body text-(--text-primary) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring)" />
+          </div>
+          <p className="text-mac-caption text-(--text-secondary)">Aparecem no relatório para o encarregado (Ajustes → Privacidade).</p>
+        </div>
+      )}
     </Dialog>
   );
 }

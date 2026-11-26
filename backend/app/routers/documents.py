@@ -871,6 +871,9 @@ async def bulk_move(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão na pasta destino.")
 
     doc_ids = [str(did) for did in body.document_ids]
+    from app.services import checkout_service
+
+    await checkout_service.exigir_livre(conn, doc_ids, user_id)
 
     result = await DocumentsService.bulk_move_documents(conn, doc_ids, body.target_folder_id, target["company_id"])
 
@@ -913,6 +916,9 @@ async def bulk_delete(
 
     user_id = claims["sub"]
     doc_ids = [str(did) for did in body.document_ids]
+    from app.services import checkout_service
+
+    await checkout_service.exigir_livre(conn, doc_ids, user_id)
 
     visible = await DocumentsService.fetch_documents_with_permission(conn, doc_ids)
 
@@ -1288,6 +1294,9 @@ async def get_document(
     from app.services import nfe_service
 
     d["nfe"] = await nfe_service.da_nota(conn, document_id)
+    from app.services import checkout_service
+
+    d["checkout"] = await checkout_service.reserva(conn, document_id)
     d["nfe_evento"] = None if d["nfe"] else await nfe_service.do_evento(conn, document_id)
     return d
 
@@ -1319,6 +1328,9 @@ async def patch_document(
     body: DocumentPatch,
     conn: asyncpg.Connection = Depends(get_db),
 ) -> dict[str, Any]:
+    from app.services import checkout_service
+
+    await checkout_service.exigir_livre(conn, [document_id], await conn.fetchval("SELECT auth.uid()::text"))
     if all(v is None for v in [body.name, body.sector, body.competencia, body.tipo_fiscal]):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nenhum campo para atualizar.")
 
@@ -1367,6 +1379,9 @@ async def delete_document(
     if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
     user_id = claims["sub"]
+    from app.services import checkout_service
+
+    await checkout_service.exigir_livre(conn, [document_id], user_id)
     if doc["permission"] not in ("admin", "operador"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para deletar este documento.")
     if doc["permission"] == "operador" and str(doc["uploaded_by"]) != user_id:
@@ -1464,3 +1479,79 @@ async def retry_ocr(
 
     return {"document_id": str(document_id), "name": doc["name"], "ocr_status": "pending", "message": "Job de OCR criado com sucesso."}
 
+
+
+# ---------------------------------------------------------------------------
+# Reserva para edição (check-out/check-in, B1.4.7)
+# ---------------------------------------------------------------------------
+
+class CheckoutRequest(BaseModel):
+    note: str | None = None
+
+
+@router.post("/{document_id}/checkout")
+async def checkout_document(
+    document_id: UUID,
+    body: CheckoutRequest,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    from app.services import checkout_service
+    from app.services.versions_service import VersionsService
+
+    doc = await VersionsService.get_document_for_write_check(conn, document_id)
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+    if doc["permission"] not in ("admin", "operador"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Só quem pode editar reserva o documento.")
+    atual = await checkout_service.reserva(admin_conn, document_id)
+    if atual and atual["user_id"] != claims["sub"]:
+        await checkout_service.exigir_livre(admin_conn, [document_id], claims["sub"])
+    company_id = await admin_conn.fetchval("SELECT company_id FROM public.documents WHERE id = $1", document_id)
+    await admin_conn.execute(
+        """
+        INSERT INTO public.document_checkouts (document_id, company_id, user_id, note) VALUES ($1, $2, $3, $4)
+        ON CONFLICT (document_id) DO UPDATE SET note = EXCLUDED.note
+        """,
+        document_id, company_id, claims["sub"], (body.note or "").strip()[:200] or None,
+    )
+    await admin_conn.execute(
+        """
+        INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot)
+        SELECT $1::uuid, company_id, 'checkout', 'document', id, name FROM public.documents WHERE id = $2
+        """,
+        claims["sub"], document_id,
+    )
+    return await checkout_service.reserva(admin_conn, document_id) or {}
+
+
+@router.post("/{document_id}/checkin")
+async def checkin_document(
+    document_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, str]:
+    """Libera a reserva. Quem reservou libera; o admin da empresa pode forçar."""
+    from app.services import checkout_service
+    from app.services.versions_service import VersionsService
+
+    atual = await checkout_service.reserva(admin_conn, document_id)
+    if atual is None:
+        return {"status": "livre"}
+    if atual["user_id"] != claims["sub"]:
+        doc = await VersionsService.get_document_for_write_check(conn, document_id)
+        if doc is None or doc["permission"] != "admin":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail=f"Só {atual['full_name']} ou o admin da empresa liberam esta reserva.")
+    await admin_conn.execute("DELETE FROM public.document_checkouts WHERE document_id = $1", document_id)
+    await admin_conn.execute(
+        """
+        INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, metadata)
+        SELECT $1::uuid, company_id, 'checkin', 'document', id, name, jsonb_build_object('reservado_por', $3::text)
+        FROM public.documents WHERE id = $2
+        """,
+        claims["sub"], document_id, atual["full_name"],
+    )
+    return {"status": "livre"}

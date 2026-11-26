@@ -68,6 +68,10 @@ async def _check_write_access(conn: asyncpg.Connection, document_id: UUID) -> di
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
     if doc["permission"] not in ("admin", "operador"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para versionar este documento.")
+    # Reserva para edição (B1.4.7): só quem reservou mexe nas versões.
+    from app.services import checkout_service
+
+    await checkout_service.exigir_livre(conn, [document_id], await conn.fetchval("SELECT auth.uid()::text"))
     return dict(doc)
 
 

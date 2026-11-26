@@ -29,17 +29,32 @@ _LABELS = {"normal": "sem classificação", "pessoal": "dado pessoal", "sensivel
 
 class SensitivityBody(BaseModel):
     sensitivity: str
+    # B3.7.6: base legal (LGPD art. 7º/11) e finalidade do tratamento, opcionais.
+    legal_basis: str | None = None
+    purpose: str | None = None
+
+
+BASES_LEGAIS = (
+    "Cumprimento de obrigação legal ou regulatória",
+    "Execução de contrato",
+    "Exercício regular de direitos",
+    "Proteção da vida ou da saúde",
+    "Tutela da saúde",
+    "Legítimo interesse",
+    "Consentimento do titular",
+)
 
 
 @router.get("/folders/{folder_id}/privacy")
 async def folder_privacy(folder_id: UUID, conn: asyncpg.Connection = Depends(get_db)) -> dict[str, Any]:
     row = await conn.fetchrow(
-        "SELECT sensitivity, public.folder_effective_sensitivity(id) AS effective FROM public.folders WHERE id = $1 AND deleted_at IS NULL",
+        "SELECT sensitivity, legal_basis, purpose, public.folder_effective_sensitivity(id) AS effective FROM public.folders WHERE id = $1 AND deleted_at IS NULL",
         folder_id,
     )
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada.")
-    return {"sensitivity": row["sensitivity"], "effective": row["effective"], "inherited": row["effective"] != row["sensitivity"]}
+    return {"sensitivity": row["sensitivity"], "effective": row["effective"], "inherited": row["effective"] != row["sensitivity"],
+            "legal_basis": row["legal_basis"], "purpose": row["purpose"], "bases_legais": list(BASES_LEGAIS)}
 
 
 @router.put("/folders/{folder_id}/privacy")
@@ -58,14 +73,19 @@ async def set_folder_privacy(
     if permission != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Só administradores classificam pastas.")
     old = await conn.fetchval("SELECT sensitivity FROM public.folders WHERE id = $1", folder_id)
-    await conn.execute("UPDATE public.folders SET sensitivity = $2 WHERE id = $1", folder_id, body.sensitivity)
+    base = (body.legal_basis or "").strip()[:120] or None
+    finalidade = (body.purpose or "").strip()[:500] or None
+    await conn.execute("UPDATE public.folders SET sensitivity = $2, legal_basis = $3, purpose = $4 WHERE id = $1",
+                       folder_id, body.sensitivity, base if body.sensitivity != "normal" else None,
+                       finalidade if body.sensitivity != "normal" else None)
     if old != body.sensitivity:
         await FoldersService.log_activity(
             conn, folder_id=folder_id, company_id=folder["company_id"], action="privacy_set", name=folder["name"],
             metadata=json.dumps({"de": _LABELS[old], "para": _LABELS[body.sensitivity]}, ensure_ascii=False),
         )
     effective = await conn.fetchval("SELECT public.folder_effective_sensitivity($1)", folder_id)
-    return {"sensitivity": body.sensitivity, "effective": effective, "inherited": effective != body.sensitivity}
+    return {"sensitivity": body.sensitivity, "effective": effective, "inherited": effective != body.sensitivity,
+            "legal_basis": base if body.sensitivity != "normal" else None, "purpose": finalidade if body.sensitivity != "normal" else None}
 
 
 @router.get("/companies/{company_id}/privacy/folders")
@@ -76,7 +96,7 @@ async def sensitive_folders(
     """Pastas classificadas da empresa (o inventário começa por elas)."""
     rows = await conn.fetch(
         """
-        SELECT f.id::text, f.name, f.sensitivity, f.path::text AS path,
+        SELECT f.id::text, f.name, f.sensitivity, f.path::text AS path, f.legal_basis, f.purpose,
                (SELECT count(*) FROM public.documents d JOIN public.folders s ON s.id = d.folder_id
                  WHERE s.company_id = f.company_id AND s.path <@ f.path AND d.deleted_at IS NULL) AS documentos
         FROM public.folders f
@@ -157,7 +177,7 @@ async def dpo_report(
 
     pastas = await admin_conn.fetch(
         """
-        SELECT f.id, f.name, f.path, public.folder_effective_sensitivity(f.id) AS s
+        SELECT f.id, f.name, f.path, public.folder_effective_sensitivity(f.id) AS s, f.legal_basis, f.purpose
         FROM public.folders f
         WHERE f.company_id = $1 AND f.deleted_at IS NULL
         ORDER BY f.path
@@ -182,6 +202,8 @@ async def dpo_report(
     linhas: list[list[str]] = [["Seção", "Pasta ou item", "Classificação", "Pessoa ou detalhe", "Papel ou situação", "Data"]]
     rotulo = {"pessoal": "Dado pessoal", "sensivel": "Dado sensível"}
     for p in raizes:
+        if p["legal_basis"] or p["purpose"]:
+            linhas.append(["Base legal e finalidade", p["name"], rotulo[p["s"]], p["legal_basis"] or "—", p["purpose"] or "—", ""])
         for u in pessoas:
             papel = await admin_conn.fetchval("SELECT public.user_has_access($1, $2, $3)", u["id"], p["path"], company_id)
             if papel:

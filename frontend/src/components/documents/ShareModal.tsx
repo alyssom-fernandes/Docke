@@ -56,6 +56,9 @@ export default function ShareModal({ resourceType, resourceId, name, onClose, on
   const [showPassword, setShowPassword] = useState(false);
   const [limit, setLimit] = useState("");
   const [viewOnly, setViewOnly] = useState(false);
+  // B3.2.5: termo de confidencialidade aceito pelo visitante (com o nome) antes de abrir.
+  const [useTerms, setUseTerms] = useState(false);
+  const [terms, setTerms] = useState("Ao abrir, declaro que vou usar estes documentos só para a finalidade combinada com quem os enviou, sem repassar a terceiros, e que meu acesso fica registrado.");
   const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -99,6 +102,7 @@ export default function ShareModal({ resourceType, resourceId, name, onClose, on
         expires_in: expiry, custom_expires_at: expiry === "custom" ? customDate : null,
         max_views: limit ? Number(limit) : null,
         allow_download: !viewOnly,
+        terms_text: useTerms && terms.trim() ? terms.trim() : null,
       });
       setCreated(`${window.location.origin}/s/${data.token}`);
       setCopied(false);
@@ -179,6 +183,18 @@ export default function ShareModal({ resourceType, resourceId, name, onClose, on
                 <Checkbox checked={viewOnly} onChange={(e) => setViewOnly(e.target.checked)} />
                 Só visualizar (sem botão de baixar)
               </label>
+              <label className="flex items-center gap-2.5 min-h-8 pointer-coarse:min-h-11 cursor-pointer text-mac-body text-(--text-primary)">
+                <Checkbox checked={useTerms} onChange={(e) => setUseTerms(e.target.checked)} />
+                Pedir aceite de termo de confidencialidade (com o nome de quem abre)
+              </label>
+              {useTerms && (
+                <div className="reveal">
+                  <label htmlFor={`${uid}-termo`} className="sr-only">Texto do termo</label>
+                  <textarea id={`${uid}-termo`} rows={3} maxLength={4000} value={terms} onChange={(e) => setTerms(e.target.value)}
+                    className="w-full rounded-(--radius-control) border border-(--border-control) bg-(--bg-card) px-3 py-2 text-mac-body text-(--text-primary) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring)" />
+                  <p className="mt-1 text-mac-caption text-(--text-secondary)">O nome e o aceite ficam no registro de acessos do link.</p>
+                </div>
+              )}
               <label className="flex items-center gap-2.5 min-h-8 pointer-coarse:min-h-11 cursor-pointer text-mac-body text-(--text-primary)">
                 <Checkbox checked={usePassword} disabled={pol.require_password} onChange={(e) => setUsePassword(e.target.checked)} />
                 Pedir senha{pol.require_password && <span className="text-mac-caption text-(--text-secondary)">(obrigatória nesta empresa)</span>}

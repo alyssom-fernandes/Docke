@@ -17,6 +17,7 @@ import {
   Lock,
   Check, Copy } from "lucide-react";
 import api from "@/lib/api";
+import { useAuthContext } from "@/lib/AuthContext";
 import { useToast } from "@/lib/toast";
 import Dropdown from "@/components/ui/Dropdown";
 import VersionsPanel from "@/components/documents/VersionsPanel";
@@ -24,6 +25,7 @@ import ActivityFeed from "@/components/shared/ActivityFeed";
 import { StatusChip, type Instance } from "@/components/obligations/shared";
 import ShareModal from "@/components/documents/ShareModal";
 import Dialog from "@/components/ui/Dialog";
+import Button from "@/components/ui/Button";
 import {
   maskValue,
   validateValue,
@@ -386,6 +388,43 @@ export function DocumentNfe({ docId, name }: { docId: string; name: string }) {
   );
 }
 
+/** Reserva para edição (B1.4.7): quem reserva é o único que altera até liberar. */
+export function DocumentCheckout({ docId, canEdit, onChanged }: { docId: string; canEdit: boolean; onChanged: () => void }) {
+  const { user } = useAuthContext();
+  const { success, error: showError } = useToast();
+  const [reserva, setReserva] = useState<{ user_id: string; full_name: string; created_at: string } | null | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  function load() { api.get(`/documents/${docId}`).then((r) => setReserva(r.data?.checkout ?? null)).catch(() => setReserva(null)); }
+  useEffect(load, [docId]); // eslint-disable-line react-hooks/exhaustive-deps
+  async function agir(acao: "checkout" | "checkin") {
+    setBusy(true);
+    try {
+      await api.post(`/documents/${docId}/${acao}`, acao === "checkout" ? {} : undefined);
+      success(acao === "checkout" ? "Reservado para você: os outros só leem até você liberar." : "Reserva liberada.");
+      load();
+      onChanged();
+    } catch (e) {
+      showError(friendlyError(e, "Não foi possível agora."));
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (reserva === undefined || (!canEdit && !reserva)) return null;
+  const minha = reserva?.user_id === user?.id;
+  return reserva ? (
+    <div role="status" className="flex flex-wrap items-center gap-2 rounded-(--radius-control) border border-(--border-default) bg-(--bg-hover) px-3 py-2 text-mac-caption text-(--text-primary)">
+      <Lock className="w-3.5 h-3.5 text-(--text-warning)" aria-hidden />
+      <span className="flex-1 min-w-0">{minha ? "Reservado para você" : `Reservado por ${reserva.full_name}`} desde {new Date(reserva.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}{minha ? "" : ": dá para abrir e baixar."}</span>
+      {canEdit && <Button size="sm" variant="secondary" loading={busy} onClick={() => agir("checkin")}>{minha ? "Liberar" : "Liberar (admin)"}</Button>}
+    </div>
+  ) : (
+    <button onClick={() => agir("checkout")} disabled={busy}
+      className="w-full flex items-center justify-center gap-2 h-9 pointer-coarse:h-11 rounded-full border border-(--border-control) text-mac-body text-(--text-primary) hover:bg-(--bg-hover) disabled:opacity-(--opacity-disabled)">
+      <Lock className="w-4 h-4" aria-hidden />Reservar para edição
+    </button>
+  );
+}
+
 export function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit, onClose, onFavorite, onPreview, onMenu, onChanged, onFieldSaved }: {
   doc: Document; companyId: string; variant?: "modal" | "panel"; path: string; canEdit: boolean;
   onClose: () => void; onFavorite: () => void; onPreview: () => void; onMenu: (el: HTMLElement) => void; onChanged: () => void;
@@ -485,6 +524,7 @@ export function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit,
         </button>
       )}
 
+      <DocumentCheckout docId={doc.id} canEdit={canEdit} onChanged={onChanged} />
       <DocumentNfe docId={doc.id} name={doc.name} />
       <MetadataSection doc={doc} companyId={companyId} canEdit={canEdit} onSaved={(fid, v) => onFieldSaved(doc.id, fid, v)} />
       <Disclosure icon={<Clock className="w-4 h-4" aria-hidden />} title="Atividade"

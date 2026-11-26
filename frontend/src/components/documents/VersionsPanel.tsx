@@ -56,6 +56,39 @@ function LineText({ line }: { line: DiffLine }) {
  * palavra; resumo; "só mudanças"; anterior/próxima mudança; baixar o
  * resultado. O cálculo roda num Web Worker.
  */
+/**
+ * Sobreposição com opacidade (B2.7.6): para plantas, fotos e imagens, a
+ * versão nova por cima da antiga, com o controle de transparência.
+ */
+function ImageOverlay({ documentId, documentName, older, newer }: { documentId: string; documentName: string; older: Version; newer: Version }) {
+  const [urls, setUrls] = useState<[string, string] | null>(null);
+  const [falhou, setFalhou] = useState(false);
+  const [opacidade, setOpacidade] = useState(50);
+  useEffect(() => {
+    Promise.all([older, newer].map((v) => api.get<{ download_url: string }>(`/documents/${documentId}/versions/${v.id}/download-url`, { params: { inline: true } })))
+      .then(([a, b]) => setUrls([a.data.download_url, b.data.download_url])).catch(() => setFalhou(true));
+  }, [documentId, older.id, newer.id]);
+  if (falhou) return <p role="alert" className="p-8 text-center text-mac-body text-(--text-secondary)">Não foi possível carregar as imagens agora.</p>;
+  if (!urls) return <div className="h-full flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-(--text-secondary)" aria-label="Carregando" /></div>;
+  return (
+    <div className="h-full flex flex-col">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-2 border-b border-(--border-default) text-mac-caption text-(--text-secondary)">
+        <span>Versão {older.version_number}</span>
+        <input type="range" min={0} max={100} value={opacidade} onChange={(e) => setOpacidade(Number(e.target.value))}
+          aria-label={`Transparência da versão ${newer.version_number} por cima da ${older.version_number}`} className="flex-1 min-w-32 accent-teal-600" />
+        <span>Versão {newer.version_number} ({opacidade}%)</span>
+      </div>
+      <div className="relative flex-1 min-h-0 overflow-auto p-4">
+        <div className="relative mx-auto w-fit">
+          <img src={urls[0]} alt={`${documentName}, versão ${older.version_number}`} className="block max-w-full max-h-[52vh] object-contain" />
+          <img src={urls[1]} alt={`${documentName}, versão ${newer.version_number}, por cima`} style={{ opacity: opacidade / 100 }}
+            className="absolute inset-0 w-full h-full object-contain" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
   documentId: string; documentName: string; versionA: Version; versionB: Version; onClose: () => void;
 }) {
@@ -66,6 +99,8 @@ function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
   const [cursor, setCursor] = useState(-1);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [older, newer] = versionA.version_number < versionB.version_number ? [versionA, versionB] : [versionB, versionA];
+  const imagens = older.mime_type.startsWith("image/") && newer.mime_type.startsWith("image/");
+  const [modo, setModo] = useState<"texto" | "sobrepor">(imagens ? "sobrepor" : "texto");
 
   useEffect(() => {
     setLoading(true);
@@ -164,8 +199,18 @@ function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
           )}
         </div>
       )}
+      {imagens && (
+        <div role="tablist" aria-label="Modo de comparação" className="flex gap-1 px-4 pt-2">
+          {([["sobrepor", "Sobrepor imagens"], ["texto", "Texto lido"]] as const).map(([v, l]) => (
+            <button key={v} role="tab" aria-selected={modo === v} onClick={() => setModo(v)}
+              className={`px-3 h-8 rounded-full text-mac-caption font-medium ${modo === v ? "bg-teal-600 text-white" : "text-(--text-secondary) hover:bg-(--bg-hover)"}`}>{l}</button>
+          ))}
+        </div>
+      )}
       <div ref={bodyRef} className="h-[min(62vh,560px)] overflow-auto">
-        {loading ? (
+        {imagens && modo === "sobrepor" ? (
+          <ImageOverlay documentId={documentId} documentName={documentName} older={older} newer={newer} />
+        ) : loading ? (
           <div className="h-full flex items-center justify-center gap-2 text-mac-body text-(--text-secondary)" role="status"><Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" /> Comparando…</div>
         ) : unavailableReason ? (
           <div className="h-full flex items-center justify-center px-8 text-center"><p className="text-mac-body text-(--text-secondary)">{unavailableReason}</p></div>

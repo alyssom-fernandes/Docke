@@ -15,6 +15,7 @@ interface ShareInfo {
   resource_type: string; name: string; has_password: boolean; allow_download?: boolean;
   views_left?: number | null; expires_at?: string | null; size_bytes?: number | null;
   company_name?: string | null; sender_name?: string | null;
+  terms_text?: string | null;
 }
 
 type ContentState =
@@ -60,6 +61,11 @@ export default function PublicShare() {
   const [path, setPath] = useState<{ id: string; name: string }[]>([]);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
+  // Termo de confidencialidade (B3.2.5): nome e aceite antes de abrir.
+  const [visitante, setVisitante] = useState("");
+  const [aceite, setAceite] = useState(false);
+  const precisaTermo = !!info?.terms_text;
+  const termoOk = !precisaTermo || (aceite && visitante.trim().length >= 2);
 
   useEffect(() => {
     setLoading(true);
@@ -72,7 +78,7 @@ export default function PublicShare() {
       .then((data: ShareInfo) => {
         setInfo(data);
         document.title = `${data.name} · enviado pelo Docke`;
-        if (!data.has_password) fetchContent(null);
+        if (!data.has_password && !data.terms_text) fetchContent(null);
         else setLoading(false);
       })
       .catch((e) => { setError(friendly(e, "Link não encontrado.")); setLoading(false); });
@@ -87,7 +93,7 @@ export default function PublicShare() {
       const r = await fetch(`${API_BASE}/s/${token}/content${qs}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: pwd ?? password ?? null }),
+        body: JSON.stringify({ password: pwd ?? password ?? null, visitor_name: visitante.trim() || null, accepted_terms: aceite }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.detail ?? "Não foi possível abrir este link.");
@@ -99,7 +105,7 @@ export default function PublicShare() {
       }
     } catch (e) {
       // Senha errada mantém o formulário na tela para tentar de novo.
-      if (!content && info?.has_password) setPasswordError(friendly(e, "Senha incorreta."));
+      if (!content && (info?.has_password || info?.terms_text)) setPasswordError(friendly(e, "Senha incorreta."));
       else setError(friendly(e, "Não foi possível abrir este link."));
     } finally {
       setLoading(false);
@@ -112,7 +118,7 @@ export default function PublicShare() {
       const r = await fetch(`${API_BASE}/s/${token}/download/${docId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: password || null }),
+        body: JSON.stringify({ password: password || null, visitor_name: visitante.trim() || null, accepted_terms: aceite }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.detail ?? "Não foi possível baixar agora.");
@@ -171,7 +177,20 @@ export default function PublicShare() {
             </div>
           )}
 
-          {loading && !content && !error && !info?.has_password && <Skeleton />}
+          {loading && !content && !error && !info?.has_password && !precisaTermo && <Skeleton />}
+
+          {!error && info && precisaTermo && !info.has_password && !content && (
+            <form onSubmit={(e) => { e.preventDefault(); if (termoOk) fetchContent(null); }} className="reveal flex flex-col gap-3 py-2">
+              <p className="text-mac-body font-medium text-(--text-primary)">Termo de confidencialidade</p>
+              <p className="text-mac-body text-(--text-secondary) whitespace-pre-line rounded-(--radius-control) border border-(--border-default) bg-(--bg-hover) px-3 py-2 max-h-48 overflow-y-auto">{info.terms_text}</p>
+              <Input label="Seu nome" value={visitante} onChange={(e) => setVisitante(e.target.value)} autoComplete="name" maxLength={120} />
+              <label className="flex items-start gap-2 text-mac-body text-(--text-primary)">
+                <input type="checkbox" checked={aceite} onChange={(e) => setAceite(e.target.checked)} className="mt-1" /> Li e aceito o termo acima.
+              </label>
+              {passwordError && <p role="alert" className="text-mac-caption text-(--text-danger)">{passwordError}</p>}
+              <Button type="submit" disabled={!termoOk || loading} loading={loading}>Abrir</Button>
+            </form>
+          )}
 
           {error && (
             <div role="alert" className="flex flex-col items-center text-center gap-3 py-8">
@@ -205,7 +224,16 @@ export default function PublicShare() {
                 error={passwordError ?? undefined}
                 disabled={loading}
               />
-              <Button type="submit" loading={loading} className="w-full" disabled={!password}>
+              {precisaTermo && (
+                <div className="space-y-2">
+                  <p className="text-mac-body text-(--text-secondary) whitespace-pre-line rounded-(--radius-control) border border-(--border-default) bg-(--bg-hover) px-3 py-2 max-h-40 overflow-y-auto">{info.terms_text}</p>
+                  <Input label="Seu nome" value={visitante} onChange={(e) => setVisitante(e.target.value)} autoComplete="name" maxLength={120} />
+                  <label className="flex items-start gap-2 text-mac-body text-(--text-primary)">
+                    <input type="checkbox" checked={aceite} onChange={(e) => setAceite(e.target.checked)} className="mt-1" /> Li e aceito o termo acima.
+                  </label>
+                </div>
+              )}
+              <Button type="submit" loading={loading} className="w-full" disabled={!password || !termoOk}>
                 Abrir
               </Button>
             </form>
