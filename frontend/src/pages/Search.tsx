@@ -104,6 +104,25 @@ export default function Search() {
   const [folders, setFolders] = useState<FolderOption[]>([]);
   const [recent, setRecent] = useState<string[]>(loadRecent);
   const [retry, setRetry] = useState(0);
+  // Prévia lateral do resultado em foco (J1-13), como a paleta já tem.
+  const [ativo, setAtivo] = useState<SearchResult | null>(null);
+  const [previa, setPrevia] = useState<{ id: string; size_bytes?: number; trecho: string } | null>(null);
+  const previaCache = useRef(new Map<string, { id: string; size_bytes?: number; trecho: string }>());
+  useEffect(() => {
+    if (!ativo) return;
+    const c = previaCache.current.get(ativo.id);
+    if (c) { setPrevia(c); return; }
+    setPrevia(null);
+    let vivo = true;
+    const t = window.setTimeout(() => {
+      api.get(`/documents/${ativo.id}`).then((r) => {
+        const v = { id: ativo.id, size_bytes: r.data?.size_bytes, trecho: (r.data?.ocr_excerpt ?? r.data?.ocr_text ?? "").slice(0, 900) };
+        previaCache.current.set(ativo.id, v);
+        if (vivo) setPrevia(v);
+      }).catch(() => { if (vivo) setPrevia({ id: ativo.id, trecho: "" }); });
+    }, 120);
+    return () => { vivo = false; window.clearTimeout(t); };
+  }, [ativo]);
   const reqId = useRef(0);
 
   function setP(changes: Record<string, string | null>, resetPage = true) {
@@ -182,7 +201,7 @@ export default function Search() {
         )}
       </form>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] xl:grid-cols-[240px_1fr_320px] gap-5">
         {/* Filtros (A6-03) */}
         <aside aria-label="Filtros" className="space-y-4">
           <div>
@@ -305,6 +324,8 @@ export default function Search() {
                   return (
                     <li key={r.id} className="border-b border-(--border-default) last:border-0">
                       <Link to={`/documents?folder_id=${r.folder_id ?? ""}&doc=${r.id}`}
+                        onMouseEnter={() => setAtivo(r)} onFocus={() => setAtivo(r)}
+                        aria-current={ativo?.id === r.id ? "true" : undefined}
                         className="flex items-start gap-3 px-4 sm:px-5 py-3 hover:bg-(--bg-hover) transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-(--focus-ring)">
                         <span className={`w-7 h-7 rounded-badge flex items-center justify-center shrink-0 ${s.bgColor}`} aria-hidden="true">
                           <Icon className={`w-4 h-4 ${s.iconColor} ${s.fillColor}`} />
@@ -334,6 +355,40 @@ export default function Search() {
             </>
           )}
         </section>
+
+        {/* Prévia (J1-13): só em telas largas, ao lado dos resultados. */}
+        <aside aria-label="Prévia do resultado" className="hidden xl:block">
+          <div className="sticky top-4 glass-panel glass-blur-card rounded-(--radius-panel) p-4 space-y-3 min-h-40">
+            {!ativo || !q || !results.some((r) => r.id === ativo.id) ? (
+              <p className="text-mac-caption text-(--text-secondary)">Passe o mouse ou o foco num resultado para ver o trecho do texto aqui.</p>
+            ) : (() => {
+              const st = getFileStyle(ativo.name);
+              const Ic = st.icon;
+              return (
+                <div key={ativo.id} className="reveal space-y-3">
+                  <div className="flex items-start gap-2.5">
+                    <span className={`w-8 h-8 rounded-badge flex items-center justify-center shrink-0 ${st.bgColor}`} aria-hidden="true"><Ic className={`w-4 h-4 ${st.iconColor} ${st.fillColor}`} /></span>
+                    <div className="min-w-0">
+                      <p className="text-mac-body font-semibold text-(--text-primary) break-words">{ativo.name}</p>
+                      <p className="text-mac-caption text-(--text-secondary)">{ativo.folder_path_label ?? ativo.folder_name ?? "Sem pasta"} · {fmtDate(ativo.created_at)}</p>
+                    </div>
+                  </div>
+                  {previa?.id !== ativo.id ? (
+                    <div className="space-y-1.5" aria-label="Carregando a prévia">{[0, 1, 2].map((i) => <div key={i} className="h-3 rounded bg-(--bg-hover) animate-pulse" />)}</div>
+                  ) : previa.trecho.trim() ? (
+                    <p className="text-mac-caption text-(--text-primary) whitespace-pre-line line-clamp-[14]">{previa.trecho}</p>
+                  ) : (
+                    <p className="text-mac-caption text-(--text-secondary)">{ativo.ocr_status === "failed" ? "O texto deste documento não pôde ser lido." : "Sem texto lido neste documento."}</p>
+                  )}
+                  <Link to={`/documents?folder_id=${ativo.folder_id ?? ""}&doc=${ativo.id}`}
+                    className="inline-flex items-center gap-1 h-8 px-3 rounded-full bg-teal-600 text-white text-mac-caption font-medium hover:bg-teal-700">
+                    Abrir na pasta <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+                  </Link>
+                </div>
+              );
+            })()}
+          </div>
+        </aside>
       </div>
     </div>
   );
