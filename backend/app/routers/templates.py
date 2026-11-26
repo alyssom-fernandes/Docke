@@ -659,11 +659,11 @@ async def export_config(
     retencao = await admin_conn.fetch(
         """
         SELECT p.name, p.legal_basis, p.trigger_type, tf.field_key AS trigger_field_key, p.duration_months, p.locked, p.active,
-               p.start_rule, p.catalog_key, p.notes, p.match_tipo_fiscal, mf.field_key AS match_field_key, p.match_field_value,
-               EXISTS (SELECT 1 FROM public.retention_policy_assignments a WHERE a.policy_id = p.id AND a.folder_path IS NULL) AS empresa_toda
+               p.start_rule, p.catalog_key, p.notes,
+               EXISTS (SELECT 1 FROM public.retention_policy_assignments a
+                       WHERE a.policy_id = p.id AND a.folder_path IS NULL AND a.match_tipo_fiscal IS NULL AND a.match_field_id IS NULL) AS empresa_toda
         FROM public.retention_policies p
         LEFT JOIN public.custom_field tf ON tf.id = p.trigger_custom_field_id
-        LEFT JOIN public.custom_field mf ON mf.id = p.match_field_id
         WHERE p.company_id = $1 AND p.archived_at IS NULL ORDER BY p.name
         """,
         company_id,
@@ -789,15 +789,14 @@ async def import_config(
                             """
                             INSERT INTO public.retention_policies
                               (company_id, name, legal_basis, trigger_type, trigger_custom_field_id, duration_months, locked, active,
-                               start_rule, catalog_key, notes, match_tipo_fiscal, match_field_id, match_field_value, created_by)
-                            VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, $7, $8, $9, $10, $11, $12, $13::uuid, $14, $15::uuid)
+                               start_rule, catalog_key, notes, created_by)
+                            VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, $7, $8, $9, $10, $11, $12::uuid)
                             RETURNING id
                             """,
                             cid, nome, r.get("legal_basis"), tipo, gatilho if tipo == "custom_field" else None,
                             r.get("duration_months"), bool(r.get("locked")), r.get("active", True) is not False,
                             r.get("start_rule") if r.get("start_rule") in ("data", "ano_seguinte") else "data",
-                            r.get("catalog_key"), r.get("notes"), r.get("match_tipo_fiscal"),
-                            chaves.get(r.get("match_field_key") or ""), r.get("match_field_value"), uid,
+                            r.get("catalog_key"), r.get("notes"), uid,
                         )
                         if r.get("empresa_toda"):
                             await admin_conn.execute(

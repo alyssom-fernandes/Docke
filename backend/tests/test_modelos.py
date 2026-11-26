@@ -32,6 +32,7 @@ async def cenario(admin: asyncpg.Connection):
     await admin.execute("INSERT INTO public.folders (company_id, parent_id, name, path) VALUES ($1, $2, 'Outros', 'joao.out')", co, joao)
     yield {"co": co, "outra": outra, "adm": adm, "func": func, "admissao": adm_id, "joao": joao}
     await admin.execute("DELETE FROM public.activity_log WHERE company_id = ANY($1::uuid[])", [co, outra])
+    await admin.execute("DELETE FROM public.documents WHERE company_id = ANY($1::uuid[])", [co, outra])
     await admin.execute("DELETE FROM public.companies WHERE id = ANY($1::uuid[])", [co, outra])
     for uid in (adm, func):
         await admin.execute("DELETE FROM public.users WHERE id = $1", uid)
