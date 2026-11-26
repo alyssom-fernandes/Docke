@@ -449,7 +449,7 @@ class CompaniesService:
                    COALESCE((
                      SELECT json_agg(json_build_object(
                        'access_id', a.id::text, 'role', a.permission_level, 'folder_id', f.id::text,
-                       'folder_name', f.name, 'created_at', a.created_at) ORDER BY a.folder_path NULLS FIRST)
+                       'folder_name', f.name, 'created_at', a.created_at, 'expires_at', a.expires_at) ORDER BY a.folder_path NULLS FIRST)
                      FROM public.user_company_access a
                      LEFT JOIN public.folders f ON f.company_id = a.company_id AND f.path = a.folder_path AND f.deleted_at IS NULL
                      WHERE a.user_id = u.id AND a.company_id = $1

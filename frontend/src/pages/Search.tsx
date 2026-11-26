@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Search as SearchIcon, X, AlertTriangle, RefreshCw, Clock, ChevronLeft, ChevronRight, FileWarning } from "lucide-react";
+import { Search as SearchIcon, X, AlertTriangle, RefreshCw, Clock, ChevronLeft, ChevronRight, FileWarning, Bookmark } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { getFileStyle } from "@/lib/fileType";
 import api from "@/lib/api";
@@ -8,6 +8,12 @@ import { useCompany } from "@/lib/CompanyContext";
 import Dropdown from "@/components/ui/Dropdown";
 import Button from "@/components/ui/Button";
 import Checkbox from "@/components/ui/Checkbox";
+import Dialog from "@/components/ui/Dialog";
+import Input from "@/components/ui/Input";
+import { useToast } from "@/lib/toast";
+import { friendlyError } from "@/lib/errors";
+
+interface SavedSearch { id: string; name: string; query: string }
 
 interface SearchResult {
   id: string;
@@ -126,6 +132,38 @@ export default function Search() {
     return () => { vivo = false; window.clearTimeout(t); };
   }, [ativo]);
   const reqId = useRef(0);
+
+  // Buscas salvas (B2.1.5): consulta + filtros, reexecutável em um clique.
+  const { success, error: showError } = useToast();
+  const [salvas, setSalvas] = useState<SavedSearch[]>([]);
+  const [salvando, setSalvando] = useState(false);
+  const [nomeSalva, setNomeSalva] = useState("");
+  useEffect(() => {
+    if (!current) return;
+    api.get<SavedSearch[]>("/search/saved", { params: { company_id: current.id } }).then((r) => setSalvas(r.data ?? [])).catch(() => setSalvas([]));
+  }, [current?.id]);
+  function consultaAtual() {
+    const n = new URLSearchParams(params);
+    n.delete("pagina");
+    return n.toString();
+  }
+  async function salvarBusca() {
+    if (!current || !nomeSalva.trim()) return;
+    try {
+      const r = await api.post<SavedSearch>("/search/saved", { company_id: current.id, name: nomeSalva.trim(), query: consultaAtual() });
+      setSalvas((xs) => [...xs.filter((x) => x.name !== r.data.name), r.data].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")));
+      success(`Busca "${r.data.name}" salva.`);
+      setSalvando(false);
+    } catch (e) {
+      showError(friendlyError(e, "Não foi possível salvar a busca."));
+    }
+  }
+  async function apagarBusca(id: string) {
+    const antes = salvas;
+    setSalvas((xs) => xs.filter((x) => x.id !== id));
+    try { await api.delete(`/search/saved/${id}`); } catch { setSalvas(antes); showError("Não foi possível apagar."); }
+  }
+  const salvaAtual = salvas.find((x) => x.query === consultaAtual());
 
   function setP(changes: Record<string, string | null>, resetPage = true) {
     setParams((p) => {
@@ -266,6 +304,26 @@ export default function Search() {
             </div>
           )}
           {filtros && <Button variant="ghost" size="sm" onClick={() => setP({ pasta: null, sub: null, periodo: null, de: null, ate: null, tipo: null, setor: null })}>Limpar filtros</Button>}
+          {salvas.length > 0 && (
+            <div>
+              <p className="text-mac-caption font-medium text-(--text-secondary) mb-1">Buscas salvas</p>
+              <ul className="space-y-0.5">
+                {salvas.map((x) => (
+                  <li key={x.id} className="group flex items-center gap-1">
+                    <button type="button" onClick={() => setParams(new URLSearchParams(x.query), { replace: false })}
+                      aria-current={salvaAtual?.id === x.id ? "true" : undefined}
+                      className={`flex-1 min-w-0 flex items-center gap-1.5 h-8 pointer-coarse:h-10 px-2 rounded-(--radius-control) text-left text-mac-caption hover:bg-(--bg-hover) ${salvaAtual?.id === x.id ? "text-(--text-accent) font-medium" : "text-(--text-primary)"}`}>
+                      <Bookmark className="w-3.5 h-3.5 shrink-0" aria-hidden="true" /><span className="truncate">{x.name}</span>
+                    </button>
+                    <button type="button" aria-label={`Apagar a busca salva ${x.name}`} onClick={() => apagarBusca(x.id)}
+                      className="w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) opacity-60 group-hover:opacity-100 focus-visible:opacity-100">
+                      <X className="w-3.5 h-3.5" aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </aside>
 
         <section aria-label="Resultados" className="min-w-0 space-y-3">
@@ -324,7 +382,21 @@ export default function Search() {
                   <p className="inline-flex items-center gap-1 text-mac-caption text-(--text-secondary)"><FileWarning className="w-3.5 h-3.5 text-(--text-warning)" aria-hidden="true" />
                     {data.sem_texto} sem texto lido só aparecem pelo nome</p>
                 )}
+                {salvaAtual ? (
+                  <span className="inline-flex items-center gap-1 text-mac-caption text-(--text-accent)"><Bookmark className="w-3.5 h-3.5 fill-current" aria-hidden="true" /> Salva como “{salvaAtual.name}”</span>
+                ) : (
+                  <Button variant="ghost" size="sm" onClick={() => { setNomeSalva(q.slice(0, 80)); setSalvando(true); }}><Bookmark className="w-3.5 h-3.5" aria-hidden="true" /> Salvar busca</Button>
+                )}
               </div>
+              {salvando && (
+                <Dialog onClose={() => setSalvando(false)} title="Salvar busca" size="sm"
+                  description="Guarda o termo e os filtros de agora. Ela fica no painel ao lado, só para você, nesta empresa."
+                  footer={<><Button variant="ghost" onClick={() => setSalvando(false)}>Cancelar</Button><Button disabled={!nomeSalva.trim()} onClick={salvarBusca}>Salvar</Button></>}>
+                  <form onSubmit={(e) => { e.preventDefault(); salvarBusca(); }}>
+                    <Input label="Nome" value={nomeSalva} onChange={(e) => setNomeSalva(e.target.value)} maxLength={80} autoFocus placeholder="Ex.: Notas do fornecedor X em 2026" />
+                  </form>
+                </Dialog>
+              )}
               <ul className={`glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden transition-opacity duration-fast ${state === "loading" ? "opacity-60" : ""}`}>
                 {results.map((r) => {
                   const s = getFileStyle(r.name);

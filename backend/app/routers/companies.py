@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Any
 from uuid import UUID
 
@@ -362,6 +363,7 @@ class MemberCreate(BaseModel):
     full_name: str
     permission_level: str = "visualizador"  # visualizador | operador | admin
     folder_id: UUID | None = None  # None = acesso à empresa toda
+    expires_on: date | None = None  # acesso temporário (B3.1.8): vale até o fim deste dia
 
 
 @router.post("/{company_id}/members", status_code=status.HTTP_201_CREATED)
@@ -387,6 +389,7 @@ async def create_member(
         )
     if body.permission_level not in ("visualizador", "operador", "admin"):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="permission_level inválido.")
+    _validar_prazo(body.expires_on)
     if len(body.password) < 8:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A senha deve ter no mínimo 8 caracteres.")
 
@@ -435,6 +438,7 @@ async def create_member(
                 user_id=new_user_id, company_id=company_id,
                 permission_level=body.permission_level, folder_path=folder_path, granted_by=user_id,
             )
+            await _gravar_prazo(admin_conn, row["id"], body.expires_on)
     except Exception:
         async with httpx.AsyncClient() as client:
             try:
@@ -456,6 +460,20 @@ async def create_member(
 class AccessGrantCreate(BaseModel):
     permission_level: str
     folder_id: UUID | None = None  # None = acesso à empresa toda
+    expires_on: date | None = None  # acesso temporário (B3.1.8): vale até o fim deste dia
+
+
+def _validar_prazo(d: date | None) -> None:
+    if d is not None and d < date.today():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="O prazo do acesso não pode estar no passado.")
+
+
+async def _gravar_prazo(admin_conn: asyncpg.Connection, access_id: Any, d: date | None) -> None:
+    if d is None:
+        return
+    from app.services.access_expiry import fim_do_dia
+
+    await admin_conn.execute("UPDATE public.user_company_access SET expires_at = $2 WHERE id = $1", access_id, fim_do_dia(d))
 
 
 @router.post("/{company_id}/members/{member_id}/access", status_code=status.HTTP_201_CREATED)
@@ -493,11 +511,13 @@ async def add_access_grant(
 
     try:
         async with admin_conn.transaction():
+            _validar_prazo(body.expires_on)
             row = await CompaniesService.insert_access_grant(
                 admin_conn,
                 user_id=member_id, company_id=company_id,
                 permission_level=body.permission_level, folder_path=folder_path, granted_by=user_id,
             )
+            await _gravar_prazo(admin_conn, row["id"], body.expires_on)
     except asyncpg.UniqueViolationError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -506,8 +526,9 @@ async def add_access_grant(
     nome = await admin_conn.fetchval("SELECT full_name FROM public.users WHERE id = $1", member_id)
     await CompaniesService.log_access(admin_conn, actor_id=user_id, company_id=company_id, action="access_grant",
                                       target_id=member_id, target_name=nome or "pessoa",
-                                      metadata={"papel": body.permission_level, "onde": await _scope_label(admin_conn, company_id, folder_path)})
-    return dict(row)
+                                      metadata={"papel": body.permission_level, "onde": await _scope_label(admin_conn, company_id, folder_path),
+                                                "ate": body.expires_on.isoformat() if body.expires_on else None})
+    return dict(row) | {"expires_on": body.expires_on}
 
 
 async def _scope_label(admin_conn: asyncpg.Connection, company_id: UUID, folder_path: str | None) -> str:

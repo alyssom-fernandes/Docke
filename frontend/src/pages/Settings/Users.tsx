@@ -17,7 +17,7 @@ import ConfirmModal from "@/components/ui/ConfirmModal";
 import Dropdown from "@/components/ui/Dropdown";
 import { friendly } from "@/components/obligations/shared";
 
-interface DirectGrant { access_id: string; role: string; folder_id: string | null; folder_name: string | null }
+interface DirectGrant { access_id: string; role: string; folder_id: string | null; folder_name: string | null; expires_at?: string | null }
 interface GroupGrantRef { group_id: string; group_name: string; role: string; folder_id: string | null; folder_name: string | null }
 interface Person {
   user_id: string; username: string; full_name: string; email: string | null; is_active: boolean; role: string;
@@ -225,6 +225,8 @@ function PersonDialog({ companyId, person, folders, isSelf, onClose, onChanged }
   const [busy, setBusy] = useState(false);
   const [newRole, setNewRole] = useState("visualizador");
   const [newFolder, setNewFolder] = useState("");
+  // Acesso temporário (B3.1.8): vale até o fim do dia escolhido.
+  const [newUntil, setNewUntil] = useState("");
   const [confirm, setConfirm] = useState<null | { kind: "revoke"; grant: DirectGrant } | { kind: "remove" } | { kind: "deactivate" } | { kind: "mfa" }>(null);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [explainFolder, setExplainFolder] = useState("");
@@ -254,7 +256,10 @@ function PersonDialog({ companyId, person, folders, isSelf, onClose, onChanged }
               <ul className="divide-y divide-(--border-default) rounded-(--radius-control) border border-(--border-default)">
                 {person.grants.map((g) => (
                   <li key={g.access_id} className="flex flex-wrap items-center gap-2 px-3 py-2">
-                    <span className="flex-1 min-w-36 text-mac-body text-(--text-primary)">{g.folder_name ?? "Empresa toda"}</span>
+                    <span className="flex-1 min-w-36 text-mac-body text-(--text-primary)">
+                      {g.folder_name ?? "Empresa toda"}
+                      {g.expires_at && <span className="ml-2 text-mac-caption font-medium text-(--text-warning)">até {new Date(new Date(g.expires_at).getTime() - 1000).toLocaleDateString("pt-BR")}</span>}
+                    </span>
                     <div className="w-44">
                       <Dropdown ariaLabel={`Papel ${where(g.folder_name)}`} value={g.role} disabled={busy}
                         onChange={(v) => act(() => api.patch(`/companies/${companyId}/access/${g.access_id}`, { permission_level: v }), `Agora é ${ROLE_LABEL[v]} ${where(g.folder_name)}.`, "Não foi possível trocar o papel.")}
@@ -270,12 +275,17 @@ function PersonDialog({ companyId, person, folders, isSelf, onClose, onChanged }
             <div className="flex flex-wrap items-end gap-2">
               <div className="w-44"><label id={`${uid}-nr`} className="block text-mac-caption text-(--text-secondary) mb-1">Papel</label><Dropdown ariaLabelledby={`${uid}-nr`} value={newRole} onChange={setNewRole} options={ROLE_OPTS} /></div>
               <div className="w-56"><label id={`${uid}-nf`} className="block text-mac-caption text-(--text-secondary) mb-1">Onde</label><Dropdown ariaLabelledby={`${uid}-nf`} value={newFolder} onChange={setNewFolder} options={opts} /></div>
+              <div className="w-40">
+                <label htmlFor={`${uid}-ate`} className="block text-mac-caption text-(--text-secondary) mb-1">Até (opcional)</label>
+                <input id={`${uid}-ate`} type="date" value={newUntil} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setNewUntil(e.target.value)}
+                  className="w-full h-9 pointer-coarse:h-11 px-2 rounded-(--radius-control) border border-(--border-control) bg-(--bg-card) text-mac-body text-(--text-primary) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring)" />
+              </div>
               <Button variant="secondary" size="sm" disabled={busy}
-                onClick={() => act(() => api.post(`/companies/${companyId}/members/${person.user_id}/access`, { permission_level: newRole, folder_id: newFolder || null }), "Acesso adicionado.", "Não foi possível adicionar o acesso.")}>
+                onClick={() => act(() => api.post(`/companies/${companyId}/members/${person.user_id}/access`, { permission_level: newRole, folder_id: newFolder || null, expires_on: newUntil || null }), newUntil ? `Acesso adicionado até ${new Date(newUntil + "T12:00").toLocaleDateString("pt-BR")}.` : "Acesso adicionado.", "Não foi possível adicionar o acesso.").then((ok) => { if (ok) setNewUntil(""); })}>
                 <Plus className="w-3.5 h-3.5" aria-hidden="true" /> Adicionar acesso
               </Button>
             </div>
-            <p className="text-mac-caption text-(--text-secondary)">{ROLE_HELP[newRole]}</p>
+            <p className="text-mac-caption text-(--text-secondary)">{ROLE_HELP[newRole]}{newUntil ? " O acesso sai sozinho ao fim do dia escolhido e fica registrado na trilha." : ""}</p>
           </section>
 
           {person.via_groups.length > 0 && (
