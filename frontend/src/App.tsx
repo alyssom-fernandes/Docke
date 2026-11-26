@@ -33,6 +33,7 @@ import ErrorBoundary from "@/components/shared/ErrorBoundary";
 import Onboarding, { isOnboardingComplete } from "@/components/shared/Onboarding";
 import SessionExpiredOverlay from "@/components/shared/SessionExpiredOverlay";
 const PublicShare = lazy(() => import("@/pages/PublicShare"));
+const TitularChannel = lazy(() => import("@/pages/TitularChannel"));
 const PublicUpload = lazy(() => import("@/pages/PublicUpload"));
 import NotFound from "@/pages/NotFound";
 
@@ -158,6 +159,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/redefinir-senha" element={<Suspense fallback={<PageFallback />}><ResetPassword /></Suspense>} />
           <Route path="/s/:token" element={<Suspense fallback={<PageFallback />}><PublicShare /></Suspense>} />
+          <Route path="/titular/:companyId" element={<Suspense fallback={<PageFallback />}><TitularChannel /></Suspense>} />
           <Route path="/enviar/:token" element={<Suspense fallback={<PageFallback />}><PublicUpload /></Suspense>} />
           <Route path="/*" element={<ProtectedRoutes />} />
         </Routes>
