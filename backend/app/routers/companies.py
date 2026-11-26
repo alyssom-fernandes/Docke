@@ -861,7 +861,14 @@ async def add_group_member(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
     if not await GroupsService.group_exists(admin_conn, group_id, company_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grupo não encontrado.")
-    if not await GroupsService.member_of_company(admin_conn, body.user_id, company_id):
+    # A9-37: o administrador geral põe qualquer conta ativa no grupo, e o grupo
+    # passa a ser o acesso dela à empresa. O admin da empresa só põe quem já é
+    # da empresa (A9-42: as contas são do administrador geral; ele não descobre
+    # contas de outras empresas por aqui).
+    if role == "supremo":
+        if not await admin_conn.fetchval("SELECT EXISTS (SELECT 1 FROM public.users WHERE id = $1 AND is_active IS NOT FALSE)", body.user_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não encontrado.")
+    elif not await GroupsService.member_of_company(admin_conn, body.user_id, company_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não é membro desta empresa.")
 
     await GroupsService.add_member(admin_conn, group_id, body.user_id)
