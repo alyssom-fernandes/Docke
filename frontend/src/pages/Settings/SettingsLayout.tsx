@@ -18,14 +18,14 @@ const LAST_PANE_KEY = "docke_settings_last_pane";
 // aba certa mesmo sem a palavra aparecer no rótulo — mesmo princípio de
 // busca do System Settings da Apple.
 const TABS = [
-  { to: "/settings/profile", icon: User, label: "Perfil", color: "bg-blue-500", adminOnly: false, supremoOnly: false, group: "Conta", keywords: ["nome", "avatar", "username"] },
-  { to: "/settings/security", icon: Lock, label: "Segurança", color: "bg-red-500", adminOnly: false, supremoOnly: false, group: "Conta", keywords: ["senha", "trocar senha", "password"] },
+  { to: "/settings/profile", icon: User, label: "Perfil", color: "bg-blue-500", adminOnly: false, supremoOnly: false, group: "Conta", keywords: ["nome", "avatar", "username", "e-mail", "email", "conta", "minhas empresas"] },
+  { to: "/settings/security", icon: Lock, label: "Segurança", color: "bg-red-500", adminOnly: false, supremoOnly: false, group: "Conta", keywords: ["senha", "trocar senha", "password", "mfa", "duas etapas", "2fa", "autenticação", "segurança da conta"] },
   { to: "/settings/admin", icon: LayoutGrid, label: "Visão geral", color: "bg-teal-600", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["administração", "resumo", "painel", "overview"] },
-  { to: "/settings/organization", icon: Building2, label: "Organização", color: "bg-slate-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["empresa", "cnpj", "desativar", "reativar", "perfil fiscal"] },
+  { to: "/settings/organization", icon: Building2, label: "Organização", color: "bg-slate-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["empresa", "cnpj", "desativar", "reativar", "perfil fiscal", "logo", "regime", "segmento", "exportar", "exportação", "backup", "ler de novo", "ocr"] },
   { to: "/settings/users", icon: UsersIcon, label: "Pessoas e acessos", color: "bg-indigo-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["usuário", "membro", "grupo", "grupos", "permissão", "acesso", "operador", "visualizador", "admin", "explain access"] },
   { to: "/settings/metadata", icon: Tags, label: "Metadados", color: "bg-orange-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["campo", "campos", "cpf", "cnpj", "catálogo", "aplicação na árvore", "herança", "obrigatório"] },
   { to: "/settings/retention", icon: Archive, label: "Retenção e descarte", color: "bg-amber-600", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["lixeira", "política", "hold", "legal hold", "descarte", "certificado", "fila", "purga"] },
-  { to: "/settings/preferences", icon: Sliders, label: "Preferências", color: "bg-purple-500", adminOnly: false, supremoOnly: false, group: "Aplicativo", keywords: ["tema", "dark mode", "modo escuro", "densidade"] },
+  { to: "/settings/preferences", icon: Sliders, label: "Preferências", color: "bg-purple-500", adminOnly: false, supremoOnly: false, group: "Aplicativo", keywords: ["tema", "dark mode", "modo escuro", "claro", "densidade", "aparência", "atalhos"] },
 ];
 
 function useVisibleTabs() {
@@ -80,7 +80,7 @@ export default function SettingsLayout() {
       const listTabs = visibleTabs.filter((t) => t.to !== "/settings/profile");
       const initials = (user?.full_name ?? user?.username ?? "?").split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase();
       return (
-        <div className="flex flex-col h-[calc(100%+3rem)] -mt-6 py-2">
+        <div key={location.pathname} className="panel-in flex flex-col h-[calc(100%+3rem)] -mt-6 py-2">
           <div className="px-1 pb-3 shrink-0">
             <h1 className="text-mac-title-2 font-bold text-(--text-primary)">Configurações</h1>
           </div>
@@ -134,10 +134,10 @@ export default function SettingsLayout() {
             navegação, só a seta dentro de um círculo. */}
         <button
           onClick={() => navigate("/settings")}
-          aria-label="Voltar para Configurações"
-          className="flex items-center justify-center w-9 h-9 -ml-1 mb-2 rounded-full bg-(--bg-hover) text-(--text-primary) shrink-0 self-start"
+          aria-label="Voltar para Ajustes"
+          className="flex items-center justify-center w-11 h-11 -ml-1 mb-2 rounded-full bg-(--bg-hover) text-(--text-primary) shrink-0 self-start active:scale-95"
         >
-          <ChevronLeft className="w-4 h-4" />
+          <ChevronLeft className="w-4 h-4" aria-hidden="true" />
         </button>
         {/* Título do pane mora só aqui — as sub-páginas não repetem o nome
             (evita duplicar "Perfil"/"Segurança" tanto no header quanto no
@@ -160,7 +160,7 @@ export default function SettingsLayout() {
     // caixas" em vez de uma janela coesa. calc(100%+3rem)/-mt-6 é o mesmo
     // ajuste de Documents.tsx pra cancelar o padding vertical do AppShell.
     <div className="flex h-[calc(100%+3rem)] -mt-6 py-2 glass-panel glass-highlight-line rounded-(--radius-panel) glass-shadow overflow-hidden">
-      <aside className="flex flex-col w-[240px] shrink-0 border-r border-(--border-default)">
+      <aside className="flex flex-col w-[200px] lg:w-[240px] shrink-0 border-r border-(--border-default)">
         <div className="px-4 py-3 border-b border-(--border-default) shrink-0 space-y-2">
           <h1 className="text-mac-body font-semibold text-(--text-secondary)">Configurações</h1>
           {/* Campo de busca no topo da sidebar — presente em toda referência
@@ -169,18 +169,25 @@ export default function SettingsLayout() {
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-(--text-placeholder) pointer-events-none" />
             <input
               type="search"
+              aria-label="Buscar nos ajustes"
               value={sidebarQuery}
               onChange={(e) => setSidebarQuery(e.target.value)}
-              placeholder="Buscar"
+              placeholder="Buscar (ex.: senha, CNPJ, campos)"
               className="w-full h-7 pl-8 pr-2 text-mac-caption bg-(--bg-hover) rounded-[6px] text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-2 focus:ring-teal-500/70"
             />
           </div>
         </div>
-        <nav className="flex-1 overflow-y-auto p-1.5">
+        <nav aria-label="Seções dos ajustes" className="flex-1 overflow-y-auto p-1.5">
           {(() => {
             const q = sidebarQuery.trim().toLowerCase();
             const filtered = visibleTabs.filter((tab) =>
               tab.label.toLowerCase().includes(q) || tab.keywords.some((k) => k.includes(q))
+            );
+            // Busca sem resultado diz o que tentar (A8-01), em vez de lista em branco.
+            if (!filtered.length) return (
+              <p role="status" className="px-2.5 py-3 text-mac-caption text-(--text-secondary)">
+                Nada nos ajustes com “{sidebarQuery.trim()}”. Tente senha, CNPJ, campos, prazos ou tema.
+              </p>
             );
             const groups = Array.from(new Set(filtered.map((t) => t.group)));
             return groups.map((group, gi) => (
@@ -233,7 +240,9 @@ export default function SettingsLayout() {
         {/* Título do pane mora só aqui, e o conteúdo tem largura máxima —
             System Settings nunca estica formulários/group boxes pra ocupar
             uma janela larga inteira, mantém foco e legibilidade. */}
-        <div className="max-w-[720px] space-y-6">
+        {/* Troca de painel com transição (A8-04); em telas largas o conteúdo
+            cresce até 960 px em vez de deixar meia janela vazia (A8-05). */}
+        <div key={location.pathname} className="page-enter max-w-[720px] 2xl:max-w-[960px] space-y-6">
           {activeTab && <h2 className="text-mac-title3 font-semibold text-(--text-primary)">{activeTab.label}</h2>}
           <Outlet />
         </div>
