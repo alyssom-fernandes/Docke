@@ -9,7 +9,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const base =
-  "inline-flex items-center justify-center font-medium rounded-full transition-all duration-fast select-none focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) focus-visible:ring-offset-1 focus-visible:ring-offset-(--bg-card) disabled:opacity-50 disabled:pointer-events-none active:scale-[0.97] motion-reduce:active:scale-100";
+  "inline-flex items-center justify-center font-medium rounded-full transition-all duration-fast select-none focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) focus-visible:ring-offset-1 focus-visible:ring-offset-(--bg-card) disabled:opacity-(--opacity-disabled) disabled:pointer-events-none active:scale-[0.97] motion-reduce:active:scale-100";
 
 const variants: Record<string, string> = {
   // Texto branco sobre teal-600 dá 4,5:1; o hover escurece (teal-700) em vez

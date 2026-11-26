@@ -692,7 +692,7 @@ function UploadModal({ folderId, folderName, companyId, onClose, onDone }: { fol
             {dest.id ? dest.name : "escolha uma pasta"}
           </span>
           <button type="button" onClick={() => setPicking(true)} disabled={uploading}
-            className="text-(--text-accent) font-medium underline-offset-2 hover:underline disabled:opacity-50 min-h-6 pointer-coarse:min-h-11">
+            className="text-(--text-accent) font-medium underline-offset-2 hover:underline disabled:opacity-(--opacity-disabled) min-h-6 pointer-coarse:min-h-11">
             {dest.id ? "Trocar" : "Escolher"}
           </button>
         </span>
@@ -765,7 +765,7 @@ function UploadModal({ folderId, folderName, companyId, onClose, onDone }: { fol
                     <span className="shrink-0 tabular-nums">{fmtSize(p.file.size)}</span>
                     <button type="button" onClick={() => setPending((prev) => prev.filter((_, j) => j !== i))} disabled={uploading}
                       aria-label={`Tirar ${label} da lista`}
-                      className="w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 -mr-1 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) disabled:opacity-40">
+                      className="w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 -mr-1 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) disabled:opacity-(--opacity-disabled)">
                       <X className="w-3.5 h-3.5" aria-hidden />
                     </button>
                   </li>
@@ -2734,7 +2734,7 @@ export default function Documents() {
               <button
                 onClick={goBack}
                 disabled={!canGoBack}
-                className="h-7 w-7 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) transition-colors duration-fast disabled:opacity-30 disabled:pointer-events-none"
+                className="h-7 w-7 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) transition-colors duration-fast disabled:opacity-(--opacity-disabled) disabled:pointer-events-none"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
@@ -2743,7 +2743,7 @@ export default function Documents() {
               <button
                 onClick={goForward}
                 disabled={!canGoForward}
-                className="h-7 w-7 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) transition-colors duration-fast disabled:opacity-30 disabled:pointer-events-none"
+                className="h-7 w-7 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) transition-colors duration-fast disabled:opacity-(--opacity-disabled) disabled:pointer-events-none"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>

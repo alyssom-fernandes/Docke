@@ -366,7 +366,7 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
     }
   }
 
-  const iconBtn = "w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-hover) disabled:opacity-40 shrink-0";
+  const iconBtn = "w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-hover) disabled:opacity-(--opacity-disabled) shrink-0";
 
   return (
     <div className="border-t border-(--border-default) pt-3">
@@ -396,7 +396,7 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading || full}
-            className="w-full h-8 pointer-coarse:h-11 flex items-center justify-center gap-1.5 text-mac-caption border border-(--border-control) rounded-full text-(--text-primary) hover:bg-(--bg-hover) transition-colors duration-fast disabled:opacity-50"
+            className="w-full h-8 pointer-coarse:h-11 flex items-center justify-center gap-1.5 text-mac-caption border border-(--border-control) rounded-full text-(--text-primary) hover:bg-(--bg-hover) transition-colors duration-fast disabled:opacity-(--opacity-disabled)"
           >
             <Upload className="w-3.5 h-3.5" aria-hidden="true" />
             {uploading ? "Enviando…" : "Enviar nova versão"}

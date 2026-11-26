@@ -281,7 +281,7 @@ export default function PublicShare() {
                         <span className="text-mac-caption text-(--text-secondary) tabular-nums">{fmtSize(d.size_bytes)}</span>
                         {canDownload && (
                           <button onClick={() => downloadDoc(d.id)} aria-label={`Baixar ${d.name}`} disabled={downloading === d.id}
-                            className="w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-hover) disabled:opacity-60">
+                            className="w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-hover) disabled:opacity-(--opacity-disabled)">
                             <Download className={`w-3.5 h-3.5 ${downloading === d.id ? "animate-bounce" : ""}`} aria-hidden="true" />
                           </button>
                         )}

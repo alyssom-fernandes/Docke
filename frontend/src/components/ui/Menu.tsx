@@ -160,7 +160,7 @@ export default function Menu({ items, onClose, anchor, label, align = "start" }:
               ${sheet ? "h-12 px-3.5 active:bg-(--bg-hover) focus-visible:bg-(--bg-hover)" : "h-7 pointer-coarse:h-11"}
               ${it.danger ? "text-(--text-danger)" : "text-(--text-primary)"}
               ${!sheet && i === active ? (it.danger ? "bg-red-600 text-white" : "bg-teal-600 text-white") : ""}
-              disabled:opacity-40 disabled:cursor-not-allowed`}
+              disabled:opacity-(--opacity-disabled) disabled:cursor-not-allowed`}
           >
             {it.checked !== undefined
               ? <span className="flex w-4 shrink-0 items-center justify-center" aria-hidden>{it.checked && <Check className="h-3.5 w-3.5" />}</span>

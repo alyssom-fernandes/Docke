@@ -98,7 +98,7 @@ export default function Dropdown({
         disabled={disabled}
         onClick={() => setOpen((v) => !v)}
         onKeyDown={onKeyDown}
-        className="w-full h-9 pointer-coarse:h-11 px-3 flex items-center justify-between gap-2 text-mac-body pointer-coarse:text-[16px] bg-(--bg-card) border border-(--border-control) rounded-(--radius-control) text-left focus:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full h-9 pointer-coarse:h-11 px-3 flex items-center justify-between gap-2 text-mac-body pointer-coarse:text-[16px] bg-(--bg-card) border border-(--border-control) rounded-(--radius-control) text-left focus:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) disabled:opacity-(--opacity-disabled) disabled:cursor-not-allowed"
       >
         <span className={`truncate ${selected ? "text-(--text-primary)" : "text-(--text-placeholder)"}`}>{selected?.label ?? placeholder}</span>
         <ChevronDown className={`w-3.5 h-3.5 shrink-0 text-(--text-secondary) transition-transform duration-150 ${open ? "rotate-180" : ""}`} aria-hidden />

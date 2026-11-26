@@ -599,7 +599,7 @@ function WhereTab({ companyId, isAdmin, policies, folders, assignments, initialF
                 <label htmlFor="onde-valor" className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Valor do campo</label>
                 <input id="onde-valor" value={campoValor} onChange={(e) => setCampoValor(e.target.value)} disabled={!campoId} placeholder={campoId ? "Ex.: Holerite" : "Escolha o campo"} maxLength={200}
                   aria-invalid={filtroCampoIncompleto || undefined}
-                  className="w-full h-8 pointer-coarse:h-11 px-2.5 rounded-[6px] border border-(--border-control) bg-(--bg-card) text-mac-body text-(--text-primary) placeholder:text-(--text-placeholder) disabled:opacity-60 focus:outline-hidden focus:ring-2 focus:ring-(--focus-ring)" />
+                  className="w-full h-8 pointer-coarse:h-11 px-2.5 rounded-[6px] border border-(--border-control) bg-(--bg-card) text-mac-body text-(--text-primary) placeholder:text-(--text-placeholder) disabled:opacity-(--opacity-disabled) focus:outline-hidden focus:ring-2 focus:ring-(--focus-ring)" />
               </div>
             </div>
             {filtroCampoIncompleto && <p className="mt-1.5 text-mac-caption text-(--text-warning)">Informe o valor do campo (sem diferença de maiúsculas).</p>}

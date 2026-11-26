@@ -361,7 +361,7 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose }: Preview
   }
 
   const noText = type !== "unsupported" && ((type === "image" && ocrText === "") || (type === "text" && !textContent));
-  const iconBtn = "h-8 w-8 pointer-coarse:h-11 pointer-coarse:w-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) disabled:opacity-30 disabled:pointer-events-none shrink-0";
+  const iconBtn = "h-8 w-8 pointer-coarse:h-11 pointer-coarse:w-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) disabled:opacity-(--opacity-disabled) disabled:pointer-events-none shrink-0";
 
   const header = (
     <div className="flex items-center gap-2 px-3 sm:px-4 py-2.5 border-b border-(--border-default) shrink-0">

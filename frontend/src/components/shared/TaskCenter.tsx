@@ -276,7 +276,7 @@ export default function TaskCenter() {
                 <div role="alert" className="flex items-center gap-2 px-4 py-3 text-mac-caption text-(--text-warning)">
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                   <span className="flex-1">Não deu para carregar os avisos agora.</span>
-                  <button onClick={loadNotifications} disabled={loading} className="inline-flex items-center gap-1 text-(--text-accent) font-medium hover:underline disabled:opacity-50 min-h-6 pointer-coarse:min-h-11">
+                  <button onClick={loadNotifications} disabled={loading} className="inline-flex items-center gap-1 text-(--text-accent) font-medium hover:underline disabled:opacity-(--opacity-disabled) min-h-6 pointer-coarse:min-h-11">
                     <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} aria-hidden="true" /> Tentar de novo
                   </button>
                 </div>

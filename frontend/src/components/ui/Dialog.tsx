@@ -163,7 +163,7 @@ export default function Dialog({
                 onClick={requestClose}
                 disabled={busy}
                 aria-label="Fechar"
-                className="-mr-2 -mt-1 flex h-8 w-8 pointer-coarse:h-11 pointer-coarse:w-11 shrink-0 items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) disabled:opacity-40"
+                className="-mr-2 -mt-1 flex h-8 w-8 pointer-coarse:h-11 pointer-coarse:w-11 shrink-0 items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) disabled:opacity-(--opacity-disabled)"
               >
                 <X className="h-4 w-4" aria-hidden />
               </button>

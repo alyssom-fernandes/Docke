@@ -46,7 +46,7 @@ export default function IntegrityCheck({ documentId }: { documentId: string }) {
         <ShieldCheck className="w-4 h-4 text-(--text-accent) shrink-0" aria-hidden="true" />
         <h3 id={`integ-${documentId}`} className="flex-1 text-mac-caption font-semibold text-(--text-primary)">Integridade</h3>
         <button onClick={conferir} disabled={busy} aria-busy={busy || undefined}
-          className="text-mac-caption font-medium text-(--text-accent) hover:underline disabled:opacity-60 min-h-6 pointer-coarse:min-h-11">
+          className="text-mac-caption font-medium text-(--text-accent) hover:underline disabled:opacity-(--opacity-disabled) min-h-6 pointer-coarse:min-h-11">
           {busy ? "Conferindo…" : res ? "Conferir de novo" : "Conferir"}
         </button>
       </div>
