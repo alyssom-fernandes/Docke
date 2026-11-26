@@ -26,6 +26,12 @@ import { CommandPaletteProvider } from "@/hooks/useCommandPalette";
 import { TaskProvider } from "@/lib/TaskContext";
 import { NavigationProvider } from "@/lib/NavigationContext";
 
+// Service worker só para receber o "Compartilhar" do celular (B4.5.7); não
+// guarda o app em cache. Fora de produção não registra (o Vite serve a raiz).
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  window.addEventListener("load", () => { navigator.serviceWorker.register("/sw.js").catch(() => {}); });
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <AuthProvider>

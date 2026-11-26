@@ -9,13 +9,74 @@
   "background_color": "#E9E9E3",
   "theme_color": "#0d9488",
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ],
   "shortcuts": [
-    { "name": "Enviar documentos", "url": "/documents?acao=enviar" },
-    { "name": "Obrigações", "url": "/obligations" },
-    { "name": "Busca", "url": "/search" }
-  ]
+    {
+      "name": "Enviar documentos",
+      "url": "/documents?acao=enviar"
+    },
+    {
+      "name": "Obrigações",
+      "url": "/obligations"
+    },
+    {
+      "name": "Busca",
+      "url": "/search"
+    }
+  ],
+  "share_target": {
+    "action": "/compartilhar",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "files": [
+        {
+          "name": "arquivos",
+          "accept": [
+            "application/pdf",
+            "image/*",
+            "application/xml",
+            "text/xml",
+            "text/plain",
+            "text/csv",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/msword",
+            "application/vnd.ms-excel",
+            ".pdf",
+            ".xml",
+            ".docx",
+            ".xlsx",
+            ".doc",
+            ".xls",
+            ".csv",
+            ".txt",
+            ".jpg",
+            ".jpeg",
+            ".png"
+          ]
+        }
+      ]
+    }
+  }
 }

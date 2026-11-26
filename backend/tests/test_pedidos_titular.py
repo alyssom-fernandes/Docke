@@ -40,6 +40,12 @@ async def test_canal_publico_e_acompanhamento(api, admin, cenario):  # noqa: F81
     assert (await api.put(canal, json={"enabled": True}, headers=_token(cenario["func"]))).status_code == 403
     assert (await api.put(canal, json={"enabled": True}, headers=_token(cenario["adm"]))).status_code == 200
     assert (await api.get(pub)).json()["company_name"] == "Posto Titular"
+    # A conta demo não liga o canal (visitantes veriam dados uns dos outros).
+    from app.config import settings
+    from unittest.mock import patch
+    with patch("app.services.mfa_service.is_demo", return_value=True):
+        assert (await api.put(canal, json={"enabled": True}, headers=_token(cenario["adm"]))).status_code == 403
+    assert settings.DEMO_EMAIL
 
     r = await api.post(pub, json=pedido)
     assert r.status_code == 201, r.text
