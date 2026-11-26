@@ -453,7 +453,7 @@ class DocumentsService:
               d.id::text, d.name, d.folder_id::text, d.company_id::text,
               d.mime_type, d.file_type, d.size_bytes, d.storage_path, d.content_hash,
               d.sector, d.competencia, d.tipo_fiscal, d.ocr_status,
-              d.uploaded_by::text, d.created_at, d.updated_at,
+              d.uploaded_by::text, d.created_at, d.updated_at, d.is_template,
               u.full_name AS uploaded_by_name,
               EXISTS (
                 SELECT 1 FROM public.favorites f

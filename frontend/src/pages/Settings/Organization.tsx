@@ -4,6 +4,7 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import { friendlyError } from "@/lib/errors";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
+import { TemplatesSection } from "@/components/documents/Templates";
 import { useToast } from "@/lib/toast";
 import { useAuthContext } from "@/lib/AuthContext";
 import Button from "@/components/ui/Button";
@@ -301,6 +302,7 @@ export default function Organization() {
   return (
     <div className="space-y-4">
       {current && <FiscalProfileSection companyId={current.id} companyName={current.name} isAdmin={isCurrentAdmin} />}
+      {current && isCurrentAdmin && <TemplatesSection companyId={current.id} companyName={current.name} />}
       {current && isCurrentAdmin && <DataSection companyId={current.id} companyName={current.name} />}
 
       <div className="flex items-center justify-between gap-3 pt-1">
