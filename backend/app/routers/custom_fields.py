@@ -720,3 +720,232 @@ async def set_document_field_values(
                 json.dumps({"field_label": field["label"], "custom_field_id": str(item.custom_field_id), "old_value": old_value, "new_value": value_text}),
             )
     return results
+
+
+# ---------------------------------------------------------------------------
+# Trocar o tipo de um campo convertendo os valores (B1.3.10) e aplicar o valor
+# padrão de uma regra de pasta aos documentos que já existem (FA-A8-09). As
+# duas rotas têm prévia: nada muda sem `aplicar: true`.
+# ---------------------------------------------------------------------------
+
+def _normalizar(tipo: str, cfg: dict[str, Any], bruto: str):
+    """(texto, data, número) no formato do tipo, ou ValueError com o motivo."""
+    import datetime as _dt
+    from decimal import Decimal, InvalidOperation
+
+    v = (bruto or "").strip()
+    if not v:
+        raise ValueError("vazio")
+    if tipo == "texto":
+        return v, None, None
+    if tipo == "cpf":
+        d = re.sub(r"\D", "", v)
+        if not _validate_cpf(d):
+            raise ValueError("CPF inválido")
+        return f"{d[:3]}.{d[3:6]}.{d[6:9]}-{d[9:]}", None, None
+    if tipo == "cnpj":
+        d = re.sub(r"\D", "", v)
+        if not _validate_cnpj(d):
+            raise ValueError("CNPJ inválido")
+        return f"{d[:2]}.{d[2:5]}.{d[5:8]}/{d[8:12]}-{d[12:]}", None, None
+    if tipo == "data":
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%d.%m.%Y"):
+            try:
+                d = _dt.datetime.strptime(v, fmt).date()
+                return d.strftime("%d/%m/%Y"), d, None
+            except ValueError:
+                continue
+        raise ValueError("não é uma data")
+    if tipo == "competencia":
+        for fmt in ("%m/%Y", "%Y-%m", "%d/%m/%Y", "%Y-%m-%d"):
+            try:
+                d = _dt.datetime.strptime(v, fmt).date().replace(day=1)
+                return d.strftime("%m/%Y"), d, None
+            except ValueError:
+                continue
+        raise ValueError("não é uma competência")
+    if tipo == "numero":
+        limpo = v.replace(".", "").replace(",", ".") if "," in v else v
+        try:
+            n = Decimal(limpo)
+        except InvalidOperation:
+            raise ValueError("não é um número")
+        casas = cfg.get("decimals")
+        if casas is None:
+            return limpo, None, n
+        n = round(n, casas)
+        return f"{n:.{casas}f}", None, n
+    if tipo == "selecao":
+        if v not in cfg.get("options", []):
+            raise ValueError("fora das opções")
+        return v, None, None
+    if tipo in ("moeda", "email", "telefone", "cep", "booleano"):
+        texto, numero = _normalize_extra(tipo, v)
+        return texto, None, numero
+    raise ValueError("tipo desconhecido")
+
+
+class FieldTypeChange(BaseModel):
+    new_type: str
+    aplicar: bool = False
+
+
+@router.post("/custom-fields/{field_id}/change-type")
+async def change_field_type(
+    field_id: UUID,
+    body: FieldTypeChange,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Prévia (padrão) ou troca de fato do tipo. Valores que não convertem são
+    listados na prévia e, ao aplicar, apagados (o aviso diz quantos e quais).
+    Para "seleção", as opções passam a ser os valores que já existem.
+    """
+    import json as _json
+
+    field = await CustomFieldsService.get_field(conn, field_id)
+    if field is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campo não encontrado.")
+    role = await get_app_role(conn, claims)
+    await _require_company_admin(conn, claims["sub"], UUID(field["company_id"]), role)
+    if body.new_type not in VALID_TYPES:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Tipo inválido.")
+    if body.new_type == field["type"]:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="O campo já é deste tipo.")
+
+    valores = await conn.fetch(
+        """
+        SELECT v.id, v.value_text, d.name AS documento
+        FROM public.document_field_value v JOIN public.documents d ON d.id = v.document_id
+        WHERE v.custom_field_id = $1
+        """,
+        field_id,
+    )
+    cfg_antigo = field["format_config"] or {}
+    if isinstance(cfg_antigo, str):
+        cfg_antigo = _json.loads(cfg_antigo or "{}")
+    cfg_novo: dict[str, Any] = {}
+    if body.new_type == "selecao":
+        opcoes = sorted({(v["value_text"] or "").strip() for v in valores if (v["value_text"] or "").strip()})[:100]
+        cfg_novo = {"options": opcoes}
+    elif body.new_type == "numero" and "decimals" in cfg_antigo:
+        cfg_novo = {"decimals": cfg_antigo["decimals"]}
+
+    convertidos, perdidos = [], []
+    for v in valores:
+        try:
+            convertidos.append((v["id"], *_normalizar(body.new_type, cfg_novo, v["value_text"])))
+        except ValueError as exc:
+            perdidos.append({"documento": v["documento"], "valor": v["value_text"], "motivo": str(exc)})
+
+    resumo = {"total": len(valores), "convertidos": len(convertidos), "perdidos": len(perdidos),
+              "exemplos_perdidos": perdidos[:10], "opcoes": cfg_novo.get("options")}
+    if not body.aplicar:
+        return resumo | {"aplicado": False}
+
+    async with conn.transaction():
+        for vid, texto, data, numero in convertidos:
+            await conn.execute(
+                "UPDATE public.document_field_value SET value_text = $2, value_date = $3, value_number = $4, updated_at = now() WHERE id = $1",
+                vid, texto, data, numero,
+            )
+        if perdidos:
+            ids_ok = [c[0] for c in convertidos]
+            await conn.execute(
+                "DELETE FROM public.document_field_value WHERE custom_field_id = $1 AND NOT (id = ANY($2::uuid[]))", field_id, ids_ok,
+            )
+        await conn.execute(
+            "UPDATE public.custom_field SET type = $2, format_config = $3::jsonb WHERE id = $1", field_id, body.new_type, _json.dumps(cfg_novo),
+        )
+        # Valor padrão das pastas que não serve mais no tipo novo sai (ficaria inválido).
+        regras = await conn.fetch("SELECT id, default_value FROM public.folder_field WHERE custom_field_id = $1 AND default_value IS NOT NULL", field_id)
+        for r in regras:
+            try:
+                texto, _, _ = _normalizar(body.new_type, cfg_novo, r["default_value"])
+                await conn.execute("UPDATE public.folder_field SET default_value = $2 WHERE id = $1", r["id"], texto)
+            except ValueError:
+                await conn.execute("UPDATE public.folder_field SET default_value = NULL WHERE id = $1", r["id"])
+    await _log_config(conn, claims["sub"], field["company_id"], "field_type_change", field_id, field["label"],
+                      {"de": field["type"], "para": body.new_type, "convertidos": len(convertidos), "perdidos": len(perdidos)})
+    return resumo | {"aplicado": True}
+
+
+class ApplyDefault(BaseModel):
+    modo: str = "vazios"  # vazios | sobrescrever
+    aplicar: bool = False
+
+
+@router.post("/folder-fields/{rule_id}/apply-default")
+async def apply_default_to_existing(
+    rule_id: UUID,
+    body: ApplyDefault,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Leva o valor padrão da regra aos documentos que já estão na pasta e nas
+    subpastas onde esta regra vale (uma subpasta com regra própria para o
+    campo fica de fora). "vazios" só preenche quem está sem valor;
+    "sobrescrever" troca também os valores diferentes.
+    """
+    import json as _json
+
+    if body.modo not in ("vazios", "sobrescrever"):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Modo inválido.")
+    regra = await conn.fetchrow(
+        """
+        SELECT ff.id, ff.company_id, ff.folder_path, ff.custom_field_id, ff.default_value, ff.mode,
+               cf.type, cf.format_config, cf.label
+        FROM public.folder_field ff JOIN public.custom_field cf ON cf.id = ff.custom_field_id
+        WHERE ff.id = $1
+        """,
+        rule_id,
+    )
+    if regra is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Regra não encontrada.")
+    role = await get_app_role(conn, claims)
+    await _require_company_admin(conn, claims["sub"], regra["company_id"], role)
+    if regra["mode"] != "apply" or not regra["default_value"]:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Esta regra não tem valor padrão para aplicar.")
+    cfg = regra["format_config"] or {}
+    if isinstance(cfg, str):
+        cfg = _json.loads(cfg or "{}")
+    try:
+        texto, data, numero = _normalizar(regra["type"], cfg, regra["default_value"])
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"O valor padrão não serve para o campo: {exc}.")
+
+    # Documentos onde ESTA regra é a que vale (a mais específica para o campo).
+    docs = await conn.fetch(
+        """
+        SELECT d.id, v.value_text
+        FROM public.documents d
+        JOIN public.folders f ON f.id = d.folder_id
+        LEFT JOIN public.document_field_value v ON v.document_id = d.id AND v.custom_field_id = $2
+        WHERE d.company_id = $1 AND d.deleted_at IS NULL AND d.content_hash IS NOT NULL
+          AND ($3::ltree IS NULL OR f.path <@ $3::ltree)
+          AND NOT EXISTS (
+            SELECT 1 FROM public.folder_field o
+            WHERE o.company_id = $1 AND o.custom_field_id = $2 AND o.id <> $4
+              AND o.folder_path IS NOT NULL AND f.path <@ o.folder_path
+              AND ($3::ltree IS NULL OR o.folder_path <@ $3::ltree) AND o.folder_path <> coalesce($3::ltree, ''::ltree)
+          )
+        """,
+        regra["company_id"], regra["custom_field_id"], regra["folder_path"], rule_id,
+    )
+    vazios = [d["id"] for d in docs if not (d["value_text"] or "").strip()]
+    diferentes = [d["id"] for d in docs if (d["value_text"] or "").strip() and d["value_text"] != texto]
+    alvo = vazios + (diferentes if body.modo == "sobrescrever" else [])
+    resumo = {"documentos": len(docs), "vazios": len(vazios), "diferentes": len(diferentes), "vao_mudar": len(alvo), "valor": texto}
+    if not body.aplicar:
+        return resumo | {"aplicado": False}
+    async with conn.transaction():
+        for doc_id in alvo:
+            await CustomFieldsService.upsert_document_value(
+                conn, document_id=doc_id, company_id=regra["company_id"], custom_field_id=regra["custom_field_id"],
+                value_text=texto, value_date=data, value_number=numero, updated_by=claims["sub"],
+            )
+    await _log_config(conn, claims["sub"], regra["company_id"], "field_default_apply", regra["custom_field_id"], regra["label"],
+                      {"valor": texto, "modo": body.modo, "documentos": len(alvo)})
+    return resumo | {"aplicado": True}

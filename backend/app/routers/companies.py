@@ -1229,3 +1229,35 @@ async def person_reach(
         "total_folders": len(rows),
         "sensitive_count": sum(1 for p in pastas if p["sensitivity"] in ("pessoal", "sensivel")),
     }
+
+
+@router.get("/{company_id}/groups/{group_id}/impact")
+async def group_impact(
+    company_id: UUID,
+    group_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Prévia de impacto (B3.1.5) antes de excluir o grupo: quem perde os
+    acessos dele e quem fica sem nenhum acesso à empresa.
+    """
+    role = await get_app_role(conn, claims)
+    if not await _can_manage_company(conn, claims["sub"], company_id, role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
+    rows = await admin_conn.fetch(
+        """
+        SELECT u.full_name,
+               NOT EXISTS (SELECT 1 FROM public.user_company_access a WHERE a.user_id = u.id AND a.company_id = $1)
+               AND NOT EXISTS (
+                 SELECT 1 FROM public.group_member gm2 JOIN public.group_access ga2 ON ga2.group_id = gm2.group_id
+                 WHERE gm2.user_id = u.id AND ga2.company_id = $1 AND gm2.group_id <> $2
+               ) AS fica_sem_acesso
+        FROM public.group_member gm JOIN public.users u ON u.id = gm.user_id
+        WHERE gm.group_id = $2
+        ORDER BY u.full_name
+        """,
+        company_id, group_id,
+    )
+    return {"membros": len(rows), "ficam_sem_acesso": [r["full_name"] for r in rows if r["fica_sem_acesso"]]}

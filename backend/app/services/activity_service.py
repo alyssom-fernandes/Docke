@@ -79,6 +79,8 @@ _ACTION_LABELS: dict[str, str] = {
     "share_create": "Link público criado",
     "share_revoke": "Link público desativado",
     "lgpd_report": "Relatório de privacidade emitido",
+    "field_type_change": "Tipo de campo trocado",
+    "field_default_apply": "Valor padrão aplicado aos documentos",
     "audit_verify": "Integridade da trilha verificada",
     "field_rules_copy": "Regras de metadados copiadas de outra pasta",
     "field_rule_exclude": "Campo tirado de pasta",
