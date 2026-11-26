@@ -92,7 +92,8 @@ export default function Obligations() {
     const req = grupo
       ? api.get("/obligations/group", { params: { mine: mine || undefined } }).then((r) => { setEmpresas(r.data.empresas ?? []); return r.data.instancias as Instance[]; })
       : api.get<Instance[]>(`/companies/${current.id}/obligations/instances`, { params: { mine: mine || undefined, history: filtro === "todas" || undefined } }).then((r) => r.data);
-    req.then((data) => setInstances({ state: "ok", data: Array.isArray(data) ? data : [] }))
+    // Avisa a navegação para atualizar o contador de obrigações (A2-13).
+    req.then((data) => { setInstances({ state: "ok", data: Array.isArray(data) ? data : [] }); window.dispatchEvent(new Event("docke:obrigacoes")); })
       .catch(() => setInstances((s) => ({ ...s, state: "error" })));
   }, [current?.id, grupo, mine, filtro === "todas"]); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -80,6 +80,13 @@ async def test_para_hoje_resume_o_que_precisa_de_acao(api, admin, grupo):  # noq
     assert len(body["obrigacoes"]) == 2  # a de daqui a 30 dias não entra
     assert body["texto_com_falha"][0]["name"] == "Escaneado.pdf"
 
+    # Contadores leves para a navegação (A2-13): os mesmos números.
+    r = await api.get(API + f"/today/company/{grupo['co1']}/resumo", headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json() == body["resumo"]
+    r = await api.get(API + f"/today/company/{grupo['outra']}/resumo", headers=h)
+    assert r.status_code == 403
+
     # Visão do grupo: as duas empresas dela, nenhuma alheia.
     r = await api.get(API + "/today/group", headers=h)
     assert r.status_code == 200, r.text

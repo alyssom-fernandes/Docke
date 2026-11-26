@@ -118,11 +118,18 @@ async def notify_share_accessed(conn: asyncpg.Connection, share_id: UUID) -> Non
 async def list_notifications(conn: asyncpg.Connection, *, unread_only: bool, limit: int) -> list[asyncpg.Record]:
     return await conn.fetch(
         """
-        SELECT id::text, type, resource_type, resource_id::text, message, read_at, created_at
-        FROM public.notifications
-        WHERE user_id = auth.uid()
-          AND ($1::boolean IS FALSE OR read_at IS NULL)
-        ORDER BY created_at DESC
+        SELECT n.id::text, n.type, n.resource_type, n.resource_id::text, n.company_id::text,
+               n.message, n.read_at, n.created_at,
+               -- Para a notificação levar ao item (A2-26): pasta do documento
+               -- e se o item está na lixeira. Sem acesso (RLS), vem nulo.
+               d.folder_id::text AS folder_id,
+               COALESCE(d.deleted_at, f.deleted_at) IS NOT NULL AS in_trash
+        FROM public.notifications n
+        LEFT JOIN public.documents d ON n.resource_type = 'document' AND d.id = n.resource_id
+        LEFT JOIN public.folders f ON n.resource_type = 'folder' AND f.id = n.resource_id
+        WHERE n.user_id = auth.uid()
+          AND ($1::boolean IS FALSE OR n.read_at IS NULL)
+        ORDER BY n.created_at DESC
         LIMIT $2
         """,
         unread_only, limit,

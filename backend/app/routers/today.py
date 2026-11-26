@@ -40,6 +40,21 @@ async def _summary(conn: asyncpg.Connection, company_id: UUID) -> dict[str, int]
     return {k: int(v or 0) for k, v in dict(row).items()}
 
 
+@router.get("/company/{company_id}/resumo")
+async def today_company_summary(
+    company_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, int]:
+    """Só os contadores, para os avisos na navegação (A2-13): consulta leve."""
+    if not await conn.fetchval(
+        "SELECT EXISTS (SELECT 1 FROM public.user_company_access WHERE user_id = $1 AND company_id = $2)",
+        claims["sub"], company_id,
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem acesso a esta empresa.")
+    return await _summary(conn, company_id)
+
+
 @router.get("/company/{company_id}")
 async def today_company(
     company_id: UUID,

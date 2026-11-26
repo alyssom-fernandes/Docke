@@ -110,3 +110,26 @@ async def test_lixeira_ancorados_e_links_dizem_onde_quando_e_quem(api, admin, em
     assert item["trash_expires_at"] is not None
     assert item["original_path"] == "Fiscal / Notas"
     assert item["deleted_by_name"] == "Pessoa Listas"
+
+
+@pytest.mark.asyncio
+async def test_notificacao_traz_pasta_do_documento_e_lixeira(api, admin, empresa):  # noqa: F811
+    """A2-26: a notificação leva ao item (pasta do documento; lixeira se excluído)."""
+    h, co = _token(empresa["user"]), empresa["co"]
+    doc = await _doc(admin, empresa, empresa["sub"], "Aviso.pdf", "texto")
+    for alvo, tipo in ((doc, "document"), (empresa["raiz"], "folder")):
+        await admin.execute(
+            "INSERT INTO public.notifications (user_id, company_id, type, resource_type, resource_id, message) "
+            "VALUES ($1, $2, 'version_added', $3, $4, 'teste')",
+            empresa["user"], co, tipo, alvo,
+        )
+    try:
+        r = await api.get(API + "/notifications", headers=h)
+        assert r.status_code == 200, r.text
+        por_id = {x["resource_id"]: x for x in r.json()["results"]}
+        assert por_id[doc]["folder_id"] == empresa["sub"]
+        assert por_id[doc]["company_id"] == co
+        assert por_id[doc]["in_trash"] is False
+        assert por_id[empresa["raiz"]]["folder_id"] is None
+    finally:
+        await admin.execute("DELETE FROM public.notifications WHERE user_id = $1", empresa["user"])

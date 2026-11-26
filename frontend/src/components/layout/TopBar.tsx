@@ -1,195 +1,161 @@
 import { useState, useRef, useEffect } from "react";
-import { Search, Upload, ChevronsUpDown, LogOut, User, Sun, Moon, Anchor, Settings, Building2 } from "lucide-react";
-import { toggleTheme, getTheme } from "@/lib/theme";
+import { Search, Upload, LogOut, User, Sun, Moon, Anchor, Settings, SlidersHorizontal, Keyboard } from "lucide-react";
+import { toggleTheme, useIsDark } from "@/lib/theme";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuthContext } from "@/lib/AuthContext";
-import { useCompany } from "@/lib/CompanyContext";
 import { useCommandPalette } from "@/hooks/useCommandPalette";
 import Avatar from "@/components/ui/Avatar";
 import Button from "@/components/ui/Button";
 import Tooltip from "@/components/ui/Tooltip";
+import Menu from "@/components/ui/Menu";
 import TaskCenter from "@/components/shared/TaskCenter";
+import { openKeyboardShortcuts } from "@/components/shared/KeyboardShortcuts";
+import CompanySwitcher from "./CompanySwitcher";
 
 interface TopBarProps {
   onUploadClick?: () => void;
 }
 
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+
 export default function TopBar({ onUploadClick }: TopBarProps) {
   const { user, logout } = useAuthContext();
-  const { companies, current, setCurrent } = useCompany();
   const { open: openPalette } = useCommandPalette();
   const navigate = useNavigate();
   const location = useLocation();
   const onDocumentsPage = location.pathname.startsWith("/documents");
-
-  const [companyOpen, setCompanyOpen] = useState(false);
+  const isDark = useIsDark();
   const [avatarOpen, setAvatarOpen] = useState(false);
-  const [isDark, setIsDark] = useState(() => getTheme() === "dark");
-
-  const companyRef = useRef<HTMLDivElement>(null);
-  const avatarRef = useRef<HTMLDivElement>(null);
+  const avatarRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (companyRef.current && !companyRef.current.contains(e.target as Node)) setCompanyOpen(false);
-      if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) setAvatarOpen(false);
-    }
     function handleKey(e: KeyboardEvent) {
-      if (e.altKey && e.key === "d") setIsDark(toggleTheme() === "dark");
+      // Alt+D sozinho abre a barra de endereço no Chrome/Edge (A2-10): o tema usa Alt+Shift+D.
+      if (e.altKey && e.shiftKey && e.key.toLowerCase() === "d") { e.preventDefault(); toggleTheme(); }
     }
-    document.addEventListener("mousedown", handleClick);
     document.addEventListener("keydown", handleKey);
-    return () => {
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleKey);
-    };
+    return () => document.removeEventListener("keydown", handleKey);
   }, []);
+
+  const nome = user?.full_name || user?.username || "Conta";
 
   return (
     <header className="glass-panel glass-blur-panel glass-shadow glass-highlight-line fixed top-3 md:top-5 left-3 md:left-5 right-3 md:right-5 z-40 h-[48px] flex items-center gap-3 px-4 rounded-[14px]">
-      {/* Logo — morava na Sidebar; precisa de um lugar fixo agora que ela virou Dock.
-          Só a marca (não o wordmark inteiro) pra não reabrir o problema de espaço
-          que já resolvemos na TopBar mobile. */}
+      {/* Só a marca (não o wordmark inteiro) para caber no celular. */}
       <div className="brand-mark w-6 h-6 shrink-0" role="img" aria-label="Docke" />
-      <div className="w-px h-6 bg-(--border-default) shrink-0 hidden sm:block" />
+      <div className="w-px h-6 bg-(--border-default) shrink-0 hidden sm:block" aria-hidden="true" />
 
-      {/* Company selector */}
-      {companies.length > 0 && (
-        <div className="relative" ref={companyRef}>
-          <button
-            onClick={() => setCompanyOpen((v) => !v)}
-            className="flex items-center gap-1.5 h-7 px-3 rounded-[6px] text-mac-body font-medium text-(--text-primary) bg-black/3 dark:bg-white/4 hover:bg-black/6 dark:hover:bg-white/8 transition-colors duration-fast flex-1 min-w-0 max-w-[clamp(100px,calc(100vw-236px),280px)] md:flex-initial md:max-w-[320px]"
-          >
-            <Building2 className="w-3.5 h-3.5 shrink-0 text-(--text-secondary)" />
-            <span className="truncate">{current?.name ?? "Selecionar empresa"}</span>
-            <ChevronsUpDown className="w-3.5 h-3.5 shrink-0 text-(--text-secondary)" />
-          </button>
+      <CompanySwitcher />
 
-          {companyOpen && (
-            <div className="absolute top-full left-0 mt-1 w-56 glass-dialog glass-blur-strong rounded-(--radius-popover) shadow-dropdown py-1 z-50">
-              {companies.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => { setCurrent(c); setCompanyOpen(false); }}
-                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-mac-body text-left transition-colors duration-fast hover:bg-(--bg-hover) ${
-                    current?.id === c.id ? "text-(--text-accent) font-medium" : "text-(--text-primary)"
-                  }`}
-                >
-                  {c.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Search trigger → opens Command Palette (busca já acessível via aba "Busca" na barra inferior no mobile) */}
+      {/* Gatilho da paleta ⌘K (no celular, o ícone ao lado). */}
       <button
         onClick={openPalette}
-        className="hidden md:flex flex-1 max-w-[360px] items-center gap-2 h-7 pl-3.5 pr-2 bg-(--bg-hover) rounded-full text-mac-body text-(--text-placeholder) hover:bg-[rgba(0,0,0,0.06)] dark:hover:bg-[rgba(255,255,255,0.08)] transition-colors duration-fast"
+        aria-keyshortcuts={isMac ? "Meta+K" : "Control+K"}
+        className="hidden md:flex flex-1 max-w-[360px] items-center gap-2 h-7 pl-3.5 pr-2 bg-(--bg-hover) rounded-full text-mac-body hover:bg-[rgba(0,0,0,0.06)] dark:hover:bg-[rgba(255,255,255,0.08)] transition-colors duration-fast"
       >
-        <Search className="w-4 h-4 shrink-0" />
-        <span className="flex-1 text-left">Buscar documentos…</span>
+        <Search className="w-4 h-4 shrink-0 text-(--text-secondary)" aria-hidden="true" />
+        <span className="flex-1 text-left text-(--text-secondary) truncate">Buscar documentos, pastas e ações…</span>
+        <kbd className="hidden lg:inline text-mac-caption2 text-(--text-secondary) border border-(--border-default) rounded px-1" aria-hidden="true">{isMac ? "⌘ K" : "Ctrl K"}</kbd>
       </button>
 
-      {/* Busca — ícone isolado abaixo de md, abre o mesmo Command Palette */}
       <button
         onClick={openPalette}
-        className="md:hidden w-7 h-7 flex items-center justify-center rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover) transition-colors duration-fast"
-        aria-label="Buscar"
+        className="md:hidden w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 flex items-center justify-center rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover) transition-colors duration-fast shrink-0"
+        aria-label="Buscar documentos, pastas e ações"
       >
-        <Search className="w-4 h-4" />
+        <Search className="w-4 h-4" aria-hidden="true" />
       </button>
 
       <div className="flex-1" />
 
-      {/* Upload — oculto na página Documentos (que já tem seu próprio botão) e abaixo de sm (espaço reservado pro avatar) */}
+      {/* Enviar: fora de Documentos (que tem o próprio botão) e acima de sm. */}
+      {/* O Button tem inline-flex próprio, que vencia o "hidden": o botão
+          aparecia no celular e espremia o seletor de empresa. */}
       {!onDocumentsPage && (
-        <Button size="sm" onClick={onUploadClick} className="hidden sm:flex">
-          <Upload className="w-3.5 h-3.5" />
-          Upload
-        </Button>
+        <span className="hidden sm:block shrink-0">
+          <Button size="sm" onClick={onUploadClick}>
+            <Upload className="w-3.5 h-3.5" aria-hidden="true" />
+            Enviar
+          </Button>
+        </span>
       )}
 
-      {/* Cápsula de controles — agrupa ações secundárias num só bloco de vidro,
-          estilo toolbar do macOS (Mail agrupa reply/archive/trash juntos em
-          vez de espalhar ícones soltos pela barra). */}
-      <div className="flex items-center gap-0.5 p-1 rounded-full bg-(--bg-hover)">
-        {/* Ancorados e Configurações — só na faixa md–lg (tablet), onde nem a barra
-            inferior mobile (<md) nem o Dock desktop (lg+) estão visíveis. */}
+      {/* Cápsula de controles, como a barra de ferramentas do macOS. */}
+      <div className="flex items-center gap-0.5 p-1 pointer-coarse:p-0 rounded-full bg-(--bg-hover) shrink-0">
+        {/* Ancorados e Ajustes só na faixa md–lg, onde não há Dock nem barra inferior. */}
         <Tooltip label="Ancorados">
           <button
             onClick={() => navigate("/favorites")}
+            aria-label="Ancorados"
+            aria-current={location.pathname.startsWith("/favorites") ? "page" : undefined}
             className={`hidden md:flex lg:hidden w-7 h-7 items-center justify-center rounded-full transition-colors duration-fast ${
               location.pathname.startsWith("/favorites")
                 ? "text-(--text-accent) bg-teal-500/10"
                 : "text-(--text-secondary) hover:bg-black/5 dark:hover:bg-white/10"
             }`}
           >
-            <Anchor className="w-4 h-4" />
+            <Anchor className="w-4 h-4" aria-hidden="true" />
           </button>
         </Tooltip>
-        <span className="hidden md:block lg:hidden w-px h-4 bg-(--border-default)" />
-        <Tooltip label="Configurações">
+        <span className="hidden md:block lg:hidden w-px h-4 bg-(--border-default)" aria-hidden="true" />
+        <Tooltip label="Ajustes">
           <button
             onClick={() => navigate("/settings/profile")}
+            aria-label="Ajustes"
+            aria-current={location.pathname.startsWith("/settings") ? "page" : undefined}
             className={`hidden md:flex lg:hidden w-7 h-7 items-center justify-center rounded-full transition-colors duration-fast ${
               location.pathname.startsWith("/settings")
                 ? "text-(--text-accent) bg-teal-500/10"
                 : "text-(--text-secondary) hover:bg-black/5 dark:hover:bg-white/10"
             }`}
           >
-            <Settings className="w-4 h-4" />
+            <Settings className="w-4 h-4" aria-hidden="true" />
           </button>
         </Tooltip>
-        <span className="hidden md:block lg:hidden w-px h-4 bg-(--border-default)" />
+        <span className="hidden md:block lg:hidden w-px h-4 bg-(--border-default)" aria-hidden="true" />
 
-        {/* Theme toggle — no mobile mora no menu "Mais" da barra inferior */}
-        <button
-          onClick={() => setIsDark(toggleTheme() === "dark")}
-          className="hidden md:flex w-7 h-7 items-center justify-center rounded-full text-(--text-secondary) hover:bg-black/5 dark:hover:bg-white/10 transition-colors duration-fast"
-          title={isDark ? "Modo claro (Alt+D)" : "Modo escuro (Alt+D)"}
-        >
-          {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-        </button>
-        <span className="hidden md:block w-px h-4 bg-(--border-default)" />
+        {/* Tema: no celular mora no "Mais" da barra inferior. */}
+        <Tooltip label={isDark ? "Tema claro (Alt+Shift+D)" : "Tema escuro (Alt+Shift+D)"}>
+          <button
+            onClick={() => toggleTheme()}
+            aria-label={isDark ? "Usar o tema claro" : "Usar o tema escuro"}
+            aria-keyshortcuts="Alt+Shift+D"
+            className="hidden md:flex w-7 h-7 items-center justify-center rounded-full text-(--text-secondary) hover:bg-black/5 dark:hover:bg-white/10 transition-colors duration-fast"
+          >
+            {isDark ? <Sun className="w-4 h-4" aria-hidden="true" /> : <Moon className="w-4 h-4" aria-hidden="true" />}
+          </button>
+        </Tooltip>
+        <span className="hidden md:block w-px h-4 bg-(--border-default)" aria-hidden="true" />
 
-        {/* Task Center */}
         <TaskCenter />
       </div>
 
-      {/* Avatar menu */}
-      <div className="relative" ref={avatarRef}>
-        <button
-          onClick={() => setAvatarOpen((v) => !v)}
-          className="rounded-full focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-teal-400"
-        >
-          <Avatar name={user?.full_name ?? user?.username ?? "?"} size="sm" />
-        </button>
-
-        {avatarOpen && (
-          <div className="absolute top-full right-0 mt-1 w-48 glass-dialog glass-blur-strong rounded-(--radius-popover) shadow-dropdown py-1 z-50">
-            <div className="px-3 py-2 border-b border-(--border-default)">
-              <p className="text-mac-body font-medium text-(--text-primary) truncate">{user?.full_name}</p>
-              <p className="text-mac-caption text-(--text-secondary) truncate">{user?.email}</p>
-            </div>
-            <button
-              onClick={() => { setAvatarOpen(false); navigate("/settings/profile"); }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-mac-body text-(--text-primary) hover:bg-(--bg-hover) transition-colors duration-fast"
-            >
-              <User className="w-4 h-4" />
-              Perfil
-            </button>
-            <button
-              onClick={() => { setAvatarOpen(false); logout(); }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-mac-body text-(--text-danger) hover:bg-(--bg-hover) transition-colors duration-fast"
-            >
-              <LogOut className="w-4 h-4" />
-              Sair
-            </button>
-          </div>
-        )}
-      </div>
+      {/* Menu da conta (A2-08, A2-09): role=menu, setas, Esc, Preferências e Atalhos. */}
+      <button
+        ref={avatarRef}
+        onClick={() => setAvatarOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={avatarOpen}
+        aria-label={`Conta de ${nome}`}
+        title={user?.email ? `${nome} · ${user.email}` : nome}
+        className="rounded-full shrink-0 pointer-coarse:p-1.5 pointer-coarse:-m-1.5 focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
+      >
+        <Avatar name={nome} size="sm" />
+      </button>
+      {avatarOpen && avatarRef.current && (
+        <Menu
+          anchor={avatarRef.current}
+          align="end"
+          label={`Conta de ${nome}`}
+          onClose={() => setAvatarOpen(false)}
+          items={[
+            { label: "Perfil e conta", icon: <User />, onSelect: () => navigate("/settings/profile") },
+            { label: "Preferências", icon: <SlidersHorizontal />, onSelect: () => navigate("/settings/preferences") },
+            { label: "Atalhos do teclado", icon: <Keyboard />, shortcut: "?", onSelect: () => openKeyboardShortcuts() },
+            { label: "Sair", icon: <LogOut />, danger: true, separatorBefore: true, onSelect: () => logout() },
+          ]}
+        />
+      )}
     </header>
   );
 }

@@ -4,6 +4,7 @@ import TopBar from "./TopBar";
 import Dock from "./Dock";
 import Footer from "./Footer";
 import CommandPalette from "@/components/shared/CommandPalette";
+import KeyboardShortcuts from "@/components/shared/KeyboardShortcuts";
 import ErrorBoundary from "@/components/shared/ErrorBoundary";
 import BottomTabBar from "./BottomTabBar";
 
@@ -63,7 +64,12 @@ export default function AppShell({ children }: AppShellProps) {
       </a>
       {/* TopBar flutua fixa sobre o conteúdo — mesmo comportamento do Dock,
           não mais um bloco em fluxo normal acima do <main> */}
-      <TopBar onUploadClick={() => navigate("/documents")} />
+      <TopBar onUploadClick={() => navigate("/documents?acao=enviar")} />
+
+      {/* Navegação (barra inferior no celular, Dock a partir de 768 px) antes do
+          conteúdo na ordem do Tab (A2-15); a posição na tela é fixa. */}
+      <BottomTabBar />
+      <Dock />
 
       {/* pt: espaço pra TopBar fixa (56px + respiro). pb: espaço pro Dock/barra inferior flutuantes */}
       <main
@@ -87,11 +93,8 @@ export default function AppShell({ children }: AppShellProps) {
         <Footer />
       </main>
 
-      {/* Navegação inferior: barra mobile (<md) ou dock flutuante desktop (lg+) */}
-      <BottomTabBar />
-      <Dock />
-
       <CommandPalette />
+      <KeyboardShortcuts />
     </div>
   );
 }

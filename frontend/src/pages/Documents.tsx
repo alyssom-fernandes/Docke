@@ -161,9 +161,13 @@ function friendlyError(e: any, fallback: string): string {
 }
 
 /** Envia o arquivo direto ao armazenamento com progresso (fetch não informa). */
-function putWithProgress(url: string, body: Blob, contentType: string | null, onProgress: (pct: number) => void): Promise<number> {
+function putWithProgress(url: string, body: Blob, contentType: string | null, onProgress: (pct: number) => void, signal?: AbortSignal): Promise<number> {
   return new Promise((resolve) => {
     const xhr = new XMLHttpRequest();
+    // Cancelar pela Central de tarefas (A2-26): -1 = cancelado por quem enviou.
+    if (signal?.aborted) { resolve(-1); return; }
+    signal?.addEventListener("abort", () => xhr.abort(), { once: true });
+    xhr.onabort = () => resolve(-1);
     xhr.open("PUT", url);
     if (contentType) xhr.setRequestHeader("Content-Type", contentType);
     xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) onProgress(Math.round((ev.loaded / ev.total) * 100)); };
@@ -173,6 +177,8 @@ function putWithProgress(url: string, body: Blob, contentType: string | null, on
     xhr.send(body);
   });
 }
+
+const CANCELADO = "Envio cancelado. Dá para tentar de novo.";
 
 // Separa nome-base e extensão pra manter a extensão fixa durante renomeação inline
 function splitExt(name: string): [string, string] {
@@ -398,7 +404,7 @@ function pollOcrStatus(items: { documentId: string; taskId: string; fileName: st
 
 function UploadModal({ folderId, folderName, companyId, onClose, onDone }: { folderId: string | null; folderName: string; companyId: string; onClose: () => void; onDone: () => void }) {
   const { success, warning } = useToast();
-  const { addTask, updateTask, registerRetry } = useTaskCenter();
+  const { addTask, updateTask, registerRetry, registerCancel } = useTaskCenter();
   const [pending, setPending] = useState<PendingFile[]>([]);
   const [rejected, setRejected] = useState<{ name: string; reason: string }[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -480,7 +486,7 @@ function UploadModal({ folderId, folderName, companyId, onClose, onDone }: { fol
   const MULTIPART_THRESHOLD = 20 * 1024 * 1024;
 
   async function uploadFileMultipart(
-    file: File, targetFolderId: string, onProgress: (label: string, progress: number) => void,
+    file: File, targetFolderId: string, onProgress: (label: string, progress: number) => void, signal?: AbortSignal,
   ): Promise<string> {
     const { data: created } = await api.post("/documents/multipart/create", {
       folder_id: targetFolderId,
@@ -493,10 +499,12 @@ function UploadModal({ folderId, folderName, companyId, onClose, onDone }: { fol
     try {
       const parts: { part_number: number; etag: string }[] = [];
       for (let partNumber = 1; partNumber <= totalParts; partNumber++) {
+        if (signal?.aborted) throw new Error(CANCELADO);
         const start = (partNumber - 1) * partSize;
         const chunk = file.slice(start, start + partSize);
         const { data: partUrlData } = await api.post(`/documents/multipart/${documentId}/part-url`, { upload_id: uploadId, part_number: partNumber });
-        const putResp = await fetch(partUrlData.upload_url, { method: "PUT", body: chunk }).catch(() => null);
+        const putResp = await fetch(partUrlData.upload_url, { method: "PUT", body: chunk, signal }).catch(() => null);
+        if (signal?.aborted) throw new Error(CANCELADO);
         if (!putResp || !putResp.ok) throw new Error("A conexão caiu durante o envio. Tente de novo.");
         const etag = putResp.headers.get("ETag");
         if (!etag) throw new Error("O armazenamento não confirmou uma parte do arquivo. Tente de novo; se continuar, avise o administrador.");
@@ -515,10 +523,12 @@ function UploadModal({ folderId, folderName, companyId, onClose, onDone }: { fol
     file: File, relativePath: string, targetFolderId: string, taskId: string, displayName: string,
   ): Promise<{ ok: true; documentId: string; taskId: string; fileName: string } | { ok: false; reason: string }> {
     updateTask(taskId, { status: "running", phase: "uploading", error: undefined, progress: 0, label: displayName });
+    const controller = new AbortController();
+    registerCancel(taskId, () => controller.abort());
     try {
       let documentId: string;
       if (file.size >= MULTIPART_THRESHOLD) {
-        documentId = await uploadFileMultipart(file, targetFolderId, (label, p) => updateTask(taskId, { label, progress: p }));
+        documentId = await uploadFileMultipart(file, targetFolderId, (label, p) => updateTask(taskId, { label, progress: p }), controller.signal);
       } else {
         const { data } = await api.post("/documents/upload-url", {
           folder_id: targetFolderId,
@@ -530,20 +540,22 @@ function UploadModal({ folderId, folderName, companyId, onClose, onDone }: { fol
         // Mesmo tipo da assinatura da URL (o Chrome chama XML de text/xml e a
         // URL vem assinada com application/xml — achado X2-03).
         const status = await putWithProgress(data.upload_url, file, data.content_type ?? (file.type || "application/octet-stream"),
-          (p) => updateTask(taskId, { progress: p }));
+          (p) => updateTask(taskId, { progress: p }), controller.signal);
         if (status < 200 || status >= 300) {
           api.post(`/documents/${data.document_id}/abort-upload`).catch(() => {});
-          throw new Error(status === 0
+          throw new Error(status === -1 ? CANCELADO : status === 0
             ? "A conexão caiu durante o envio. Confira a internet e tente de novo."
             : `O armazenamento recusou o arquivo (código ${status}). Tente de novo; se continuar, avise o administrador.`);
         }
         await api.post(`/documents/${data.document_id}/confirm`);
         documentId = data.document_id;
       }
+      registerCancel(taskId, null);
       updateTask(taskId, { label: `${displayName} · lendo o texto…`, phase: "processing", progress: undefined });
       pollOcrStatus([{ documentId, taskId, fileName: displayName }], updateTask);
       return { ok: true, documentId, taskId, fileName: displayName };
     } catch (fileErr: any) {
+      registerCancel(taskId, null);
       const reason = fileErr?.response ? friendlyError(fileErr, "Não foi possível enviar.") : (fileErr?.message ?? "Não foi possível enviar.");
       updateTask(taskId, { status: "failed", error: reason });
       registerRetry(taskId, () => { attemptUploadOne(file, relativePath, targetFolderId, taskId, displayName); });
@@ -2578,10 +2590,12 @@ export default function Documents() {
                 {viewMode === "list" ? <LayoutGrid className="w-4 h-4" /> : <List className="w-4 h-4" />}
               </button>
             </div>
-            <Button variant="secondary" size="sm" className="hidden sm:flex" onClick={() => setShowNewFolder(true)} disabled={!canWrite} title="Nova pasta (Ctrl+Shift+N)">
-              <FolderPlus className="w-3.5 h-3.5" />
-              Nova pasta
-            </Button>
+            <span className="hidden sm:block shrink-0">
+              <Button variant="secondary" size="sm" onClick={() => setShowNewFolder(true)} disabled={!canWrite} title="Nova pasta (Ctrl+Shift+N)">
+                <FolderPlus className="w-3.5 h-3.5" aria-hidden="true" />
+                Nova pasta
+              </Button>
+            </span>
 
             {/* Mobile: Nova pasta / seleção / densidade colapsam num menu "..." pra sobrar espaço pro breadcrumb */}
             <div className="relative sm:hidden" ref={toolbarMenuRef}>

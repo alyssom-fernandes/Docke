@@ -2,15 +2,16 @@ import { KeyboardEvent, useEffect, useMemo, useRef, useState, type ElementType }
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import {
-  Search, FolderOpen, Folder, Upload, FolderPlus, LayoutDashboard, Anchor, Link2, Activity, ShieldQuestion, Trash2,
-  Settings, Sun, Moon, Building2, Users, Archive, Tags, CornerDownLeft,
+  Search, FolderOpen, Folder, Upload, FolderPlus, LayoutDashboard, Anchor, Link2, Activity, CalendarClock, Trash2,
+  Settings, Sun, Moon, Building2, Users, Archive, Tags, CornerDownLeft, Keyboard, WifiOff,
 } from "lucide-react";
+import { openKeyboardShortcuts } from "@/components/shared/KeyboardShortcuts";
 import { getFileStyle } from "@/lib/fileType";
 import { relativeDate } from "@/lib/date";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useCommandPalette } from "@/hooks/useCommandPalette";
-import { getTheme, toggleTheme } from "@/lib/theme";
+import { toggleTheme } from "@/lib/theme";
 
 interface QuickResult { id: string; name: string; type: "document" | "folder"; folder_id?: string | null }
 interface DocumentPreview { id: string; name: string; size_bytes: number; ocr_text: string | null; created_at: string }
@@ -43,6 +44,7 @@ export default function CommandPalette() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<QuickResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchFailed, setSearchFailed] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
   const [preview, setPreview] = useState<DocumentPreview | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -59,12 +61,13 @@ export default function CommandPalette() {
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen || !current || query.trim().length < 2) { setResults([]); setSearching(false); return; }
+    if (!isOpen || !current || query.trim().length < 2) { setResults([]); setSearching(false); setSearchFailed(false); return; }
     setSearching(true);
     const t = window.setTimeout(() => {
       api.get<QuickResult[]>("/search/quick", { params: { q: query.trim(), company_id: current.id } })
-        .then((r) => setResults(Array.isArray(r.data) ? r.data.slice(0, 8) : []))
-        .catch(() => setResults([]))
+        .then((r) => { setSearchFailed(false); setResults(Array.isArray(r.data) ? r.data.slice(0, 8) : []); })
+        // Erro de rede não é "nada encontrado" (A2-22): a lista avisa.
+        .catch(() => { setResults([]); setSearchFailed(true); })
         .finally(() => setSearching(false));
     }, 160);
     return () => window.clearTimeout(t);
@@ -73,22 +76,23 @@ export default function CommandPalette() {
   function go(path: string) { close(); navigate(path); }
 
   const items: Item[] = useMemo(() => {
-    const dark = getTheme() === "dark";
+    const dark = document.documentElement.classList.contains("dark");
     const base: Item[] = [
       { id: "a-enviar", group: "Ações", label: "Enviar documentos", icon: Upload, keywords: "upload subir arquivo", run: () => go("/documents?acao=enviar") },
       { id: "a-pasta", group: "Ações", label: "Nova pasta", icon: FolderPlus, keywords: "criar pasta", run: () => go("/documents?acao=nova-pasta") },
-      { id: "a-tema", group: "Ações", label: dark ? "Usar o tema claro" : "Usar o tema escuro", icon: dark ? Sun : Moon, keywords: "tema escuro claro aparência", run: () => { toggleTheme(); close(); } },
+      { id: "a-tema", group: "Ações", label: dark ? "Usar o tema claro" : "Usar o tema escuro", hint: "Alt Shift D", icon: dark ? Sun : Moon, keywords: "tema escuro claro aparência", run: () => { toggleTheme(); close(); } },
+      { id: "a-atalhos", group: "Ações", label: "Atalhos do teclado", hint: "?", icon: Keyboard, keywords: "teclas ajuda", run: () => { close(); openKeyboardShortcuts(); } },
       { id: "n-inicio", group: "Ir para", label: "Início", icon: LayoutDashboard, keywords: "painel dashboard", run: () => go("/dashboard") },
       { id: "n-docs", group: "Ir para", label: "Documentos", icon: FolderOpen, keywords: "pastas arquivos", run: () => go("/documents") },
       { id: "n-busca", group: "Ir para", label: "Busca", icon: Search, run: () => go("/search") },
       { id: "n-anc", group: "Ir para", label: "Ancorados", icon: Anchor, keywords: "favoritos", run: () => go("/favorites") },
-      { id: "n-links", group: "Ir para", label: "Links compartilhados", icon: Link2, run: () => go("/shares") },
+      { id: "n-links", group: "Ir para", label: "Links", icon: Link2, keywords: "compartilhados compartilhar", run: () => go("/shares") },
       { id: "n-ativ", group: "Ir para", label: "Atividade", icon: Activity, keywords: "trilha auditoria histórico", run: () => go("/activity") },
-      { id: "n-obr", group: "Ir para", label: "Obrigações", icon: ShieldQuestion, keywords: "prazos vencimento", run: () => go("/obligations") },
+      { id: "n-obr", group: "Ir para", label: "Obrigações", icon: CalendarClock, keywords: "prazos vencimento", run: () => go("/obligations") },
       { id: "n-lix", group: "Ir para", label: "Lixeira", icon: Trash2, keywords: "excluídos restaurar", run: () => go("/trash") },
-      { id: "n-usu", group: "Ir para", label: "Usuários e permissões", icon: Users, keywords: "acesso membros", run: () => go("/settings/users") },
+      { id: "n-usu", group: "Ir para", label: "Pessoas e acessos", icon: Users, keywords: "usuários permissões acesso membros", run: () => go("/settings/users") },
       { id: "n-meta", group: "Ir para", label: "Metadados", icon: Tags, keywords: "campos", run: () => go("/settings/metadata") },
-      { id: "n-ret", group: "Ir para", label: "Retenção", icon: Archive, keywords: "legal hold descarte", run: () => go("/settings/retention") },
+      { id: "n-ret", group: "Ir para", label: "Retenção e descarte", icon: Archive, keywords: "legal hold bloqueio judicial prazo de guarda", run: () => go("/settings/retention") },
       { id: "n-aj", group: "Ir para", label: "Ajustes", icon: Settings, keywords: "configurações perfil senha", run: () => go("/settings/profile") },
     ];
     for (const c of companies ?? []) {
@@ -171,7 +175,12 @@ export default function CommandPalette() {
         </div>
         <div className="flex h-[min(60vh,440px)]">
           <ul ref={listRef} id="cmdk-lista" role="listbox" aria-label="Resultados" className="flex-1 min-w-0 overflow-y-auto p-2">
-            {items.length === 0 && (
+            {searchFailed && (
+              <li role="alert" className="mx-1 mb-1 flex items-center gap-2 rounded-(--radius-control) bg-(--bg-hover) px-3 py-2 text-mac-caption text-(--text-warning)">
+                <WifiOff className="w-3.5 h-3.5 shrink-0" aria-hidden="true" /> Não deu para buscar agora (sem conexão ou servidor fora). As ações abaixo funcionam.
+              </li>
+            )}
+            {items.length === 0 && !searchFailed && (
               <li className="px-3 py-8 text-center text-mac-body text-(--text-secondary)" role="presentation">
                 {searching ? "Procurando…" : "Nada com esse nome. Enter busca no conteúdo dos documentos."}
               </li>
