@@ -2,7 +2,6 @@ from datetime import date, datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
-import io
 import os
 import tempfile
 import zipfile
@@ -723,39 +722,55 @@ async def bulk_download(
     if not rows:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nenhum documento encontrado ou acessível.")
 
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
-    try:
-        with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
-            seen_names: dict[str, int] = {}
-            for row in rows:
-                data = storage_service.read_object(row["storage_path"])
-                if data is None:
-                    continue  # arquivo ausente no storage — pula silenciosamente
-
-                base_name = row["name"]
-                if base_name in seen_names:
-                    seen_names[base_name] += 1
-                    dot = base_name.rfind(".")
-                    if dot != -1:
-                        base_name = f"{base_name[:dot]} ({seen_names[base_name]}){base_name[dot:]}"
+    def montar_zip() -> str:
+        """
+        Monta o ZIP em disco fora do laço assíncrono e devolve o caminho
+        (achado X3-04): antes o ZIP inteiro era lido para a memória antes de
+        enviar e a leitura do storage travava a API. Cada arquivo é escrito e
+        liberado; arquivos ausentes no storage são pulados.
+        """
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+        try:
+            with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
+                seen_names: dict[str, int] = {}
+                for row in rows:
+                    data = storage_service.read_object(row["storage_path"])
+                    if data is None:
+                        continue
+                    base_name = row["name"]
+                    if base_name in seen_names:
+                        seen_names[base_name] += 1
+                        dot = base_name.rfind(".")
+                        base_name = (f"{base_name[:dot]} ({seen_names[base_name]}){base_name[dot:]}" if dot != -1
+                                     else f"{base_name} ({seen_names[base_name]})")
                     else:
-                        base_name = f"{base_name} ({seen_names[base_name]})"
-                else:
-                    seen_names[base_name] = 1
+                        seen_names[base_name] = 1
+                    zf.writestr(base_name, data)
+                    del data
+        finally:
+            tmp.close()
+        return tmp.name
 
-                zf.writestr(base_name, data)
-        tmp.flush()
+    caminho = await asyncio.to_thread(montar_zip)
 
-        tmp.seek(0)
-        zip_bytes = tmp.read()
-    finally:
-        tmp.close()
-        os.unlink(tmp.name)
+    def enviar():
+        try:
+            with open(caminho, "rb") as fh:
+                while True:
+                    bloco = fh.read(1024 * 1024)
+                    if not bloco:
+                        break
+                    yield bloco
+        finally:
+            os.unlink(caminho)
 
     return StreamingResponse(
-        io.BytesIO(zip_bytes),
+        enviar(),
         media_type="application/zip",
-        headers={"Content-Disposition": 'attachment; filename="docke_download.zip"'},
+        headers={
+            "Content-Disposition": 'attachment; filename="docke_download.zip"',
+            "Content-Length": str(os.path.getsize(caminho)),
+        },
     )
 
 
