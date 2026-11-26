@@ -148,3 +148,28 @@ async def test_busca_rapida_aceita_apostrofo_aspas_e_hifen(api, admin, empresa):
         assert r.status_code == 200, (termo, r.text)
     r = await api.get(API + "/search/quick", params={"q": "d'água", "company_id": co}, headers=h)
     assert any("água" in x["name"] for x in r.json())
+
+
+@pytest.mark.asyncio
+async def test_verificar_integridade_resume_no_banco(api, admin, empresa):  # noqa: F811
+    """X3-12: total e quebras calculados no banco; adulteração aparece."""
+    h, co = _token(empresa["user"]), empresa["co"]
+    ids = []
+    for n in range(3):
+        ids.append(await admin.fetchval(
+            "INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot)"
+            " VALUES ($1, $2, 'view', 'document', $3, $4) RETURNING id",
+            empresa["user"], co, uuid.uuid4(), f"Doc {n}",
+        ))
+    r = await api.get(API + "/activity/verify-integrity", params={"company_id": co}, headers=h)
+    assert r.status_code == 200, r.text
+    corpo = r.json()
+    assert (corpo["intact"], corpo["broken_count"], corpo["first_broken"]) == (True, 0, None)
+    assert corpo["total_events"] >= 3
+
+    # Adulterar um evento direto no banco (como em test_audit_chain).
+    await admin.execute("UPDATE public.activity_log SET item_name_snapshot = 'Adulterado' WHERE id = $1", ids[1])
+    corpo = (await api.get(API + "/activity/verify-integrity", params={"company_id": co}, headers=h)).json()
+    assert corpo["intact"] is False
+    assert corpo["first_broken"]["event_id"] == str(ids[1])
+    assert "adulterado" in corpo["first_broken"]["reason"].lower()

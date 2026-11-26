@@ -233,6 +233,26 @@ class ActivityService:
         )
 
     @staticmethod
+    async def verify_summary(conn: asyncpg.Connection, *, company_id: UUID) -> asyncpg.Record:
+        """Resumo da verificação calculado no banco (X3-12): antes todas as
+        linhas da trilha vinham para o Python só para serem contadas."""
+        return await conn.fetchrow(
+            """
+            WITH v AS (
+              SELECT event_id, event_created_at, ok, reason, n
+              FROM public.activity_log_verify_chain($1) WITH ORDINALITY AS t(event_id, event_created_at, ok, reason, n)
+            )
+            SELECT
+              count(*) FILTER (WHERE event_id IS NOT NULL) AS total_events,
+              count(*) FILTER (WHERE NOT ok) AS broken_count,
+              (SELECT jsonb_build_object('event_id', event_id, 'event_created_at', event_created_at, 'ok', ok, 'reason', reason)
+                 FROM v WHERE NOT ok ORDER BY n LIMIT 1) AS first_broken
+            FROM v
+            """,
+            company_id,
+        )
+
+    @staticmethod
     async def get_event(conn: asyncpg.Connection, event_id: UUID) -> asyncpg.Record | None:
         return await conn.fetchrow(
             """
