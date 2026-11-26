@@ -13,15 +13,19 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.dependencies import get_current_user, get_db
+from app.services.obligations_service import period_label
 
 router = APIRouter(prefix="/today", tags=["today"])
 
 _SUMMARY_SQL = """
 SELECT
-  (SELECT count(*) FROM public.obligation_instances i
-     WHERE i.company_id = $1 AND i.status IN ('pending', 'reviewing') AND i.due_date < CURRENT_DATE) AS obrigacoes_vencidas,
-  (SELECT count(*) FROM public.obligation_instances i
-     WHERE i.company_id = $1 AND i.status IN ('pending', 'reviewing') AND i.due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7) AS obrigacoes_semana,
+  (SELECT count(*) FROM public.obligation_instances i JOIN public.obligation_templates t ON t.id = i.template_id
+     WHERE i.company_id = $1 AND t.archived_at IS NULL AND i.status = 'pending' AND i.due_date < CURRENT_DATE) AS obrigacoes_vencidas,
+  (SELECT count(*) FROM public.obligation_instances i JOIN public.obligation_templates t ON t.id = i.template_id
+     WHERE i.company_id = $1 AND t.archived_at IS NULL AND i.status = 'pending'
+       AND i.due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7) AS obrigacoes_semana,
+  (SELECT count(*) FROM public.obligation_instances i JOIN public.obligation_templates t ON t.id = i.template_id
+     WHERE i.company_id = $1 AND t.archived_at IS NULL AND i.status = 'reviewing') AS obrigacoes_conferir,
   (SELECT count(*) FROM public.documents d
      WHERE d.company_id = $1 AND d.deleted_at IS NULL AND d.content_hash IS NOT NULL AND d.ocr_status = 'failed') AS texto_com_falha,
   (SELECT count(*) FROM public.retention_review_queue q
@@ -51,14 +55,14 @@ async def today_company(
     modelos = await conn.fetchval(
         "SELECT count(*) FROM public.obligation_templates WHERE company_id = $1 AND archived_at IS NULL", company_id,
     )
-    obrigacoes = [dict(r) for r in await conn.fetch(
+    obrigacoes = [{**dict(r), "period_label": period_label(r["period"])} for r in await conn.fetch(
         """
         SELECT i.id::text, t.name, i.period, i.due_date, i.status, t.criticality,
                u.full_name AS responsavel, (CURRENT_DATE - i.due_date) AS dias_atraso
         FROM public.obligation_instances i
         JOIN public.obligation_templates t ON t.id = i.template_id
         LEFT JOIN public.users u ON u.id = i.owner_id
-        WHERE i.company_id = $1 AND i.status IN ('pending', 'reviewing') AND i.due_date <= CURRENT_DATE + 7
+        WHERE i.company_id = $1 AND t.archived_at IS NULL AND i.status = 'pending' AND i.due_date <= CURRENT_DATE + 7
         ORDER BY i.due_date, t.criticality DESC
         LIMIT 8
         """,
@@ -96,5 +100,6 @@ async def today_group(
     for c in companies:
         s = await _summary(conn, c["id"])
         out.append({"company_id": str(c["id"]), "name": c["name"], **s,
-                    "total": s["obrigacoes_vencidas"] + s["obrigacoes_semana"] + s["texto_com_falha"] + s["retencao_para_revisar"]})
+                    "total": s["obrigacoes_vencidas"] + s["obrigacoes_semana"] + s["obrigacoes_conferir"]
+                    + s["texto_com_falha"] + s["retencao_para_revisar"]})
     return out

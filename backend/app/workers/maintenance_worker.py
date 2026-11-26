@@ -21,6 +21,8 @@ from app.services.obligations_service import (
     EFFECTIVE_STATUS_SQL,
     NOT_APPLICABLE_LATERAL_SQL,
     VALIDITY_LATERAL_SQL,
+    ObligationsService,
+    period_label,
 )
 
 logger = logging.getLogger("docke.maintenance_worker")
@@ -78,6 +80,11 @@ async def _run_once() -> None:
         await _cleanup_stale_pending_uploads(conn)
         from app.workers.export_worker import purge_expired_exports
         await purge_expired_exports(conn)
+        # Recorrência (A7-07): competências mensais e anuais aparecem sozinhas.
+        try:
+            await ObligationsService.generate_due_instances(conn)
+        except Exception as exc:  # noqa: BLE001 — um modelo ruim não pode parar a manutenção
+            logger.exception("Falha ao gerar competências de obrigações: %s", exc)
         await _notify_obligation_alerts(conn)
         await _notify_retention_expiring_soon(conn)
         await _scan_retention_expirations(conn)
@@ -201,6 +208,7 @@ _OBLIGATION_ALERT_STATUSES = ("overdue", "at_risk", "blocked", "expired")
 
 
 def _obligation_alert_message(status: str, template_name: str, period: str) -> str:
+    period = period_label(period)
     if status == "overdue":
         return f'"{template_name}" ({period}) está atrasada — nenhum documento comprobatório vinculado ainda.'
     if status == "at_risk":
@@ -226,7 +234,7 @@ async def _notify_obligation_alerts(conn) -> None:
     """
     rows = await conn.fetch(
         f"""
-        SELECT oi.id, oi.company_id, oi.period, ot.name AS template_name,
+        SELECT oi.id, oi.company_id, oi.period, oi.owner_id, ot.name AS template_name,
                {EFFECTIVE_STATUS_SQL}
         FROM public.obligation_instances oi
         JOIN public.obligation_templates ot ON ot.id = oi.template_id
@@ -249,12 +257,20 @@ async def _notify_obligation_alerts(conn) -> None:
         if already_notified:
             continue
 
+        # Com responsável, o aviso vai para ele; atraso e documento vencido
+        # também sobem para quem administra a empresa (A7-08). Sem
+        # responsável, vai para admins e operadores, como antes.
         recipients = await conn.fetch(
             """
             SELECT DISTINCT user_id FROM public.user_company_access
-            WHERE company_id = $1 AND folder_path IS NULL AND permission_level IN ('admin', 'operador')
+            WHERE company_id = $1 AND folder_path IS NULL
+              AND (
+                ($2::uuid IS NULL AND permission_level IN ('admin', 'operador'))
+                OR user_id = $2::uuid
+                OR ($2::uuid IS NOT NULL AND $3 AND permission_level = 'admin')
+              )
             """,
-            row["company_id"],
+            row["company_id"], row["owner_id"], eff_status in ("overdue", "expired"),
         )
         message = _obligation_alert_message(eff_status, row["template_name"], row["period"])
         for r in recipients:

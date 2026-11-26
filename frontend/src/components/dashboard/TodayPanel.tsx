@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { AlertTriangle, CalendarClock, FileWarning, Archive, Link2, CheckCircle2, RefreshCw, Building2, ChevronRight } from "lucide-react";
+import { AlertTriangle, ClipboardCheck, CalendarClock, FileWarning, Archive, Link2, CheckCircle2, RefreshCw, Building2, ChevronRight } from "lucide-react";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 
 interface Resumo {
   obrigacoes_vencidas: number;
   obrigacoes_semana: number;
+  obrigacoes_conferir: number;
   texto_com_falha: number;
   retencao_para_revisar: number;
   links_vencendo: number;
 }
-interface Obrigacao { id: string; name: string; period: string; due_date: string; status: string; criticality: string; responsavel: string | null; dias_atraso: number }
+interface Obrigacao { id: string; name: string; period: string; period_label?: string; due_date: string; status: string; criticality: string; responsavel: string | null; dias_atraso: number }
 interface Today { resumo: Resumo; modelos_obrigacao: number; obrigacoes: Obrigacao[]; texto_com_falha: { id: string; name: string; folder_id: string }[] }
 interface GroupRow extends Resumo { company_id: string; name: string; total: number }
 
@@ -61,6 +62,7 @@ export default function TodayPanel() {
   const linhas: { key: string; icon: typeof CalendarClock; tone: string; texto: string; acao: string; to?: string }[] = [];
   if (r.obrigacoes_vencidas) linhas.push({ key: "venc", icon: AlertTriangle, tone: "text-(--text-danger)", texto: `${plural(r.obrigacoes_vencidas, "obrigação vencida", "obrigações vencidas")}`, acao: "Resolver", to: "/obligations?prazo=vencidas" });
   if (r.obrigacoes_semana) linhas.push({ key: "sem", icon: CalendarClock, tone: "text-(--text-warning)", texto: `${plural(r.obrigacoes_semana, "obrigação vence", "obrigações vencem")} nos próximos 7 dias`, acao: "Ver", to: "/obligations?prazo=semana" });
+  if (r.obrigacoes_conferir) linhas.push({ key: "conf", icon: ClipboardCheck, tone: "text-(--text-accent)", texto: `${plural(r.obrigacoes_conferir, "documento espera conferência", "documentos esperam conferência")} em obrigações`, acao: "Conferir", to: "/obligations?status=reviewing" });
   if (r.texto_com_falha) {
     const um = data.texto_com_falha[0];
     linhas.push({
@@ -132,7 +134,7 @@ export default function TodayPanel() {
           {data.obrigacoes.slice(0, 6).map((o) => (
             <li key={o.id}>
               <button onClick={() => navigate(`/obligations?instancia=${o.id}`)} className="w-full min-h-11 text-left rounded-(--radius-control) border border-(--border-default) px-3 py-2 hover:bg-(--bg-hover) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)">
-                <p className="text-mac-body text-(--text-primary) truncate">{o.name} <span className="text-(--text-secondary)">· {o.period}</span></p>
+                <p className="text-mac-body text-(--text-primary) truncate">{o.name} <span className="text-(--text-secondary)">· {o.period_label ?? o.period}</span></p>
                 <p className={`text-mac-caption ${o.dias_atraso > 0 ? "text-(--text-danger)" : "text-(--text-secondary)"}`}>
                   {o.dias_atraso > 0 ? `Venceu há ${plural(o.dias_atraso, "dia", "dias")} (${br(o.due_date)})` : o.dias_atraso === 0 ? "Vence hoje" : `Vence em ${br(o.due_date)}`}
                   {o.responsavel ? ` · ${o.responsavel}` : " · sem responsável"}
