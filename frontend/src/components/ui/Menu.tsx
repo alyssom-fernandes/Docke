@@ -38,10 +38,14 @@ export default function Menu({ items, onClose, anchor, label, align = "start" }:
   const enabled = items.map((it, i) => (it.disabled ? -1 : i)).filter((i) => i >= 0);
   const [active, setActive] = useState(enabled[0] ?? -1);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  // No celular o menu vira folha inferior (J1-03, B1.2.8): largura toda,
+  // itens de 48 px, nome do item no topo; o resto do comportamento é o mesmo.
+  const [sheet] = useState(() => window.matchMedia("(max-width: 639px)").matches);
 
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
+    if (sheet) { setPos({ top: 0, left: 0 }); return; }
     const { width, height } = el.getBoundingClientRect();
     let x: number, y: number;
     if (anchor instanceof HTMLElement) {
@@ -111,16 +115,24 @@ export default function Menu({ items, onClose, anchor, label, align = "start" }:
     }
   }
 
-  return createPortal(
+  const menu = (
     <div
       ref={ref}
       role="menu"
       aria-label={label}
       onKeyDown={onKeyDown}
       onContextMenu={(e) => e.preventDefault()}
-      style={pos ? { top: pos.top, left: pos.left } : { top: -9999, left: -9999 }}
-      className={`fixed z-[80] min-w-[220px] max-w-[300px] py-1.5 glass-panel glass-blur-strong rounded-(--radius-popover) shadow-dropdown ${pos ? "menu-in" : ""}`}
+      style={sheet ? undefined : pos ? { top: pos.top, left: pos.left } : { top: -9999, left: -9999 }}
+      className={sheet
+        ? "sheet-in fixed z-[80] inset-x-0 bottom-0 max-h-[80dvh] overflow-y-auto pt-2 pb-[calc(8px+env(safe-area-inset-bottom))] glass-dialog glass-blur-strong rounded-t-(--radius-dialog) shadow-modal"
+        : `fixed z-[80] min-w-[220px] max-w-[300px] py-1.5 glass-dialog glass-blur-strong rounded-(--radius-popover) shadow-dropdown ${pos ? "menu-in" : ""}`}
     >
+      {sheet && (
+        <div className="px-5 pt-1 pb-2" aria-hidden="true">
+          <div className="mx-auto mb-2 h-1 w-9 rounded-full bg-(--border-control)" />
+          <p className="truncate text-mac-caption font-semibold text-(--text-secondary)">{label}</p>
+        </div>
+      )}
       {items.map((it, i) => (
         <div key={`${it.label}-${i}`}>
           {it.separatorBefore && <div role="separator" className="my-1 mx-2.5 h-px bg-(--border-default)" />}
@@ -133,21 +145,38 @@ export default function Menu({ items, onClose, anchor, label, align = "start" }:
             aria-disabled={it.disabled || undefined}
             onMouseEnter={() => !it.disabled && setActive(i)}
             onClick={() => { if (it.disabled) return; close(false); it.onSelect(); }}
-            className={`mx-1.5 flex w-[calc(100%-12px)] items-center gap-2.5 rounded-[6px] px-2.5 h-7 pointer-coarse:h-11 text-left text-mac-body outline-hidden
+            className={`mx-1.5 flex w-[calc(100%-12px)] items-center gap-2.5 rounded-[6px] px-2.5 text-left text-mac-body outline-hidden
+              ${sheet ? "h-12 px-3.5 active:bg-(--bg-hover) focus-visible:bg-(--bg-hover)" : "h-7 pointer-coarse:h-11"}
               ${it.danger ? "text-(--text-danger)" : "text-(--text-primary)"}
-              ${i === active ? (it.danger ? "bg-red-600 text-white" : "bg-teal-600 text-white") : ""}
+              ${!sheet && i === active ? (it.danger ? "bg-red-600 text-white" : "bg-teal-600 text-white") : ""}
               disabled:opacity-40 disabled:cursor-not-allowed`}
           >
-            {it.icon && <span className="flex w-4 shrink-0 items-center justify-center [&_svg]:h-3.5 [&_svg]:w-3.5" aria-hidden>{it.icon}</span>}
+            {it.icon && <span className={`flex w-4 shrink-0 items-center justify-center ${sheet ? "[&_svg]:h-4 [&_svg]:w-4" : "[&_svg]:h-3.5 [&_svg]:w-3.5"}`} aria-hidden>{it.icon}</span>}
             <span className="min-w-0 flex-1 truncate">{it.label}</span>
-            {it.hint && <span className={`shrink-0 text-mac-caption ${i === active ? "text-white/80" : "text-(--text-tertiary)"}`}>{it.hint}</span>}
-            {it.shortcut && (
-              <kbd className={`shrink-0 font-sans text-mac-caption ${i === active ? "text-white/80" : "text-(--text-tertiary)"}`}>{it.shortcut}</kbd>
+            {it.hint && <span className={`shrink-0 text-mac-caption ${!sheet && i === active ? "text-white/80" : "text-(--text-secondary)"}`}>{it.hint}</span>}
+            {it.shortcut && !sheet && (
+              <kbd className={`shrink-0 font-sans text-mac-caption ${i === active ? "text-white/80" : "text-(--text-secondary)"}`}>{it.shortcut}</kbd>
             )}
           </button>
         </div>
       ))}
-    </div>,
+      {sheet && (
+        <div className="mx-1.5 mt-1 border-t border-(--border-default) pt-1">
+          <button type="button" onClick={() => close()} className="flex w-[calc(100%-12px)] mx-1.5 h-12 items-center justify-center rounded-[6px] text-mac-body font-medium text-(--text-accent) active:bg-(--bg-hover)">
+            Cancelar
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  return createPortal(
+    sheet ? (
+      <>
+        <div aria-hidden="true" className="dialog-scrim-in fixed inset-0 z-[79] bg-(--overlay-scrim)" />
+        {menu}
+      </>
+    ) : menu,
     document.body,
   );
 }

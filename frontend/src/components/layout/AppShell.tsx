@@ -90,7 +90,9 @@ export default function AppShell({ children }: AppShellProps) {
             {children}
           </div>
         </ErrorBoundary>
-        <Footer />
+        {/* A assinatura fica em Ajustes (J1-10, A2-06): nas telas de trabalho ela
+            competia com o teal e tirava altura útil no celular. */}
+        {location.pathname.startsWith("/settings") && <Footer />}
       </main>
 
       <CommandPalette />

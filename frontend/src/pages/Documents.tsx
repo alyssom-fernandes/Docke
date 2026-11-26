@@ -75,6 +75,7 @@ import { pushUndo, takeUndo, isUndoShortcut } from "@/lib/undo";
 import { maskValue, validateValue, PLACEHOLDER, INPUT_MODE, type FieldType } from "@/components/documents/fieldMasks";
 import { SkeletonTableRow, SkeletonGridItem } from "@/components/shared/Skeleton";
 import { useDelayedLoading } from "@/hooks/useDelayedLoading";
+import { prefetchPdfViewer } from "@/lib/prefetch";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1278,6 +1279,10 @@ export default function Documents() {
 
   const [folders, setFolders] = useState<Folder[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
+  // Pasta com PDF: o visualizador baixa com o navegador ocioso (X1-22).
+  useEffect(() => {
+    if (documents.some((d) => d.name.toLowerCase().endsWith(".pdf"))) prefetchPdfViewer();
+  }, [documents]);
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(saved?.folderId ?? null);
   const [breadcrumbs, setBreadcrumbs] = useState<Array<{ id: string | null; name: string }>>(
     saved?.breadcrumbs ?? [{ id: null, name: "Início" }]
@@ -2291,6 +2296,15 @@ export default function Documents() {
     // "click" sintético que o navegador dispara logo depois do touchend não
     // deve sobrescrever com seleção de item único.
     if (longPressFiredRef.current) { longPressFiredRef.current = false; return; }
+    // Abaixo de 1024 px (sem painel lateral), um toque/clique abre o documento
+    // e a seleção vira modo explícito: "Selecionar vários" ou toque longo
+    // (J1-03). Ctrl/Shift continuam selecionando.
+    if (!isDesktop && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+      if (selectionMode) { toggleSelect(id); setFocusedId(id); return; }
+      const doc = documents.find((d) => d.id === id);
+      if (doc) { setFocusedId(id); setPreviewDoc(doc); }
+      return;
+    }
     const ids = visibleDocuments.map((d) => d.id);
     if (e.shiftKey && focusedId && ids.includes(focusedId)) {
       const i1 = ids.indexOf(focusedId);

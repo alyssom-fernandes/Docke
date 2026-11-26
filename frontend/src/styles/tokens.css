@@ -415,12 +415,12 @@ html, body {
   display: inline-block;
 }
 .brand-mark {
-  -webkit-mask-image: url("/brand/docke-mark.png");
-  mask-image: url("/brand/docke-mark.png");
+  -webkit-mask-image: url("/brand/docke-mark-128.png");
+  mask-image: url("/brand/docke-mark-128.png");
 }
 .brand-wordmark {
-  -webkit-mask-image: url("/brand/docke-wordmark.png");
-  mask-image: url("/brand/docke-wordmark.png");
+  -webkit-mask-image: url("/brand/docke-wordmark-450.png");
+  mask-image: url("/brand/docke-wordmark-450.png");
 }
 
 /* ─── Theme transition ─── */
