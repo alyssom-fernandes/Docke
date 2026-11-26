@@ -1,5 +1,6 @@
 import { useState, FormEvent } from "react";
-import { ShieldCheck, ShieldAlert } from "lucide-react";
+import { ShieldCheck, ShieldAlert, KeyRound, Laptop, type LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import { useToast } from "@/lib/toast";
@@ -7,6 +8,8 @@ import { useCompany } from "@/lib/CompanyContext";
 import { useAuthContext } from "@/lib/AuthContext";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
+import Checkbox from "@/components/ui/Checkbox";
+import { rememberChoice } from "@/lib/session";
 
 interface IntegrityResult {
   total_events: number;
@@ -15,6 +18,26 @@ interface IntegrityResult {
   // event_id e event_created_at vêm nulos na quebra de "Cadeia truncada"
   // (eventos mais recentes apagados): não há evento para apontar.
   first_broken: { event_id: string | null; event_created_at: string | null; reason: string } | null;
+}
+
+// Cartão com cabeçalho padrão (A8-11): ícone, título e descrição.
+function Cartao({ icon: Icon, cor, titulo, descricao, children, className = "" }: {
+  icon: LucideIcon; cor: string; titulo: string; descricao?: ReactNode; children?: ReactNode; className?: string;
+}) {
+  return (
+    <section className={`glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-6 ${className}`} aria-label={titulo}>
+      <div className="flex items-start gap-3">
+        <span className={`w-8 h-8 rounded-[9px] flex items-center justify-center shrink-0 ${cor}`} aria-hidden="true">
+          <Icon className="w-4 h-4 text-white" strokeWidth={2.25} />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-mac-body font-semibold text-(--text-primary)">{titulo}</h2>
+          {descricao && <p className="text-mac-caption text-(--text-secondary) mt-0.5">{descricao}</p>}
+        </div>
+      </div>
+      {children && <div className="mt-4">{children}</div>}
+    </section>
+  );
 }
 
 // Fase 2.9: botão "verificar integridade da cadeia" — só admin/supremo, é
@@ -42,16 +65,13 @@ function IntegritySection() {
   if (!current || (current.permission_level !== "admin" && current.permission_level !== "supremo")) return null;
 
   return (
-    <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-6 mt-6">
-      <h2 className="text-mac-body font-semibold text-(--text-primary) mb-1">Integridade da trilha de auditoria</h2>
-      <p className="text-mac-caption text-(--text-secondary) mb-4">
-        Cada evento registrado em Atividade carrega um hash encadeado ao anterior. Um evento alterado fora do fluxo normal do sistema aparece como adulterado, e um evento apagado quebra a cadeia a partir dele, inclusive quando é o mais recente. Verifique a qualquer momento se a trilha continua íntegra.
-      </p>
+    <Cartao icon={ShieldCheck} cor="bg-teal-600" titulo="Integridade da trilha de auditoria" className="mt-4"
+      descricao="Cada evento registrado em Atividade carrega um hash encadeado ao anterior. Um evento alterado fora do fluxo normal aparece como adulterado, e um evento apagado quebra a cadeia a partir dele, inclusive quando é o mais recente.">
       <Button size="sm" variant="secondary" onClick={verify} loading={checking}>
         Verificar agora
       </Button>
       {result && (
-        <div role="status" className={`mt-4 flex items-start gap-2 p-3 rounded-(--radius-control) ${result.intact ? "bg-emerald-500/10" : "bg-red-500/10"}`}>
+        <div role="status" key={`${result.total_events}-${result.broken_count}`} className={`reveal mt-4 flex items-start gap-2 p-3 rounded-(--radius-control) ${result.intact ? "bg-emerald-500/10" : "bg-red-500/10"}`}>
           {result.intact ? (
             <ShieldCheck className="w-4 h-4 text-(--text-success) shrink-0 mt-0.5" />
           ) : (
@@ -71,8 +91,8 @@ function IntegritySection() {
           </div>
         </div>
       )}
-      {error && <p className="text-mac-caption text-(--text-danger) mt-3">{error}</p>}
-    </div>
+      {error && <p role="alert" className="reveal text-mac-caption text-(--text-danger) mt-3">{error}</p>}
+    </Cartao>
   );
 }
 
@@ -118,9 +138,15 @@ export default function Security() {
     }
   }
 
+  const lembra = rememberChoice();
   return (
-    <div>
-      <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-6">
+    <div className="space-y-4">
+      {/* Resumo no topo (A8-11): como esta sessão se comporta neste computador. */}
+      <Cartao icon={Laptop} cor="bg-slate-500" titulo="Esta sessão"
+        descricao={lembra
+          ? "Fica conectada neste computador mesmo depois de fechar o navegador. Em computador compartilhado, saia pelo menu da conta ao terminar."
+          : "Termina quando a janela do navegador é fechada (bom para computador compartilhado)."} />
+      <Cartao icon={KeyRound} cor="bg-red-500" titulo="Senha" descricao="Troque a senha da sua conta. Ela vale para todas as empresas que você acessa.">
         {isDemo ? (
           <p className="text-mac-body text-(--text-secondary) max-w-[520px]">
             Na conta de demonstração a senha não pode ser trocada, porque todos os visitantes usam a mesma conta.
@@ -159,8 +185,8 @@ export default function Security() {
             error={errors.confirm}
             autoComplete="new-password"
           />
-          <label className="flex items-center gap-2 text-mac-body text-(--text-primary)">
-            <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} className="w-4 h-4 accent-teal-600" /> Mostrar as senhas
+          <label className="flex items-center gap-2 text-mac-body text-(--text-primary) cursor-pointer">
+            <Checkbox checked={show} onChange={(e) => setShow(e.target.checked)} /> Mostrar as senhas
           </label>
           <div className="flex justify-end pt-2">
             <Button type="submit" loading={saving} size="sm">
@@ -169,7 +195,7 @@ export default function Security() {
           </div>
         </form>
         )}
-      </div>
+      </Cartao>
       <IntegritySection />
     </div>
   );
