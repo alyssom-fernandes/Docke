@@ -49,6 +49,21 @@ export const ACTION_LABELS: Record<string, string> = {
   copy: "copiou a estrutura de",
   update_metadata: "atualizou um campo de",
   version_delete: "excluiu uma versão de",
+  obligation_create: "cadastrou a obrigação",
+  obligation_update: "alterou a obrigação",
+  obligation_archive: "arquivou a obrigação",
+  obligation_restore: "reativou a obrigação",
+  obligation_generate: "abriu a competência",
+  obligation_link: "enviou documento para",
+  obligation_unlink: "tirou documento de",
+  obligation_approve: "aprovou",
+  obligation_return: "devolveu para correção",
+  obligation_dispense: "dispensou",
+  obligation_cancel: "cancelou",
+  obligation_reopen: "reabriu",
+  obligation_assign: "trocou o responsável de",
+  obligation_dependency_add: "ligou uma dependência em",
+  obligation_dependency_remove: "desligou uma dependência de",
 };
 
 /** Verbo para o resumo de um grupo de eventos iguais ("enviou 5 documentos"). */
@@ -105,6 +120,9 @@ function clusterSummary(c: Cluster): { verbo: string; nomes: string } {
 
 /** Destino do deep-link, ou null se o item não existe mais. */
 export function activityTarget(ev: ActivityEvent): string | null {
+  if (ev.item_type === "obligation") {
+    return ev.metadata?.tipo === "competencia" ? `/obligations?instancia=${ev.item_id}` : "/obligations?aba=configuracao";
+  }
   if (ev.item_type === "folder") return `/documents?folder_id=${ev.item_id}`;
   if (ev.item_type === "document" && ev.current_folder_id) {
     return `/documents?folder_id=${ev.current_folder_id}&doc=${ev.item_id}`;

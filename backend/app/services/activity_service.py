@@ -29,6 +29,21 @@ _ACTION_LABELS: dict[str, str] = {
     "copy": "Cópia de estrutura",
     "update_metadata": "Metadado alterado",
     "version_delete": "Versão excluída",
+    "obligation_create": "Obrigação cadastrada",
+    "obligation_update": "Obrigação alterada",
+    "obligation_archive": "Obrigação arquivada",
+    "obligation_restore": "Obrigação reativada",
+    "obligation_generate": "Competência aberta",
+    "obligation_link": "Documento enviado para obrigação",
+    "obligation_unlink": "Documento tirado de obrigação",
+    "obligation_approve": "Obrigação aprovada",
+    "obligation_return": "Obrigação devolvida",
+    "obligation_dispense": "Obrigação dispensada",
+    "obligation_cancel": "Competência cancelada",
+    "obligation_reopen": "Obrigação reaberta",
+    "obligation_assign": "Responsável trocado",
+    "obligation_dependency_add": "Dependência criada",
+    "obligation_dependency_remove": "Dependência removida",
 }
 
 REVERSIBLE_ACTIONS = {"move", "rename", "delete", "favorite"}

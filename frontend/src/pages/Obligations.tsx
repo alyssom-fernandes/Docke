@@ -1,893 +1,743 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Plus, X, FileText, Link2, Trash2, ShieldQuestion, GitBranch, Lock, List, LayoutGrid } from "lucide-react";
+import {
+  Plus, Sparkles, AlertTriangle, RefreshCw, ShieldCheck, Pencil, Archive, ArchiveRestore, Pause, Play, GitBranch, Trash2,
+  ChevronRight, CalendarPlus, User,
+} from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
+import { useAuthContext } from "@/lib/AuthContext";
 import { useToast } from "@/lib/toast";
-import { relativeDate } from "@/lib/date";
-import EmptyState from "@/components/shared/EmptyState";
-import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
-import Portal from "@/components/ui/Portal";
+import Dialog from "@/components/ui/Dialog";
 import Dropdown from "@/components/ui/Dropdown";
+import ConfirmModal from "@/components/ui/ConfirmModal";
+import Input from "@/components/ui/Input";
+import EmptyState from "@/components/shared/EmptyState";
+import InstanceDialog from "@/components/obligations/InstanceDialog";
+import TemplateDialog from "@/components/obligations/TemplateDialog";
+import CatalogDialog from "@/components/obligations/CatalogDialog";
+import {
+  type Template, type Instance, type Dependency, type Member,
+  STATUS, StatusChip, URGENCY, OPEN_STATUSES, CRIT_LABEL, MESES, dueText, scheduleText, friendly,
+} from "@/components/obligations/shared";
 
-// Fase 4.1 — Modelo de Obrigações (Obrigação → Documento comprobatório).
-// Regras condicionais (4.2), matriz 2D (4.4) e Self-Service Collect (4.6)
-// ficam para fatias seguintes; esta tela cobre só o CRUD do modelo base e a
-// vinculação manual de documento comprobatório.
+type Tab = "pendencias" | "calendario" | "configuracao";
+type Load<T> = { state: "loading" | "ok" | "error"; data: T };
 
-interface NotApplicableWhen {
-  field: string;
-  in: string[];
-}
+const GROUPS: { id: string; title: string; statuses: string[] }[] = [
+  { id: "atrasadas", title: "Atrasadas", statuses: ["overdue"] },
+  { id: "vencidas", title: "Documento vencido", statuses: ["expired"] },
+  { id: "breve", title: "Vencem em breve", statuses: ["at_risk"] },
+  { id: "conferir", title: "Esperando conferência", statuses: ["reviewing"] },
+  { id: "afazer", title: "A fazer", statuses: ["pending"] },
+  { id: "aguardando", title: "Aguardando outra obrigação", statuses: ["blocked"] },
+  { id: "cumpridas", title: "Cumpridas", statuses: ["approved"] },
+  { id: "fechadas", title: "Dispensadas, canceladas e que não se aplicam", statuses: ["dispensado", "cancelado", "not_applicable"] },
+];
 
-interface Template {
-  id: string;
-  name: string;
-  description: string | null;
-  frequency: string;
-  criticality: string;
-  department: string | null;
-  sla_days: number;
-  weight: number;
-  validity_months: number | null;
-  rules_json: { not_applicable_when?: NotApplicableWhen };
-  active: boolean;
-}
-
-interface Instance {
-  id: string;
-  template_id: string;
-  template_name: string;
-  criticality: string;
-  department: string | null;
-  period: string;
-  due_date: string;
-  effective_status: string;
-  status: string;
-  dispensa_motivo: string | null;
-  document_count: number;
-  blocking_templates: string[] | null;
-  document_expires_at: string | null;
-}
-
-interface Dependency {
-  id: string;
-  template_id: string;
-  template_name: string;
-  depends_on_template_id: string;
-  depends_on_name: string;
-}
-
-const STATUS_LABEL: Record<string, string> = {
-  pending: "Pendente",
-  at_risk: "Vencendo",
-  overdue: "Atrasada",
-  blocked: "Bloqueada",
-  expired: "Expirada",
-  not_applicable: "Não aplicável",
-  reviewing: "Em revisão",
-  approved: "Aprovada",
-  dispensado: "Dispensada",
-  cancelado: "Cancelada",
-};
-
-const STATUS_VARIANT: Record<string, "default" | "success" | "error" | "warning" | "info" | "teal"> = {
-  pending: "default",
-  at_risk: "warning",
-  overdue: "error",
-  blocked: "info",
-  expired: "error",
-  not_applicable: "default",
-  reviewing: "info",
-  approved: "success",
-  dispensado: "default",
-  cancelado: "default",
-};
-
-const CONDITIONAL_FIELD_LABEL: Record<string, string> = {
-  regime_tributario: "Regime tributário",
-  faixa_funcionarios: "Quantidade de funcionários",
-  uf: "UF",
-  tipo_juridico: "Tipo jurídico",
-};
-
-const CONDITIONAL_VALUE_OPTIONS: Record<string, { value: string; label: string }[]> = {
-  regime_tributario: [
-    { value: "simples_nacional", label: "Simples Nacional" },
-    { value: "lucro_presumido", label: "Lucro Presumido" },
-    { value: "lucro_real", label: "Lucro Real" },
-  ],
-  faixa_funcionarios: [
-    { value: "nenhum", label: "Nenhum funcionário" },
-    { value: "1_a_10", label: "1 a 10" },
-    { value: "11_a_50", label: "11 a 50" },
-    { value: "51_a_200", label: "51 a 200" },
-    { value: "201_mais", label: "201 ou mais" },
-  ],
-  tipo_juridico: [
-    { value: "mei", label: "MEI" },
-    { value: "ltda", label: "LTDA" },
-    { value: "sa", label: "S.A." },
-    { value: "eireli", label: "EIRELI" },
-    { value: "outro", label: "Outro" },
-  ],
-  uf: [],
-};
-
-const FREQ_LABEL: Record<string, string> = { mensal: "Mensal", anual: "Anual", unica: "Única", evento: "Por evento" };
-
-const UFS = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
-
-function StatusBadge({ status }: { status: string }) {
-  return <Badge variant={STATUS_VARIANT[status] ?? "default"}>{STATUS_LABEL[status] ?? status}</Badge>;
-}
+const FILTERS: { value: string; label: string }[] = [
+  { value: "abertas", label: "Tudo que está aberto" },
+  { value: "overdue", label: "Atrasadas" },
+  { value: "expired", label: "Documento vencido" },
+  { value: "at_risk", label: "Vencem em breve" },
+  { value: "reviewing", label: "Esperando conferência" },
+  { value: "pending", label: "A fazer" },
+  { value: "blocked", label: "Aguardando outra" },
+  { value: "approved", label: "Cumpridas" },
+  { value: "sem_responsavel", label: "Sem responsável" },
+  { value: "criticas", label: "Críticas pendentes" },
+  { value: "todas", label: "Todas, inclusive fechadas" },
+];
 
 export default function Obligations() {
   usePageTitle("Obrigações");
-  const { current } = useCompany();
-  const { success, error: showError } = useToast();
-  const isAdmin = current?.permission_level === "admin" || current?.permission_level === "supremo";
+  const { current, companies } = useCompany();
+  const { user } = useAuthContext();
+  const [params, setParams] = useSearchParams();
+  const uid = useId();
 
-  const [templates, setTemplates] = useState<Template[]>([]);
-  // Sempre TODAS as instâncias, sem filtro de status — a Central de
-  // Conformidade e a Matriz precisam ver o conjunto inteiro pra calcular
-  // porcentagens e desenhar todas as colunas/linhas; o filtro de status da
-  // visão em Lista é aplicado no cliente (filteredInstances), não no fetch.
-  const [allInstances, setAllInstances] = useState<Instance[]>([]);
-  const [dependencies, setDependencies] = useState<Dependency[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<string>("");
-  // Vindo do Início: ?prazo=vencidas|semana filtra, ?instancia=<id> destaca a linha.
-  const [searchParams, setSearchParams] = useSearchParams();
-  const prazo = searchParams.get("prazo");
-  const destaque = searchParams.get("instancia");
-  const [showTemplateModal, setShowTemplateModal] = useState(false);
-  const [showInstanceModal, setShowInstanceModal] = useState<Template | null>(null);
-  const [linkingInstance, setLinkingInstance] = useState<Instance | null>(null);
-  const [showDependencyModal, setShowDependencyModal] = useState(false);
-  const [view, setView] = useState<"list" | "matrix">("list");
-  const [matrixInstanceModal, setMatrixInstanceModal] = useState<{ template: Template; period: string } | null>(null);
+  const tab = (["pendencias", "calendario", "configuracao"].includes(params.get("aba") ?? "") ? params.get("aba") : "pendencias") as Tab;
+  const grupo = params.get("escopo") === "grupo" && companies.length > 1;
+  const mine = params.get("minhas") === "1";
+  const prazo = params.get("prazo");
+  const filtro = params.get("status") ?? (prazo === "vencidas" ? "overdue" : "abertas");
+  const dept = params.get("depto") ?? "";
+  const empresaFiltro = params.get("empresa") ?? "";
+  const aberta = params.get("instancia");
 
-  const filteredInstances = useMemo(() => {
-    let list = statusFilter ? allInstances.filter((i) => i.effective_status === statusFilter) : allInstances;
-    if (prazo) {
-      const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-      const limite = new Date(hoje); limite.setDate(limite.getDate() + 7);
-      const aberta = (i: Instance) => ["pending", "reviewing"].includes(i.status);
-      list = list.filter((i) => {
-        const due = new Date(`${i.due_date}T00:00:00`);
-        return aberta(i) && (prazo === "vencidas" ? due < hoje : due <= limite);
-      });
-    }
-    return list;
-  }, [allInstances, statusFilter, prazo]);
+  const setParam = useCallback((changes: Record<string, string | null>) => {
+    setParams((p) => {
+      const n = new URLSearchParams(p);
+      for (const [k, v] of Object.entries(changes)) { if (v === null || v === "") n.delete(k); else n.set(k, v); }
+      return n;
+    }, { replace: true });
+  }, [setParams]);
 
-  useEffect(() => {
-    if (!destaque || loading) return;
-    document.getElementById(`instancia-${destaque}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [destaque, loading]);
+  const perm = (companyId: string) => companies.find((c) => c.id === companyId)?.permission_level ?? current?.permission_level;
+  const isAdminOf = (companyId: string) => ["admin", "supremo"].includes(perm(companyId) ?? "");
+  const canOperateIn = (companyId: string) => ["admin", "operador", "supremo"].includes(perm(companyId) ?? "");
+  const isAdmin = current ? isAdminOf(current.id) : false;
 
-  function load() {
+  const [instances, setInstances] = useState<Load<Instance[]>>({ state: "loading", data: [] });
+  const [empresas, setEmpresas] = useState<{ company_id: string; name: string; overdue: number; expired: number; at_risk: number; reviewing: number; approved: number; relevant: number }[]>([]);
+  const [templates, setTemplates] = useState<Load<Template[]>>({ state: "loading", data: [] });
+  const [deps, setDeps] = useState<Dependency[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+
+  const loadInstances = useCallback(() => {
     if (!current) return;
-    setLoading(true);
-    Promise.all([
-      api.get<Template[]>("/companies/" + current.id + "/obligations/templates"),
-      api.get<Instance[]>("/companies/" + current.id + "/obligations/instances"),
-      api.get<Dependency[]>("/companies/" + current.id + "/obligations/dependencies"),
-    ])
-      .then(([t, i, d]) => {
-        setTemplates(Array.isArray(t.data) ? t.data : []);
-        setAllInstances(Array.isArray(i.data) ? i.data : []);
-        setDependencies(Array.isArray(d.data) ? d.data : []);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    setInstances((s) => ({ ...s, state: s.data.length ? "ok" : "loading" }));
+    const req = grupo
+      ? api.get("/obligations/group", { params: { mine: mine || undefined } }).then((r) => { setEmpresas(r.data.empresas ?? []); return r.data.instancias as Instance[]; })
+      : api.get<Instance[]>(`/companies/${current.id}/obligations/instances`, { params: { mine: mine || undefined, history: filtro === "todas" || undefined } }).then((r) => r.data);
+    req.then((data) => setInstances({ state: "ok", data: Array.isArray(data) ? data : [] }))
+      .catch(() => setInstances((s) => ({ ...s, state: "error" })));
+  }, [current?.id, grupo, mine, filtro === "todas"]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadConfig = useCallback(() => {
+    if (!current) return;
+    setTemplates((s) => ({ ...s, state: s.data.length ? "ok" : "loading" }));
+    api.get<Template[]>(`/companies/${current.id}/obligations/templates`, { params: { include_archived: true } })
+      .then((r) => setTemplates({ state: "ok", data: Array.isArray(r.data) ? r.data : [] }))
+      .catch(() => setTemplates((s) => ({ ...s, state: "error" })));
+    api.get<Dependency[]>(`/companies/${current.id}/obligations/dependencies`).then((r) => setDeps(r.data ?? [])).catch(() => setDeps([]));
+    api.get<Member[]>(`/companies/${current.id}/members`).then((r) => setMembers(r.data ?? [])).catch(() => setMembers([]));
+  }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(loadInstances, [loadInstances]);
+  useEffect(loadConfig, [loadConfig]);
+
+  // Atualiza só a linha que mudou, sem recarregar a página (A7-13).
+  function patchInstance(inst: Instance) {
+    setInstances((s) => ({ ...s, data: s.data.map((i) => (i.id === inst.id ? { ...i, ...inst } : i)) }));
   }
 
-  async function removeDependency(dep: Dependency) {
-    try {
-      await api.delete(`/obligations/dependencies/${dep.id}`, { params: { company_id: current!.id } });
-      success("Dependência removida.");
-      load();
-    } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Não foi possível remover a dependência.");
+  const activeTemplates = templates.data.filter((t) => !t.archived_at);
+  const departments = useMemo(() => [...new Set(instances.data.map((i) => i.department).filter(Boolean) as string[])].sort(), [instances.data]);
+
+  const visible = useMemo(() => {
+    let list = instances.data;
+    if (empresaFiltro) list = list.filter((i) => i.company_id === empresaFiltro);
+    if (dept) list = list.filter((i) => i.department === dept);
+    if (prazo === "semana") {
+      const lim = new Date(); lim.setDate(lim.getDate() + 7);
+      list = list.filter((i) => OPEN_STATUSES.includes(i.effective_status) && new Date(`${i.due_date.slice(0, 10)}T12:00:00`) <= lim);
     }
-  }
-
-  useEffect(load, [current?.id]);
-
-  async function dispense(instance: Instance) {
-    const motivo = window.prompt("Motivo da dispensa (obrigatório):");
-    if (!motivo) return;
-    try {
-      await api.patch(`/obligations/instances/${instance.id}/status`, { status: "dispensado", dispensa_motivo: motivo });
-      success("Obrigação dispensada.");
-      load();
-    } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Não foi possível dispensar.");
+    switch (filtro) {
+      case "abertas": return list.filter((i) => OPEN_STATUSES.includes(i.effective_status));
+      case "todas": return list;
+      case "sem_responsavel": return list.filter((i) => !i.owner_id && OPEN_STATUSES.includes(i.effective_status));
+      case "criticas": return list.filter((i) => i.criticality === "critica" && OPEN_STATUSES.includes(i.effective_status));
+      default: return list.filter((i) => i.effective_status === filtro);
     }
-  }
+  }, [instances.data, filtro, dept, prazo, empresaFiltro]);
+
+  const [showTemplate, setShowTemplate] = useState<Template | "nova" | null>(null);
+  const [showCatalog, setShowCatalog] = useState(false);
+  const [newInstance, setNewInstance] = useState<{ template?: Template; period?: string } | null>(null);
+
+  if (!current) return <EmptyState title="Nenhuma empresa selecionada" description="Escolha uma empresa no topo para ver as obrigações." />;
+
+  const semModelos = templates.state === "ok" && activeTemplates.length === 0 && !grupo;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
+    <div className="space-y-5 sm:space-y-6 max-w-[1440px] w-full mx-auto">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-mac-title2 font-semibold text-(--text-primary)">Obrigações</h1>
-          <p className="text-mac-caption text-(--text-secondary) mt-1">
-            Cada obrigação pode ser satisfeita por documentos diferentes — o que importa é comprovar, não um arquivo específico.
+          <p className="text-mac-caption text-(--text-secondary) mt-0.5">
+            {grupo ? `Todas as ${companies.length} empresas que você acessa` : current.name} · o que precisa ser comprovado, até quando e por quem.
           </p>
         </div>
-        {isAdmin && (
-          <Button variant="primary" onClick={() => setShowTemplateModal(true)}>
-            <Plus className="w-4 h-4" /> Novo modelo
-          </Button>
+        {isAdmin && !grupo && (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => setShowCatalog(true)}><Sparkles className="w-4 h-4" aria-hidden="true" /> Modelos prontos</Button>
+            <Button onClick={() => setShowTemplate("nova")}><Plus className="w-4 h-4" aria-hidden="true" /> Nova obrigação</Button>
+          </div>
         )}
       </div>
 
-      {/* Central de Conformidade (Fase 4.7) */}
-      {allInstances.length > 0 && (
-        <ComplianceCenter
-          instances={allInstances}
-          onFilter={(status) => { setStatusFilter(status); setView("list"); }}
-        />
-      )}
-
-      {/* Modelos */}
-      <section className="space-y-2">
-        <h2 className="text-mac-callout font-semibold text-(--text-primary)">Modelos</h2>
-        {templates.length === 0 ? (
-          <p className="text-mac-caption text-(--text-tertiary)">Nenhum modelo de obrigação cadastrado ainda.</p>
-        ) : (
-          <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
-            <ul>
-              {templates.map((t) => (
-                <li key={t.id} className="flex items-center gap-3 px-5 py-3 border-b border-(--border-default) last:border-0">
-                  <ShieldQuestion className="w-4 h-4 text-teal-500 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-mac-body text-(--text-primary) truncate">{t.name}</div>
-                    <div className="text-mac-caption text-(--text-tertiary)">
-                      {FREQ_LABEL[t.frequency] ?? t.frequency}
-                      {t.department ? ` · ${t.department}` : ""}
-                      {t.sla_days > 0 ? ` · alerta ${t.sla_days}d antes do prazo` : ""}
-                      {t.validity_months ? ` · documento vale ${t.validity_months} ${t.validity_months === 1 ? "mês" : "meses"}` : ""}
-                    </div>
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={() => setShowInstanceModal(t)}>
-                    <Plus className="w-3.5 h-3.5" /> Gerar instância
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
-
-      {/* Dependências */}
-      {templates.length >= 2 && (
-        <section className="space-y-2">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <h2 className="text-mac-callout font-semibold text-(--text-primary)">Dependências</h2>
-            {isAdmin && (
-              <Button variant="ghost" size="sm" onClick={() => setShowDependencyModal(true)}>
-                <GitBranch className="w-3.5 h-3.5" /> Nova dependência
-              </Button>
-            )}
-          </div>
-          {dependencies.length === 0 ? (
-            <p className="text-mac-caption text-(--text-tertiary)">
-              Nenhuma dependência cadastrada — nenhum modelo está condicionado à conclusão de outro.
-            </p>
-          ) : (
-            <ul className="space-y-1.5">
-              {dependencies.map((d) => (
-                <li key={d.id} className="flex items-center gap-2 text-mac-caption text-(--text-secondary)">
-                  <GitBranch className="w-3.5 h-3.5 text-teal-500 shrink-0" />
-                  <span>
-                    <strong className="text-(--text-primary)">{d.template_name}</strong> só fica ativa depois de{" "}
-                    <strong className="text-(--text-primary)">{d.depends_on_name}</strong> ser aprovada no mesmo período
-                  </span>
-                  {isAdmin && (
-                    <button onClick={() => removeDependency(d)} className="p-1 rounded-[6px] text-(--text-tertiary) hover:bg-(--bg-hover) hover:text-(--text-primary)" title="Remover dependência">
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-
-      {/* Instâncias */}
-      <section className="space-y-2">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <h2 className="text-mac-callout font-semibold text-(--text-primary)">Instâncias</h2>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-0.5 p-0.5 bg-(--bg-hover) rounded-(--radius-control)">
-              <button
-                onClick={() => setView("list")}
-                className={`p-1.5 rounded-[6px] transition-colors duration-fast ${view === "list" ? "bg-(--bg-card) text-teal-500" : "text-(--text-tertiary) hover:text-(--text-primary)"}`}
-                title="Lista"
-              >
-                <List className="w-3.5 h-3.5" />
+      {/* Abas e escopo */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div role="tablist" aria-label="Visões de obrigações" className="flex items-center gap-0.5 p-0.5 rounded-full bg-(--bg-hover)">
+          {([["pendencias", "Pendências"], ["calendario", "Calendário"], ["configuracao", "Cadastro"]] as const)
+            .filter(([id]) => !(grupo && id !== "pendencias"))
+            .map(([id, label]) => (
+              <button key={id} role="tab" aria-selected={tab === id} onClick={() => setParam({ aba: id === "pendencias" ? null : id })}
+                className={`px-3 h-8 pointer-coarse:h-10 rounded-full text-mac-body font-medium transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${tab === id ? "bg-(--bg-card) text-(--text-primary) shadow-sm" : "text-(--text-secondary) hover:text-(--text-primary)"}`}>
+                {label}
               </button>
-              <button
-                onClick={() => setView("matrix")}
-                className={`p-1.5 rounded-[6px] transition-colors duration-fast ${view === "matrix" ? "bg-(--bg-card) text-teal-500" : "text-(--text-tertiary) hover:text-(--text-primary)"}`}
-                title="Matriz de completude"
-              >
-                <LayoutGrid className="w-3.5 h-3.5" />
-              </button>
+            ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {companies.length > 1 && (
+            <div role="group" aria-label="Escopo" className="flex items-center gap-0.5 p-0.5 rounded-full bg-(--bg-hover)">
+              {([["empresa", "Esta empresa"], ["grupo", "Todas as empresas"]] as const).map(([v, label]) => (
+                <button key={v} aria-pressed={(v === "grupo") === grupo}
+                  onClick={() => setParam({ escopo: v === "grupo" ? "grupo" : null, aba: null, empresa: null })}
+                  className={`px-3 h-8 pointer-coarse:h-10 rounded-full text-mac-body font-medium transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${(v === "grupo") === grupo ? "bg-(--bg-card) text-(--text-primary) shadow-sm" : "text-(--text-secondary) hover:text-(--text-primary)"}`}>
+                  {label}
+                </button>
+              ))}
             </div>
-            {view === "list" && (
-              <div className="w-48">
-                <Dropdown
-                  value={statusFilter}
-                  onChange={setStatusFilter}
-                  placeholder="Todos os status"
-                  options={[
-                    { value: "", label: "Todos os status" },
-                    ...Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label })),
-                  ]}
-                />
-              </div>
-            )}
-          </div>
+          )}
+          <button aria-pressed={mine} onClick={() => setParam({ minhas: mine ? null : "1" })}
+            className={`inline-flex items-center gap-1.5 px-3 h-8 pointer-coarse:h-10 rounded-full border text-mac-body font-medium transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${mine ? "bg-teal-600 text-white border-teal-600" : "border-(--border-control) text-(--text-primary) hover:bg-(--bg-hover)"}`}>
+            <User className="w-3.5 h-3.5" aria-hidden="true" /> Só as minhas
+          </button>
         </div>
+      </div>
 
-        {prazo && (
-          <p className="flex items-center gap-2 text-mac-caption text-(--text-secondary)">
-            Mostrando {prazo === "vencidas" ? "só as vencidas" : "as que vencem até daqui a 7 dias (e as vencidas)"}.
-            <button
-              onClick={() => { const n = new URLSearchParams(searchParams); n.delete("prazo"); setSearchParams(n, { replace: true }); }}
-              className="font-medium text-(--text-accent) hover:underline"
-            >
-              Ver todas
-            </button>
-          </p>
-        )}
-        {loading ? (
-          <div className="space-y-2">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="h-14 bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) animate-pulse" />
-            ))}
-          </div>
-        ) : allInstances.length === 0 ? (
+      {semModelos && tab !== "configuracao" ? (
+        <div className="glass-panel glass-blur-card rounded-(--radius-panel)">
           <EmptyState
-            title="Nenhuma instância encontrada"
-            description="Gere uma instância a partir de um modelo acima para começar a acompanhar o prazo."
-            icon={<ShieldQuestion className="w-6 h-6" />}
+            title="Nenhuma obrigação cadastrada"
+            description={isAdmin
+              ? "Comece pelos modelos prontos (impostos, folha, certidões, alvarás e licenças de postos, restaurantes e hotéis) ou cadastre a sua."
+              : "Quem administra a empresa cadastra as obrigações; depois elas aparecem aqui com prazo e responsável."}
+            icon={<ShieldCheck className="w-6 h-6" />}
+            action={isAdmin ? (
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button onClick={() => setShowCatalog(true)}><Sparkles className="w-4 h-4" aria-hidden="true" /> Ver modelos prontos</Button>
+                <Button variant="secondary" onClick={() => setShowTemplate("nova")}>Cadastrar do zero</Button>
+              </div>
+            ) : undefined}
           />
-        ) : view === "matrix" ? (
-          <CompletionMatrix
-            templates={templates}
-            instances={allInstances}
-            onCellClick={(inst) => setLinkingInstance(inst)}
-            onEmptyCellClick={(template, period) => setMatrixInstanceModal({ template, period })}
-          />
-        ) : filteredInstances.length === 0 ? (
-          <p className="text-mac-caption text-(--text-tertiary) px-1">{prazo ? "Nenhuma obrigação aberta nesse prazo." : "Nenhuma instância com esse status."}</p>
-        ) : (
-          <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
-            <ul>
-              {filteredInstances.map((inst) => (
-                <li key={inst.id} id={`instancia-${inst.id}`} className={`flex items-center gap-3 px-5 py-3 border-b border-(--border-default) last:border-0 ${destaque === inst.id ? "bg-teal-500/10 ring-2 ring-inset ring-(--focus-ring)" : ""}`}>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-mac-body text-(--text-primary) truncate">{inst.template_name} · {inst.period}</div>
-                    <div className="text-mac-caption text-(--text-tertiary)">
-                      {inst.effective_status === "not_applicable" ? (
-                        <span>Não se aplica a esta empresa, de acordo com o perfil fiscal cadastrado.</span>
-                      ) : inst.effective_status === "blocked" ? (
-                        <span className="inline-flex items-center gap-1">
-                          <Lock className="w-3 h-3" /> Aguardando: {inst.blocking_templates?.join(", ")}
-                        </span>
-                      ) : inst.effective_status === "expired" ? (
-                        <span>O documento vinculado venceu {relativeDate(inst.document_expires_at!)} — precisa de um documento atualizado.</span>
-                      ) : (
-                        <>
-                          Prazo {relativeDate(inst.due_date)}
-                          {inst.document_count > 0 ? ` · ${inst.document_count} documento(s) vinculado(s)` : " · sem documento vinculado"}
-                          {inst.effective_status === "approved" && inst.document_expires_at ? ` · válido até ${new Date(inst.document_expires_at + "T00:00:00").toLocaleDateString("pt-BR")}` : ""}
-                          {inst.dispensa_motivo ? ` · Dispensada: ${inst.dispensa_motivo}` : ""}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <StatusBadge status={inst.effective_status} />
-                  {inst.effective_status !== "dispensado" && inst.effective_status !== "cancelado" && inst.effective_status !== "blocked" && inst.effective_status !== "not_applicable" && (
-                    <>
-                      <Button variant="ghost" size="sm" onClick={() => setLinkingInstance(inst)}>
-                        <Link2 className="w-3.5 h-3.5" /> Vincular documento
-                      </Button>
-                      {isAdmin && (
-                        <Button variant="ghost" size="sm" onClick={() => dispense(inst)}>
-                          Dispensar
-                        </Button>
-                      )}
-                    </>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
+        </div>
+      ) : tab === "pendencias" ? (
+        <>
+          {instances.state === "error" ? (
+            <LoadError what="as obrigações" onRetry={loadInstances} />
+          ) : instances.state === "loading" ? (
+            <div className="space-y-3" aria-label="Carregando">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">{[0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="h-[84px] rounded-(--radius-panel) bg-(--bg-hover) animate-pulse" />)}</div>
+              {[0, 1, 2].map((i) => <div key={i} className="h-14 rounded-(--radius-control) bg-(--bg-hover) animate-pulse" />)}
+            </div>
+          ) : (
+            <>
+              <Compliance instances={empresaFiltro ? instances.data.filter((i) => i.company_id === empresaFiltro) : instances.data} filtro={filtro}
+                onFilter={(f) => { setParam({ status: f === "abertas" ? null : f, prazo: null }); document.getElementById(`${uid}-lista`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }} />
 
-      {showTemplateModal && (
-        <TemplateModal companyId={current!.id} onClose={() => setShowTemplateModal(false)} onCreated={() => { setShowTemplateModal(false); load(); }} />
-      )}
-      {showInstanceModal && (
-        <InstanceModal companyId={current!.id} template={showInstanceModal} onClose={() => setShowInstanceModal(null)} onCreated={() => { setShowInstanceModal(null); load(); }} />
-      )}
-      {matrixInstanceModal && (
-        <InstanceModal
-          companyId={current!.id} template={matrixInstanceModal.template} defaultPeriod={matrixInstanceModal.period}
-          onClose={() => setMatrixInstanceModal(null)} onCreated={() => { setMatrixInstanceModal(null); load(); }}
+              {grupo && empresas.length > 0 && (
+                <section aria-labelledby={`${uid}-emp`} className="space-y-2">
+                  <h2 id={`${uid}-emp`} className="text-mac-body font-semibold text-(--text-primary)">Por empresa</h2>
+                  <ul className="flex flex-wrap gap-2">
+                    {empresas.map((e) => {
+                      const pct = e.relevant ? Math.round((e.approved / e.relevant) * 100) : null;
+                      const on = empresaFiltro === e.company_id;
+                      return (
+                        <li key={e.company_id}>
+                          <button aria-pressed={on} onClick={() => setParam({ empresa: on ? null : e.company_id })}
+                            className={`text-left rounded-(--radius-control) border px-3 py-2 min-h-11 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${on ? "border-teal-600 bg-teal-500/10" : "border-(--border-default) hover:bg-(--bg-hover)"}`}>
+                            <span className="block text-mac-body font-medium text-(--text-primary)">{e.name}</span>
+                            <span className="block text-mac-caption text-(--text-secondary)">
+                              {e.overdue > 0 ? <span className="text-(--text-danger) font-medium">{e.overdue} atrasada{e.overdue > 1 ? "s" : ""}</span> : "nada atrasado"}
+                              {e.expired > 0 && <> · <span className="text-(--text-danger)">{e.expired} documento{e.expired > 1 ? "s" : ""} vencido{e.expired > 1 ? "s" : ""}</span></>}
+                              {pct !== null && ` · ${pct}% em dia`}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              )}
+
+              <section aria-labelledby={`${uid}-lista`} className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 id={`${uid}-lista`} className="text-mac-body font-semibold text-(--text-primary) scroll-mt-24">
+                    {FILTERS.find((f) => f.value === filtro)?.label ?? "Obrigações"}{prazo === "semana" ? " · até daqui a 7 dias" : ""} <span className="font-normal text-(--text-secondary)">({visible.length})</span>
+                  </h2>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="w-56"><Dropdown ariaLabel="Filtrar por situação" value={filtro} onChange={(v) => setParam({ status: v === "abertas" ? null : v, prazo: null })} options={FILTERS} /></div>
+                    {departments.length > 1 && (
+                      <div className="w-44"><Dropdown ariaLabel="Filtrar por departamento" value={dept} onChange={(v) => setParam({ depto: v || null })} placeholder="Todos os departamentos"
+                        options={[{ value: "", label: "Todos os departamentos" }, ...departments.map((d) => ({ value: d, label: d }))]} /></div>
+                    )}
+                    {(prazo || dept || empresaFiltro || filtro !== "abertas") && (
+                      <Button variant="ghost" size="sm" onClick={() => setParam({ status: null, prazo: null, depto: null, empresa: null })}>Limpar filtros</Button>
+                    )}
+                  </div>
+                </div>
+                {visible.length === 0 ? (
+                  <p className="glass-panel glass-blur-card rounded-(--radius-panel) px-5 py-6 text-mac-body text-(--text-secondary)">
+                    {filtro === "abertas" ? "Nada em aberto. Tudo em dia por aqui." : "Nenhuma obrigação nesta situação."}
+                  </p>
+                ) : (
+                  <InstanceGroups list={visible} showCompany={grupo} onOpen={(id) => setParam({ instancia: id })} />
+                )}
+              </section>
+            </>
+          )}
+        </>
+      ) : tab === "calendario" ? (
+        <Calendar templates={activeTemplates} instances={instances.data} canOperate={canOperateIn(current.id)}
+          onOpen={(id) => setParam({ instancia: id })} onCreate={(template, period) => setNewInstance({ template, period })} />
+      ) : (
+        <ConfigPanel
+          companyId={current.id} isAdmin={isAdmin} canOperate={canOperateIn(current.id)} templates={templates} deps={deps}
+          onReload={() => { loadConfig(); loadInstances(); }} onEdit={(t) => setShowTemplate(t)} onNewInstance={(t) => setNewInstance({ template: t })}
         />
       )}
-      {linkingInstance && (
-        <LinkDocumentModal companyId={current!.id} instance={linkingInstance} onClose={() => setLinkingInstance(null)} onLinked={() => { setLinkingInstance(null); load(); }} />
+
+      {aberta && (
+        <InstanceDialog
+          instanceId={aberta}
+          members={grupo ? undefined : members}
+          canOperate={canOperateIn(instances.data.find((i) => i.id === aberta)?.company_id ?? current.id)}
+          canAdmin={isAdminOf(instances.data.find((i) => i.id === aberta)?.company_id ?? current.id)}
+          showCompany={grupo}
+          onClose={() => setParam({ instancia: null })}
+          onChanged={patchInstance}
+        />
       )}
-      {showDependencyModal && (
-        <DependencyModal companyId={current!.id} templates={templates} onClose={() => setShowDependencyModal(false)} onCreated={() => { setShowDependencyModal(false); load(); }} />
+      {showTemplate && (
+        <TemplateDialog companyId={current.id} template={showTemplate === "nova" ? undefined : showTemplate} members={members}
+          onClose={() => setShowTemplate(null)}
+          onSaved={() => { setShowTemplate(null); loadConfig(); loadInstances(); }} />
+      )}
+      {showCatalog && (
+        <CatalogDialog companyId={current.id} companyName={current.name} members={members}
+          onClose={() => setShowCatalog(false)}
+          onApplied={() => { setShowCatalog(false); loadConfig(); loadInstances(); setParam({ aba: null }); }} />
+      )}
+      {newInstance && (
+        <NewInstanceDialog companyId={current.id} templates={activeTemplates} members={members} initial={newInstance} currentUserId={user?.id}
+          onClose={() => setNewInstance(null)}
+          onCreated={(inst) => { setNewInstance(null); loadInstances(); setParam({ instancia: inst.id }); }} />
       )}
     </div>
   );
 }
 
-// Fase 4.4 — Matriz 2D de completude (linhas = período, colunas = tipo de
-// obrigação). Reaproveita os dados já carregados de templates/instâncias —
-// nenhum endpoint novo. Pílula colorida = status; célula tracejada = ainda
-// sem instância gerada nesse período (clicável, abre o modal de geração já
-// com o período preenchido).
-const MATRIX_PILL: Record<string, string> = {
-  approved: "bg-emerald-500",
-  at_risk: "bg-amber-400",
-  expired: "bg-amber-400",
-  overdue: "bg-red-500",
-  blocked: "bg-blue-400",
-  reviewing: "bg-blue-400",
-  pending: "bg-(--bg-hover) border border-(--border-default)",
-  dispensado: "bg-(--bg-hover) border border-(--border-default)",
-  cancelado: "bg-(--bg-hover) border border-(--border-default)",
-  not_applicable: "bg-(--bg-hover) border border-dotted border-(--text-tertiary)",
-};
-
-function CompletionMatrix({
-  templates, instances, onCellClick, onEmptyCellClick,
-}: {
-  templates: Template[]; instances: Instance[];
-  onCellClick: (inst: Instance) => void; onEmptyCellClick: (template: Template, period: string) => void;
-}) {
-  const activeTemplates = useMemo(() => templates.filter((t) => t.active), [templates]);
-  const periods = useMemo(() => Array.from(new Set(instances.map((i) => i.period))).sort(), [instances]);
-  const byKey = useMemo(() => {
-    const map = new Map<string, Instance>();
-    instances.forEach((i) => map.set(`${i.template_id}|${i.period}`, i));
-    return map;
-  }, [instances]);
-
-  if (periods.length === 0 || activeTemplates.length === 0) {
-    return <p className="text-mac-caption text-(--text-tertiary)">Sem dados suficientes para montar a matriz ainda.</p>;
-  }
-
+function LoadError({ what, onRetry }: { what: string; onRetry: () => void }) {
   return (
-    <div className="space-y-3">
-      <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-x-auto">
-        <table className="w-full border-collapse">
-          <thead>
-            <tr>
-              <th className="text-left px-4 py-2.5 text-mac-caption font-medium text-(--text-secondary) sticky left-0 bg-(--bg-card) whitespace-nowrap">Período</th>
-              {activeTemplates.map((t) => (
-                <th key={t.id} className="px-3 py-2.5 text-mac-caption font-medium text-(--text-secondary) whitespace-nowrap text-center">{t.name}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {periods.map((period) => (
-              <tr key={period} className="border-t border-(--border-default)">
-                <td className="px-4 py-2.5 text-mac-caption text-(--text-primary) font-medium sticky left-0 bg-(--bg-card) whitespace-nowrap">{period}</td>
-                {activeTemplates.map((t) => {
-                  const inst = byKey.get(`${t.id}|${period}`);
-                  return (
-                    <td key={t.id} className="px-3 py-2.5 text-center">
-                      {inst ? (
-                        <button
-                          onClick={() => onCellClick(inst)}
-                          title={`${t.name} · ${period} — ${STATUS_LABEL[inst.effective_status] ?? inst.effective_status}`}
-                          className={`w-4 h-4 rounded-full inline-block hover:ring-2 hover:ring-teal-400/50 transition-all duration-fast ${MATRIX_PILL[inst.effective_status] ?? "bg-(--bg-hover)"}`}
-                        />
-                      ) : (
-                        <button
-                          onClick={() => onEmptyCellClick(t, period)}
-                          title={`Gerar instância de ${t.name} para ${period}`}
-                          className="w-4 h-4 rounded-full inline-block border border-dashed border-(--border-default) hover:border-teal-400 transition-colors duration-fast"
-                        />
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="flex items-center gap-4 flex-wrap text-mac-caption text-(--text-tertiary)">
-        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" /> Aprovada</span>
-        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" /> Vencendo/Expirada</span>
-        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" /> Atrasada</span>
-        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-400 inline-block" /> Bloqueada/Em revisão</span>
-        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-(--bg-hover) border border-(--border-default) inline-block" /> Pendente/Dispensada</span>
-        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full border border-dashed border-(--border-default) inline-block" /> Sem instância</span>
-      </div>
+    <div role="alert" className="glass-panel glass-blur-card rounded-(--radius-panel) flex flex-wrap items-center gap-3 px-5 py-4">
+      <AlertTriangle className="w-4 h-4 text-(--text-warning)" aria-hidden="true" />
+      <p className="flex-1 text-mac-body text-(--text-primary)">Não foi possível carregar {what}. Nada foi perdido.</p>
+      <Button variant="secondary" size="sm" onClick={onRetry}><RefreshCw className="w-3.5 h-3.5" aria-hidden="true" /> Tentar de novo</Button>
     </div>
   );
 }
 
-// Fase 4.7 — Central de Conformidade: não mostra documentos, mostra as
-// perguntas que o gestor realmente faz. Cada card é clicável e abre a lista
-// já filtrada — nenhum número aqui é um beco sem saída (mesma regra dos
-// KPIs do dashboard, Fase 3). Tudo calculado a partir de allInstances, já
-// carregado pela tela — sem endpoint novo.
-function ComplianceCenter({ instances, onFilter }: { instances: Instance[]; onFilter: (status: string) => void }) {
-  const relevant = instances.filter((i) => i.effective_status !== "dispensado" && i.effective_status !== "cancelado" && i.effective_status !== "not_applicable");
+/**
+ * Central de conformidade (A7-28..A7-34): cada número é um filtro, com o
+ * filtro ativo marcado; o percentual explica o que falta.
+ */
+function Compliance({ instances, filtro, onFilter }: { instances: Instance[]; filtro: string; onFilter: (f: string) => void }) {
+  const relevant = instances.filter((i) => !["dispensado", "cancelado", "not_applicable"].includes(i.effective_status));
   const approved = relevant.filter((i) => i.effective_status === "approved").length;
-  const pct = relevant.length > 0 ? Math.round((approved / relevant.length) * 100) : null;
+  const pct = relevant.length ? Math.round((approved / relevant.length) * 100) : null;
+  const count = (s: string) => instances.filter((i) => i.effective_status === s).length;
+  const semDono = instances.filter((i) => !i.owner_id && OPEN_STATUSES.includes(i.effective_status)).length;
+  const criticas = instances.filter((i) => i.criticality === "critica" && OPEN_STATUSES.includes(i.effective_status)).length;
 
-  const atRisk = instances.filter((i) => i.effective_status === "at_risk").length;
-  const overdue = instances.filter((i) => i.effective_status === "overdue").length;
-  const blocked = instances.filter((i) => i.effective_status === "blocked").length;
-  const expired = instances.filter((i) => i.effective_status === "expired").length;
-  const criticalPending = instances.filter(
-    (i) => i.criticality === "critica" && !["approved", "dispensado", "cancelado"].includes(i.effective_status)
-  ).length;
-
-  const byDept = new Map<string, number>();
-  instances
-    .filter((i) => !["approved", "dispensado", "cancelado"].includes(i.effective_status))
-    .forEach((i) => {
-      const key = i.department?.trim() || "Sem departamento";
-      byDept.set(key, (byDept.get(key) ?? 0) + 1);
-    });
-  const deptEntries = Array.from(byDept.entries()).sort((a, b) => b[1] - a[1]);
-
-  const cards: { label: string; value: string; hint?: string; onClick?: () => void; tone: "default" | "warning" | "error" | "info" }[] = [
-    { label: "Conformidade geral", value: pct !== null ? `${pct}%` : "—", hint: `${approved} de ${relevant.length} obrigações`, tone: "default" },
-    { label: "Críticas pendentes", value: String(criticalPending), tone: criticalPending > 0 ? "error" : "default" },
-    { label: "Vencendo em breve", value: String(atRisk), onClick: atRisk > 0 ? () => onFilter("at_risk") : undefined, tone: "warning" },
-    { label: "Atrasadas", value: String(overdue), onClick: overdue > 0 ? () => onFilter("overdue") : undefined, tone: "error" },
-    { label: "Bloqueadas", value: String(blocked), onClick: blocked > 0 ? () => onFilter("blocked") : undefined, tone: "info" },
-    { label: "Expiradas", value: String(expired), onClick: expired > 0 ? () => onFilter("expired") : undefined, tone: "error" },
+  const cards = [
+    { f: "abertas", label: "Em dia", value: pct === null ? "—" : `${pct}%`, hint: pct === null ? "nada para contar ainda" : `${approved} de ${relevant.length} cumpridas`, tone: "text-(--text-primary)" },
+    { f: "overdue", label: "Atrasadas", value: count("overdue"), tone: count("overdue") ? "text-(--text-danger)" : "text-(--text-primary)" },
+    { f: "expired", label: "Documento vencido", value: count("expired"), tone: count("expired") ? "text-(--text-danger)" : "text-(--text-primary)" },
+    { f: "at_risk", label: "Vencem em breve", value: count("at_risk"), tone: count("at_risk") ? "text-(--text-warning)" : "text-(--text-primary)" },
+    { f: "reviewing", label: "Esperando conferência", value: count("reviewing"), tone: count("reviewing") ? "text-(--text-accent)" : "text-(--text-primary)" },
+    { f: criticas ? "criticas" : "sem_responsavel", label: criticas ? "Críticas pendentes" : "Sem responsável", value: criticas || semDono, tone: criticas ? "text-(--text-danger)" : "text-(--text-primary)" },
   ];
 
-  const toneClass: Record<string, string> = {
-    default: "text-(--text-primary)",
-    warning: "text-amber-500",
-    error: "text-red-500",
-    info: "text-blue-500",
-  };
-
   return (
-    <section className="space-y-3">
-      <h2 className="text-mac-callout font-semibold text-(--text-primary)">Central de Conformidade</h2>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {cards.map((c) => (
-          <button
-            key={c.label}
-            onClick={c.onClick}
-            disabled={!c.onClick}
-            className={`glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-4 text-left transition-transform duration-fast ${c.onClick ? "hover:scale-[1.02] cursor-pointer" : "cursor-default"}`}
-          >
-            <div className={`text-mac-title2 font-semibold ${toneClass[c.tone]}`}>{c.value}</div>
-            <div className="text-mac-caption text-(--text-secondary) mt-1">{c.label}</div>
-            {c.hint && <div className="text-mac-caption2 text-(--text-tertiary) mt-0.5">{c.hint}</div>}
+    <section aria-label="Central de conformidade" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      {cards.map((c, idx) => {
+        const on = filtro === c.f && !(idx === 0 && filtro !== "abertas");
+        return (
+          <button key={c.label} aria-pressed={on} onClick={() => onFilter(c.f)}
+            className={`glass-panel glass-blur-card rounded-(--radius-panel) p-3 sm:p-4 text-left min-h-[84px] transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${on ? "ring-2 ring-teal-600" : "hover:bg-(--bg-hover)"} ${idx === 0 ? "col-span-2 sm:col-span-1" : ""}`}>
+            <span className={`block text-mac-title2 font-semibold tabular-nums ${c.tone}`}>{c.value}</span>
+            <span className="block text-mac-caption text-(--text-secondary)">{c.label}</span>
+            {c.hint && <span className="block text-mac-caption2 text-(--text-secondary)">{c.hint}</span>}
           </button>
-        ))}
-      </div>
-      {deptEntries.length > 0 && (
-        <div className="flex items-center gap-3 flex-wrap text-mac-caption text-(--text-secondary)">
-          <span className="text-(--text-tertiary)">Pendências por departamento:</span>
-          {deptEntries.map(([dept, count]) => (
-            <span key={dept}>{dept} <strong className="text-(--text-primary)">{count}</strong></span>
-          ))}
-        </div>
-      )}
+        );
+      })}
     </section>
   );
 }
 
-function ModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+function InstanceGroups({ list, showCompany, onOpen }: { list: Instance[]; showCompany: boolean; onOpen: (id: string) => void }) {
+  const sorted = [...list].sort((a, b) => (URGENCY[a.effective_status] ?? 9) - (URGENCY[b.effective_status] ?? 9) || a.due_date.localeCompare(b.due_date));
   return (
-    <Portal>
-      <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-        <div className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[480px] max-h-[85vh] overflow-y-auto">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-(--border-default)">
-            <h2 className="text-mac-body font-semibold text-(--text-primary) truncate">{title}</h2>
-            <button onClick={onClose} className="p-1 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover) shrink-0">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="p-5 space-y-4">{children}</div>
-        </div>
-      </div>
-    </Portal>
+    <div className="space-y-4">
+      {GROUPS.map((g) => {
+        const items = sorted.filter((i) => g.statuses.includes(i.effective_status));
+        if (!items.length) return null;
+        return (
+          <section key={g.id} aria-label={`${g.title}: ${items.length}`} className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
+            <h3 className="px-4 sm:px-5 py-2 border-b border-(--border-default) text-mac-caption font-semibold uppercase tracking-[0.06em] text-(--text-secondary)">
+              {g.title} · {items.length}
+            </h3>
+            <ul>
+              {items.map((i) => {
+                const S = STATUS[i.effective_status] ?? STATUS.pending;
+                return (
+                  <li key={i.id} className="border-b border-(--border-default) last:border-0">
+                    <button onClick={() => onOpen(i.id)}
+                      className="w-full text-left flex items-start sm:items-center gap-3 px-4 sm:px-5 py-2.5 min-h-14 hover:bg-(--bg-hover) transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-(--focus-ring)">
+                      <S.icon className={`w-4 h-4 shrink-0 mt-0.5 sm:mt-0 ${S.tone}`} aria-hidden="true" />
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-mac-body text-(--text-primary) truncate">
+                          {i.template_name} <span className="text-(--text-secondary)">· {i.period_label}</span>
+                          {i.criticality === "critica" && <span className="ml-1.5 text-mac-caption font-semibold text-(--text-danger)">crítica</span>}
+                        </span>
+                        <span className="block text-mac-caption text-(--text-secondary) truncate">
+                          {showCompany && i.company_name ? `${i.company_name} · ` : ""}
+                          <span className={i.effective_status === "overdue" || i.effective_status === "expired" ? "text-(--text-danger)" : ""}>{dueText(i)}</span>
+                          {" · "}{i.owner_name ?? <span className="italic">sem responsável</span>}
+                          {i.document_count > 0 ? ` · ${i.document_count} documento${i.document_count > 1 ? "s" : ""}` : ""}
+                          {i.effective_status === "blocked" && i.blocking_templates ? ` · espera ${i.blocking_templates.join(", ")}` : ""}
+                        </span>
+                      </span>
+                      <StatusChip status={i.effective_status} className="hidden sm:inline-flex" />
+                      <ChevronRight className="w-4 h-4 shrink-0 text-(--text-secondary)" aria-hidden="true" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        );
+      })}
+    </div>
   );
 }
 
-const inputClass = "w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70";
-const labelClass = "block text-mac-caption font-medium text-(--text-secondary) mb-1.5";
-
-function TemplateModal({ companyId, onClose, onCreated }: { companyId: string; onClose: () => void; onCreated: () => void }) {
-  const { success, error: showError } = useToast();
-  const [name, setName] = useState("");
-  const [department, setDepartment] = useState("");
-  const [frequency, setFrequency] = useState("mensal");
-  const [criticality, setCriticality] = useState("media");
-  const [slaDays, setSlaDays] = useState(7);
-  const [validityMonths, setValidityMonths] = useState("");
-  const [conditionalEnabled, setConditionalEnabled] = useState(false);
-  const [conditionalField, setConditionalField] = useState("regime_tributario");
-  const [conditionalValues, setConditionalValues] = useState<string[]>([]);
-  const [saving, setSaving] = useState(false);
-
-  async function submit() {
-    if (!name.trim()) return;
-    setSaving(true);
-    try {
-      const rules_json = conditionalEnabled && conditionalValues.length > 0
-        ? { not_applicable_when: { field: conditionalField, in: conditionalValues } }
-        : {};
-      await api.post(`/companies/${companyId}/obligations/templates`, {
-        company_id: companyId, name: name.trim(), department: department.trim() || null,
-        frequency, criticality, sla_days: slaDays,
-        validity_months: validityMonths.trim() ? Number(validityMonths) : null,
-        rules_json,
-      });
-      success("Modelo de obrigação criado.");
-      onCreated();
-    } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Não foi possível criar o modelo.");
-    } finally {
-      setSaving(false);
-    }
-  }
+/**
+ * Calendário (A7-20..A7-26): obrigações nas linhas, meses do ano nas
+ * colunas, estado com ícone e texto acessível, alvo de 32/44 px.
+ */
+function Calendar({ templates, instances, canOperate, onOpen, onCreate }: {
+  templates: Template[]; instances: Instance[]; canOperate: boolean;
+  onOpen: (id: string) => void; onCreate: (t: Template, period: string) => void;
+}) {
+  const [year, setYear] = useState(new Date().getFullYear());
+  const mensais = templates.filter((t) => t.frequency === "mensal" && t.active);
+  const byKey = useMemo(() => new Map(instances.map((i) => [`${i.template_id}|${i.period}`, i])), [instances]);
+  const outras = templates.filter((t) => t.frequency !== "mensal" && t.active);
 
   return (
-    <ModalShell title="Novo modelo de obrigação" onClose={onClose}>
-      <div>
-        <label className={labelClass}>Nome</label>
-        <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: DARF mensal" autoFocus />
+    <div className="space-y-5">
+      <div className="flex items-center gap-2">
+        <Button variant="secondary" size="sm" onClick={() => setYear((y) => y - 1)} aria-label="Ano anterior">‹</Button>
+        <span className="text-mac-body font-semibold text-(--text-primary) tabular-nums w-14 text-center" aria-live="polite">{year}</span>
+        <Button variant="secondary" size="sm" onClick={() => setYear((y) => y + 1)} aria-label="Próximo ano">›</Button>
       </div>
-      <div>
-        <label className={labelClass}>Departamento (opcional)</label>
-        <input className={inputClass} value={department} onChange={(e) => setDepartment(e.target.value)} placeholder="Ex.: Fiscal" />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={labelClass}>Frequência</label>
-          <Dropdown value={frequency} onChange={setFrequency} placeholder="Frequência" options={Object.entries(FREQ_LABEL).map(([value, label]) => ({ value, label }))} />
+      {mensais.length === 0 ? (
+        <p className="text-mac-body text-(--text-secondary)">Nenhuma obrigação mensal ativa. O calendário mostra as que se repetem todo mês.</p>
+      ) : (
+        <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-x-auto">
+          <table className="w-full border-collapse min-w-[760px]">
+            <caption className="sr-only">Obrigações mensais de {year}, por mês da competência</caption>
+            <thead>
+              <tr>
+                <th scope="col" className="text-left px-4 py-2.5 text-mac-caption font-medium text-(--text-secondary) sticky left-0 bg-(--bg-card) min-w-48">Obrigação</th>
+                {MESES.map((m) => <th key={m} scope="col" className="px-1 py-2.5 text-mac-caption font-medium text-(--text-secondary) text-center">{m.slice(0, 3)}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {mensais.map((t) => (
+                <tr key={t.id} className="border-t border-(--border-default)">
+                  <th scope="row" className="text-left px-4 py-2 text-mac-body font-normal text-(--text-primary) sticky left-0 bg-(--bg-card) max-w-64 truncate">{t.name}</th>
+                  {MESES.map((m, idx) => {
+                    const period = `${year}-${String(idx + 1).padStart(2, "0")}`;
+                    const inst = byKey.get(`${t.id}|${period}`);
+                    const label = `${t.name}, ${m} de ${year}`;
+                    if (inst) {
+                      const S = STATUS[inst.effective_status] ?? STATUS.pending;
+                      return (
+                        <td key={m} className="px-1 py-1.5 text-center">
+                          <button onClick={() => onOpen(inst.id)} aria-label={`${label}: ${S.label}`} title={`${label}: ${S.label}`}
+                            className={`inline-flex items-center justify-center w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 rounded-full hover:bg-(--bg-hover) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${S.tone}`}>
+                            <S.icon className="w-4 h-4" aria-hidden="true" />
+                          </button>
+                        </td>
+                      );
+                    }
+                    return (
+                      <td key={m} className="px-1 py-1.5 text-center">
+                        {canOperate ? (
+                          <button onClick={() => onCreate(t, period)} aria-label={`${label}: abrir competência`} title="Abrir competência"
+                            className="inline-flex items-center justify-center w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 rounded-full text-(--text-secondary) opacity-40 hover:opacity-100 hover:bg-(--bg-hover) focus-visible:opacity-100 focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)">
+                            <CalendarPlus className="w-3.5 h-3.5" aria-hidden="true" />
+                          </button>
+                        ) : <span className="text-(--text-secondary)" aria-label={`${label}: sem competência`}>·</span>}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <div>
-          <label className={labelClass}>Criticidade</label>
-          <Dropdown value={criticality} onChange={setCriticality} placeholder="Criticidade" options={[
-            { value: "baixa", label: "Baixa" }, { value: "media", label: "Média" },
-            { value: "alta", label: "Alta" }, { value: "critica", label: "Crítica" },
-          ]} />
-        </div>
-      </div>
-      <div>
-        <label className={labelClass}>Avisar quantos dias antes do prazo</label>
-        <input type="number" min={0} className={inputClass} value={slaDays} onChange={(e) => setSlaDays(Number(e.target.value))} />
-      </div>
-      <div>
-        <label className={labelClass}>Validade do documento em meses (opcional)</label>
-        <input
-          type="number" min={1} className={inputClass} value={validityMonths}
-          onChange={(e) => setValidityMonths(e.target.value)}
-          placeholder="Deixe em branco se o documento não expira sozinho"
-        />
-      </div>
-      <div className="border-t border-(--border-default) pt-3">
-        <label className="flex items-center gap-2 text-mac-caption font-medium text-(--text-secondary) cursor-pointer">
-          <input
-            type="checkbox" checked={conditionalEnabled}
-            onChange={(e) => { setConditionalEnabled(e.target.checked); setConditionalValues([]); }}
-          />
-          Regra condicional (opcional) — não se aplica a certas empresas
-        </label>
-        {conditionalEnabled && (
-          <div className="space-y-2.5 mt-3">
-            <div>
-              <label className={labelClass}>Campo do perfil fiscal</label>
-              <Dropdown
-                value={conditionalField}
-                onChange={(v) => { setConditionalField(v); setConditionalValues([]); }}
-                placeholder="Campo"
-                options={Object.entries(CONDITIONAL_FIELD_LABEL).map(([value, label]) => ({ value, label }))}
-              />
-            </div>
-            <p className="text-mac-caption text-(--text-tertiary)">Não se aplica quando o perfil fiscal da empresa for:</p>
-            <div className="flex flex-wrap gap-1.5">
-              {(conditionalField === "uf" ? UFS.map((u) => ({ value: u, label: u })) : CONDITIONAL_VALUE_OPTIONS[conditionalField] ?? []).map((opt) => {
-                const active = conditionalValues.includes(opt.value);
-                return (
-                  <button
-                    key={opt.value} type="button"
-                    onClick={() => setConditionalValues((prev) => active ? prev.filter((v) => v !== opt.value) : [...prev, opt.value])}
-                    className={`px-2.5 py-1 rounded-full text-mac-caption border transition-colors duration-fast ${
-                      active ? "bg-teal-500/15 border-teal-500 text-teal-600 dark:text-teal-400" : "border-(--border-default) text-(--text-secondary) hover:bg-(--bg-hover)"
-                    }`}
-                  >
-                    {opt.label}
+      )}
+      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-mac-caption text-(--text-secondary)" aria-label="Legenda">
+        {["approved", "reviewing", "at_risk", "overdue", "expired", "pending", "blocked"].map((s) => {
+          const S = STATUS[s];
+          return <li key={s} className="flex items-center gap-1.5"><S.icon className={`w-3.5 h-3.5 ${S.tone}`} aria-hidden="true" /> {S.label}</li>;
+        })}
+      </ul>
+      {outras.length > 0 && (
+        <section aria-labelledby="cal-outras" className="space-y-2">
+          <h2 id="cal-outras" className="text-mac-body font-semibold text-(--text-primary)">Anuais, licenças e certidões</h2>
+          <ul className="glass-panel glass-blur-card rounded-(--radius-panel) divide-y divide-(--border-default)">
+            {outras.map((t) => {
+              const ultima = instances.filter((i) => i.template_id === t.id).sort((a, b) => b.due_date.localeCompare(a.due_date))[0];
+              return (
+                <li key={t.id}>
+                  <button disabled={!ultima} onClick={() => ultima && onOpen(ultima.id)}
+                    className="w-full text-left flex items-center gap-3 px-4 py-2.5 min-h-12 hover:bg-(--bg-hover) disabled:hover:bg-transparent focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-(--focus-ring)">
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-mac-body text-(--text-primary) truncate">{t.name}</span>
+                      <span className="block text-mac-caption text-(--text-secondary)">{ultima ? `${ultima.period_label} · ${dueText(ultima)}` : `${scheduleText(t)} · nenhuma competência aberta`}</span>
+                    </span>
+                    {ultima && <StatusChip status={ultima.effective_status} />}
                   </button>
-                );
-              })}
-            </div>
-            {conditionalEnabled && conditionalValues.length === 0 && (
-              <p className="text-mac-caption text-(--text-tertiary)">Selecione ao menos um valor, ou desmarque a regra condicional.</p>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+}
+
+/** Cadastro: editar, pausar, arquivar com confirmação e dependências legíveis (A7-10, A7-62..A7-68). */
+function ConfigPanel({ companyId, isAdmin, canOperate, templates, deps, onReload, onEdit, onNewInstance }: {
+  companyId: string; isAdmin: boolean; canOperate: boolean; templates: Load<Template[]>; deps: Dependency[];
+  onReload: () => void; onEdit: (t: Template) => void; onNewInstance: (t: Template) => void;
+}) {
+  const { success, error: showError } = useToast();
+  const [archiving, setArchiving] = useState<Template | null>(null);
+  const [removingDep, setRemovingDep] = useState<Dependency | null>(null);
+  const [addingDep, setAddingDep] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+
+  async function act(fn: () => Promise<unknown>, ok: string, fallback: string) {
+    setBusy(true);
+    try { await fn(); success(ok); onReload(); return true; } catch (e) { showError(friendly(e, fallback)); return false; } finally { setBusy(false); }
+  }
+
+  if (templates.state === "error") return <LoadError what="o cadastro de obrigações" onRetry={onReload} />;
+  if (templates.state === "loading") return <div className="space-y-2" aria-label="Carregando">{[0, 1, 2].map((i) => <div key={i} className="h-14 rounded bg-(--bg-hover) animate-pulse" />)}</div>;
+
+  const ativos = templates.data.filter((t) => !t.archived_at);
+  const arquivados = templates.data.filter((t) => t.archived_at);
+
+  return (
+    <div className="space-y-6">
+      <section aria-labelledby="cfg-modelos" className="space-y-2">
+        <h2 id="cfg-modelos" className="text-mac-body font-semibold text-(--text-primary)">Obrigações cadastradas ({ativos.length})</h2>
+        <ul className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) divide-y divide-(--border-default)">
+          {ativos.map((t) => (
+            <li key={t.id} className="flex flex-wrap items-center gap-3 px-4 sm:px-5 py-3">
+              <div className="flex-1 min-w-48">
+                <p className="text-mac-body text-(--text-primary)">
+                  {t.name}
+                  {!t.active && <span className="ml-2 text-mac-caption font-medium text-(--text-warning)">pausada</span>}
+                </p>
+                <p className="text-mac-caption text-(--text-secondary)">
+                  {scheduleText(t)} · criticidade {CRIT_LABEL[t.criticality].toLowerCase()} · {t.default_owner_name ?? "sem responsável padrão"}
+                  {t.requires_review ? " · conferência antes de cumprir" : ""}{t.department ? ` · ${t.department}` : ""}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {canOperate && t.active && (
+                  <Button variant="ghost" size="sm" onClick={() => onNewInstance(t)}><CalendarPlus className="w-3.5 h-3.5" aria-hidden="true" /> Abrir competência</Button>
+                )}
+                {isAdmin && (
+                  <>
+                    <Button variant="ghost" size="sm" onClick={() => onEdit(t)} aria-label={`Editar ${t.name}`}><Pencil className="w-3.5 h-3.5" aria-hidden="true" /> Editar</Button>
+                    <Button variant="ghost" size="sm" disabled={busy}
+                      onClick={() => act(() => api.patch(`/obligations/templates/${t.id}`, { active: !t.active }), t.active ? "Pausada: não abre novas competências." : "Reativada.", "Não foi possível alterar.")}
+                      aria-label={`${t.active ? "Pausar" : "Reativar"} ${t.name}`}>
+                      {t.active ? <Pause className="w-3.5 h-3.5" aria-hidden="true" /> : <Play className="w-3.5 h-3.5" aria-hidden="true" />} {t.active ? "Pausar" : "Reativar"}
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setArchiving(t)} aria-label={`Arquivar ${t.name}`}><Archive className="w-3.5 h-3.5" aria-hidden="true" /> Arquivar</Button>
+                  </>
+                )}
+              </div>
+            </li>
+          ))}
+          {ativos.length === 0 && <li className="px-5 py-4 text-mac-body text-(--text-secondary)">Nenhuma obrigação ativa.</li>}
+        </ul>
+        {arquivados.length > 0 && (
+          <div>
+            <button aria-expanded={showArchived} onClick={() => setShowArchived((v) => !v)} className="text-mac-caption font-medium text-(--text-accent) hover:underline">
+              {showArchived ? "Esconder" : "Ver"} {arquivados.length} arquivada{arquivados.length > 1 ? "s" : ""}
+            </button>
+            {showArchived && (
+              <ul className="mt-2 rounded-(--radius-control) border border-(--border-default) divide-y divide-(--border-default)">
+                {arquivados.map((t) => (
+                  <li key={t.id} className="flex items-center gap-3 px-4 py-2">
+                    <span className="flex-1 text-mac-body text-(--text-secondary)">{t.name}</span>
+                    {isAdmin && (
+                      <Button variant="ghost" size="sm" disabled={busy} onClick={() => act(() => api.post(`/obligations/templates/${t.id}/archive`, null, { params: { restore: true } }), "Obrigação reativada.", "Não foi possível reativar.")}>
+                        <ArchiveRestore className="w-3.5 h-3.5" aria-hidden="true" /> Reativar
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         )}
-      </div>
-      <div className="flex justify-end gap-2 pt-2">
-        <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-        <Button variant="primary" onClick={submit} disabled={saving || !name.trim()}>{saving ? "Criando…" : "Criar modelo"}</Button>
-      </div>
-    </ModalShell>
+      </section>
+
+      <section aria-labelledby="cfg-deps" className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 id="cfg-deps" className="text-mac-body font-semibold text-(--text-primary)">Uma depende da outra</h2>
+          {isAdmin && ativos.length >= 2 && <Button variant="ghost" size="sm" onClick={() => setAddingDep(true)}><GitBranch className="w-3.5 h-3.5" aria-hidden="true" /> Nova dependência</Button>}
+        </div>
+        <p className="text-mac-caption text-(--text-secondary)">Ex.: a DCTFWeb só fecha depois do eSocial da mesma competência. Enquanto o pré-requisito não estiver cumprido, a outra aparece como “aguardando”.</p>
+        {deps.length === 0 ? (
+          <p className="text-mac-body text-(--text-secondary)">Nenhuma dependência.</p>
+        ) : (
+          <ul className="glass-panel glass-blur-card rounded-(--radius-panel) divide-y divide-(--border-default)">
+            {deps.map((d) => (
+              <li key={d.id} className="flex items-center gap-3 px-4 py-2 min-h-11">
+                <span className="flex-1 text-mac-body text-(--text-primary)">
+                  <strong>{d.depends_on_name}</strong> <span className="text-(--text-secondary)">vem antes de</span> <strong>{d.template_name}</strong>
+                </span>
+                {isAdmin && (
+                  <Button variant="icon" size="sm" aria-label={`Remover: ${d.template_name} depende de ${d.depends_on_name}`} onClick={() => setRemovingDep(d)}>
+                    <Trash2 className="w-4 h-4" aria-hidden="true" />
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {archiving && (
+        <ConfirmModal
+          title={`Arquivar “${archiving.name}”?`}
+          description={<>Ela some da lista e dos números{archiving.instance_count ? `, com ${archiving.instance_count} competência${archiving.instance_count > 1 ? "s" : ""} e os documentos vinculados guardados` : ""}. Dá para reativar depois em “arquivadas”.</>}
+          confirmLabel="Arquivar" loading={busy}
+          onClose={() => setArchiving(null)}
+          onConfirm={async () => { if (await act(() => api.post(`/obligations/templates/${archiving.id}/archive`), "Obrigação arquivada.", "Não foi possível arquivar.")) setArchiving(null); }}
+        />
+      )}
+      {removingDep && (
+        <ConfirmModal
+          title="Remover a dependência?"
+          description={<>“{removingDep.template_name}” deixa de esperar “{removingDep.depends_on_name}”.</>}
+          confirmLabel="Remover" danger loading={busy}
+          onClose={() => setRemovingDep(null)}
+          onConfirm={async () => { if (await act(() => api.delete(`/obligations/dependencies/${removingDep.id}`, { params: { company_id: companyId } }), "Dependência removida.", "Não foi possível remover.")) setRemovingDep(null); }}
+        />
+      )}
+      {addingDep && <DependencyDialog companyId={companyId} templates={ativos} onClose={() => setAddingDep(false)} onCreated={() => { setAddingDep(false); onReload(); }} />}
+    </div>
   );
 }
 
-function InstanceModal({ companyId, template, defaultPeriod, onClose, onCreated }: { companyId: string; template: Template; defaultPeriod?: string; onClose: () => void; onCreated: () => void }) {
+function DependencyDialog({ companyId, templates, onClose, onCreated }: { companyId: string; templates: Template[]; onClose: () => void; onCreated: () => void }) {
   const { success, error: showError } = useToast();
-  const now = new Date();
-  const [period, setPeriod] = useState(defaultPeriod ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
-  const [dueDate, setDueDate] = useState(() => {
-    const d = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    return d.toISOString().slice(0, 10);
-  });
+  const [antes, setAntes] = useState(templates[0]?.id ?? "");
+  const [depois, setDepois] = useState(templates[1]?.id ?? "");
   const [saving, setSaving] = useState(false);
-
+  const opts = templates.map((t) => ({ value: t.id, label: t.name }));
   async function submit() {
-    if (!period.trim() || !dueDate) return;
     setSaving(true);
     try {
-      await api.post(`/companies/${companyId}/obligations/instances`, {
-        template_id: template.id, period: period.trim(), due_date: dueDate,
-      });
-      success("Instância gerada.");
-      onCreated();
-    } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Não foi possível gerar a instância.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <ModalShell title={`Gerar instância — ${template.name}`} onClose={onClose}>
-      <div>
-        <label className={labelClass}>Período</label>
-        <input className={inputClass} value={period} onChange={(e) => setPeriod(e.target.value)} placeholder="Ex.: 2026-07" autoFocus />
-      </div>
-      <div>
-        <label className={labelClass}>Prazo</label>
-        <input type="date" className={inputClass} value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-      </div>
-      <div className="flex justify-end gap-2 pt-2">
-        <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-        <Button variant="primary" onClick={submit} disabled={saving || !period.trim() || !dueDate}>{saving ? "Gerando…" : "Gerar"}</Button>
-      </div>
-    </ModalShell>
-  );
-}
-
-function LinkDocumentModal({ companyId, instance, onClose, onLinked }: { companyId: string; instance: Instance; onClose: () => void; onLinked: () => void }) {
-  const { success, error: showError } = useToast();
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<{ id: string; name: string }[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [linkingId, setLinkingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (query.trim().length < 2) { setResults([]); return; }
-    const handle = setTimeout(() => {
-      setSearching(true);
-      api.get("/search", { params: { q: query.trim(), company_id: companyId, page_size: 8 } })
-        .then((r) => setResults(Array.isArray(r.data?.results) ? r.data.results : []))
-        .catch(() => setResults([]))
-        .finally(() => setSearching(false));
-    }, 300);
-    return () => clearTimeout(handle);
-  }, [query, companyId]);
-
-  async function link(documentId: string) {
-    setLinkingId(documentId);
-    try {
-      await api.post(`/obligations/instances/${instance.id}/documents`, { document_id: documentId });
-      success("Documento vinculado — a obrigação foi marcada como aprovada.");
-      onLinked();
-    } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Não foi possível vincular o documento.");
-    } finally {
-      setLinkingId(null);
-    }
-  }
-
-  return (
-    <ModalShell title={`Vincular documento — ${instance.template_name}`} onClose={onClose}>
-      <div>
-        <label className={labelClass}>Buscar documento</label>
-        <input className={inputClass} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Digite o nome do documento…" autoFocus />
-      </div>
-      {searching && <p className="text-mac-caption text-(--text-tertiary)">Buscando…</p>}
-      {results.length > 0 && (
-        <ul className="border border-(--border-default) rounded-(--radius-control) overflow-hidden divide-y divide-(--border-default)">
-          {results.map((r) => (
-            <li key={r.id} className="flex items-center gap-2 px-3 py-2">
-              <FileText className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0" />
-              <span className="flex-1 min-w-0 text-mac-body text-(--text-primary) truncate">{r.name}</span>
-              <Button variant="ghost" size="sm" onClick={() => link(r.id)} disabled={linkingId === r.id}>
-                {linkingId === r.id ? "Vinculando…" : "Vincular"}
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {instance.document_count > 0 && (
-        <p className="text-mac-caption text-(--text-tertiary) flex items-center gap-1.5">
-          <Trash2 className="w-3 h-3" /> Documentos já vinculados podem ser removidos na aba Atividade do documento.
-        </p>
-      )}
-    </ModalShell>
-  );
-}
-
-function DependencyModal({ companyId, templates, onClose, onCreated }: { companyId: string; templates: Template[]; onClose: () => void; onCreated: () => void }) {
-  const { success, error: showError } = useToast();
-  const [templateId, setTemplateId] = useState(templates[0]?.id ?? "");
-  const [dependsOnId, setDependsOnId] = useState(templates[1]?.id ?? "");
-  const [saving, setSaving] = useState(false);
-
-  async function submit() {
-    if (!templateId || !dependsOnId || templateId === dependsOnId) return;
-    setSaving(true);
-    try {
-      await api.post(`/companies/${companyId}/obligations/dependencies`, { template_id: templateId, depends_on_template_id: dependsOnId });
+      await api.post(`/companies/${companyId}/obligations/dependencies`, { template_id: depois, depends_on_template_id: antes });
       success("Dependência criada.");
       onCreated();
-    } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Não foi possível criar a dependência.");
+    } catch (e) {
+      showError(friendly(e, "Não foi possível criar a dependência."));
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <Dialog onClose={onClose} title="Nova dependência" description="A segunda só pode ser cumprida depois da primeira, na mesma competência." size="md" busy={saving}
+      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={saving} disabled={!antes || !depois || antes === depois} onClick={submit}>Criar</Button></>}>
+      <div className="space-y-4">
+        <div>
+          <label id="dep-antes" className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Primeiro</label>
+          <Dropdown ariaLabelledby="dep-antes" value={antes} onChange={setAntes} options={opts} />
+        </div>
+        <div>
+          <label id="dep-depois" className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Depois</label>
+          <Dropdown ariaLabelledby="dep-depois" value={depois} onChange={setDepois} options={opts.filter((o) => o.value !== antes)} />
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+/** Abrir competência à mão, com o prazo sugerido pelo próprio modelo (A7-46, A7-47). */
+function NewInstanceDialog({ companyId, templates, members, initial, currentUserId, onClose, onCreated }: {
+  companyId: string; templates: Template[]; members: Member[]; initial: { template?: Template; period?: string };
+  currentUserId?: string; onClose: () => void; onCreated: (inst: Instance) => void;
+}) {
+  const { success, error: showError } = useToast();
+  const [templateId, setTemplateId] = useState(initial.template?.id ?? templates[0]?.id ?? "");
+  const t = templates.find((x) => x.id === templateId);
+  const today = new Date();
+  const defaultPeriod = (tt?: Template) => {
+    if (!tt) return "";
+    if (initial.period && tt.id === initial.template?.id) return tt.frequency === "mensal" ? `${initial.period.slice(5, 7)}/${initial.period.slice(0, 4)}` : initial.period;
+    if (tt.frequency === "mensal") return `${String(today.getMonth() + 1).padStart(2, "0")}/${today.getFullYear()}`;
+    if (tt.frequency === "anual") return String(today.getFullYear());
+    return tt.frequency === "unica" ? "Vigente" : "";
+  };
+  const [period, setPeriod] = useState(defaultPeriod(t));
+  const suggestDue = (tt: Template | undefined, p: string) => {
+    if (!tt?.due_day) return "";
+    let y: number, m: number;
+    if (tt.frequency === "mensal") {
+      const mm = p.match(/^(\d{2})\/(\d{4})$/); if (!mm) return "";
+      m = Number(mm[1]) - 1 + (tt.due_month_offset ?? 1); y = Number(mm[2]);
+    } else if (tt.frequency === "anual" && tt.due_month) { if (!/^\d{4}$/.test(p)) return ""; y = Number(p); m = tt.due_month - 1; } else return "";
+    const last = new Date(y, m + 1, 0).getDate();
+    const d = new Date(y, m, Math.min(tt.due_day, last));
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const [due, setDue] = useState(suggestDue(t, defaultPeriod(t)) || today.toISOString().slice(0, 10));
+  const [owner, setOwner] = useState(t?.default_owner_id ?? currentUserId ?? "");
+  const [saving, setSaving] = useState(false);
+  const people = [...new Map(members.filter((m) => !m.folder_id && m.role !== "visualizador").map((m) => [m.user_id, m])).values()];
+  const periodHint = t?.frequency === "mensal" ? "mm/aaaa" : t?.frequency === "anual" ? "aaaa" : "Ex.: Vigente, Reforma 2026";
+
+  async function submit() {
+    setSaving(true);
+    try {
+      const r = await api.post<Instance>(`/companies/${companyId}/obligations/instances`, { template_id: templateId, period, due_date: due, owner_id: owner || null });
+      success(`Competência ${r.data.period_label} aberta.`);
+      onCreated(r.data);
+    } catch (e) {
+      showError(friendly(e, "Não foi possível abrir a competência."));
     } finally {
       setSaving(false);
     }
   }
 
-  const options = templates.map((t) => ({ value: t.id, label: t.name }));
-
   return (
-    <ModalShell title="Nova dependência" onClose={onClose}>
-      <p className="text-mac-caption text-(--text-secondary)">
-        A obrigação abaixo só fica ativa depois que a segunda for aprovada no mesmo período — evita cobrar algo que ainda não faz sentido cobrar.
-      </p>
-      <div>
-        <label className={labelClass}>Obrigação (fica bloqueada)</label>
-        <Dropdown value={templateId} onChange={setTemplateId} placeholder="Escolha a obrigação" options={options} />
+    <Dialog onClose={onClose} title="Abrir competência" description="Para períodos que não abriram sozinhos ou obrigações por ocorrência." size="md" busy={saving}
+      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={saving} disabled={!templateId || !period.trim() || !due} onClick={submit}>Abrir</Button></>}>
+      <div className="space-y-4">
+        <div>
+          <label id="ni-tpl" className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Obrigação</label>
+          <Dropdown ariaLabelledby="ni-tpl" value={templateId} options={templates.map((x) => ({ value: x.id, label: x.name }))}
+            onChange={(v) => { setTemplateId(v); const nt = templates.find((x) => x.id === v); const p = defaultPeriod(nt); setPeriod(p); setDue(suggestDue(nt, p) || due); setOwner(nt?.default_owner_id ?? owner); }} />
+        </div>
+        <Input label={`Competência (${periodHint})`} value={period} onChange={(e) => { setPeriod(e.target.value); const s = suggestDue(t, e.target.value); if (s) setDue(s); }} placeholder={periodHint} />
+        <Input label="Vence em" type="date" value={due} onChange={(e) => setDue(e.target.value)} />
+        <div>
+          <label id="ni-own" className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Responsável</label>
+          <Dropdown ariaLabelledby="ni-own" value={owner} onChange={setOwner} placeholder="Sem responsável"
+            options={[{ value: "", label: "Sem responsável" }, ...people.map((m) => ({ value: m.user_id, label: m.full_name }))]} />
+        </div>
       </div>
-      <div>
-        <label className={labelClass}>Depende de</label>
-        <Dropdown value={dependsOnId} onChange={setDependsOnId} placeholder="Escolha o pré-requisito" options={options.filter((o) => o.value !== templateId)} />
-      </div>
-      {templateId === dependsOnId && templateId !== "" && (
-        <p className="text-mac-caption text-red-500">Uma obrigação não pode depender de si mesma.</p>
-      )}
-      <div className="flex justify-end gap-2 pt-2">
-        <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-        <Button variant="primary" onClick={submit} disabled={saving || !templateId || !dependsOnId || templateId === dependsOnId}>
-          {saving ? "Criando…" : "Criar dependência"}
-        </Button>
-      </div>
-    </ModalShell>
+    </Dialog>
   );
 }

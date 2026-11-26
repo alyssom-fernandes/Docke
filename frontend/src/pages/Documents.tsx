@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState, useCallback, useId, type ElementType, type ReactNode } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { relativeDate, fullDate } from "@/lib/date";
@@ -64,6 +64,7 @@ import ConfirmModal from "@/components/ui/ConfirmModal";
 import PreviewModal from "@/components/documents/PreviewModal";
 import VersionsPanel from "@/components/documents/VersionsPanel";
 import ActivityFeed from "@/components/shared/ActivityFeed";
+import { StatusChip, type Instance } from "@/components/obligations/shared";
 import ShareModal from "@/components/documents/ShareModal";
 import CopyStructureModal from "@/components/documents/CopyStructureModal";
 import FolderTree from "@/components/documents/FolderTree";
@@ -994,6 +995,32 @@ function DocumentRetentionSection({ docId }: { docId: string }) {
   );
 }
 
+/** Obrigações que este documento comprova (achado A7-54): some quando não há nenhuma. */
+function DocumentObligations({ docId }: { docId: string }) {
+  const [items, setItems] = useState<Instance[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    api.get<Instance[]>(`/documents/${docId}/obligations`).then((r) => { if (alive) setItems(r.data ?? []); }).catch(() => { if (alive) setItems([]); });
+    return () => { alive = false; };
+  }, [docId]);
+  if (!items?.length) return null;
+  return (
+    <section aria-label="Obrigações que este documento comprova" className="space-y-1.5">
+      <h3 className="text-mac-body font-semibold text-(--text-primary)">Comprova</h3>
+      <ul className="space-y-1">
+        {items.map((o) => (
+          <li key={o.id} className="flex items-center gap-2 min-h-8">
+            <Link to={`/obligations?instancia=${o.id}`} className="flex-1 min-w-0 truncate text-mac-caption text-(--text-accent) hover:underline">
+              {o.template_name} · {o.period_label}
+            </Link>
+            <StatusChip status={o.effective_status} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit, onClose, onFavorite, onPreview, onMenu, onChanged, onFieldSaved }: {
   doc: Document; companyId: string; variant?: "modal" | "panel"; path: string; canEdit: boolean;
   onClose: () => void; onFavorite: () => void; onPreview: () => void; onMenu: (el: HTMLElement) => void; onChanged: () => void;
@@ -1082,6 +1109,7 @@ function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit, onClos
       <MetadataSection doc={doc} companyId={companyId} canEdit={canEdit} onSaved={(fid, v) => onFieldSaved(doc.id, fid, v)} />
       <VersionsPanel documentId={doc.id} documentName={doc.name} onChanged={onChanged} />
       <DocumentRetentionSection docId={doc.id} />
+      <DocumentObligations docId={doc.id} />
       <Disclosure icon={<Clock className="w-4 h-4" aria-hidden />} title="Atividade">
         <ActivityFeed companyId={companyId} itemId={doc.id} pageSize={20} groupByDay={false} emptyDescription="Nenhuma atividade registrada neste documento ainda." />
       </Disclosure>
