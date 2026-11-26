@@ -91,7 +91,7 @@ export default function TitularChannel() {
                 <ShieldCheck className="w-6 h-6 text-(--text-accent) shrink-0" aria-hidden />
                 <div>
                   <h1 className="text-mac-title3 font-semibold text-(--text-primary)">Pedido sobre os seus dados</h1>
-                  <p className="text-mac-caption text-(--text-secondary)">{info.company_name} · Lei Geral de Proteção de Dados (art. 18). A resposta sai em até {info.prazo_dias} dias.</p>
+                  <p className="text-mac-caption text-(--text-secondary)">{info.company_name} · Lei Geral de Proteção de Dados (art. 18). Prazo de referência para a resposta: {info.prazo_dias} dias.</p>
                 </div>
               </div>
               <div role="tablist" aria-label="O que você quer fazer" className="mb-4 grid grid-cols-2 gap-1 rounded-(--radius-control) bg-(--bg-hover) p-1">

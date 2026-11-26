@@ -3,7 +3,8 @@ Pedidos do titular (LGPD art. 18 e 19; benchmark B3.7.2).
 
 Fluxo: o pedido chega pelo formulário público da empresa (se ela ligar o
 canal) ou é registrado pelo admin quando vem por e-mail, telefone ou balcão.
-Ganha protocolo e prazo (15 dias, art. 19, II), um responsável, a verificação
+Ganha protocolo e prazo (15 dias: o do art. 19, II, para confirmação e acesso,
+usado como padrão nos demais e ajustável), um responsável, a verificação
 de identidade e um histórico de cada passo. Concluir exige identidade
 verificada e resposta escrita; negar exige o motivo. Quem pediu pelo
 formulário acompanha com o protocolo e o código que recebeu.
@@ -23,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from app.dependencies import get_app_role, get_current_user, get_db, get_db_admin
-from app.services import rate_limit
+from app.services import mfa_service, rate_limit
 from app.services.companies_service import CompaniesService
 
 router = APIRouter(tags=["lgpd-requests"])
@@ -243,7 +244,7 @@ async def atualizar(
     verificada = p["identidade_verificada"] if body.identidade_verificada is None else body.identidade_verificada
     resposta = (body.resposta.strip() if body.resposta is not None else p["resposta"]) or None
     if body.status == "concluido" and not verificada:
-        raise HTTPException(status_code=422, detail="Confirme a identidade do titular antes de concluir (art. 18, § 6º não dispensa a verificação).")
+        raise HTTPException(status_code=422, detail="Confirme a identidade do titular antes de concluir: os dados só vão para quem é o titular.")
     if body.status in ("concluido", "negado") and not resposta:
         raise HTTPException(status_code=422, detail="Escreva a resposta ao titular (no caso de negativa, o motivo) antes de encerrar.")
     if body.identidade_verificada and not (body.identidade_metodo or p["identidade_metodo"]):
@@ -329,6 +330,11 @@ async def ligar_canal(
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     await _exigir_admin(conn, claims, company_id)
+    # A conta demo é usada por muitos visitantes: com o canal ligado, um veria
+    # o nome e o contato que outro (ou alguém de fora) digitou no formulário.
+    if body.enabled and mfa_service.is_demo(claims):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Na demonstração o formulário público fica desligado: os pedidos trazem dados de pessoas reais.")
     await admin_conn.execute("UPDATE public.companies SET lgpd_channel_enabled = $2 WHERE id = $1", company_id, body.enabled)
     await admin_conn.execute(
         """

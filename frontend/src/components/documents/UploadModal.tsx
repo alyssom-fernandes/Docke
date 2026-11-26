@@ -84,7 +84,7 @@ export function pollOcrStatus(items: { documentId: string; taskId: string; fileN
   setTimeout(tick, 3000);
 }
 
-export function UploadModal({ folderId, folderName, companyId, onClose, onDone }: { folderId: string | null; folderName: string; companyId: string; onClose: () => void; onDone: () => void }) {
+export function UploadModal({ folderId, folderName, companyId, onClose, onDone, initialFiles }: { folderId: string | null; folderName: string; companyId: string; onClose: () => void; onDone: () => void; initialFiles?: File[] }) {
   const { success, warning } = useToast();
   const { addTask, updateTask, registerRetry, registerCancel } = useTaskCenter();
   const [pending, setPending] = useState<PendingFile[]>([]);
@@ -96,6 +96,12 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone }
   const [picking, setPicking] = useState(false);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [camera, setCamera] = useState(false);
+
+  // Arquivos que chegaram pelo "Compartilhar" do celular (B4.5.7).
+  useEffect(() => {
+    if (initialFiles?.length) addFiles(initialFiles.map((file) => ({ file, relativePath: "" })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFiles]);
 
   // Escolher uma pasta inteira pelo botão (antes só arrastando — achado A4-52).
   useEffect(() => {

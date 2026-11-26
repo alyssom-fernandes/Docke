@@ -56,7 +56,7 @@ function NovoPedido({ companyId, onClose, onDone }: { companyId: string; onClose
   }
   return (
     <Dialog onClose={onClose} size="md" busy={busy} title="Registrar pedido do titular"
-      description="Para pedidos que chegaram por e-mail, telefone ou no balcão. O prazo de resposta é de 15 dias."
+      description="Para pedidos que chegaram por e-mail, telefone ou no balcão. O prazo padrão é de 15 dias e pode ser ajustado."
       footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={f.titular_nome.trim().length < 2} onClick={salvar}>Registrar</Button></>}>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div><span id="np-tipo" className="block mb-1 text-mac-body font-medium text-(--text-secondary)">Pedido</span>
@@ -190,7 +190,7 @@ export default function LgpdRequests({ companyId }: { companyId: string }) {
         <h3 id="lgpd-pedidos" className="flex-1 flex items-center gap-2 text-mac-body font-semibold text-(--text-primary)"><Inbox className="w-4 h-4 text-(--text-accent)" aria-hidden /> Pedidos do titular</h3>
         <Button size="sm" variant="secondary" onClick={() => setNovo(true)}><Plus className="w-3.5 h-3.5" aria-hidden />Registrar pedido</Button>
       </div>
-      <p className="text-mac-caption text-(--text-secondary)">Cada pedido tem protocolo, prazo de 15 dias (art. 19), responsável, conferência de identidade e histórico. Tudo fica na trilha de auditoria.</p>
+      <p className="text-mac-caption text-(--text-secondary)">Cada pedido tem protocolo, prazo de 15 dias (o do art. 19, II, para confirmação e acesso, usado como padrão nos demais), responsável, conferência de identidade e histórico. Tudo fica na trilha de auditoria.</p>
       {canal && (
         <div className="flex flex-wrap items-center gap-3 rounded-(--radius-control) border border-(--border-default) px-3 py-2">
           <Switch checked={canal.enabled} onChange={ligar} label="Canal público do titular" />
@@ -214,7 +214,7 @@ export default function LgpdRequests({ companyId }: { companyId: string }) {
       )}
       {encerrados > 0 && (
         <label className="flex items-center gap-2 text-mac-caption text-(--text-secondary) cursor-pointer">
-          <Checkbox checked={mostrarEncerrados} onChange={(e) => setMostrarEncerrados(e.target.checked)} />Mostrar os {encerrados} encerrados
+          <Checkbox checked={mostrarEncerrados} onChange={(e) => setMostrarEncerrados(e.target.checked)} />{encerrados === 1 ? "Mostrar o encerrado" : `Mostrar os ${encerrados} encerrados`}
         </label>
       )}
       {novo && <NovoPedido companyId={companyId} onClose={() => setNovo(false)} onDone={carregar} />}

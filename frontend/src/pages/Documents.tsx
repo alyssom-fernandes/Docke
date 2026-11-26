@@ -61,6 +61,7 @@ import CopyStructureModal from "@/components/documents/CopyStructureModal";
 import { SaveTemplateDialog, ApplyTemplateDialog, NewFromTemplateDialog } from "@/components/documents/Templates";
 import FolderTree from "@/components/documents/FolderTree";
 import Dialog from "@/components/ui/Dialog";
+import Input from "@/components/ui/Input";
 import Menu, { type MenuItem } from "@/components/ui/Menu";
 import FolderPickerDialog, { type PickedFolder } from "@/components/documents/FolderPickerDialog";
 import { pushUndo, takeUndo, isUndoShortcut } from "@/lib/undo";
@@ -95,7 +96,11 @@ export type { CustomFieldType, ResolvedField } from "@/components/documents/docS
 // Tipos comuns (pasta e documento) vivem em docShared (A4-63).
 type Folder = DocFolder;
 
-type SortKey = "name" | "size" | "created_at" | "updated_at" | "kind" | "ocr" | "uploader";
+type SortKey = "name" | "size" | "created_at" | "updated_at" | "kind" | "ocr" | "uploader" | `field:${string}`;
+
+/** Vista salva da pasta (B1.2.7): ordenação, colunas, agrupamento e filtro por metadado. */
+interface SavedView { id: string; name: string; folder_id: string | null; mine: boolean; shared: boolean; config: { sort?: { key: SortKey; dir: "asc" | "desc" }; cols?: string[]; groupBy?: string; fieldFilter?: { id: string; label: string; value: string } | null; view?: "list" | "grid" } }
+const SEM_VALOR = "Sem valor";
 
 // Colunas opcionais da lista (A4-16): a pessoa escolhe quais ver (clique
 // direito no cabeçalho ou no botão de visualização); todas ordenam.
@@ -124,6 +129,52 @@ interface FolderPref {
 
 const DEFAULT_FOLDER_PREF: FolderPref = { sort: { key: "name", dir: "asc" }, view: "list" };
 const FOLDER_PREFS_STORAGE_KEY = "docke_folder_prefs";
+
+/** Lê e limpa os arquivos que o service worker guardou ao receber um "Compartilhar" (B4.5.7). */
+async function lerCompartilhados(): Promise<File[]> {
+  if (!("caches" in window)) return [];
+  try {
+    const cache = await caches.open("docke-compartilhado");
+    const files: File[] = [];
+    for (const req of await cache.keys()) {
+      const r = await cache.match(req);
+      if (r) {
+        const nome = decodeURIComponent(r.headers.get("X-Nome") ?? "arquivo");
+        files.push(new File([await r.blob()], nome, { type: r.headers.get("Content-Type") ?? "" }));
+      }
+      await cache.delete(req);
+    }
+    return files;
+  } catch {
+    return [];
+  }
+}
+
+/** Salvar a vista atual (B1.2.7): nome, onde vale e com quem fica. */
+function SaveViewDialog({ folderName, onClose, onSave }: { folderName: string; onClose: () => void; onSave: (name: string, scope: "pasta" | "todas", shared: boolean) => Promise<void> }) {
+  const [name, setName] = useState("");
+  const [scope, setScope] = useState<"pasta" | "todas">("pasta");
+  const [shared, setShared] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const opcao = (ativo: boolean) => `text-left rounded-(--radius-control) border px-3 py-2 text-mac-body transition-colors focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${ativo ? "border-teal-600 bg-teal-500/10 text-(--text-primary)" : "border-(--border-control) text-(--text-secondary) hover:bg-(--bg-hover)"}`;
+  return (
+    <Dialog onClose={onClose} size="sm" busy={busy} title="Salvar vista"
+      description="Guarda a ordenação, as colunas, o agrupamento e o filtro por metadado de agora."
+      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!name.trim()} onClick={async () => { setBusy(true); await onSave(name.trim(), scope, shared); setBusy(false); }}>Salvar</Button></>}>
+      <div className="space-y-3">
+        <Input label="Nome da vista" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Holerites por competência" autoFocus />
+        <div role="radiogroup" aria-label="Onde vale" className="grid grid-cols-2 gap-2">
+          <button type="button" role="radio" aria-checked={scope === "pasta"} onClick={() => setScope("pasta")} className={opcao(scope === "pasta")}>Só em “{folderName}”</button>
+          <button type="button" role="radio" aria-checked={scope === "todas"} onClick={() => setScope("todas")} className={opcao(scope === "todas")}>Em todas as pastas</button>
+        </div>
+        <div role="radiogroup" aria-label="Quem vê" className="grid grid-cols-2 gap-2">
+          <button type="button" role="radio" aria-checked={shared} onClick={() => setShared(true)} className={opcao(shared)}>Todos da empresa</button>
+          <button type="button" role="radio" aria-checked={!shared} onClick={() => setShared(false)} className={opcao(!shared)}>Só eu</button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
 
 function loadFolderPref(folderId: string | null): FolderPref {
   try {
@@ -353,6 +404,12 @@ export default function Documents() {
   const [sharingDoc, setSharingDoc] = useState<Document | null>(null);
   const [showTreeDrawer, setShowTreeDrawer] = useState(false);
   const [copyingFolder, setCopyingFolder] = useState<Folder | null>(null);
+  const [sharedFiles, setSharedFiles] = useState<File[] | undefined>(undefined);
+  // Vista da pasta (B1.2.7): agrupar, filtrar por valor de metadado e vistas salvas.
+  const [groupBy, setGroupBy] = useState<string>("");
+  const [fieldFilter, setFieldFilter] = useState<{ id: string; label: string; value: string } | null>(null);
+  const [savedViews, setSavedViews] = useState<SavedView[]>([]);
+  const [savingView, setSavingView] = useState(false);
   // Modelos (B1.5.4, B1.5.6, B1.5.8).
   const [savingTemplate, setSavingTemplate] = useState<Folder | null>(null);
   const [applyingTemplate, setApplyingTemplate] = useState<Folder | null>(null);
@@ -1105,12 +1162,64 @@ export default function Documents() {
     }
   }, [documents, loading, pendingDocId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Vistas salvas (B1.2.7): as da pasta aberta e as de "todas as pastas".
+  useEffect(() => {
+    if (!current) return;
+    api.get<SavedView[]>(`/companies/${current.id}/views`, { params: { folder_id: currentFolderId ?? undefined } })
+      .then((r) => setSavedViews(r.data)).catch(() => setSavedViews([]));
+  }, [current?.id, currentFolderId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Filtro e agrupamento valem para a pasta aberta: trocar de pasta limpa.
+  useEffect(() => { setFieldFilter(null); setGroupBy(""); }, [currentFolderId]);
+
+  function applyView(v: SavedView) {
+    const c = v.config;
+    if (c.sort) setSortTo(c.sort.key, c.sort.dir);
+    if (c.cols) { const cols = OPT_COLS.map((x) => x.key).filter((k) => c.cols!.includes(k)); setVisibleCols(cols); localStorage.setItem("docke_doc_columns", JSON.stringify(cols)); }
+    setGroupBy(c.groupBy ?? "");
+    setFieldFilter(c.fieldFilter ?? null);
+    if (c.view && c.view !== viewMode) setView(c.view);
+    success(`Vista "${v.name}" aplicada.`);
+  }
+  async function saveView(name: string, scope: "pasta" | "todas", shared: boolean) {
+    if (!current) return;
+    try {
+      const r = await api.post<SavedView>(`/companies/${current.id}/views`, {
+        name, shared, folder_id: scope === "pasta" ? currentFolderId : null,
+        config: { sort, cols: visibleCols, groupBy, fieldFilter, view: viewMode },
+      });
+      setSavedViews((prev) => [...prev, r.data]);
+      success(`Vista "${name}" salva${shared ? " para todos da empresa" : " só para você"}.`);
+      setSavingView(false);
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível salvar a vista.");
+    }
+  }
+  async function deleteView(v: SavedView) {
+    try {
+      await api.delete(`/views/${v.id}`);
+      setSavedViews((prev) => prev.filter((x) => x.id !== v.id));
+      success(`Vista "${v.name}" apagada.`);
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível apagar a vista.");
+    }
+  }
+
   // Ações vindas do ⌘K (?acao=enviar | nova-pasta).
   const acaoParam = searchParams.get("acao");
   useEffect(() => {
     if (!acaoParam || !current) return;
     if (acaoParam === "enviar" && canWrite) setShowUpload(true);
     if (acaoParam === "nova-pasta" && canWrite) setShowNewFolder(true);
+    // Arquivos do "Compartilhar" do celular (B4.5.7): o service worker guardou
+    // num cache próprio; viram a lista do envio, com a pasta à escolha.
+    if (acaoParam === "compartilhado") {
+      lerCompartilhados().then((files) => {
+        if (!files.length) return;
+        if (!canWrite) { showError("Você só lê esta empresa: os arquivos compartilhados não podem ser enviados aqui."); return; }
+        setSharedFiles(files);
+        setShowUpload(true);
+      });
+    }
     const next = new URLSearchParams(searchParams);
     next.delete("acao");
     setSearchParams(next, { replace: true });
@@ -1507,6 +1616,12 @@ export default function Documents() {
   }
 
     const sortedFolders = [...folders].sort((a, b) => a.name.localeCompare(b.name));
+  function groupLabel(d: Document): string {
+    if (groupBy === "kind") return kindLabel(d.name);
+    if (groupBy === "uploader") return d.uploaded_by_name || SEM_VALOR;
+    if (groupBy.startsWith("field:")) return fieldValues[d.id]?.[groupBy.slice(6)] || SEM_VALOR;
+    return "";
+  }
   const sortedDocuments = [...documents].sort((a, b) => {
     let cmp = 0;
     if (sort.key === "name") cmp = a.name.localeCompare(b.name, "pt-BR");
@@ -1515,8 +1630,22 @@ export default function Documents() {
     else if (sort.key === "ocr") cmp = (OCR_ORDER[a.ocr_status] ?? 9) - (OCR_ORDER[b.ocr_status] ?? 9);
     else if (sort.key === "uploader") cmp = (a.uploaded_by_name ?? "").localeCompare(b.uploaded_by_name ?? "", "pt-BR");
     else if (sort.key === "updated_at") cmp = new Date(a.updated_at ?? a.created_at).getTime() - new Date(b.updated_at ?? b.created_at).getTime();
+    else if (sort.key.startsWith("field:")) {
+      // Metadado (B1.2.7): vazio vai para o fim; números e datas em ordem natural.
+      const fid = sort.key.slice(6);
+      const va = fieldValues[a.id]?.[fid] ?? "", vb = fieldValues[b.id]?.[fid] ?? "";
+      if (!va || !vb) cmp = !va && !vb ? 0 : !va ? 1 : -1;
+      else cmp = va.localeCompare(vb, "pt-BR", { numeric: true });
+      if (!va || !vb) cmp = sort.dir === "asc" ? cmp : -cmp;
+    }
     else cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-    return sort.dir === "asc" ? cmp : -cmp;
+    cmp = sort.dir === "asc" ? cmp : -cmp;
+    // Agrupar (B1.2.7): o grupo manda, a ordenação vale dentro dele.
+    if (groupBy) {
+      const ga = groupLabel(a), gb = groupLabel(b);
+      if (ga !== gb) return ga === SEM_VALOR ? 1 : gb === SEM_VALOR ? -1 : ga.localeCompare(gb, "pt-BR", { numeric: true });
+    }
+    return cmp;
   });
 
   // Filtro rápido aplicado por cima da ordenação — não mexe na seleção nem
@@ -1537,7 +1666,8 @@ export default function Documents() {
   }, [resolvedFields, fieldValues, sortedDocuments]);
   const [onlyMissing, setOnlyMissing] = useState(false);
   const visibleDocuments = (filterQ ? sortedDocuments.filter((d) => d.name.toLowerCase().includes(filterQ)) : sortedDocuments)
-    .filter((d) => !onlyMissing || missingRequired.has(d.id));
+    .filter((d) => !onlyMissing || missingRequired.has(d.id))
+    .filter((d) => !fieldFilter || (fieldValues[d.id]?.[fieldFilter.id] ?? "") === fieldFilter.value);
 
   // Pastas sempre no topo (convenção de gerenciador de arquivos); só os documentos respeitam a ordenação escolhida
   const items: Item[] = [
@@ -1878,7 +2008,12 @@ export default function Documents() {
                     { label: "Linhas compactas", checked: density === "compact", onSelect: () => chooseDensity("compact"), separatorBefore: true },
                     { label: "Linhas confortáveis", checked: density === "comfortable", onSelect: () => chooseDensity("comfortable") },
                     { label: "Linhas espaçosas", checked: density === "spacious", onSelect: () => chooseDensity("spacious") },
-                    { label: "Voltar ao padrão", onSelect: () => { resetCols(); chooseDensity("comfortable"); }, separatorBefore: true },
+                    ...([["", "Sem agrupar"], ["kind", "Agrupar por tipo"], ["uploader", "Agrupar por quem enviou"], ...resolvedFields.map((f) => [`field:${f.custom_field_id}`, `Agrupar por ${f.label}`])] as [string, string][])
+                      .map(([k, l], i) => ({ label: l, checked: groupBy === k, separatorBefore: i === 0, onSelect: () => setGroupBy(k) })),
+                    ...savedViews.map((v, i) => ({ label: `Vista: ${v.name}${v.folder_id ? "" : " (todas as pastas)"}${v.mine && !v.shared ? " · só você" : ""}`, separatorBefore: i === 0, onSelect: () => applyView(v) })),
+                    { label: "Salvar vista atual…", separatorBefore: savedViews.length === 0, onSelect: () => setSavingView(true) },
+                    ...savedViews.filter((v) => v.mine || canAdmin).map((v) => ({ label: `Apagar vista "${v.name}"`, danger: true, onSelect: () => deleteView(v) })),
+                    { label: "Voltar ao padrão", onSelect: () => { resetCols(); chooseDensity("comfortable"); setGroupBy(""); setFieldFilter(null); }, separatorBefore: true },
                   ]}
                 />
               )}
@@ -2258,16 +2393,23 @@ export default function Documents() {
                       onResizeReset={() => autoFitCol(c.key)} onResizeNudge={(d) => nudgeColWidth(c.key, d)} width={colWidths[c.key]}
                     />
                   ))}
-                  {resolvedFields.map((f) => (
-                    <th key={f.custom_field_id} className="px-3 py-2 text-mac-caption font-normal text-(--text-secondary) text-left truncate hidden sm:table-cell">
-                      {f.label}{f.required && <span className="text-(--text-danger) ml-0.5">*</span>}
-                    </th>
-                  ))}
+                  {resolvedFields.map((f) => {
+                    const k = `field:${f.custom_field_id}` as SortKey;
+                    return (
+                      <th key={f.custom_field_id} className="px-3 py-2 text-mac-caption font-normal text-(--text-secondary) text-left truncate hidden sm:table-cell"
+                        aria-sort={sort.key === k ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+                        <button type="button" onClick={() => toggleSort(k)} className="inline-flex items-center gap-1 hover:text-(--text-primary) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) rounded-sm">
+                          {f.label}{f.required && <span className="text-(--text-danger)">*</span>}
+                          {sort.key === k && <span aria-hidden>{sort.dir === "asc" ? "↑" : "↓"}</span>}
+                        </button>
+                      </th>
+                    );
+                  })}
                   <th className="w-[76px]"><span className="sr-only">Ações</span></th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => {
+                {items.map((item, idx) => {
                   if (item.kind === "folder") {
                     const f = item.data;
                     const isDropTarget = dragOverFolderId === f.id;
@@ -2461,9 +2603,20 @@ export default function Documents() {
                   const isSelected = selected.has(d.id);
                   const isRenaming = renaming?.kind === "document" && renaming.id === d.id;
                   const isDragging = dragDocIds?.includes(d.id) ?? false;
+                  const grupo = groupBy ? groupLabel(d) : null;
+                  const prev = idx > 0 ? items[idx - 1] : null;
+                  const novoGrupo = grupo !== null && (!prev || prev.kind !== "document" || groupLabel(prev.data) !== grupo);
                   return (
+                    <Fragment key={`doc-${d.id}`}>
+                    {novoGrupo && (
+                      <tr className="bg-(--bg-hover)">
+                        <th scope="colgroup" colSpan={(selectionMode ? 1 : 0) + 2 + shownCols.length + resolvedFields.length}
+                          className="px-3 py-1.5 text-left text-mac-caption font-semibold text-(--text-secondary)">
+                          {grupo} <span className="font-normal text-(--text-tertiary)">· {visibleDocuments.filter((x) => groupLabel(x) === grupo).length}</span>
+                        </th>
+                      </tr>
+                    )}
                     <tr
-                      key={`doc-${d.id}`}
                       ref={(el) => { if (el) rowRefs.current.set(d.id, el); else rowRefs.current.delete(d.id); }}
                       tabIndex={focusedId === d.id || (!focusedId && items[0]?.data.id === d.id) ? 0 : -1}
                       aria-selected={isSelected}
@@ -2559,7 +2712,9 @@ export default function Documents() {
                         return (
                           <td key={rf.custom_field_id} className="px-3 py-2 text-mac-caption truncate hidden sm:table-cell">
                             {value ? (
-                              <span className={isSelected ? "text-white/90" : "text-(--text-secondary)"}>{value}</span>
+                              <button type="button" title={`Mostrar só ${rf.label} = ${value}`}
+                                onClick={(e) => { e.stopPropagation(); setFieldFilter({ id: rf.custom_field_id, label: rf.label, value }); }}
+                                className={`max-w-full truncate hover:underline focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) rounded-sm ${isSelected ? "text-white/90" : "text-(--text-secondary)"}`}>{value}</button>
                             ) : rf.required ? (
                               <span className={isSelected ? "text-white" : "text-(--text-warning)"} title="Campo obrigatório sem preenchimento">Pendente</span>
                             ) : (
@@ -2581,6 +2736,7 @@ export default function Documents() {
                         </button>
                       </td>
                     </tr>
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -2664,6 +2820,13 @@ export default function Documents() {
               {onlyMissing ? "Mostrar todos" : `${missingRequired.size} com campo obrigatório vazio`}
             </button>
           )}
+          {/* Metadado navegável (B1.2.7): clicar num valor da coluna filtra; aqui limpa. */}
+          {fieldFilter && (
+            <button onClick={() => setFieldFilter(null)} aria-label={`Tirar o filtro ${fieldFilter.label} = ${fieldFilter.value}`}
+              className="shrink-0 ml-2 inline-flex items-center gap-1 rounded-full px-2 min-h-6 pointer-coarse:min-h-9 bg-teal-500/15 text-(--text-primary) hover:bg-teal-500/25">
+              {fieldFilter.label} = {fieldFilter.value} <X className="w-3 h-3" aria-hidden />
+            </button>
+          )}
         </div>
       </div>
 
@@ -2695,8 +2858,9 @@ export default function Documents() {
           folderId={currentFolderId}
           folderName={breadcrumbs[breadcrumbs.length - 1].name}
           companyId={current.id}
-          onClose={() => setShowUpload(false)}
+          onClose={() => { setShowUpload(false); setSharedFiles(undefined); }}
           onDone={load}
+          initialFiles={sharedFiles}
         />
       )}
       {showNewFolder && current && (
@@ -2821,6 +2985,7 @@ export default function Documents() {
         <PrivacyDialog folderId={privacyFolder.id} folderName={privacyFolder.name} onClose={() => setPrivacyFolder(null)}
           onSaved={() => { if (currentFolderId) api.get(`/folders/${currentFolderId}/privacy`).then((r) => setCurrentPrivacy(r.data.effective ?? "normal")).catch(() => {}); }} />
       )}
+      {savingView && <SaveViewDialog folderName={breadcrumbs[breadcrumbs.length - 1].name} onClose={() => setSavingView(false)} onSave={saveView} />}
       {savingTemplate && current && (
         <SaveTemplateDialog companyId={current.id} folder={savingTemplate} onClose={() => setSavingTemplate(null)} />
       )}
