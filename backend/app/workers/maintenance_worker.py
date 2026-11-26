@@ -13,12 +13,16 @@ import asyncio
 import logging
 import time
 
+import asyncpg
+
 from app.config import settings
 from app.services.obligations_service import (
     BLOCKING_LATERAL_SQL,
     EFFECTIVE_STATUS_SQL,
     NOT_APPLICABLE_LATERAL_SQL,
     VALIDITY_LATERAL_SQL,
+    ObligationsService,
+    period_label,
 )
 
 logger = logging.getLogger("docke.maintenance_worker")
@@ -34,7 +38,10 @@ _last_demo_reset_at: float | None = None
 
 
 async def maintenance_worker_loop() -> None:
+    from app.services.heartbeat import beat
+
     while True:
+        beat("manutencao")
         try:
             await _run_once()
         except asyncio.CancelledError:
@@ -51,7 +58,10 @@ async def stats_refresh_loop() -> None:
     hora) — os agregados do dashboard (Fase 3.1) prometem no máximo 15min de
     atraso pro usuário, então precisam do próprio ritmo.
     """
+    from app.services.heartbeat import beat
+
     while True:
+        beat("estatisticas")
         try:
             from app.dependencies import _admin_pool
             if _admin_pool is not None:
@@ -73,10 +83,50 @@ async def _run_once() -> None:
     async with _admin_pool.acquire() as conn:
         await _notify_trash_expiring_soon(conn)
         await _purge_expired_trash(conn)
+        await _cleanup_stale_pending_uploads(conn)
+        from app.workers.export_worker import purge_expired_exports
+        await purge_expired_exports(conn)
+        # Recorrência (A7-07): competências mensais e anuais aparecem sozinhas.
+        try:
+            await ObligationsService.generate_due_instances(conn)
+        except Exception as exc:  # noqa: BLE001 — um modelo ruim não pode parar a manutenção
+            logger.exception("Falha ao gerar competências de obrigações: %s", exc)
         await _notify_obligation_alerts(conn)
         await _notify_retention_expiring_soon(conn)
         await _scan_retention_expirations(conn)
         await _reset_demo_data_if_due(conn)
+        # Partições futuras da trilha (X3-13): cria as que faltam, 24 meses à frente.
+        try:
+            criadas = await conn.fetchval("SELECT public.ensure_activity_log_partitions(24)")
+            if criadas:
+                logger.info("Trilha: %d partição(ões) mensal(is) criada(s).", criadas)
+        except Exception as exc:  # noqa: BLE001 — não pode parar a manutenção
+            logger.exception("Falha ao garantir partições da trilha: %s", exc)
+
+
+async def _cleanup_stale_pending_uploads(conn) -> None:
+    """
+    Registros provisórios de upload (sem hash) com mais de 6 horas: o envio
+    nunca se completou (aba fechada, rede caiu). Saem do banco e do storage,
+    para não ocupar o nome do arquivo nem aparecer como documento.
+    """
+    from app.services import storage_service
+
+    rows = await conn.fetch(
+        """
+        DELETE FROM public.documents
+        WHERE content_hash IS NULL AND created_at < now() - interval '6 hours'
+        RETURNING id, storage_path
+        """
+    )
+    for row in rows:
+        if row["storage_path"]:
+            try:
+                storage_service.delete_object(row["storage_path"])
+            except Exception:
+                pass
+    if rows:
+        logger.info("Limpeza: %d envio(s) incompleto(s) removido(s).", len(rows))
 
 
 async def _scan_retention_expirations(conn) -> None:
@@ -120,7 +170,12 @@ async def _notify_retention_expiring_soon(conn) -> None:
     aviso por janela conforme o tempo passa (90 dias antes, depois 30, depois 7),
     nunca duas vezes a mesma janela.
     """
-    for days in _RETENTION_WARNING_DAYS:
+    # Só a janela mais próxima: um documento a 25 dias do prazo recebe o aviso
+    # de 30 dias, não o de 90 e o de 30 juntos (achado X3-09 — com a máquina
+    # desligada por dias, as três janelas chegavam de uma vez).
+    janelas = sorted(_RETENTION_WARNING_DAYS)
+    for i, days in enumerate(janelas):
+        anterior = janelas[i - 1] if i > 0 else -1
         notif_type = f"retention_expiring_{days}"
         rows = await conn.fetch(
             """
@@ -131,13 +186,14 @@ async def _notify_retention_expiring_soon(conn) -> None:
               AND info.expires_at IS NOT NULL
               AND info.expires_at >= CURRENT_DATE
               AND info.expires_at <= CURRENT_DATE + ($1::int * interval '1 day')
+              AND ($3::int < 0 OR info.expires_at > CURRENT_DATE + ($3::int * interval '1 day'))
               AND NOT public.document_is_under_hold(d.id)
               AND NOT EXISTS (
                 SELECT 1 FROM public.notifications n
                 WHERE n.type = $2 AND n.resource_id = d.id
               )
             """,
-            days, notif_type,
+            days, notif_type, anterior,
         )
         for row in rows:
             recipients = await conn.fetch(
@@ -165,6 +221,7 @@ _OBLIGATION_ALERT_STATUSES = ("overdue", "at_risk", "blocked", "expired")
 
 
 def _obligation_alert_message(status: str, template_name: str, period: str) -> str:
+    period = period_label(period)
     if status == "overdue":
         return f'"{template_name}" ({period}) está atrasada — nenhum documento comprobatório vinculado ainda.'
     if status == "at_risk":
@@ -190,7 +247,7 @@ async def _notify_obligation_alerts(conn) -> None:
     """
     rows = await conn.fetch(
         f"""
-        SELECT oi.id, oi.company_id, oi.period, ot.name AS template_name,
+        SELECT oi.id, oi.company_id, oi.period, oi.owner_id, ot.name AS template_name,
                {EFFECTIVE_STATUS_SQL}
         FROM public.obligation_instances oi
         JOIN public.obligation_templates ot ON ot.id = oi.template_id
@@ -213,12 +270,20 @@ async def _notify_obligation_alerts(conn) -> None:
         if already_notified:
             continue
 
+        # Com responsável, o aviso vai para ele; atraso e documento vencido
+        # também sobem para quem administra a empresa (A7-08). Sem
+        # responsável, vai para admins e operadores, como antes.
         recipients = await conn.fetch(
             """
             SELECT DISTINCT user_id FROM public.user_company_access
-            WHERE company_id = $1 AND folder_path IS NULL AND permission_level IN ('admin', 'operador')
+            WHERE company_id = $1 AND folder_path IS NULL
+              AND (
+                ($2::uuid IS NULL AND permission_level IN ('admin', 'operador'))
+                OR user_id = $2::uuid
+                OR ($2::uuid IS NOT NULL AND $3 AND permission_level = 'admin')
+              )
             """,
-            row["company_id"],
+            row["company_id"], row["owner_id"], eff_status in ("overdue", "expired"),
         )
         message = _obligation_alert_message(eff_status, row["template_name"], row["period"])
         for r in recipients:
@@ -232,16 +297,38 @@ async def _notify_obligation_alerts(conn) -> None:
 
 
 async def _reset_demo_data_if_due(conn) -> None:
+    """
+    Restaura a demo quando a última restauração (a data de criação das
+    empresas fictícias, guardada no banco) passou de DEMO_RESET_INTERVAL_HOURS.
+    Antes, toda partida da máquina restaurava a demo: quem ficava alguns
+    minutos parado (auto_stop) voltava para uma demo nova, com IDs diferentes,
+    e via 404 no que estava aberto. A senha da conta demo continua sendo
+    conferida na partida: se o segredo DEMO_PASSWORD mudou, restaura na hora
+    (o reset sincroniza a senha no Auth).
+    """
     global _last_demo_reset_at
-    interval_secs = settings.DEMO_RESET_INTERVAL_HOURS * 3600
-    now = time.monotonic()
-    if _last_demo_reset_at is not None and now - _last_demo_reset_at < interval_secs:
+    if not settings.DEMO_PASSWORD:
         return
+    from app.seed.demo_data import COMPANIES
+    from app.seed.demo_reset_service import _demo_password_works, reset_demo_data
 
-    from app.seed.demo_reset_service import reset_demo_data
+    force = False
+    if _last_demo_reset_at is None:  # primeira passada desde a partida
+        _last_demo_reset_at = time.monotonic()
+        try:
+            force = not await _demo_password_works()
+        except Exception:
+            force = False
+    if not force:
+        ultima = await conn.fetchval(
+            "SELECT min(created_at) FROM public.companies WHERE name = ANY($1::text[])", [c[0] for c in COMPANIES]
+        )
+        if ultima is not None and await conn.fetchval(
+            "SELECT $1::timestamptz > now() - ($2 || ' hours')::interval", ultima, str(settings.DEMO_RESET_INTERVAL_HOURS)
+        ):
+            return
     try:
         await reset_demo_data(conn)
-        _last_demo_reset_at = now
     except Exception:
         logger.exception("Falha no reset periódico de dados demo — tenta de novo no próximo ciclo.")
 
@@ -322,30 +409,49 @@ async def _purge_expired_trash(conn) -> None:
           ORDER BY created_at DESC LIMIT 1
         ) al ON true
         WHERE d.deleted_at IS NOT NULL AND d.trash_expires_at < now()
+          -- Sob legal hold ou com retenção travada vigente, o documento fica
+          -- na lixeira até o bloqueio acabar (achado X3-07); o banco também
+          -- recusaria o DELETE (migration 20261125000001).
+          AND public.document_deletion_block_reason(d.id) IS NULL
         """
     )
     for doc in expired_docs:
-        async with conn.transaction():
-            await conn.execute("DELETE FROM public.documents WHERE id = $1", doc["id"])
-            # activity_log.user_id é NOT NULL — só registra se soubermos quem excluiu originalmente
-            # (sempre deveria saber, já que soft-delete sempre loga; defensivo contra dado legado).
-            if doc["deleted_by"] is not None:
-                await conn.execute(
-                    """
-                    INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, metadata)
-                    VALUES ($1, $2, 'delete', 'document', $3, $4, '{"auto_purge": true}'::jsonb)
-                    """,
-                    doc["deleted_by"], doc["company_id"], doc["id"], doc["name"],
-                )
-            await expire_shares_for_resource(conn, "document", doc["id"])
+        version_keys = [r["storage_key"] for r in await conn.fetch(
+            "SELECT DISTINCT storage_key FROM public.document_versions WHERE document_id = $1", doc["id"],
+        )]
+        try:
+            await _purge_document(conn, doc, expire_shares_for_resource)
+        except asyncpg.exceptions.RaiseError:
+            # O bloqueio pode ter começado entre a consulta e a exclusão.
+            logger.warning("Purga automática pulou o documento %s: exclusão bloqueada por hold ou retenção.", doc["id"])
+            continue
 
-        if doc["storage_path"]:
-            try:
-                storage_service.delete_object(doc["storage_path"])
-            except Exception:
-                logger.warning("Falha ao remover objeto do storage para documento %s — pode ficar órfão.", doc["id"])
+        # Arquivo atual, versões antigas e derivados (X3-08), fora do laço assíncrono.
+        falhas = await asyncio.to_thread(storage_service.delete_document_objects, [doc["storage_path"], *version_keys])
+        if falhas:
+            logger.warning("Purga do documento %s: %d objeto(s) não saíram do storage: %s", doc["id"], len(falhas), falhas)
         logger.info("Purga automática — documento %s (%s) removido por retenção.", doc["id"], doc["name"])
 
+    await _purge_expired_folders(conn, expire_shares_for_resource)
+
+
+async def _purge_document(conn, doc, expire_shares_for_resource) -> None:
+    async with conn.transaction():
+        await conn.execute("DELETE FROM public.documents WHERE id = $1", doc["id"])
+        # activity_log.user_id é NOT NULL — só registra se soubermos quem excluiu originalmente
+        # (sempre deveria saber, já que soft-delete sempre loga; defensivo contra dado legado).
+        if doc["deleted_by"] is not None:
+            await conn.execute(
+                """
+                INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, metadata)
+                VALUES ($1, $2, 'delete', 'document', $3, $4, '{"auto_purge": true}'::jsonb)
+                """,
+                doc["deleted_by"], doc["company_id"], doc["id"], doc["name"],
+            )
+        await expire_shares_for_resource(conn, "document", doc["id"])
+
+
+async def _purge_expired_folders(conn, expire_shares_for_resource) -> None:
     # Pastas vazias (sem documentos remanescentes) que também passaram do prazo
     expired_folders = await conn.fetch(
         """

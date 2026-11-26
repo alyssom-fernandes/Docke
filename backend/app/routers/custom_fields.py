@@ -66,6 +66,112 @@ def _validate_cnpj(digits: str) -> bool:
     return digits[12] == _dv(digits[:12]) and digits[13] == _dv(digits[:13])
 
 
+def _value_error(field: Any, raw: str) -> str | None:
+    """
+    Mesma regra do valor do documento, para o valor padrão da pasta (A8-20):
+    um padrão inválido pré-preenchia documentos novos e falhava depois.
+    """
+    import datetime as _dt
+    from decimal import Decimal, InvalidOperation
+
+    v = (raw or "").strip()
+    if not v:
+        return None
+    t = field["type"]
+    digits = re.sub(r"\D", "", v)
+    if t == "cpf" and not _validate_cpf(digits):
+        return "CPF inválido."
+    if t == "cnpj" and not _validate_cnpj(digits):
+        return "CNPJ inválido."
+    if t == "data":
+        try:
+            _dt.datetime.strptime(v, "%d/%m/%Y")
+        except ValueError:
+            return "Data inválida: use dd/mm/aaaa."
+    if t == "competencia":
+        try:
+            _dt.datetime.strptime("01/" + v, "%d/%m/%Y")
+        except ValueError:
+            return "Competência inválida: use mm/aaaa."
+    if t == "numero":
+        try:
+            Decimal(v.replace(".", "").replace(",", ".") if "," in v else v)
+        except InvalidOperation:
+            return "Número inválido."
+    if t in ("moeda", "email", "telefone", "cep", "booleano"):
+        try:
+            _normalize_extra(t, v)
+        except ValueError as exc:
+            return str(exc)
+    if t == "selecao":
+        cfg = field["format_config"]
+        if isinstance(cfg, str):
+            import json as _json
+            cfg = _json.loads(cfg or "{}")
+        if v not in (cfg or {}).get("options", []):
+            return "O valor padrão precisa ser uma das opções do campo."
+    return None
+
+
+def _normalize_extra(t: str, v: str):
+    """
+    Tipos novos (B1.3.2). Devolve (texto exibido, número ou None) ou levanta
+    ValueError com a mensagem para quem preenche.
+    """
+    from decimal import Decimal, InvalidOperation
+
+    v = v.strip()
+    if t == "moeda":
+        limpo = re.sub(r"[R$\s]", "", v)
+        if "," in limpo:
+            limpo = limpo.replace(".", "").replace(",", ".")
+        try:
+            n = Decimal(limpo).quantize(Decimal("0.01"))
+        except InvalidOperation:
+            raise ValueError("Valor em reais inválido: use 1.234,56.")
+        inteiro, cent = f"{abs(n):.2f}".split(".")
+        inteiro = f"{int(inteiro):,}".replace(",", ".")
+        return f"{'-' if n < 0 else ''}R$ {inteiro},{cent}", n
+    if t == "email":
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", v):
+            raise ValueError("E-mail inválido.")
+        return v.lower(), None
+    if t == "telefone":
+        d = re.sub(r"\D", "", v)
+        if d.startswith("55") and len(d) in (12, 13):
+            d = d[2:]
+        if len(d) == 11:
+            return f"({d[:2]}) {d[2:7]}-{d[7:]}", None
+        if len(d) == 10:
+            return f"({d[:2]}) {d[2:6]}-{d[6:]}", None
+        raise ValueError("Telefone inválido: use DDD + número.")
+    if t == "cep":
+        d = re.sub(r"\D", "", v)
+        if len(d) != 8:
+            raise ValueError("CEP inválido: são 8 dígitos.")
+        return f"{d[:5]}-{d[5:]}", None
+    if t == "booleano":
+        low = v.lower()
+        if low in ("sim", "s", "true", "1", "yes"):
+            return "Sim", None
+        if low in ("não", "nao", "n", "false", "0", "no"):
+            return "Não", None
+        raise ValueError("Use Sim ou Não.")
+    return v, None
+
+
+async def _log_config(conn: asyncpg.Connection, user_id: str, company_id: UUID | str, action: str, item_id: UUID | str, name: str, meta: dict[str, Any] | None = None) -> None:
+    """Mudanças nos campos e nas regras por pasta entram na trilha (A8-T2)."""
+    import json as _json
+    await conn.execute(
+        """
+        INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, event_category, metadata)
+        VALUES ($1::uuid, $2::uuid, $3, 'config', $4::uuid, $5, 'config', $6::jsonb)
+        """,
+        user_id, str(company_id), action, str(item_id), name, _json.dumps(meta or {}, default=str),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------------
@@ -176,12 +282,33 @@ async def update_custom_field(
     role = await get_app_role(conn, claims)
     await _require_company_admin(conn, claims["sub"], UUID(existing["company_id"]), role)
 
+    if body.label is not None and not body.label.strip():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Dê um nome ao campo.")
     row = await CustomFieldsService.update_field(
-        conn, field_id, label=body.label, format_config=body.format_config,
+        conn, field_id, label=body.label.strip() if body.label else None, format_config=body.format_config,
         condition_field_id=body.condition_field_id, condition_value=body.condition_value,
         clear_condition=body.clear_condition,
     )
+    await _log_config(conn, claims["sub"], existing["company_id"], "field_update", field_id, row["label"],
+                      {"antes": existing["label"]} if existing["label"] != row["label"] else None)
     return dict(row)
+
+
+@router.post("/custom-fields/{field_id}/restore")
+async def restore_custom_field(
+    field_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Desarquivar (A8-16): o campo volta ao catálogo e às pastas onde estava aplicado."""
+    existing = await CustomFieldsService.get_field(conn, field_id)
+    if existing is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campo não encontrado.")
+    role = await get_app_role(conn, claims)
+    await _require_company_admin(conn, claims["sub"], UUID(existing["company_id"]), role)
+    await conn.execute("UPDATE public.custom_field SET archived_at = NULL WHERE id = $1", field_id)
+    await _log_config(conn, claims["sub"], existing["company_id"], "field_restore", field_id, existing["label"])
+    return {"id": str(field_id), "archived_at": None}
 
 
 @router.delete("/custom-fields/{field_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -221,6 +348,7 @@ async def archive_custom_field(
     await _require_company_admin(conn, claims["sub"], UUID(existing["company_id"]), role)
 
     await CustomFieldsService.archive_field(conn, field_id)
+    await _log_config(conn, claims["sub"], existing["company_id"], "field_archive", field_id, existing["label"])
 
 
 @router.post("/custom-fields/copy")
@@ -292,11 +420,22 @@ async def upsert_folder_field(
     if body.folder_id and folder_path is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada.")
 
+    field = await CustomFieldsService.get_field(conn, body.custom_field_id)
+    if field is None or str(field["company_id"]) != str(body.company_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campo não encontrado nesta empresa.")
+    if body.default_value:
+        erro = _value_error(field, body.default_value)
+        if erro:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Valor padrão de “{field['label']}”: {erro}")
+
     row = await CustomFieldsService.upsert_folder_field(
         conn, company_id=body.company_id, folder_path=folder_path, custom_field_id=body.custom_field_id,
         mode=body.mode, required=body.required, display_order=body.display_order,
         column_width=body.column_width, created_by=user_id, default_value=body.default_value,
     )
+    await _log_config(conn, user_id, body.company_id, "field_rule_exclude" if body.mode == "exclude" else "field_rule_apply",
+                      body.custom_field_id, field["label"],
+                      {"onde": folder_path or "Empresa toda", "obrigatorio": body.required, "padrao": body.default_value})
     return dict(row)
 
 
@@ -332,6 +471,24 @@ async def get_bulk_document_field_values(
     return [dict(r) for r in rows]
 
 
+class FieldValuesQuery(BaseModel):
+    document_ids: list[UUID]
+
+
+@router.post("/documents/field-values/query")
+async def query_document_field_values(
+    body: FieldValuesQuery,
+    conn: asyncpg.Connection = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """Mesmo que GET /documents/field-values, com os ids no corpo (até 1.000)."""
+    if len(body.document_ids) > 1000:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Máximo de 1.000 documentos por consulta.")
+    if not body.document_ids:
+        return []
+    rows = await CustomFieldsService.get_values_for_documents(conn, list(body.document_ids))
+    return [dict(r) for r in rows]
+
+
 @router.get("/documents/{document_id}/field-values")
 async def get_document_field_values(
     document_id: UUID,
@@ -339,6 +496,32 @@ async def get_document_field_values(
 ) -> list[dict[str, Any]]:
     rows = await CustomFieldsService.get_document_values(conn, document_id)
     return [dict(r) for r in rows]
+
+
+class BulkFieldValues(BaseModel):
+    document_ids: list[UUID]
+    values: list[DocumentFieldValueSet]
+
+
+@router.put("/documents/field-values/batch")
+async def set_field_values_batch(
+    body: BulkFieldValues,
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Edição de metadados em lote numa transação só (achado A5-29): ou todos os
+    documentos recebem os valores, ou nenhum — antes era um PUT por documento
+    e uma falha no meio deixava parte alterada. Mesma validação do formulário.
+    """
+    if not 1 <= len(body.document_ids) <= 1000:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Informe de 1 a 1.000 documentos.")
+    if not body.values:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nenhum campo para alterar.")
+    async with conn.transaction():
+        for document_id in body.document_ids:
+            await set_document_field_values(document_id, body.values, conn, claims)
+    return {"updated": len(body.document_ids)}
 
 
 @router.put("/documents/{document_id}/field-values")
@@ -431,6 +614,11 @@ async def set_document_field_values(
             options = format_config.get("options", [])
             if options and value_text not in options:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Valor fora das opções permitidas em '{field['label']}'.")
+        elif field["type"] in ("moeda", "email", "telefone", "cep", "booleano") and value_text:
+            try:
+                value_text, value_number = _normalize_extra(field["type"], value_text)
+            except ValueError as exc:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{exc} ({field['label']})")
 
         row = await CustomFieldsService.upsert_document_value(
             conn, document_id=document_id, company_id=company_id, custom_field_id=item.custom_field_id,

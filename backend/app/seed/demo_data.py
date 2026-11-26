@@ -382,14 +382,20 @@ async def _build_demo_data(
     conn: asyncpg.Connection,
     demo_user_id: str,
     extra_user_ids: dict[str, str],
-) -> None:
+) -> list[str]:
     """
     Núcleo do seed — recebe uma conexão já aberta (própria ou do pool admin
     do app) e os ids das contas de Auth já garantidas. Chamado tanto pelo
     `run_seed()` (CLI) quanto por `demo_reset_service.reset_demo_data()`
     (worker periódico + endpoint de reset manual). Assume que o chamador já
     está dentro de uma transação.
+
+    Devolve as chaves de storage dos documentos antigos (todas as versões):
+    o chamador apaga depois do COMMIT (X3-08 — antes cada reset deixava ~51
+    objetos órfãos no R2; apagar antes do COMMIT perderia os arquivos se a
+    transação voltasse atrás).
     """
+    stale_keys: list[str] = []
     # ------------------------------------------------------------------
     # 0. Limpar dados de demo anteriores (idempotente) — mantém os usuários
     #    (mesmos ids do Auth), só limpa as empresas fictícias.
@@ -401,12 +407,25 @@ async def _build_demo_data(
     #    companies) resolve. documents também cascadeia pra ocr_jobs/
     #    favorites/document_versions/share_accesses (via shares).
     # ------------------------------------------------------------------
+    # As empresas fictícias saem inteiras, inclusive documentos que um
+    # visitante tenha posto sob legal hold: o desvio da trava de exclusão
+    # (migration 20261125000001) vale só nesta transação.
+    await conn.execute("SELECT set_config('docke.bypass_retencao', 'on', true)")
     old_company_ids = await conn.fetch(
         "SELECT id FROM public.companies WHERE name = ANY($1::text[])",
         [c[0] for c in COMPANIES],
     )
     old_ids = [r["id"] for r in old_company_ids]
     if old_ids:
+        stale_keys = [r["k"] for r in await conn.fetch(
+            """
+            SELECT d.storage_path AS k FROM public.documents d WHERE d.company_id = ANY($1::uuid[]) AND d.storage_path IS NOT NULL
+            UNION
+            SELECT v.storage_key FROM public.document_versions v JOIN public.documents d ON d.id = v.document_id
+            WHERE d.company_id = ANY($1::uuid[])
+            """,
+            old_ids,
+        )]
         # shares.pin_to_version_id aponta para document_versions SEM cascata:
         # um link fixado numa versão travava o DELETE de documents (e o reset
         # inteiro) assim que algum visitante criasse um. Links saem primeiro.
@@ -420,11 +439,17 @@ async def _build_demo_data(
     # 1. Criar/atualizar usuário demo + usuários de equipe extras em
     #    public.users (mesmos ids das contas de Auth já garantidas)
     # ------------------------------------------------------------------
+    # Papel GLOBAL 'usuario': a conta demo é pública (sem senha digitada) e só
+    # administra as 3 empresas fictícias, pela concessão em user_company_access.
+    # Com o papel global 'admin' ela passava nas rotas /admin/* e alcançava as
+    # empresas reais do mesmo banco (achado A9-40). O ON CONFLICT reafirma o
+    # papel a cada reset, para nenhuma alteração manual sobreviver a ele.
     await conn.execute(
         """
         INSERT INTO public.users (id, username, full_name, role)
-        VALUES ($1::uuid, $2, $3, 'admin')
-        ON CONFLICT (id) DO UPDATE SET username = EXCLUDED.username, full_name = EXCLUDED.full_name
+        VALUES ($1::uuid, $2, $3, 'usuario')
+        ON CONFLICT (id) DO UPDATE
+          SET username = EXCLUDED.username, full_name = EXCLUDED.full_name, role = 'usuario'
         """,
         demo_user_id,
         DEMO_USER_USERNAME,
@@ -438,7 +463,8 @@ async def _build_demo_data(
             """
             INSERT INTO public.users (id, username, full_name, role)
             VALUES ($1::uuid, $2, $3, 'usuario')
-            ON CONFLICT (id) DO UPDATE SET username = EXCLUDED.username, full_name = EXCLUDED.full_name
+            ON CONFLICT (id) DO UPDATE
+              SET username = EXCLUDED.username, full_name = EXCLUDED.full_name, role = 'usuario'
             """,
             user_id,
             username,
@@ -446,7 +472,7 @@ async def _build_demo_data(
         )
     print(f"✔ {len(EXTRA_USERS)} usuários de equipe extras criados.")
 
-    for company_name, company_cnpj_label in COMPANIES:
+    for company_idx, (company_name, company_cnpj_label) in enumerate(COMPANIES):
         company_cnpj = "".join(ch for ch in company_cnpj_label if ch.isdigit())
         # ---------------------------------------------------------------
         # 2. Criar empresa
@@ -664,8 +690,115 @@ async def _build_demo_data(
                 doc_id, company_id, token_hash, password_hash, demo_user_id,
             )
 
-        print(f"  ✔ {company_name}: {len(docs_created)} docs, {len(folder_ids)} pastas, "
+        # ---------------------------------------------------------------
+        # 9. Obrigações com estados variados
+        # ---------------------------------------------------------------
+        n_obrigacoes = await _seed_obligations(
+            conn, company_id, company_idx, demo_user_id,
+            extra_user_ids[EXTRA_USERS[0][0]], non_deleted_docs,
+        )
+
+        print(f"  ✔ {company_name}: {n_obrigacoes} obrigações, {len(docs_created)} docs, {len(folder_ids)} pastas, "
               f"{len(anchor_docs) + 1} favoritos, {len(share_docs)} links")
+
+    return stale_keys
+
+
+# Obrigações da demo (achados A3-25 e A7-36): cada empresa fictícia mostra a
+# conformidade funcionando — uma atrasada, uma vencendo, uma esperando
+# conferência, aprovadas com o documento que comprova, uma certidão vencida —
+# em vez de uma tela vazia. Segmento por empresa: posto, hotel e uma geral.
+_DEMO_SEGMENTO = ["posto", "hotel", "restaurante"]
+_DEMO_GERAIS = ["fgts_digital", "esocial_folha", "dctfweb", "folha_pagamento", "cnd_federal", "crf_fgts", "alvara_funcionamento", "avcb"]
+_DEMO_POR_SEGMENTO = {
+    "posto": ["posto_licenca_ambiental", "posto_inmetro_bombas"],
+    "hotel": ["hotel_cadastur", "restaurante_caixa_dagua"],
+    "restaurante": ["restaurante_caixa_dagua", "restaurante_pragas"],
+}
+
+
+async def _seed_obligations(
+    conn: asyncpg.Connection, company_id: str, company_idx: int, demo_user_id: str,
+    operador_id: str, docs: list[tuple[str, str]],
+) -> int:
+    from app.services.obligation_catalog import BY_KEY
+
+    hoje = datetime.now(timezone.utc).date()
+    mes_passado = (hoje.replace(day=1) - timedelta(days=1))
+    retrasado = (mes_passado.replace(day=1) - timedelta(days=1))
+    comp_1, comp_2 = mes_passado.strftime("%Y-%m"), retrasado.strftime("%Y-%m")
+
+    def doc_like(prefix: str) -> str:
+        for doc_id, name in docs:
+            if name.startswith(prefix):
+                return doc_id
+        return docs[0][0]
+
+    keys = _DEMO_GERAIS + _DEMO_POR_SEGMENTO[_DEMO_SEGMENTO[company_idx % 3]]
+    tpl: dict[str, str] = {}
+    for key in keys:
+        item = BY_KEY[key]
+        tpl[key] = await conn.fetchval(
+            """
+            INSERT INTO public.obligation_templates
+              (company_id, name, description, frequency, criticality, department, sla_days, validity_months,
+               due_day, due_month_offset, due_month, legal_basis, catalog_key, default_owner_id, created_by, created_at)
+            VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::uuid, $15::uuid, now() - interval '40 days')
+            RETURNING id
+            """,
+            company_id, item["name"], item.get("description"), item["frequency"], item["criticality"],
+            item.get("department"), item.get("sla_days", 0), item.get("validity_months"), item.get("due_day"),
+            item.get("due_month_offset", 1), item.get("due_month"), item.get("legal_basis"), key,
+            operador_id if item.get("department") == "RH" else demo_user_id, demo_user_id,
+        )
+
+    async def inst(key: str, period: str, due, owner: str | None, *, doc: str | None = None,
+                   approve: bool = False, valid_until=None, linked_days_ago: int = 3) -> None:
+        iid = await conn.fetchval(
+            """
+            INSERT INTO public.obligation_instances (template_id, company_id, period, due_date, owner_id)
+            VALUES ($1, $2::uuid, $3, $4, $5::uuid) RETURNING id
+            """,
+            tpl[key], company_id, period, due, owner,
+        )
+        if doc:
+            await conn.execute(
+                """
+                INSERT INTO public.obligation_documents (obligation_instance_id, document_id, linked_by, linked_at, valid_until)
+                VALUES ($1, $2::uuid, $3::uuid, now() - make_interval(days => $4), $5)
+                """,
+                iid, doc, owner or demo_user_id, linked_days_ago, valid_until,
+            )
+        if approve:
+            await conn.execute(
+                """
+                UPDATE public.obligation_instances
+                SET status = 'approved', reviewed_by = $2::uuid, reviewed_at = now() - interval '1 day',
+                    satisfied_at = now() - interval '1 day'
+                WHERE id = $1
+                """,
+                iid, demo_user_id,
+            )
+
+    d = timedelta
+    # Mensais: a competência retrasada aprovada com prova; a do mês passado em estados variados.
+    for key, prefix in (("fgts_digital", "Boleto"), ("esocial_folha", "Planilha_RH"), ("dctfweb", "DCTF"), ("folha_pagamento", "Holerite")):
+        await inst(key, comp_2, hoje - d(days=25), demo_user_id, doc=doc_like(prefix), approve=True, linked_days_ago=27)
+    await inst("fgts_digital", comp_1, hoje - d(days=3), operador_id)                                  # atrasada
+    await inst("esocial_folha", comp_1, hoje + d(days=4), operador_id)                                 # vencendo
+    await inst("dctfweb", comp_1, hoje + d(days=9), demo_user_id, doc=doc_like("DCTF"))                # em conferência
+    await inst("folha_pagamento", comp_1, hoje - d(days=20), operador_id, doc=doc_like("Holerite"), approve=True)
+    # Certidões e licenças: uma válida, uma vencida, uma a enviar.
+    await inst("cnd_federal", "Vigente", hoje + d(days=15), demo_user_id, doc=doc_like("Relatorio"), approve=True,
+               valid_until=hoje + d(days=40), linked_days_ago=140)
+    await inst("crf_fgts", "Vigente", hoje + d(days=5), demo_user_id, doc=doc_like("Extrato"), approve=True,
+               valid_until=hoje - d(days=2), linked_days_ago=32)                                       # vencida
+    await inst("alvara_funcionamento", "Vigente", hoje + d(days=40), None)
+    await inst("avcb", "Vigente", hoje + d(days=12), demo_user_id)
+    for key in _DEMO_POR_SEGMENTO[_DEMO_SEGMENTO[company_idx % 3]]:
+        await inst(key, "Vigente", hoje + d(days=60), demo_user_id, doc=doc_like("Procuração"), approve=True,
+                   valid_until=hoje + d(days=200), linked_days_ago=60)
+    return len(keys)
 
 
 async def run_seed() -> None:
@@ -688,8 +821,9 @@ async def run_seed() -> None:
 
     try:
         await conn.execute("BEGIN")
-        await _build_demo_data(conn, demo_user_id, extra_user_ids)
+        stale_keys = await _build_demo_data(conn, demo_user_id, extra_user_ids)
         await conn.execute("COMMIT")
+        storage_service.delete_document_objects(stale_keys)
         print("\n✅ Seed concluído com sucesso!")
         print(f"   Login demo: {DEMO_USER_EMAIL} / {DEMO_USER_PASSWORD}")
         print("   Empresas: Comércio Alfa Modelo Ltda | Serviços Beta Referência SA | Indústria Gama Exemplo Ltda")

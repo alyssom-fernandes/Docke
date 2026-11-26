@@ -17,6 +17,8 @@ export interface Task {
   progress?: number; // 0-100, undefined = indeterminate
   error?: string;
   createdAt: number;
+  /** Há como cancelar (A2-26): quem criou a tarefa registrou o cancelamento. */
+  cancellable?: boolean;
 }
 
 interface TaskCtx {
@@ -31,6 +33,8 @@ interface TaskCtx {
   // aquele id e chamar. Nunca serializado (função, não vai pro sessionStorage).
   registerRetry: (id: string, fn: () => void) => void;
   retry: (id: string) => void;
+  registerCancel: (id: string, fn: (() => void) | null) => void;
+  cancel: (id: string) => void;
 }
 
 const Ctx = createContext<TaskCtx>({
@@ -41,6 +45,8 @@ const Ctx = createContext<TaskCtx>({
   clearDone: () => {},
   registerRetry: () => {},
   retry: () => {},
+  registerCancel: () => {},
+  cancel: () => {},
 });
 
 let _seq = 0;
@@ -57,7 +63,7 @@ function loadPersisted(): Task[] {
     const parsed = JSON.parse(raw) as Task[];
     // tarefa "running" que sobrou de uma aba fechada no meio do processo
     // não pode ficar girando pra sempre — marca como falha ao recarregar.
-    return parsed.map((t) => (t.status === "running" ? { ...t, status: "failed" as const, error: "Interrompido ao recarregar a página." } : t));
+    return parsed.map((t) => (t.status === "running" ? { ...t, status: "failed" as const, cancellable: false, error: "Interrompido ao recarregar a página." } : { ...t, cancellable: false }));
   } catch {
     return [];
   }
@@ -67,6 +73,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>(loadPersisted);
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const retryHandlers = useRef<Map<string, () => void>>(new Map());
+  const cancelHandlers = useRef<Map<string, () => void>>(new Map());
 
   const persist = useCallback((next: Task[]) => {
     try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* quota/privado — ignora */ }
@@ -128,8 +135,23 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     retryHandlers.current.get(id)?.();
   }, []);
 
+  const registerCancel = useCallback((id: string, fn: (() => void) | null) => {
+    if (fn) cancelHandlers.current.set(id, fn); else cancelHandlers.current.delete(id);
+    setTasks((prev) => {
+      const next = prev.map((t) => (t.id === id ? { ...t, cancellable: !!fn } : t));
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
+  const cancel = useCallback((id: string) => {
+    const fn = cancelHandlers.current.get(id);
+    cancelHandlers.current.delete(id);
+    fn?.();
+  }, []);
+
   return (
-    <Ctx.Provider value={{ tasks, addTask, updateTask, removeTask, clearDone, registerRetry, retry }}>
+    <Ctx.Provider value={{ tasks, addTask, updateTask, removeTask, clearDone, registerRetry, retry, registerCancel, cancel }}>
       {children}
     </Ctx.Provider>
   );

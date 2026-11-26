@@ -85,6 +85,17 @@ def put_object_bytes(key: str, data: bytes, content_type: str) -> None:
     mock_save(key, data)
 
 
+def upload_file(key: str, path: str, content_type: str) -> int:
+    """Sobe um arquivo do disco (multipart automático no R2). Devolve o tamanho."""
+    size = os.path.getsize(path)
+    if _r2_configured:
+        _s3.upload_file(path, settings.R2_BUCKET_NAME, key, ExtraArgs={"ContentType": content_type})
+        return size
+    with open(path, "rb") as f:
+        mock_save(key, f.read())
+    return size
+
+
 def generate_upload_url(
     key: str,
     content_type: str,
@@ -249,6 +260,22 @@ def read_object(key: str) -> bytes | None:
     return mock_read(key)
 
 
+def read_head(key: str, n: int = 1024) -> bytes | None:
+    """Primeiros bytes do objeto (assinatura do formato, X3-18). None se não existir."""
+    if _r2_configured:
+        try:
+            response = _s3.get_object(Bucket=settings.R2_BUCKET_NAME, Key=key, Range=f"bytes=0-{n - 1}")
+            return response["Body"].read()
+        except Exception:
+            return None
+    safe_key = _mock_key(key)
+    path = MOCK_DIR / safe_key
+    if not path.exists():
+        return None
+    with open(path, "rb") as f:
+        return f.read(n)
+
+
 def mock_read(key: str) -> bytes | None:
     """Lê arquivo do mock storage. Retorna None se não existir."""
     safe_key = _mock_key(key)
@@ -306,9 +333,39 @@ import uuid as _uuid  # noqa: E402
 _CONVERTIBLE_EXTENSIONS = {"docx", "doc", "xlsx", "xls"}
 
 
+def delete_document_objects(keys: list[str]) -> list[str]:
+    """
+    Apaga do storage o arquivo de cada versão e os derivados (PDF do Office e
+    PDF do OCR) — X3-08: antes só o arquivo atual saía e as versões antigas
+    ficavam órfãs. Devolve as chaves que não puderam ser apagadas.
+    """
+    falhas: list[str] = []
+    for key in dict.fromkeys(k for k in keys if k):
+        try:
+            delete_object(key)
+        except Exception:
+            falhas.append(key)
+        delete_derivatives(key)
+    return falhas
+
+
 def derivative_pdf_key(original_key: str) -> str:
     """derivatives/{mesmo caminho}.pdf — 1:1 com o objeto original."""
     return f"derivatives/{original_key}.pdf"
+
+
+def ocr_pdf_key(original_key: str) -> str:
+    """PDF pesquisável (páginas escaneadas com a camada de texto do OCR)."""
+    return f"derivatives/{original_key}.ocr.pdf"
+
+
+def delete_derivatives(original_key: str) -> None:
+    """Melhor esforço: apaga os derivados de um objeto (PDF do LibreOffice e PDF do OCR)."""
+    for key in (derivative_pdf_key(original_key), ocr_pdf_key(original_key)):
+        try:
+            delete_object(key)
+        except Exception:
+            pass
 
 
 def convert_office_to_pdf(source_key: str, ext: str) -> bytes | None:

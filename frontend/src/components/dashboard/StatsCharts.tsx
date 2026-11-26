@@ -1,11 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronRight, ArrowUpRight, FolderOpen } from "lucide-react";
 
-// Fase 3.2/3.4: dois widgets de gráfico do dashboard — juntos ocupam bem
-// menos de 20% da tela (regra da pesquisa). Um hue só (teal, a cor da marca)
-// porque as duas séries são de magnitude, não de identidade — não há
-// categorias concorrendo por cor aqui, só grandeza variando por comprimento.
+// Fase 3.2/3.4: dois widgets de gráfico do Início. Um hue só (a cor da
+// marca, por token) porque as duas séries são de grandeza, não de identidade.
 
 export interface DailyUpload {
   date: string;
@@ -13,129 +11,207 @@ export interface DailyUpload {
 }
 
 export interface FolderBreakdown {
-  id: string;
+  id: string | null;
   name: string;
   document_count: number;
+  has_children?: boolean;
+  /** "outras" = pastas agrupadas além das 6 maiores; "direto" = arquivos soltos na pasta atual. */
+  kind?: "outras" | "direto";
 }
 
 function fmtDayLabel(iso: string) {
   const d = new Date(iso + "T00:00:00");
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "");
 }
 
-/** Linha fina de uploads por dia (14 dias) — traço 2px, extremidades
- * arredondadas, crosshair + tooltip no hover (a interação é o que torna um
- * SVG estático em "gráfico" de verdade, não decoração). */
+const plural = (n: number, um: string, varios: string) => `${n.toLocaleString("pt-BR")} ${n === 1 ? um : varios}`;
+
+/**
+ * Envios por dia em colunas (J1-07): contagem de cada dia é um número inteiro,
+ * então cada dia é uma coluna (a linha ligando os pontos sugeria um contínuo
+ * que não existe). Dia sem envio tem uma marca baixa para o dia aparecer; o
+ * dia de hoje fica destacado. Preenche a largura do cartão (A3-17); a coluna
+ * em foco responde ao mouse, ao toque e às setas (A3-19), e uma tabela oculta
+ * entrega os números a leitores de tela.
+ */
 export function UploadsLineChart({ data }: { data: DailyUpload[] }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(560);
+
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setWidth(Math.max(200, Math.round(e.contentRect.width))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   if (data.length === 0) return null;
 
-  const W = 560;
-  const H = 88;
-  const padX = 8;
-  const padY = 12;
+  const W = width;
+  const H = 96;
+  const padTop = 14;
+  const padBottom = 1;
   const max = Math.max(1, ...data.map((d) => d.count));
-  const stepX = (W - padX * 2) / Math.max(1, data.length - 1);
+  const slot = W / data.length;
+  const barW = Math.max(2, Math.min(28, slot * 0.68));
+  const todayIso = new Date().toLocaleDateString("sv-SE"); // AAAA-MM-DD no fuso local
+  const points = data.map((d, i) => {
+    const h = d.count > 0 ? Math.max(3, (d.count / max) * (H - padTop - padBottom)) : 2;
+    return { x: slot * i + slot / 2, y: H - padBottom - h, h, today: d.date === todayIso, ...d };
+  });
+  const peak = data.reduce((a, b) => (b.count > a.count ? b : a), data[0]);
+  const hover = hoverIdx !== null ? points[hoverIdx] : null;
+  const ticks = [0, Math.floor((data.length - 1) / 2), data.length - 1];
 
-  const points = data.map((d, i) => ({
-    x: padX + i * stepX,
-    y: H - padY - (d.count / max) * (H - padY * 2),
-    ...d,
-  }));
-
-  const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
-  const areaPath = `${linePath} L ${points[points.length - 1].x} ${H} L ${points[0].x} ${H} Z`;
-
-  function handleMove(e: React.MouseEvent<SVGSVGElement>) {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const relX = ((e.clientX - rect.left) / rect.width) * W;
-    let closest = 0;
-    let bestDist = Infinity;
-    points.forEach((p, i) => {
-      const dist = Math.abs(p.x - relX);
-      if (dist < bestDist) { bestDist = dist; closest = i; }
-    });
-    setHoverIdx(closest);
+  function pick(clientX: number, rect: DOMRect) {
+    const relX = ((clientX - rect.left) / rect.width) * W;
+    setHoverIdx(Math.min(points.length - 1, Math.max(0, Math.floor(relX / slot))));
   }
 
-  const hover = hoverIdx !== null ? points[hoverIdx] : null;
-
   return (
-    <div className="relative">
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className="w-full h-[88px] overflow-visible"
-        onMouseMove={handleMove}
-        onMouseLeave={() => setHoverIdx(null)}
-        role="img"
-        aria-label={`Documentos enviados por dia, últimos ${data.length} dias`}
+    <div>
+      <div
+        ref={boxRef}
+        className="relative outline-hidden rounded-[6px] focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
+        tabIndex={0}
+        role="group"
+        aria-label={`Envios por dia. Use as setas para ver cada dia. Pico de ${plural(peak.count, "documento", "documentos")} em ${fmtDayLabel(peak.date)}.`}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowRight") { e.preventDefault(); setHoverIdx((i) => Math.min(points.length - 1, (i ?? -1) + 1)); }
+          if (e.key === "ArrowLeft") { e.preventDefault(); setHoverIdx((i) => Math.max(0, (i ?? points.length) - 1)); }
+          if (e.key === "Home") { e.preventDefault(); setHoverIdx(0); }
+          if (e.key === "End") { e.preventDefault(); setHoverIdx(points.length - 1); }
+          if (e.key === "Escape") setHoverIdx(null);
+        }}
+        onBlur={() => setHoverIdx(null)}
       >
-        <path d={areaPath} fill="var(--chart-teal-area, rgba(21,161,142,0.12))" stroke="none" />
-        <path d={linePath} fill="none" stroke="#15A18E" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-        {hover && (
-          <>
-            <line x1={hover.x} y1={0} x2={hover.x} y2={H} stroke="var(--border-default)" strokeWidth={1} strokeDasharray="2,2" />
-            <circle cx={hover.x} cy={hover.y} r={4} fill="#15A18E" stroke="var(--bg-card)" strokeWidth={2} />
-          </>
-        )}
-      </svg>
-      {hover && (
-        <div
-          className="absolute -top-1 px-2 py-1 rounded-[6px] bg-(--text-primary) text-(--bg-card) text-mac-caption2 pointer-events-none whitespace-nowrap"
-          style={{ left: `${(hover.x / W) * 100}%`, transform: "translate(-50%, -100%)" }}
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          width="100%"
+          height={H}
+          className="block overflow-visible touch-pan-y"
+          onPointerMove={(e) => pick(e.clientX, e.currentTarget.getBoundingClientRect())}
+          onPointerDown={(e) => pick(e.clientX, e.currentTarget.getBoundingClientRect())}
+          onPointerLeave={(e) => { if (e.pointerType === "mouse") setHoverIdx(null); }}
+          aria-hidden="true"
         >
-          {fmtDayLabel(hover.date)} · {hover.count} {hover.count === 1 ? "documento" : "documentos"}
-        </div>
-      )}
+          <line x1={0} x2={W} y1={padTop} y2={padTop} stroke="var(--border-default)" strokeDasharray="2,3" />
+          {points.map((p, i) => (
+            <rect
+              key={p.date}
+              x={p.x - barW / 2}
+              y={p.y}
+              width={barW}
+              height={p.h}
+              rx={Math.min(3, barW / 2)}
+              fill={p.count === 0 ? "var(--border-control)" : "var(--chart-line)"}
+              opacity={hoverIdx === null || hoverIdx === i ? 1 : 0.45}
+            />
+          ))}
+          <line x1={0} x2={W} y1={H - padBottom} y2={H - padBottom} stroke="var(--border-default)" />
+        </svg>
+        <span className="absolute left-0 top-0 -translate-y-1/2 text-mac-caption2 text-(--text-secondary) tabular-nums bg-(--bg-card) pr-1">
+          {max.toLocaleString("pt-BR")}
+        </span>
+        {hover && (
+          <div
+            className="absolute top-0 px-2 py-1 rounded-[6px] bg-(--text-primary) text-(--bg-card) text-mac-caption pointer-events-none whitespace-nowrap"
+            style={{
+              left: `${(hover.x / W) * 100}%`,
+              transform: `translate(${hover.x < W * 0.15 ? "0" : hover.x > W * 0.85 ? "-100%" : "-50%"}, -110%)`,
+            }}
+            role="status"
+          >
+            {hover.today ? "Hoje" : fmtDayLabel(hover.date)} · {plural(hover.count, "documento", "documentos")}
+          </div>
+        )}
+      </div>
+      <div className="relative h-5 mt-1 text-mac-caption2 text-(--text-secondary) tabular-nums" aria-hidden="true">
+        {ticks.map((i, k) => (
+          <span
+            key={k}
+            className="absolute top-0 whitespace-nowrap"
+            style={{ left: `${(points[i].x / W) * 100}%`, transform: k === 0 ? "none" : k === 2 ? "translateX(-100%)" : "translateX(-50%)" }}
+          >
+            {points[i].today ? "hoje" : fmtDayLabel(data[i].date)}
+          </span>
+        ))}
+      </div>
+      <table className="sr-only">
+        <caption>Documentos enviados por dia</caption>
+        <thead><tr><th scope="col">Dia</th><th scope="col">Documentos</th></tr></thead>
+        <tbody>
+          {data.map((d) => <tr key={d.date}><td>{fmtDayLabel(d.date)}</td><td>{d.count}</td></tr>)}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-/** Barra horizontal — top pastas por nº de documentos. Fase 3.7: este é o
- * "filtro próprio do widget" — a linha inteira desce um nível na árvore
- * (drill-down dentro do próprio gráfico, via onDrill), independente do
- * filtro global de período que afeta o gráfico de uploads ao lado. O ícone
- * de seta externa é o atalho pra sair do widget e ver os documentos de
- * verdade, sem competir com o clique de drill-down na mesma área. Uma cor
- * só: o comprimento da barra é o dado, não a cor. */
+/**
+ * Pastas com mais documentos, somando as subpastas (achado A3-20). A linha
+ * desce um nível quando a pasta tem subpastas; o atalho ao lado abre a pasta
+ * em Documentos e fica visível no foco e no toque, não só no hover (A3-19).
+ */
 export function FolderBarChart({ data, onDrill }: { data: FolderBreakdown[]; onDrill: (folderId: string, name: string) => void }) {
   const navigate = useNavigate();
   if (data.length === 0) return null;
   const max = Math.max(1, ...data.map((d) => d.document_count));
 
   return (
-    <ul className="space-y-2">
-      {data.map((f) => (
-        <li key={f.id} className="flex items-center gap-1 group">
-          <button
-            onClick={() => onDrill(f.id, f.name)}
-            className="flex-1 min-w-0 flex items-center gap-2 text-left"
-            title={`Ver documentos por pasta dentro de "${f.name}"`}
-          >
-            <span className="w-20 shrink-0 text-mac-caption text-(--text-secondary) truncate group-hover:text-teal-500 transition-colors duration-fast">
+    <ul className="space-y-1">
+      {data.map((f) => {
+        const bar = (
+          <>
+            <span className="w-28 sm:w-32 shrink-0 text-mac-caption text-(--text-secondary) truncate group-hover:text-(--text-primary)" title={f.name}>
               {f.name}
             </span>
-            <span className="flex-1 h-4 bg-(--bg-hover) rounded-[3px] overflow-hidden">
+            <span className="flex-1 h-4 bg-(--chart-track) rounded-[3px] overflow-hidden">
               <span
-                className="block h-full bg-teal-500 rounded-[3px] transition-[width] duration-normal group-hover:bg-teal-400"
-                style={{ width: `${Math.max(4, (f.document_count / max) * 100)}%` }}
+                className={`block h-full rounded-[3px] transition-[width] duration-normal ${f.kind ? "bg-(--chart-bar)/55" : "bg-(--chart-bar) group-hover:bg-(--chart-bar-hover)"}`}
+                style={{ width: `${Math.max(3, (f.document_count / max) * 100)}%` }}
               />
             </span>
-            <span className="w-6 shrink-0 text-mac-caption text-(--text-tertiary) text-right tabular-nums">
-              {f.document_count}
+            <span className="w-10 shrink-0 text-mac-caption text-(--text-secondary) text-right tabular-nums">
+              {f.document_count.toLocaleString("pt-BR")}
             </span>
-            <ChevronRight className="w-3 h-3 text-(--text-tertiary) shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-fast" />
-          </button>
-          <button
-            onClick={() => navigate(`/documents?folder_id=${f.id}`)}
-            title={`Abrir pasta "${f.name}" em Documentos`}
-            aria-label={`Abrir pasta ${f.name} em Documentos`}
-            className="shrink-0 p-1 rounded-badge text-(--text-tertiary) opacity-0 group-hover:opacity-100 hover:text-teal-500 hover:bg-(--bg-hover) transition-colors duration-fast"
-          >
-            <ArrowUpRight className="w-3.5 h-3.5" />
-          </button>
-        </li>
-      ))}
+          </>
+        );
+        if (f.kind === "outras" || !f.id) {
+          return (
+            <li key={`outras-${f.name}`} className="flex items-center gap-2 min-h-8 pr-8">
+              {bar}
+            </li>
+          );
+        }
+        const id = f.id;
+        const drill = f.has_children && f.kind !== "direto";
+        return (
+          <li key={`${id}-${f.kind ?? ""}`} className="group flex items-center gap-1">
+            <button
+              onClick={() => (drill ? onDrill(id, f.name) : navigate(`/documents?folder_id=${id}`))}
+              className="flex-1 min-w-0 flex items-center gap-2 min-h-8 pointer-coarse:min-h-11 rounded-[6px] text-left focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
+              aria-label={`${f.name}: ${plural(f.document_count, "documento", "documentos")}. ${drill ? "Ver subpastas" : "Abrir em Documentos"}`}
+            >
+              {bar}
+              <ChevronRight className={`w-3.5 h-3.5 shrink-0 ${drill ? "text-(--text-secondary)" : "invisible"}`} aria-hidden="true" />
+            </button>
+            <button
+              onClick={() => navigate(`/documents?folder_id=${id}`)}
+              title={`Abrir "${f.name}" em Documentos`}
+              aria-label={`Abrir ${f.name} em Documentos`}
+              className={`shrink-0 p-1 pointer-coarse:p-2.5 rounded-badge text-(--text-secondary) hover:text-(--text-accent) hover:bg-(--bg-hover)
+                opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100
+                focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${drill ? "" : "invisible"}`}
+              tabIndex={drill ? 0 : -1}
+            >
+              <ArrowUpRight className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -145,27 +221,23 @@ export interface FolderCrumb {
   name: string;
 }
 
-/** Breadcrumb do filtro próprio do widget "Documentos por pasta" — mesma
- * lógica de navegação hierárquica já usada em Documents.tsx, só que
- * isolada aqui dentro do card (não navega a página, só refiltra o gráfico). */
+/** Caminho dentro do gráfico de pastas: só refiltra o gráfico, não navega. */
 export function FolderChartBreadcrumb({ path, onNavigate }: { path: FolderCrumb[]; onNavigate: (index: number) => void }) {
   return (
-    <div className="flex items-center gap-1 min-w-0 text-mac-caption text-(--text-tertiary)">
-      <FolderOpen className="w-3 h-3 shrink-0" />
+    <nav aria-label="Caminho no gráfico de pastas" className="flex items-center gap-1 min-w-0 text-mac-caption text-(--text-secondary)">
+      <FolderOpen className="w-3 h-3 shrink-0" aria-hidden="true" />
       {path.map((crumb, i) => (
         <span key={crumb.id ?? "root"} className="flex items-center gap-1 min-w-0">
-          {i > 0 && <ChevronRight className="w-2.5 h-2.5 shrink-0" />}
-          <button
-            onClick={() => onNavigate(i)}
-            disabled={i === path.length - 1}
-            className={`truncate transition-colors duration-fast ${
-              i === path.length - 1 ? "text-(--text-secondary) font-medium cursor-default" : "hover:text-teal-500"
-            }`}
-          >
-            {crumb.name}
-          </button>
+          {i > 0 && <ChevronRight className="w-2.5 h-2.5 shrink-0" aria-hidden="true" />}
+          {i === path.length - 1 ? (
+            <span className="truncate text-(--text-primary) font-medium" aria-current="location">{crumb.name}</span>
+          ) : (
+            <button onClick={() => onNavigate(i)} className="truncate hover:text-(--text-accent) underline-offset-2 hover:underline">
+              {crumb.name}
+            </button>
+          )}
         </span>
       ))}
-    </div>
+    </nav>
   );
 }

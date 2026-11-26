@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from typing import Any
 from uuid import UUID
@@ -29,6 +30,7 @@ async def list_activity(
     date_to: date | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=_PAGE_SIZE_MAX),
+    sem_acessos: bool = Query(False, description="Esconde visualizações e downloads (resumo do Início)."),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> dict[str, Any]:
     """
@@ -39,7 +41,7 @@ async def list_activity(
     return await ActivityService.list_events(
         conn,
         company_id=company_id, user_id=user_id, action=action, item_type=item_type, item_id=item_id,
-        date_from=date_from, date_to=date_to, page=page, page_size=page_size,
+        date_from=date_from, date_to=date_to, page=page, page_size=page_size, sem_acessos=sem_acessos,
     )
 
 
@@ -109,15 +111,18 @@ async def verify_activity_integrity(
     if role != "supremo" and not await CompaniesService.user_manages_company(conn, claims["sub"], company_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Só administradores da empresa podem verificar a integridade da trilha de auditoria.")
 
-    rows = await ActivityService.verify_chain(conn, company_id=company_id)
     # A linha de "Cadeia truncada" (eventos mais recentes apagados) não tem
-    # event_id: conta como quebra, mas não como evento verificado.
-    broken = [dict(r) for r in rows if not r["ok"]]
+    # event_id: conta como quebra, mas não como evento verificado. A contagem
+    # é feita no banco (X3-12).
+    summary = await ActivityService.verify_summary(conn, company_id=company_id)
+    first = summary["first_broken"]
+    if isinstance(first, str):
+        first = json.loads(first)
     return {
-        "total_events": sum(1 for r in rows if r["event_id"] is not None),
-        "intact": len(broken) == 0,
-        "broken_count": len(broken),
-        "first_broken": broken[0] if broken else None,
+        "total_events": summary["total_events"],
+        "intact": summary["broken_count"] == 0,
+        "broken_count": summary["broken_count"],
+        "first_broken": first,
     }
 
 

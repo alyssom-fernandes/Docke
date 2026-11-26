@@ -1,12 +1,13 @@
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
-import io
 import os
 import tempfile
 import zipfile
 from urllib.parse import quote
+
+import asyncio
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -17,12 +18,14 @@ from app.dependencies import get_current_user, get_db, get_db_admin
 from app.config import settings
 from app.services import storage_service
 from app.services.documents_service import DocumentsService, _MIME_MAP
+from app.services.file_signature import content_matches_extension, describe as describe_ext
 from app.services.notification_service import notify_folder_favoriters
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 _ALLOWED_EXT = set(settings.ALLOWED_EXTENSIONS)
-_BULK_LIMIT = 50  # máximo de arquivos por lote
+_BULK_LIMIT = 1000  # máximo de documentos por lote (mover, excluir, restaurar) — antes 50 (achado A4-26)
+_BULK_DOWNLOAD_LIMIT = 200  # ZIP montado em memória; para mais, a exportação completa
 # Fase 6.2: preview igualado ao limite de upload — o limite de 10MB era
 # artificial (URL é presigned direto pro R2, o navegador baixa sozinho,
 # o backend nunca vê o arquivo). Manter os dois amarrados evita a mesma
@@ -49,6 +52,32 @@ class UploadUrlRequest(BaseModel):
     name: str
     size_bytes: int
     content_type: str
+    # Migração (achado X2-07): data em que o documento entrou no sistema antigo.
+    # Só o admin da empresa toda pode informar; vira a data do documento no
+    # Docke (inclusive para a retenção contada "da data de envio").
+    original_created_at: datetime | None = None
+
+
+async def _original_date_allowed(
+    conn: asyncpg.Connection, claims: dict[str, Any], company_id: UUID, value: datetime | None,
+) -> datetime | None:
+    if value is None:
+        return None
+    from app.dependencies import get_app_role
+    from app.services.companies_service import CompaniesService
+
+    if await get_app_role(conn, claims) != "supremo" and not await CompaniesService.user_manages_company(
+        conn, claims["sub"], company_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Só o admin da empresa informa a data original (usada na migração de outro sistema).",
+        )
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    if value > datetime.now(timezone.utc):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A data original não pode estar no futuro.")
+    return value
 
 
 class DocumentPatch(BaseModel):
@@ -115,25 +144,53 @@ async def create_upload_url(
     key = storage_service.storage_key(str(body.company_id), str(document_id), ext)
     user_id = claims["sub"]
 
+    # O tipo vem da extensão, não do navegador: o Chrome chama XML de
+    # "text/xml" e o mapa diz "application/xml". A URL é assinada com este
+    # tipo e o cliente precisa mandar exatamente ele no PUT (por isso volta
+    # na resposta) — antes, o XML de NF-e falhava com 403 (achado X2-03).
+    content_type = _MIME_MAP.get(ext, body.content_type)
+    original = await _original_date_allowed(conn, claims, body.company_id, body.original_created_at)
     row = await DocumentsService.insert_pending_document(
         admin_conn,
         document_id=document_id, folder_id=body.folder_id, company_id=body.company_id,
-        name=final_name, mime_type=_MIME_MAP.get(ext, body.content_type), file_type=ext,
-        size_bytes=body.size_bytes, storage_path=key, uploaded_by=user_id,
+        name=final_name, mime_type=content_type, file_type=ext,
+        size_bytes=body.size_bytes, storage_path=key, uploaded_by=user_id, created_at=original,
     )
 
-    upload_url, expires_at = storage_service.generate_upload_url(
-        key=key,
-        content_type=_MIME_MAP.get(ext, body.content_type),
-    )
+    upload_url, expires_at = storage_service.generate_upload_url(key=key, content_type=content_type)
 
     return {
         "document_id": row["id"],
         "upload_url": upload_url,
+        "content_type": content_type,
+        "name": final_name,
         "expires_at": expires_at.isoformat(),
         "storage_key": key,
         "mock_mode": storage_service.is_mock(),
     }
+
+
+# ---------------------------------------------------------------------------
+# POST /documents/:id/abort-upload — desiste de um envio que não se completou
+# ---------------------------------------------------------------------------
+
+@router.post("/{document_id}/abort-upload", status_code=status.HTTP_204_NO_CONTENT)
+async def abort_upload(
+    document_id: UUID,
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> None:
+    """
+    O envio direto ao storage falhou: apaga o registro provisório (sem hash),
+    para não sobrar um "documento fantasma" ocupando o nome (achado X2-03).
+    Idempotente; documento já confirmado não é tocado.
+    """
+    doc = await DocumentsService.get_document_for_confirm(admin_conn, document_id, claims["sub"])
+    if doc is None:
+        return
+    if doc["permission"] not in ("admin", "operador"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para este envio.")
+    await DocumentsService.delete_pending_document(admin_conn, document_id)
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +278,7 @@ async def _finalize_confirmed_upload(
     """
     key = doc["storage_path"]
 
-    meta = storage_service.head_object(key)
+    meta = await asyncio.to_thread(storage_service.head_object, key)
     if meta is None:
         raise HTTPException(
             status_code=status.HTTP_424_FAILED_DEPENDENCY,
@@ -234,7 +291,7 @@ async def _finalize_confirmed_upload(
         # um arquivo maior direto pro storage (a URL pré-assinada não impõe
         # limite). Remove o objeto e o registro pendente em vez de deixar lixo.
         try:
-            storage_service.delete_object(key)
+            await asyncio.to_thread(storage_service.delete_object, key)
         except Exception:
             pass
         await DocumentsService.delete_pending_document(admin_conn, document_id)
@@ -243,7 +300,22 @@ async def _finalize_confirmed_upload(
             detail=f"Arquivo excede o limite de {settings.MAX_FILE_SIZE_BYTES // 1_048_576}MB.",
         )
 
-    content_hash = storage_service.compute_sha256(key)
+    # O conteúdo tem de bater com a extensão (X3-18): um executável ou HTML
+    # com nome .pdf não entra.
+    head = await asyncio.to_thread(storage_service.read_head, key)
+    if head is not None and not content_matches_extension(doc["name"], head):
+        try:
+            await asyncio.to_thread(storage_service.delete_object, key)
+        except Exception:
+            pass
+        await DocumentsService.delete_pending_document(admin_conn, document_id)
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"O conteúdo de \"{doc['name']}\" não é de um arquivo {describe_ext(doc['name'])}: a extensão não bate com o conteúdo. Confira o arquivo e envie de novo.",
+        )
+
+    # Fora do laço assíncrono: ler um arquivo grande para o hash travava as outras requisições.
+    content_hash = await asyncio.to_thread(storage_service.compute_sha256, key)
     if content_hash is None:
         raise HTTPException(
             status_code=status.HTTP_424_FAILED_DEPENDENCY,
@@ -260,7 +332,7 @@ async def _finalize_confirmed_upload(
     duplicate = await DocumentsService.find_duplicate_by_hash(admin_conn, doc["company_id"], content_hash, document_id)
     if duplicate is not None:
         try:
-            storage_service.delete_object(key)
+            await asyncio.to_thread(storage_service.delete_object, key)
         except Exception:
             pass  # melhor esforço — mesmo padrão de trash.py; o dedup não deve travar por isso
         await DocumentsService.delete_pending_document(admin_conn, document_id)
@@ -330,6 +402,7 @@ class MultipartCreateRequest(BaseModel):
     name: str
     size_bytes: int
     content_type: str
+    original_created_at: datetime | None = None  # ver UploadUrlRequest
 
 
 @router.post("/multipart/create", status_code=status.HTTP_201_CREATED)
@@ -375,12 +448,13 @@ async def create_multipart_upload(
     key = storage_service.storage_key(str(body.company_id), str(document_id), ext)
     user_id = claims["sub"]
     content_type = _MIME_MAP.get(ext, body.content_type)
+    original = await _original_date_allowed(conn, claims, body.company_id, body.original_created_at)
 
     await DocumentsService.insert_pending_document(
         admin_conn,
         document_id=document_id, folder_id=body.folder_id, company_id=body.company_id,
         name=final_name, mime_type=content_type, file_type=ext,
-        size_bytes=body.size_bytes, storage_path=key, uploaded_by=user_id,
+        size_bytes=body.size_bytes, storage_path=key, uploaded_by=user_id, created_at=original,
     )
 
     upload_id = storage_service.create_multipart_upload(key, content_type)
@@ -511,10 +585,106 @@ async def mock_download_file(safe_key: str, filename: str = "") -> Response:
 # GET /documents/:id/download-url — URL pré-assinada para download unitário
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Texto dos documentos (OCR) por empresa: situação e nova leitura em lote
+# ---------------------------------------------------------------------------
+
+class ReprocessTextRequest(BaseModel):
+    company_id: UUID
+
+
+_SEM_TEXTO_SQL = """
+    company_id = $1 AND deleted_at IS NULL
+    AND (ocr_status = 'failed' OR (ocr_status = 'done' AND coalesce(ocr_text, '') = '' AND ocr_completed_at IS NULL))
+"""
+
+
+async def _require_company_admin(conn: asyncpg.Connection, claims: dict[str, Any], company_id: UUID) -> None:
+    from app.dependencies import get_app_role
+    from app.services.companies_service import CompaniesService
+
+    if await get_app_role(conn, claims) == "supremo":
+        return
+    if not await CompaniesService.user_manages_company(conn, claims["sub"], company_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
+
+
+@router.get("/text-status")
+async def text_status(
+    company_id: UUID = Query(...),
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Quantos documentos da empresa estão com o texto pronto, na fila, com falha
+    ou "prontos sem texto" pelo OCR antigo (até 25/11/2026 o OCR de produção
+    devolvia texto vazio para todo PDF; ocr_completed_at nulo marca esses).
+    """
+    await _require_company_admin(conn, claims, company_id)
+    row = await admin_conn.fetchrow(
+        f"""
+        SELECT
+          count(*) FILTER (WHERE ocr_status = 'done' AND coalesce(ocr_text, '') <> '') AS com_texto,
+          count(*) FILTER (WHERE ocr_status IN ('pending', 'processing')) AS na_fila,
+          count(*) FILTER (WHERE {_SEM_TEXTO_SQL}) AS a_reler
+        FROM public.documents
+        WHERE company_id = $1 AND deleted_at IS NULL
+        """,
+        company_id,
+    )
+    return dict(row)
+
+
+@router.post("/reprocess-text", status_code=status.HTTP_202_ACCEPTED)
+async def reprocess_text(
+    body: ReprocessTextRequest,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Põe de novo na fila de leitura de texto os documentos com falha ou sem texto (admin da empresa)."""
+    await _require_company_admin(conn, claims, body.company_id)
+    async with admin_conn.transaction():
+        ids = [r["id"] for r in await admin_conn.fetch(
+            f"SELECT id FROM public.documents WHERE {_SEM_TEXTO_SQL} FOR UPDATE", body.company_id,
+        )]
+        for document_id in ids:
+            await DocumentsService.enqueue_ocr(admin_conn, document_id)
+    return {"enqueued": len(ids)}
+
+
+async def _log_access(conn: asyncpg.Connection, user_id: str, document_id: UUID, action: str) -> None:
+    """
+    Registra na trilha quem abriu ou baixou o documento — antes nada disso
+    era gravado e a auditoria não respondia "quem viu este arquivo". A mesma
+    pessoa abrindo o mesmo documento várias vezes em 10 minutos conta uma
+    vez, para a trilha não virar ruído. Falha aqui nunca impede de abrir.
+    """
+    try:
+        async with conn.transaction():
+            await conn.execute(
+                """
+                INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot)
+                SELECT $1::uuid, d.company_id, $3, 'document', d.id, d.name
+                FROM public.documents d
+                WHERE d.id = $2 AND NOT EXISTS (
+                  SELECT 1 FROM public.activity_log a
+                  WHERE a.user_id = $1::uuid AND a.item_id = $2 AND a.action = $3
+                    AND a.created_at > now() - interval '10 minutes'
+                )
+                """,
+                user_id, document_id, action,
+            )
+    except asyncpg.PostgresError:
+        pass
+
+
 @router.get("/{document_id}/download-url")
 async def get_download_url(
     document_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     URL pré-assinada para download com Content-Disposition: attachment.
@@ -523,6 +693,7 @@ async def get_download_url(
     doc = await DocumentsService.get_document_for_download(conn, document_id)
     if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+    await _log_access(conn, claims["sub"], document_id, "download")
 
     download_url, expires_at = storage_service.generate_download_url(
         key=doc["storage_path"],
@@ -557,49 +728,65 @@ async def bulk_download(
     """
     if not body.document_ids:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Lista de documentos vazia.")
-    if len(body.document_ids) > _BULK_LIMIT:
+    if len(body.document_ids) > _BULK_DOWNLOAD_LIMIT:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Máximo de {_BULK_LIMIT} documentos por lote.",
+            detail=f"Máximo de {_BULK_DOWNLOAD_LIMIT} documentos por lote.",
         )
 
     rows = await DocumentsService.fetch_documents_for_bulk_download(conn, [str(did) for did in body.document_ids])
     if not rows:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nenhum documento encontrado ou acessível.")
 
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
-    try:
-        with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
-            seen_names: dict[str, int] = {}
-            for row in rows:
-                data = storage_service.read_object(row["storage_path"])
-                if data is None:
-                    continue  # arquivo ausente no storage — pula silenciosamente
-
-                base_name = row["name"]
-                if base_name in seen_names:
-                    seen_names[base_name] += 1
-                    dot = base_name.rfind(".")
-                    if dot != -1:
-                        base_name = f"{base_name[:dot]} ({seen_names[base_name]}){base_name[dot:]}"
+    def montar_zip() -> str:
+        """
+        Monta o ZIP em disco fora do laço assíncrono e devolve o caminho
+        (achado X3-04): antes o ZIP inteiro era lido para a memória antes de
+        enviar e a leitura do storage travava a API. Cada arquivo é escrito e
+        liberado; arquivos ausentes no storage são pulados.
+        """
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+        try:
+            with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
+                seen_names: dict[str, int] = {}
+                for row in rows:
+                    data = storage_service.read_object(row["storage_path"])
+                    if data is None:
+                        continue
+                    base_name = row["name"]
+                    if base_name in seen_names:
+                        seen_names[base_name] += 1
+                        dot = base_name.rfind(".")
+                        base_name = (f"{base_name[:dot]} ({seen_names[base_name]}){base_name[dot:]}" if dot != -1
+                                     else f"{base_name} ({seen_names[base_name]})")
                     else:
-                        base_name = f"{base_name} ({seen_names[base_name]})"
-                else:
-                    seen_names[base_name] = 1
+                        seen_names[base_name] = 1
+                    zf.writestr(base_name, data)
+                    del data
+        finally:
+            tmp.close()
+        return tmp.name
 
-                zf.writestr(base_name, data)
-        tmp.flush()
+    caminho = await asyncio.to_thread(montar_zip)
 
-        tmp.seek(0)
-        zip_bytes = tmp.read()
-    finally:
-        tmp.close()
-        os.unlink(tmp.name)
+    def enviar():
+        try:
+            with open(caminho, "rb") as fh:
+                while True:
+                    bloco = fh.read(1024 * 1024)
+                    if not bloco:
+                        break
+                    yield bloco
+        finally:
+            os.unlink(caminho)
 
     return StreamingResponse(
-        io.BytesIO(zip_bytes),
+        enviar(),
         media_type="application/zip",
-        headers={"Content-Disposition": 'attachment; filename="docke_download.zip"'},
+        headers={
+            "Content-Disposition": 'attachment; filename="docke_download.zip"',
+            "Content-Length": str(os.path.getsize(caminho)),
+        },
     )
 
 
@@ -686,6 +873,24 @@ async def bulk_delete(
     if not deletable_ids:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para deletar nenhum dos documentos informados.")
 
+    # Sob legal hold ou com retenção travada vigente: ficam de fora e voltam na
+    # resposta com o motivo (o banco também recusaria — migration 20261125000001).
+    blocked = [dict(r) for r in await admin_conn.fetch(
+        """
+        SELECT id::text, name, public.document_deletion_block_reason(id) AS motivo
+        FROM public.documents WHERE id = ANY($1::uuid[])
+        """,
+        deletable_ids,
+    ) if r["motivo"]]
+    if blocked:
+        blocked_ids = {b["id"] for b in blocked}
+        deletable_ids = [i for i in deletable_ids if i not in blocked_ids]
+    if not deletable_ids:
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail="Nenhum dos documentos pode ser excluído: estão sob legal hold ou com retenção obrigatória em vigor.",
+        )
+
     # Pastas de origem, coletadas ANTES do soft delete (pra notificar quem favoritou).
     source_folders = await DocumentsService.fetch_source_folders(conn, deletable_ids)
 
@@ -706,7 +911,55 @@ async def bulk_delete(
         "deleted": len(deleted),
         "document_ids": [r["id"] for r in deleted],
         "skipped": len(body.document_ids) - len(deletable_ids),
+        "blocked": blocked,
     }
+
+
+class BulkRestoreRequest(BaseModel):
+    document_ids: list[UUID]
+
+
+@router.post("/bulk-restore")
+async def bulk_restore(
+    body: BulkRestoreRequest,
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Tira da lixeira vários documentos de uma vez, cada um para a pasta de onde
+    saiu (ou a primeira pasta raiz, se ela também foi excluída). É o "Desfazer"
+    da exclusão em lote e do Ctrl+Z (achado A4-61).
+    """
+    if not body.document_ids or len(body.document_ids) > _BULK_LIMIT:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Informe de 1 a {_BULK_LIMIT} documentos.")
+    user_id = claims["sub"]
+    restored, failed = [], []
+    for document_id in body.document_ids:
+        doc = await DocumentsService.get_trashed_document(admin_conn, document_id)
+        if doc is None:
+            failed.append(str(document_id))
+            continue
+        original = doc["deleted_original_folder_id"] or doc["folder_id"]
+        target = await DocumentsService.find_folder_by_id(admin_conn, original) or await DocumentsService.find_root_folder(
+            admin_conn, doc["company_id"]
+        )
+        if target is None:
+            failed.append(str(document_id))
+            continue
+        permission = await DocumentsService.check_permission_for_path(admin_conn, user_id, str(target["path"]), target["company_id"])
+        if permission not in ("admin", "operador"):
+            failed.append(str(document_id))
+            continue
+        row = await DocumentsService.restore_single(admin_conn, document_id, target["id"])
+        await admin_conn.execute(
+            """
+            INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot)
+            VALUES ($1::uuid, $2::uuid, 'restore', 'document', $3::uuid, $4)
+            """,
+            user_id, row["company_id"], row["id"], row["name"],
+        )
+        restored.append(row["id"])
+    return {"restored": len(restored), "document_ids": restored, "failed": failed}
 
 
 # ---------------------------------------------------------------------------
@@ -739,10 +992,69 @@ async def mock_preview(safe_key: str) -> Response:
 # GET /documents/:id/preview-url — URL pré-assinada para preview inline
 # ---------------------------------------------------------------------------
 
+@router.post("/{document_id}/integrity")
+async def check_integrity(
+    document_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Confere se o arquivo guardado hoje é o mesmo que foi enviado (J1-08):
+    recalcula o SHA-256 do objeto no storage e compara com o registrado na
+    versão atual. Quem pode ver o documento pode conferir; a conferência entra
+    na trilha com o resultado.
+    """
+    doc = await conn.fetchrow(
+        "SELECT id, name, company_id, storage_path, current_version_id FROM public.documents WHERE id = $1 AND deleted_at IS NULL",
+        document_id,
+    )
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+    version = await admin_conn.fetchrow(
+        """
+        SELECT v.version_number, v.created_at,
+               COALESCE(v.sha256, CASE WHEN v.version_number = 1 THEN d.content_hash END) AS sha256
+        FROM public.documents d
+        LEFT JOIN public.document_versions v ON v.id = d.current_version_id
+        WHERE d.id = $1
+        """,
+        document_id,
+    )
+    expected = version["sha256"] if version else None
+    current = await asyncio.to_thread(storage_service.compute_sha256, doc["storage_path"])
+    if current is None:
+        resultado = "arquivo_ausente"
+    elif expected is None:
+        resultado = "sem_registro"
+    else:
+        resultado = "integro" if current == expected else "divergente"
+    try:
+        async with admin_conn.transaction():
+            await admin_conn.execute(
+                """
+                INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, metadata, severity)
+                VALUES ($1, $2, 'integrity_check', 'document', $3, $4, jsonb_build_object('resultado', $5::text), $6)
+                """,
+                claims["sub"], doc["company_id"], document_id, doc["name"], resultado,
+                "critical" if resultado in ("divergente", "arquivo_ausente") else "info",
+            )
+    except Exception:  # noqa: BLE001 — a conferência não depende da trilha
+        pass
+    return {
+        "resultado": resultado,
+        "sha256_registrado": expected,
+        "sha256_atual": current,
+        "versao": version["version_number"] if version else None,
+        "conferido_em": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.get("/{document_id}/preview-url")
 async def get_preview_url(
     document_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     Retorna URL pré-assinada para abrir o documento inline no browser.
@@ -773,8 +1085,8 @@ async def get_preview_url(
     # storage sob derivatives/{...}.pdf; reaproveitado em previews seguintes).
     if ext in ("docx", "doc", "xlsx", "xls"):
         derivative_key = storage_service.derivative_pdf_key(doc["storage_path"])
-        if storage_service.head_object(derivative_key) is None:
-            pdf_bytes = storage_service.convert_office_to_pdf(doc["storage_path"], ext)
+        if await asyncio.to_thread(storage_service.head_object, derivative_key) is None:
+            pdf_bytes = await asyncio.to_thread(storage_service.convert_office_to_pdf, doc["storage_path"], ext)
             if pdf_bytes is None:
                 return {
                     "inline": False,
@@ -783,14 +1095,21 @@ async def get_preview_url(
                     "size_bytes": doc["size_bytes"],
                     "message": "Não foi possível gerar a pré-visualização deste arquivo. Use o download.",
                 }
-            storage_service.put_object_bytes(derivative_key, pdf_bytes, "application/pdf")
+            await asyncio.to_thread(storage_service.put_object_bytes, derivative_key, pdf_bytes, "application/pdf")
         preview_key = derivative_key
         preview_mime = "application/pdf"
+    elif preview_mime == "application/pdf":
+        # PDF escaneado que passou pelo OCR: a prévia usa a versão com a camada
+        # de texto (dá para selecionar e copiar o texto, como no Quick Look).
+        ocr_key = storage_service.ocr_pdf_key(doc["storage_path"])
+        if await asyncio.to_thread(storage_service.head_object, ocr_key) is not None:
+            preview_key = ocr_key
 
     preview_url, expires_at = storage_service.generate_preview_url(
         key=preview_key,
         content_type=preview_mime,
     )
+    await _log_access(conn, claims["sub"], document_id, "view")
     return {
         "inline": True,
         "preview_url": preview_url,
@@ -856,9 +1175,11 @@ async def get_documents_ocr_status(
 async def list_recent_documents(
     company_id: UUID = Query(...),
     limit: int = Query(10, ge=1, le=50),
+    mine: bool = Query(False, description="Os que eu abri por último, em vez dos últimos enviados."),
     conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
-    rows = await DocumentsService.list_recent(conn, company_id, limit)
+    rows = await DocumentsService.list_recent(conn, company_id, limit, opened_by=claims["sub"] if mine else None)
     return [dict(r) for r in rows]
 
 
@@ -868,11 +1189,21 @@ async def list_recent_documents(
 
 @router.get("")
 async def list_documents(
+    response: Response,
     folder_id: UUID = Query(...),
     company_id: UUID = Query(...),
+    limit: int | None = Query(None, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    sort: str = Query("name"),
+    dir: str = Query("asc"),
+    q: str | None = Query(None, max_length=200),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> list[dict[str, Any]]:
-    rows = await DocumentsService.list_by_folder(conn, folder_id, company_id)
+    """Documentos da pasta; com limit, paginados (total no cabeçalho X-Total-Count)."""
+    rows, total = await DocumentsService.list_by_folder(
+        conn, folder_id, company_id, limit=limit, offset=offset, sort=sort, direction=dir, q=(q or "").strip() or None,
+    )
+    response.headers["X-Total-Count"] = str(total)
     return [dict(r) for r in rows]
 
 
@@ -904,12 +1235,33 @@ async def patch_document(
     if all(v is None for v in [body.name, body.sector, body.competencia, body.tipo_fiscal]):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nenhum campo para atualizar.")
 
+    old = await DocumentsService.get_document_detail(conn, document_id)
+    if old is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+    if body.name is not None:
+        from app.services.names import clean_name
+
+        body.name = clean_name(body.name, kind="documento")
+        if body.name != old["name"] and await DocumentsService.name_taken_in_folder(conn, document_id, body.name):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f'Já existe um documento "{body.name}" nesta pasta.')
+
     row = await DocumentsService.patch_metadata(
         conn, document_id,
         name=body.name, sector=body.sector, competencia=body.competencia, tipo_fiscal=body.tipo_fiscal,
     )
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+    if body.name is not None and body.name != old["name"]:
+        # Trilha completa (achado X2-13): renomear também gera evento.
+        import json as _json
+        await conn.execute(
+            """
+            INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, metadata)
+            VALUES (auth.uid(), $1::uuid, 'rename', 'document', $2::uuid, $3, $4::jsonb)
+            """,
+            row["company_id"], str(document_id), row["name"],
+            _json.dumps({"de": old["name"], "para": row["name"]}, ensure_ascii=False),
+        )
     return dict(row)
 
 
@@ -938,6 +1290,14 @@ async def delete_document(
         raise HTTPException(status_code=status.HTTP_423_LOCKED, detail="Documento bloqueado para exclusão — está sob retenção legal (legal hold).")
 
     await DocumentsService.soft_delete_single(admin_conn, document_id)
+    # A exclusão de um documento só também entra na trilha (antes só a em lote).
+    await admin_conn.execute(
+        """
+        INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot)
+        SELECT $1::uuid, company_id, 'delete', 'document', id, name FROM public.documents WHERE id = $2
+        """,
+        user_id, document_id,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -978,6 +1338,13 @@ async def restore_document(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão na pasta de destino.")
 
     row = await DocumentsService.restore_single(admin_conn, document_id, target_folder["id"])
+    await admin_conn.execute(
+        """
+        INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot)
+        VALUES ($1::uuid, $2::uuid, 'restore', 'document', $3::uuid, $4)
+        """,
+        user_id, str(row["company_id"]), str(row["id"]), row["name"],
+    )
     return dict(row)
 
 
@@ -1009,3 +1376,4 @@ async def retry_ocr(
     await DocumentsService.retry_ocr_transaction(admin_conn, document_id)
 
     return {"document_id": str(document_id), "name": doc["name"], "ocr_status": "pending", "message": "Job de OCR criado com sucesso."}
+

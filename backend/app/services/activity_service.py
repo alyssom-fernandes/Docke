@@ -26,6 +26,50 @@ _ACTION_LABELS: dict[str, str] = {
     "favorite": "Ancorado",
     "unfavorite": "Desancorado",
     "undo": "Desfeito",
+    "copy": "Cópia de estrutura",
+    "update_metadata": "Metadado alterado",
+    "version_delete": "Versão excluída",
+    "integrity_check": "Integridade conferida",
+    "privacy_set": "Classificação LGPD alterada",
+    "lgpd_titular_search": "Pedido do titular consultado",
+    "version_label": "Versão nomeada",
+    "obligation_create": "Obrigação cadastrada",
+    "obligation_update": "Obrigação alterada",
+    "obligation_archive": "Obrigação arquivada",
+    "obligation_restore": "Obrigação reativada",
+    "obligation_generate": "Competência aberta",
+    "obligation_link": "Documento enviado para obrigação",
+    "obligation_unlink": "Documento tirado de obrigação",
+    "obligation_approve": "Obrigação aprovada",
+    "obligation_return": "Obrigação devolvida",
+    "obligation_dispense": "Obrigação dispensada",
+    "obligation_cancel": "Competência cancelada",
+    "obligation_reopen": "Obrigação reaberta",
+    "obligation_assign": "Responsável trocado",
+    "obligation_dependency_add": "Dependência criada",
+    "obligation_dependency_remove": "Dependência removida",
+    "retention_policy_create": "Prazo de guarda cadastrado",
+    "retention_policy_update": "Prazo de guarda alterado",
+    "retention_policy_archive": "Prazo de guarda arquivado",
+    "retention_assign": "Prazo atribuído",
+    "retention_unassign": "Prazo removido",
+    "retention_hold_create": "Bloqueio judicial criado",
+    "retention_hold_release": "Bloqueio judicial liberado",
+    "retention_queue_approved": "Descarte aprovado",
+    "retention_queue_rejected": "Documento mantido",
+    "retention_queue_deferred": "Decisão adiada",
+    "access_grant": "Acesso concedido",
+    "access_revoke": "Acesso retirado",
+    "access_role_change": "Papel trocado",
+    "member_remove": "Pessoa removida da empresa",
+    "account_deactivate": "Conta desativada",
+    "account_activate": "Conta reativada",
+    "account_password_reset": "Senha provisória gerada",
+    "field_update": "Campo alterado",
+    "field_archive": "Campo arquivado",
+    "field_restore": "Campo reativado",
+    "field_rule_apply": "Campo aplicado em pasta",
+    "field_rule_exclude": "Campo tirado de pasta",
 }
 
 REVERSIBLE_ACTIONS = {"move", "rename", "delete", "favorite"}
@@ -47,6 +91,7 @@ class ActivityService:
         date_to: date | None,
         page: int,
         page_size: int,
+        sem_acessos: bool = False,
     ) -> dict[str, Any]:
         offset = (page - 1) * page_size
         rows = await conn.fetch(
@@ -80,10 +125,11 @@ class ActivityService:
               AND ($5::date IS NULL OR al.created_at >= $5::date)
               AND ($6::date IS NULL OR al.created_at <  ($6 + interval '1 day')::date)
               AND ($9::uuid IS NULL OR al.item_id    = $9)
+              AND (NOT $10::boolean OR al.action NOT IN ('view', 'download'))
             ORDER BY al.created_at DESC
             LIMIT $7 OFFSET $8
             """,
-            company_id, user_id, action, item_type, date_from, date_to, page_size, offset, item_id,
+            company_id, user_id, action, item_type, date_from, date_to, page_size, offset, item_id, sem_acessos,
         )
         total = rows[0]["total_count"] if rows else 0
         results = []
@@ -185,6 +231,26 @@ class ActivityService:
         DEFINER — a chave nunca passa pelo Python)."""
         return await conn.fetch(
             "SELECT event_id, event_created_at, ok, reason FROM public.activity_log_verify_chain($1)",
+            company_id,
+        )
+
+    @staticmethod
+    async def verify_summary(conn: asyncpg.Connection, *, company_id: UUID) -> asyncpg.Record:
+        """Resumo da verificação calculado no banco (X3-12): antes todas as
+        linhas da trilha vinham para o Python só para serem contadas."""
+        return await conn.fetchrow(
+            """
+            WITH v AS (
+              SELECT event_id, event_created_at, ok, reason, n
+              FROM public.activity_log_verify_chain($1) WITH ORDINALITY AS t(event_id, event_created_at, ok, reason, n)
+            )
+            SELECT
+              count(*) FILTER (WHERE event_id IS NOT NULL) AS total_events,
+              count(*) FILTER (WHERE NOT ok) AS broken_count,
+              (SELECT jsonb_build_object('event_id', event_id, 'event_created_at', event_created_at, 'ok', ok, 'reason', reason)
+                 FROM v WHERE NOT ok ORDER BY n LIMIT 1) AS first_broken
+            FROM v
+            """,
             company_id,
         )
 

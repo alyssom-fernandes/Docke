@@ -24,16 +24,16 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
           id={inputId}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? errorId : undefined}
-          className={`h-9 w-full rounded-(--radius-control) border px-3 text-mac-body
+          className={`h-9 pointer-coarse:h-11 w-full rounded-(--radius-control) border px-3 text-mac-body pointer-coarse:text-[16px]
             bg-(--bg-card) text-(--text-primary) placeholder:text-(--text-placeholder)
-            border-(--border-default) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70 focus:border-transparent
+            border-(--border-control) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring) focus:border-transparent
             disabled:bg-(--bg-hover) disabled:text-(--text-tertiary) disabled:cursor-not-allowed disabled:select-none
             transition-all duration-fast
             ${error ? "border-red-500 focus:ring-red-400" : ""}
             ${className}`}
           {...props}
         />
-        {error && <p id={errorId} className="text-mac-caption text-red-500">{error}</p>}
+        {error && <p id={errorId} className="text-mac-caption text-(--text-danger)">{error}</p>}
       </div>
     );
   }

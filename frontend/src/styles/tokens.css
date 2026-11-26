@@ -97,9 +97,27 @@ html, body {
      (mesmo princípio do systemGray4 do macOS/iOS, que também não é sutil). */
   --border-default: rgba(0,0,0,0.15);
   --text-primary: rgba(0,0,0,0.84);
-  --text-secondary: rgba(0,0,0,0.56);
-  --text-tertiary: rgba(0,0,0,0.48);
-  --text-placeholder: rgba(0,0,0,0.22);
+  /* Contraste medido (WCAG 2.2 AA, texto pequeno ≥ 4,5:1) sobre o card
+     branco e sobre o fundo #E9E9E3: secundário 6,2/5,8; terciário 5,3/5,0;
+     placeholder 4,8/4,5. Antes o terciário dava 3,7:1 e o placeholder 1,6:1. */
+  --text-secondary: rgba(0,0,0,0.62);
+  --text-tertiary: rgba(0,0,0,0.58);
+  --text-placeholder: rgba(0,0,0,0.55);
+  /* Borda de campo e de controle (1.4.11: ≥ 3:1 contra o fundo): 3,4:1.
+     --border-default segue sutil, só para divisórias e painéis. */
+  --border-control: rgba(0,0,0,0.45);
+  /* Anel de foco: teal-600, 4,5:1 sobre o branco e 3,7:1 sobre o fundo. */
+  --focus-ring: #0B8578;
+  --text-danger: #DC2626;
+  --text-warning: #B45309;
+  --text-success: #15803D;
+  --text-accent: #086B61;
+  /* Gráficos (achado A3-23): cor da marca por token, não hexadecimal solto. */
+  --chart-line: #0F8A7A;
+  --chart-area: rgba(15,138,122,0.12);
+  --chart-bar: #14A08E;
+  --chart-bar-hover: #0F8A7A;
+  --chart-track: rgba(0,0,0,0.06);
   --afn-brand: #6b1f2a;
   --afn-brand-stroke: rgba(107,31,42,0.4);
   --afn-muted: rgba(0,0,0,0.40);
@@ -165,9 +183,22 @@ html, body {
   --bg-hover: rgba(255,255,255,0.06);
   --border-default: rgba(255,255,255,0.10);
   --text-primary: rgba(255,255,255,0.84);
-  --text-secondary: rgba(255,255,255,0.55);
-  --text-tertiary: rgba(255,255,255,0.48);
-  --text-placeholder: rgba(255,255,255,0.18);
+  /* Medido sobre #282828 / #1E1E1E / #323232: secundário 6,6/7,2/6,0;
+     terciário 5,5/5,9/5,1; placeholder 4,9/5,2/4,5. */
+  --text-secondary: rgba(255,255,255,0.62);
+  --text-tertiary: rgba(255,255,255,0.55);
+  --text-placeholder: rgba(255,255,255,0.50);
+  --border-control: rgba(255,255,255,0.38);
+  --focus-ring: #3FBFA8;
+  --text-danger: #F87171;
+  --text-warning: #FBBF24;
+  --text-success: #4ADE80;
+  --text-accent: #7DD4C0;
+  --chart-line: #4FC7B2;
+  --chart-area: rgba(79,199,178,0.16);
+  --chart-bar: #2FB39E;
+  --chart-bar-hover: #4FC7B2;
+  --chart-track: rgba(255,255,255,0.08);
   /* #c44a5a (guia AFN) dava 3,56:1 sobre #1E1E1E — abaixo do AA em texto
      pequeno. Tom mais claro da mesma família: ~5,8:1. */
   --afn-brand: #e07a88;
@@ -384,12 +415,12 @@ html, body {
   display: inline-block;
 }
 .brand-mark {
-  -webkit-mask-image: url("/brand/docke-mark.png");
-  mask-image: url("/brand/docke-mark.png");
+  -webkit-mask-image: url("/brand/docke-mark-128.png");
+  mask-image: url("/brand/docke-mark-128.png");
 }
 .brand-wordmark {
-  -webkit-mask-image: url("/brand/docke-wordmark.png");
-  mask-image: url("/brand/docke-wordmark.png");
+  -webkit-mask-image: url("/brand/docke-wordmark-450.png");
+  mask-image: url("/brand/docke-wordmark-450.png");
 }
 
 /* ─── Theme transition ─── */
@@ -422,9 +453,9 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
-/* ─── Focus visible: ring accent ─── */
+/* ─── Focus visible: anel de foco com contraste ≥ 3:1 nos dois temas ─── */
 :focus-visible {
-  outline: 3px solid #3FBFA8;
+  outline: 3px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -504,6 +535,13 @@ input[type="number"] {
 .toast-in {
   animation: toast-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
+@keyframes toast-out {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateX(12px); }
+}
+.toast-out {
+  animation: toast-out 160ms ease-in both;
+}
 
 /* ─── Modal card animation (spring-like) ─── */
 @keyframes modal-in {
@@ -523,6 +561,36 @@ input[type="number"] {
      nenhum quando .modal-card também está presente no elemento. */
   will-change: transform, opacity, backdrop-filter;
 }
+
+/* ─── Diálogo: entrada e saída (Dialog.tsx) ───
+   Desktop: escala 0,96→1 com fade (220 ms) e saída 150 ms. Celular: folha que
+   sobe da borda (260 ms) e desce na saída. O scrim acompanha em fade. */
+@keyframes dialog-scrim-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dialog-scrim-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes dialog-pop-in { from { opacity: 0; transform: scale(0.96) translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes dialog-pop-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.97); } }
+@keyframes sheet-in { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes sheet-out { from { transform: none; } to { transform: translateY(100%); } }
+.dialog-scrim-in { animation: dialog-scrim-in 200ms ease-out both; }
+.dialog-scrim-out { animation: dialog-scrim-out 150ms ease-in both; }
+.dialog-panel-in { animation: sheet-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.dialog-panel-out { animation: sheet-out 150ms ease-in both; }
+@media (min-width: 640px) {
+  .dialog-panel-in { animation: dialog-pop-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+  .dialog-panel-out { animation: dialog-pop-out 150ms ease-in both; }
+}
+
+/* ─── Painel lateral (detalhes): desliza 12 px da direita em 200 ms ─── */
+@keyframes panel-in { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
+.panel-in { animation: panel-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+/* ─── Menu e popover (Menu.tsx): aparecem 4 px acima do ponto, em 140 ms ─── */
+@keyframes menu-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
+.menu-in { animation: menu-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1) both; transform-origin: top left; }
+/* Saída dos popovers e menus (J1-06, A2-03): some em 120 ms, sem salto. */
+@keyframes menu-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-4px) scale(0.98); } }
+.menu-out { animation: menu-out 120ms ease-in both; transform-origin: top left; pointer-events: none; }
+.sheet-out { animation: sheet-out 150ms ease-in both; pointer-events: none; }
 
 /* ─── Anchor Drop animation ─── */
 @keyframes anchor-drop {
@@ -561,9 +629,68 @@ input[type="number"] {
 }
 .login-chain > li:last-child::before { background: #15A18E; box-shadow: 0 0 0 4px rgba(21,161,142,0.18); }
 @keyframes login-rail { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+/* Entrada da tela de login: apresentação, cartão e trilha em sequência curta
+   (até 300 ms cada); mensagens que surgem no cartão deslizam 4 px. */
+@keyframes login-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.login-enter { animation: login-enter 300ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.login-enter-2 { animation-delay: 70ms; }
+.login-enter-3 { animation-delay: 140ms; }
+@keyframes reveal { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.login-reveal, .reveal { animation: reveal 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 @keyframes login-node { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
   .login-chain::before, .login-chain > li { animation: none !important; }
 }
 
+/* ─── PDF: camada de texto (pdf.js TextLayer) — texto selecionável, lido pelo
+   leitor de tela e realce da busca (achados A5-44, A5-60). Regras essenciais
+   do pdf_viewer.css do pdf.js, sem importar o visualizador inteiro. ─── */
+.pdf-text-layer {
+  position: absolute; text-align: initial; inset: 0; overflow: clip; line-height: 1;
+  letter-spacing: normal; word-spacing: normal; text-size-adjust: none; forced-color-adjust: none;
+  transform-origin: 0 0; z-index: 1;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+.pdf-text-layer span, .pdf-text-layer br {
+  color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; user-select: text;
+}
+.pdf-text-layer > :not(.markedContent), .pdf-text-layer .markedContent span:not(.markedContent) {
+  z-index: 1; --font-height: 0; font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1; --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+.pdf-text-layer .markedContent { display: contents; }
+.pdf-text-layer ::selection { background: rgba(21, 161, 142, 0.35); color: transparent; }
+.pdf-text-layer br::selection { background: transparent; }
+.pdf-text-layer .endOfContent { display: block; position: absolute; inset: 100% 0 0; z-index: 0; cursor: default; user-select: none; }
+.pdf-text-layer span.pdf-hit { background: rgba(250, 204, 21, 0.5); border-radius: 2px; }
+
+/* ─── Impressão: só a área marcada (DANFE) sai no papel (achado A5-51) ─── */
+@media print {
+  body.imprimindo-area > *:not(.area-impressao) { display: none !important; }
+  body.imprimindo-area .area-impressao { position: static !important; inset: auto !important; }
+}
+
 } /* fim de @layer utilities */
+
+
+/* ─── Alto contraste e cores forçadas (X1-19) ─── */
+/* prefers-contrast: more — vidro vira fundo sólido, bordas e texto secundário mais fortes. */
+@media (prefers-contrast: more) {
+  .glass-panel, .glass-dialog, .glass-blur-panel, .glass-blur-strong, .glass-blur-card, .glass-blur-pill {
+    background: var(--bg-card) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid var(--text-primary) !important;
+  }
+  :root { --text-secondary: var(--text-primary); --border-default: var(--text-secondary); }
+}
+/* forced-colors (Alto Contraste do Windows): o sistema escolhe as cores; só
+   garantimos contorno visível no foco e nas superfícies sem borda. */
+@media (forced-colors: active) {
+  .glass-panel, .glass-dialog { border: 1px solid CanvasText; }
+  :focus-visible { outline: 2px solid Highlight !important; outline-offset: 2px; }
+  .brand-mark, .brand-wordmark { background-color: CanvasText; forced-color-adjust: none; }
+}

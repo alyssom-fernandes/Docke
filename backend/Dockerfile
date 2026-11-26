@@ -18,9 +18,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY requirements.txt .
+# Só as dependências de produção; pytest fica em requirements-dev.txt.
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
+
+# Sem root (X3-18): a API, o OCR e o LibreOffice rodam como um usuário
+# comum, com HOME próprio (o LibreOffice grava o perfil lá).
+RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin docke     && chown -R docke:docke /app
+USER docke
 
 # Sem buffer no stdout: o print() do seed da demo só aparecia no log da Fly
 # quando a requisição seguinte gravava a linha de acesso do uvicorn. Fica

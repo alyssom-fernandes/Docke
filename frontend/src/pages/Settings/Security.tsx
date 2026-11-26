@@ -51,17 +51,17 @@ function IntegritySection() {
         Verificar agora
       </Button>
       {result && (
-        <div className={`mt-4 flex items-start gap-2 p-3 rounded-(--radius-control) ${result.intact ? "bg-emerald-500/10" : "bg-red-500/10"}`}>
+        <div role="status" className={`mt-4 flex items-start gap-2 p-3 rounded-(--radius-control) ${result.intact ? "bg-emerald-500/10" : "bg-red-500/10"}`}>
           {result.intact ? (
-            <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+            <ShieldCheck className="w-4 h-4 text-(--text-success) shrink-0 mt-0.5" />
           ) : (
-            <ShieldAlert className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+            <ShieldAlert className="w-4 h-4 text-(--text-danger) shrink-0 mt-0.5" />
           )}
           <div className="text-mac-caption">
             {result.intact ? (
               <p className="text-(--text-primary)">Cadeia íntegra — {result.total_events} eventos verificados, nenhuma quebra encontrada.</p>
             ) : (
-              <p className="text-red-600 dark:text-red-400">
+              <p className="text-(--text-danger)">
                 Quebra detectada em {result.broken_count} ponto{result.broken_count > 1 ? "s" : ""}. {result.first_broken?.reason}
                 {result.first_broken?.event_created_at && (
                   <> O primeiro evento afetado foi registrado originalmente em {new Date(result.first_broken.event_created_at).toLocaleString("pt-BR")}.</>
@@ -71,7 +71,7 @@ function IntegritySection() {
           </div>
         </div>
       )}
-      {error && <p className="text-mac-caption text-red-500 mt-3">{error}</p>}
+      {error && <p className="text-mac-caption text-(--text-danger) mt-3">{error}</p>}
     </div>
   );
 }
@@ -87,6 +87,11 @@ export default function Security() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<{ current?: string; new?: string; confirm?: string }>({});
+  const [show, setShow] = useState(false);
+  // Força da senha (A8-10): requisitos visíveis antes de enviar, não só no erro.
+  const classes = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((r) => r.test(newPassword)).length;
+  const forca = !newPassword ? 0 : newPassword.length < 8 ? 1 : newPassword.length >= 12 && classes >= 3 ? 3 : classes >= 2 ? 2 : 1;
+  const forcaTexto = ["", "Fraca", "Razoável", "Forte"][forca];
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -124,7 +129,7 @@ export default function Security() {
         <form onSubmit={handleSubmit} className="space-y-4 max-w-[400px]">
           <Input
             label="Senha atual"
-            type="password"
+            type={show ? "text" : "password"}
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
             error={errors.current}
@@ -132,20 +137,31 @@ export default function Security() {
           />
           <Input
             label="Nova senha"
-            type="password"
+            type={show ? "text" : "password"}
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             error={errors.new}
             autoComplete="new-password"
           />
+          <div aria-live="polite">
+            <div className="flex gap-1" aria-hidden="true">
+              {[1, 2, 3].map((n) => <span key={n} className={`h-1 flex-1 rounded-full ${forca >= n ? (forca === 1 ? "bg-red-500" : forca === 2 ? "bg-amber-500" : "bg-green-600") : "bg-(--bg-hover)"}`} />)}
+            </div>
+            <p className="mt-1 text-mac-caption text-(--text-secondary)">
+              {forcaTexto ? `Senha ${forcaTexto.toLowerCase()}. ` : ""}Pelo menos 8 caracteres; com 12 ou mais e letras, números e símbolos ela fica forte.
+            </p>
+          </div>
           <Input
             label="Confirmar nova senha"
-            type="password"
+            type={show ? "text" : "password"}
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             error={errors.confirm}
             autoComplete="new-password"
           />
+          <label className="flex items-center gap-2 text-mac-body text-(--text-primary)">
+            <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} className="w-4 h-4 accent-teal-600" /> Mostrar as senhas
+          </label>
           <div className="flex justify-end pt-2">
             <Button type="submit" loading={saving} size="sm">
               Atualizar senha

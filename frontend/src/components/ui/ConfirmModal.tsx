@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { ReactNode, useId, useRef, useState } from "react";
 import Button from "./Button";
-import Portal from "./Portal";
+import Dialog from "./Dialog";
 
 interface ConfirmModalProps {
   title: string;
-  description: string;
+  description: ReactNode;
   confirmLabel?: string;
+  cancelLabel?: string;
   danger?: boolean;
   loading?: boolean;
   /** Nível "Alto" do design system: exige digitar um valor específico para habilitar o botão danger. */
@@ -14,85 +14,80 @@ interface ConfirmModalProps {
   /** Valor exato que precisa ser digitado (default "CONFIRMAR"). Use um valor dinâmico
    * (ex: nome do documento) para ações onde digitar a palavra genérica seria fraco demais. */
   typedConfirmationValue?: string;
+  /** Conteúdo extra entre a descrição e os botões (ex.: lista do que será afetado). */
+  children?: ReactNode;
   onConfirm: (typedValue: string) => void;
   onClose: () => void;
 }
 
 /**
- * Confirmation modal per design system:
- * - Overlay rgba(0,0,0,0.5), card with modal-card animation
- * - Initial focus on Cancelar button (not on the destructive action)
- * - ESC closes
+ * Confirmação sobre o Dialog acessível: foco inicial em Cancelar (nunca na ação
+ * destrutiva), Esc e clique fora fecham, e nada fecha enquanto a ação roda.
  */
 export default function ConfirmModal({
   title,
   description,
   confirmLabel = "Confirmar",
+  cancelLabel = "Cancelar",
   danger = false,
   loading = false,
   requireTypedConfirmation = false,
   typedConfirmationValue = "CONFIRMAR",
+  children,
   onConfirm,
   onClose,
 }: ConfirmModalProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const [typedValue, setTypedValue] = useState("");
-
-  useFocusTrap(containerRef);
-
-  // Focus Cancelar on mount (design system: foco inicial em Cancelar)
-  useEffect(() => {
-    cancelRef.current?.focus();
-  }, []);
-
-  // ESC closes
-  useEffect(() => {
-    function handle(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", handle);
-    return () => document.removeEventListener("keydown", handle);
-  }, [onClose]);
+  const inputId = useId();
+  const blocked = requireTypedConfirmation && typedValue.trim() !== typedConfirmationValue;
 
   return (
-    <Portal>
-      <div
-        className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4"
-        onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      >
-        <div ref={containerRef} className="modal-card glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal w-full max-w-[360px]">
-          <div className="p-5 pb-3">
-            <h2 className="text-mac-title3 text-(--text-primary)">{title}</h2>
-            <p className="text-mac-body text-(--text-secondary) mt-1.5">{description}</p>
-          </div>
+    <Dialog
+      onClose={onClose}
+      title={title}
+      description={description}
+      size="sm"
+      busy={loading}
+      showClose={false}
+      initialFocusRef={requireTypedConfirmation ? undefined : cancelRef}
+      footer={
+        <>
+          <Button ref={cancelRef} variant="secondary" onClick={onClose} disabled={loading}>
+            {cancelLabel}
+          </Button>
+          <Button
+            variant={danger ? "danger" : "primary"}
+            loading={loading}
+            disabled={blocked}
+            onClick={() => onConfirm(typedValue)}
+          >
+            {confirmLabel}
+          </Button>
+        </>
+      }
+    >
+      {(children || requireTypedConfirmation) && (
+        <div className="space-y-3">
+          {children}
           {requireTypedConfirmation && (
-            <div className="px-5 pb-3">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor={inputId} className="text-mac-body text-(--text-secondary)">
+                Para confirmar, digite <strong className="font-semibold text-(--text-primary) select-all">{typedConfirmationValue}</strong>
+              </label>
               <input
+                id={inputId}
                 type="text"
+                autoComplete="off"
                 value={typedValue}
                 onChange={(e) => setTypedValue(e.target.value)}
-                placeholder={`Digite ${typedConfirmationValue}`}
-                className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
+                onKeyDown={(e) => { if (e.key === "Enter" && !blocked && !loading) onConfirm(typedValue); }}
+                className="w-full h-9 pointer-coarse:h-11 px-3 text-mac-body pointer-coarse:text-[16px] bg-(--bg-card) border border-(--border-control) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring)"
               />
             </div>
           )}
-          <div className="flex items-center justify-end gap-2 px-5 pb-5">
-            <Button ref={cancelRef} variant="secondary" size="sm" onClick={onClose}>
-              Cancelar
-            </Button>
-            <Button
-              variant={danger ? "danger" : "primary"}
-              size="sm"
-              loading={loading}
-              disabled={requireTypedConfirmation && typedValue !== typedConfirmationValue}
-              onClick={() => onConfirm(typedValue)}
-            >
-              {confirmLabel}
-            </Button>
-          </div>
         </div>
-      </div>
-    </Portal>
+      )}
+    </Dialog>
   );
 }

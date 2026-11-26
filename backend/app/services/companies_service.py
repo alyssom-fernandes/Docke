@@ -5,6 +5,7 @@ usuário (chamada ao Supabase Auth) precisam ocorrer antes de qualquer
 contexto RLS do novo recurso existir; gestão de acesso de outros usuários
 nunca pode depender da sessão RLS do próprio ator.
 """
+import json
 from typing import Any
 from uuid import UUID
 
@@ -231,6 +232,29 @@ class CompaniesService:
         )
 
     @staticmethod
+    async def stats_context(conn: asyncpg.Connection, company_id: UUID) -> dict[str, int]:
+        """
+        Contexto dos contadores, ao vivo e pela conexão do usuário (RLS):
+        envios desde a meia-noite de Brasília (não "últimas 24 h", achado
+        A3-12) e os 7 dias anteriores à última semana, para comparar (A3-11).
+        """
+        row = await conn.fetchrow(
+            """
+            SELECT
+              (SELECT count(*) FROM public.documents d
+                WHERE d.company_id = $1 AND d.deleted_at IS NULL
+                  AND d.created_at >= (date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo')
+                                       AT TIME ZONE 'America/Sao_Paulo')) AS documents_today,
+              (SELECT count(*) FROM public.documents d
+                WHERE d.company_id = $1 AND d.deleted_at IS NULL
+                  AND d.created_at >= now() - interval '14 days'
+                  AND d.created_at <  now() - interval '7 days') AS previous_uploads
+            """,
+            company_id,
+        )
+        return {k: int(v or 0) for k, v in dict(row).items()}
+
+    @staticmethod
     async def refresh_stats(conn: asyncpg.Connection) -> None:
         await conn.execute("SELECT public.refresh_company_stats()")
 
@@ -240,6 +264,7 @@ class CompaniesService:
         company_id: UUID,
         days: int = 14,
         folder_id: UUID | None = None,
+        only: str | None = None,
     ) -> dict[str, Any]:
         """
         Fase 3.2/3.4: dados dos dois gráficos do dashboard — sempre ao vivo
@@ -257,38 +282,70 @@ class CompaniesService:
         o gráfico de uploads ao lado, exatamente a distinção "filtro global
         vs filtro por widget" que a pesquisa pediu.
         """
+        out: dict[str, Any] = {}
+        if only in (None, "daily"):
+            out["daily_uploads"] = await CompaniesService._daily_uploads(conn, company_id, days)
+        if only in (None, "folders"):
+            out["by_folder"] = await CompaniesService._by_folder(conn, company_id, folder_id)
+        return out
+
+    @staticmethod
+    async def _daily_uploads(conn: asyncpg.Connection, company_id: UUID, days: int) -> list[dict[str, Any]]:
+        # Dia no fuso de Brasília, não UTC: um envio às 22h de segunda não
+        # pode aparecer na terça (achado A3-12).
         daily = await conn.fetch(
             """
             SELECT d::date AS day, coalesce(cnt, 0) AS count
-            FROM generate_series(current_date - ($2::int - 1) * interval '1 day', current_date, interval '1 day') AS d
+            FROM generate_series(
+                   (now() AT TIME ZONE 'America/Sao_Paulo')::date - ($2::int - 1),
+                   (now() AT TIME ZONE 'America/Sao_Paulo')::date, interval '1 day') AS d
             LEFT JOIN (
-              SELECT created_at::date AS day, count(*) AS cnt
+              SELECT (created_at AT TIME ZONE 'America/Sao_Paulo')::date AS day, count(*) AS cnt
               FROM public.documents
               WHERE company_id = $1 AND deleted_at IS NULL
-                AND created_at >= current_date - ($2::int - 1) * interval '1 day'
-              GROUP BY created_at::date
+                AND created_at >= now() - ($2::int + 1) * interval '1 day'
+              GROUP BY 1
             ) x ON x.day = d::date
             ORDER BY d
             """,
             company_id, days,
         )
-        by_folder = await conn.fetch(
+        return [{"date": r["day"].isoformat(), "count": r["count"]} for r in daily]
+
+    @staticmethod
+    async def _by_folder(conn: asyncpg.Connection, company_id: UUID, folder_id: UUID | None) -> list[dict[str, Any]]:
+        rows = await conn.fetch(
             """
-            SELECT f.id::text, f.name, count(d.id) AS document_count
+            SELECT f.id::text, f.name,
+                   (SELECT count(*) FROM public.documents d
+                      JOIN public.folders df ON df.id = d.folder_id AND df.deleted_at IS NULL
+                     WHERE df.path <@ f.path AND d.deleted_at IS NULL) AS document_count,
+                   EXISTS (SELECT 1 FROM public.folders s
+                            WHERE s.parent_id = f.id AND s.deleted_at IS NULL) AS has_children
             FROM public.folders f
-            LEFT JOIN public.documents d ON d.folder_id = f.id AND d.deleted_at IS NULL
             WHERE f.company_id = $1 AND f.deleted_at IS NULL
               AND f.parent_id IS NOT DISTINCT FROM $2::uuid
-            GROUP BY f.id, f.name
             ORDER BY document_count DESC, f.name
-            LIMIT 6
             """,
             company_id, folder_id,
         )
-        return {
-            "daily_uploads": [{"date": r["day"].isoformat(), "count": r["count"]} for r in daily],
-            "by_folder": [dict(r) for r in by_folder],
-        }
+        items = [dict(r) for r in rows if r["document_count"] > 0]
+        top, rest = items[:6], items[6:]
+        if rest:
+            top.append({
+                "id": None, "name": f"Outras {len(rest)} pastas", "kind": "outras",
+                "document_count": sum(r["document_count"] for r in rest), "has_children": False,
+            })
+        if folder_id is not None:
+            direct = await conn.fetchval(
+                "SELECT count(*) FROM public.documents WHERE folder_id = $1 AND deleted_at IS NULL", folder_id,
+            )
+            if direct:
+                top.append({
+                    "id": str(folder_id), "name": "Direto nesta pasta", "kind": "direto",
+                    "document_count": direct, "has_children": False,
+                })
+        return top
 
     @staticmethod
     async def update_company(
@@ -368,6 +425,125 @@ class CompaniesService:
     @staticmethod
     async def delete_access_grant(admin_conn: asyncpg.Connection, access_id: UUID) -> None:
         await admin_conn.execute("DELETE FROM public.user_company_access WHERE id = $1", access_id)
+
+    @staticmethod
+    async def list_people(admin_conn: asyncpg.Connection, company_id: UUID) -> list[dict[str, Any]]:
+        """
+        Pessoas da empresa com tudo que define o que cada uma vê (A9-18):
+        concessões diretas, acessos recebidos por grupo, se a conta está
+        ativa e o último acesso. Quem só tem acesso por grupo também aparece.
+        """
+        rows = await admin_conn.fetch(
+            """
+            WITH quem AS (
+              SELECT user_id FROM public.user_company_access WHERE company_id = $1
+              UNION
+              SELECT gm.user_id FROM public.group_member gm
+              JOIN public."group" g ON g.id = gm.group_id
+              JOIN public.group_access ga ON ga.group_id = g.id AND ga.company_id = $1
+              WHERE g.company_id = $1
+            )
+            SELECT u.id::text AS user_id, u.username, u.full_name, u.is_active, u.role,
+                   u.must_change_password, au.email::text AS email, au.last_sign_in_at,
+                   COALESCE((
+                     SELECT json_agg(json_build_object(
+                       'access_id', a.id::text, 'role', a.permission_level, 'folder_id', f.id::text,
+                       'folder_name', f.name, 'created_at', a.created_at) ORDER BY a.folder_path NULLS FIRST)
+                     FROM public.user_company_access a
+                     LEFT JOIN public.folders f ON f.company_id = a.company_id AND f.path = a.folder_path AND f.deleted_at IS NULL
+                     WHERE a.user_id = u.id AND a.company_id = $1
+                   ), '[]') AS grants,
+                   COALESCE((
+                     SELECT json_agg(json_build_object(
+                       'group_id', g.id::text, 'group_name', g.name, 'role', ga.permission_level,
+                       'folder_id', f.id::text, 'folder_name', f.name))
+                     FROM public.group_member gm
+                     JOIN public."group" g ON g.id = gm.group_id AND g.company_id = $1
+                     JOIN public.group_access ga ON ga.group_id = g.id AND ga.company_id = $1
+                     LEFT JOIN public.folders f ON f.company_id = ga.company_id AND f.path = ga.folder_path AND f.deleted_at IS NULL
+                     WHERE gm.user_id = u.id
+                   ), '[]') AS via_groups,
+                   (SELECT count(DISTINCT c.company_id) FROM (
+                      SELECT company_id FROM public.user_company_access WHERE user_id = u.id
+                      UNION SELECT ga.company_id FROM public.group_member gm
+                            JOIN public.group_access ga ON ga.group_id = gm.group_id WHERE gm.user_id = u.id
+                   ) c) AS company_count
+            FROM quem q
+            JOIN public.users u ON u.id = q.user_id
+            LEFT JOIN auth.users au ON au.id = u.id
+            ORDER BY u.is_active DESC, lower(u.full_name)
+            """,
+            company_id,
+        )
+        out = []
+        for r in rows:
+            d = dict(r)
+            for k in ("grants", "via_groups"):
+                if isinstance(d[k], str):
+                    d[k] = json.loads(d[k])
+            out.append(d)
+        return out
+
+    @staticmethod
+    async def manages_all_companies_of(admin_conn: asyncpg.Connection, actor_id: str, target_id: UUID) -> bool:
+        """
+        Desativar a conta ou trocar a senha valem para TODAS as empresas da
+        pessoa: só quem administra todas elas pode (ou o supremo, checado fora).
+        """
+        return bool(await admin_conn.fetchval(
+            """
+            SELECT NOT EXISTS (
+              SELECT c.company_id FROM (
+                SELECT company_id FROM public.user_company_access WHERE user_id = $2
+                UNION SELECT ga.company_id FROM public.group_member gm
+                      JOIN public.group_access ga ON ga.group_id = gm.group_id WHERE gm.user_id = $2
+              ) c
+              WHERE NOT EXISTS (
+                SELECT 1 FROM public.user_company_access a
+                WHERE a.user_id = $1::uuid AND a.company_id = c.company_id
+                  AND a.permission_level = 'admin' AND a.folder_path IS NULL
+              )
+            )
+            """,
+            actor_id, target_id,
+        ))
+
+    @staticmethod
+    async def has_group_access(admin_conn: asyncpg.Connection, user_id, company_id: UUID) -> bool:
+        return bool(await admin_conn.fetchval(
+            """
+            SELECT EXISTS (SELECT 1 FROM public.group_member gm
+                           JOIN public.group_access ga ON ga.group_id = gm.group_id
+                           WHERE gm.user_id = $1 AND ga.company_id = $2)
+            """,
+            user_id, company_id,
+        ))
+
+    @staticmethod
+    async def company_admin_count(admin_conn: asyncpg.Connection, company_id: UUID) -> int:
+        return int(await admin_conn.fetchval(
+            """
+            SELECT count(DISTINCT a.user_id) FROM public.user_company_access a
+            JOIN public.users u ON u.id = a.user_id AND u.is_active
+            WHERE a.company_id = $1 AND a.permission_level = 'admin' AND a.folder_path IS NULL
+            """,
+            company_id,
+        ) or 0)
+
+    @staticmethod
+    async def log_access(
+        admin_conn: asyncpg.Connection, *, actor_id: str, company_id: UUID | str, action: str, target_id: UUID | str,
+        target_name: str, metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Mudanças de acesso entram na trilha (X2-13, A8-T2)."""
+        await admin_conn.execute(
+            """
+            INSERT INTO public.activity_log
+              (user_id, company_id, action, item_type, item_id, item_name_snapshot, event_category, metadata)
+            VALUES ($1::uuid, $2::uuid, $3, 'access', $4::uuid, $5, 'access', $6::jsonb)
+            """,
+            actor_id, str(company_id), action, str(target_id), target_name, json.dumps(metadata or {}, default=str),
+        )
 
     @staticmethod
     async def delete_member(admin_conn: asyncpg.Connection, member_id: UUID, company_id: UUID) -> None:

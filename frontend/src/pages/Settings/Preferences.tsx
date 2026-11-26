@@ -59,17 +59,19 @@ export default function Preferences() {
       <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-6 space-y-6">
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <Sliders className="w-4 h-4 text-teal-500" />
-            <h3 className="text-mac-body font-medium text-(--text-primary)">Tema</h3>
+            <Sliders className="w-4 h-4 text-(--text-accent)" />
+            <h3 id="pref-tema" className="text-mac-body font-medium text-(--text-primary)">Tema</h3>
           </div>
           {/* Miniaturas visuais + radio embaixo — igual ao seletor de
               Appearance do System Settings real, em vez de só ícone+label. */}
-          <div className="grid grid-cols-3 gap-3 max-w-[420px]">
+          <div role="radiogroup" aria-labelledby="pref-tema" className="grid grid-cols-3 gap-3 max-w-[420px]">
             {THEME_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
+                role="radio"
+                aria-checked={theme === opt.value}
                 onClick={() => choose(opt.value)}
-                className="flex flex-col items-center gap-2 group"
+                className="flex flex-col items-center gap-2 group rounded-[12px] focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
               >
                 <span
                   className={`w-full aspect-4/3 rounded-[10px] border-2 overflow-hidden flex items-center justify-center transition-colors duration-fast ${
@@ -82,7 +84,7 @@ export default function Preferences() {
                       "linear-gradient(135deg, #E9E9E3 50%, #1E1E1E 50%)",
                   }}
                 >
-                  <opt.icon className={`w-5 h-5 ${opt.value === "light" ? "text-amber-500" : opt.value === "dark" ? "text-slate-300" : "text-teal-400"}`} />
+                  <opt.icon className={`w-5 h-5 ${opt.value === "light" ? "text-(--text-warning)" : opt.value === "dark" ? "text-slate-300" : "text-(--text-accent)"}`} />
                 </span>
                 <span className="flex items-center gap-1.5 text-mac-caption text-(--text-secondary)">
                   <span className={`w-3 h-3 rounded-full border flex items-center justify-center shrink-0 ${theme === opt.value ? "border-teal-500" : "border-(--border-default)"}`}>
@@ -97,17 +99,19 @@ export default function Preferences() {
 
         <div className="pt-6 border-t border-(--border-default)">
           <div className="flex items-center gap-2 mb-3">
-            <Rows3 className="w-4 h-4 text-teal-500" />
-            <h3 className="text-mac-body font-medium text-(--text-primary)">Densidade da tabela</h3>
+            <Rows3 className="w-4 h-4 text-(--text-accent)" />
+            <h3 id="pref-dens" className="text-mac-body font-medium text-(--text-primary)">Densidade das listas</h3>
           </div>
-          <div className="grid grid-cols-2 gap-2 max-w-[280px]">
+          <div role="radiogroup" aria-labelledby="pref-dens" className="grid grid-cols-2 gap-2 max-w-[280px]">
             {DENSITY_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
+                role="radio"
+                aria-checked={density === opt.value}
                 onClick={() => chooseDensity(opt.value)}
                 className={`flex flex-col items-center gap-1.5 py-3 rounded-(--radius-control) border text-mac-body transition-colors duration-fast ${
                   density === opt.value
-                    ? "border-teal-500 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400"
+                    ? "border-teal-500 bg-teal-50 dark:bg-teal-900/30 text-(--text-accent)"
                     : "border-(--border-default) text-(--text-secondary) hover:bg-(--bg-hover)"
                 }`}
               >
@@ -127,7 +131,7 @@ export default function Preferences() {
         {user?.username === "demo" && (
           <div className="pt-6 border-t border-(--border-default)">
             <div className="flex items-center gap-2 mb-3">
-              <RotateCcw className="w-4 h-4 text-teal-500" />
+              <RotateCcw className="w-4 h-4 text-(--text-accent)" />
               <h3 className="text-mac-body font-medium text-(--text-primary)">Dados demo</h3>
             </div>
             <p className="text-mac-caption text-(--text-secondary) mb-3 max-w-[420px]">

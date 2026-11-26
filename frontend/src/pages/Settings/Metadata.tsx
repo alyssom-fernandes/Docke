@@ -1,22 +1,22 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Tags, Plus, X, Archive, FolderTree, Copy, GripVertical, Trash2 } from "lucide-react";
+import { Tags, Plus, Archive, FolderTree, Copy, Trash2 } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { useFocusTrap } from "@/hooks/useFocusTrap";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
 import Button from "@/components/ui/Button";
-import Badge from "@/components/ui/Badge";
+import Checkbox from "@/components/ui/Checkbox";
+import Input from "@/components/ui/Input";
+import Dialog from "@/components/ui/Dialog";
 import EmptyState from "@/components/shared/EmptyState";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import Switch from "@/components/ui/Switch";
 import Dropdown from "@/components/ui/Dropdown";
-import Portal from "@/components/ui/Portal";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type FieldType = "texto" | "cpf" | "cnpj" | "data" | "competencia" | "numero" | "selecao";
+type FieldType = "texto" | "cpf" | "cnpj" | "data" | "competencia" | "numero" | "selecao" | "moeda" | "email" | "telefone" | "cep" | "booleano";
 
 interface CustomField {
   id: string;
@@ -66,7 +66,12 @@ const TYPE_LABEL: Record<FieldType, string> = {
   data: "Data",
   competencia: "Competência (mês/ano)",
   numero: "Número",
-  selecao: "Seleção",
+  moeda: "Valor em reais",
+  selecao: "Seleção (lista de opções)",
+  booleano: "Sim ou não",
+  email: "E-mail",
+  telefone: "Telefone",
+  cep: "CEP",
 };
 
 function folderDepth(path: string) {
@@ -79,8 +84,6 @@ function NewFieldModal({ companyId, existingFields, onClose, onCreated }: {
   companyId: string; existingFields: CustomField[]; onClose: () => void; onCreated: () => void;
 }) {
   const { success, error: showError } = useToast();
-  const containerRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(containerRef);
 
   const [label, setLabel] = useState("");
   const [type, setType] = useState<FieldType>("texto");
@@ -118,91 +121,58 @@ function NewFieldModal({ companyId, existingFields, onClose, onCreated }: {
     }
   }
 
+  const conditionOptions = existingFields.find((f) => f.id === conditionFieldId) as any;
+  const condOpts: string[] = conditionOptions?.type === "selecao" ? (conditionOptions?.format_config?.options ?? []) : [];
   return (
-    <Portal>
-    <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[420px]">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-(--border-default)">
-          <h2 className="text-mac-body font-semibold text-(--text-primary)">Novo campo</h2>
-          <button onClick={onClose} className="p-1 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover)">
-            <X className="w-4 h-4" />
-          </button>
+    <Dialog onClose={onClose} title="Novo campo" size="md" busy={saving}
+      description="Um campo que os documentos preenchem (ex.: CNPJ do fornecedor, competência, banco)."
+      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={saving} onClick={create} disabled={!label.trim()}>Criar campo</Button></>}>
+      <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); create(); }}>
+        <Input label="Nome do campo" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Ex.: Instituição financeira" maxLength={80} autoFocus />
+        <div>
+          <label id="nf-tipo" className="block text-mac-body font-medium text-(--text-secondary) mb-1">Tipo de resposta</label>
+          <Dropdown ariaLabelledby="nf-tipo" value={type} placeholder="Selecione…" onChange={(v) => setType(v as FieldType)}
+            options={(Object.keys(TYPE_LABEL) as FieldType[]).map((t) => ({ value: t, label: TYPE_LABEL[t] }))} />
+          <p className="mt-1 text-mac-caption text-(--text-secondary)">CPF, CNPJ, data, competência, valor, e-mail, telefone e CEP são conferidos ao preencher.</p>
         </div>
-        <div className="p-5 space-y-4">
-          <div>
-            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Nome do campo</label>
-            <input
-              type="text" autoFocus value={label} onChange={(e) => setLabel(e.target.value)}
-              placeholder="Ex.: Instituição financeira"
-              className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-            />
+        {type === "numero" && (
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-mac-body text-(--text-primary)">
+              <Checkbox checked={limitDecimals} onChange={(e) => setLimitDecimals(e.target.checked)} /> Limitar casas decimais
+            </label>
+            {limitDecimals ? (
+              <div className="w-28"><Input label="Casas" type="number" min={0} max={6} value={decimals} onChange={(e) => setDecimals(Number(e.target.value))} /></div>
+            ) : (
+              <p className="text-mac-caption text-(--text-secondary)">Sem limite: o número é guardado como digitado.</p>
+            )}
           </div>
+        )}
+        {type === "selecao" && (
           <div>
-            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Tipo de resposta</label>
-            <Dropdown
-              value={type}
-              placeholder="Selecione…"
-              onChange={(v) => setType(v as FieldType)}
-              options={(Object.keys(TYPE_LABEL) as FieldType[]).map((t) => ({ value: t, label: TYPE_LABEL[t] }))}
-            />
+            <Input label="Opções (separe por vírgula)" value={optionsText} onChange={(e) => setOptionsText(e.target.value)} placeholder="Ex.: Banco do Brasil, Itaú, Bradesco" />
+            {optionsText.trim() && (
+              <ul aria-label="Prévia das opções" className="mt-2 flex flex-wrap gap-1.5">
+                {optionsText.split(",").map((o) => o.trim()).filter(Boolean).map((o) => <li key={o} className="rounded-full bg-(--bg-hover) px-2.5 py-0.5 text-mac-caption text-(--text-primary)">{o}</li>)}
+              </ul>
+            )}
           </div>
-          {type === "numero" && (
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-mac-caption text-(--text-secondary)">
-                <input type="checkbox" checked={limitDecimals} onChange={(e) => setLimitDecimals(e.target.checked)} />
-                Limitar casas decimais
-              </label>
-              {limitDecimals ? (
-                <input
-                  type="number" min={0} max={6} value={decimals} onChange={(e) => setDecimals(Number(e.target.value))}
-                  className="w-24 h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-                />
-              ) : (
-                <p className="text-mac-caption2 text-(--text-tertiary)">Ilimitado — o número é guardado exatamente como digitado.</p>
-              )}
-            </div>
-          )}
-          {type === "selecao" && (
-            <div>
-              <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Opções (separadas por vírgula)</label>
-              <input
-                type="text" value={optionsText} onChange={(e) => setOptionsText(e.target.value)}
-                placeholder="Ex.: Banco do Brasil, Itaú, Bradesco"
-                className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-              />
-            </div>
-          )}
-          {existingFields.length > 0 && (
-            <div className="pt-2 border-t border-(--border-default) space-y-2">
-              <label className="block text-mac-caption font-medium text-(--text-secondary)">
-                Só mostrar quando (opcional)
-              </label>
-              <Dropdown
-                value={conditionFieldId}
-                placeholder="Sempre mostrar"
-                onChange={setConditionFieldId}
-                options={[
-                  { value: "", label: "Sempre mostrar" },
-                  ...existingFields.map((f) => ({ value: f.id, label: f.label })),
-                ]}
-              />
-              {conditionFieldId && (
-                <input
-                  type="text" value={conditionValue} onChange={(e) => setConditionValue(e.target.value)}
-                  placeholder="quando for igual a…"
-                  className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-                />
-              )}
-            </div>
-          )}
-        </div>
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default)">
-          <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
-          <Button size="sm" loading={saving} onClick={create} disabled={!label.trim()}>Criar campo</Button>
-        </div>
-      </div>
-    </div>
-    </Portal>
+        )}
+        {existingFields.length > 0 && (
+          <div className="pt-2 border-t border-(--border-default) space-y-2">
+            <label id="nf-cond" className="block text-mac-body font-medium text-(--text-secondary)">Só mostrar quando (opcional)</label>
+            <Dropdown ariaLabelledby="nf-cond" value={conditionFieldId} placeholder="Sempre mostrar" onChange={setConditionFieldId}
+              options={[{ value: "", label: "Sempre mostrar" }, ...existingFields.map((f) => ({ value: f.id, label: f.label }))]} />
+            {conditionFieldId && (condOpts.length > 0 ? (
+              <Dropdown ariaLabel="Valor que mostra o campo" value={conditionValue} placeholder="for igual a…" onChange={setConditionValue}
+                options={condOpts.map((o) => ({ value: o, label: o }))} />
+            ) : (
+              <Input aria-label="Valor que mostra o campo" value={conditionValue} onChange={(e) => setConditionValue(e.target.value)} placeholder="quando for igual a…" />
+            ))}
+          </div>
+        )}
+        <button type="submit" className="sr-only">Criar</button>
+      </form>
+    </Dialog>
   );
 }
 
@@ -212,8 +182,6 @@ function CopyFieldsModal({ companies, targetCompanyId, onClose, onCopied }: {
   companies: { id: string; name: string }[]; targetCompanyId: string; onClose: () => void; onCopied: () => void;
 }) {
   const { success, error: showError } = useToast();
-  const containerRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(containerRef);
   const [sourceId, setSourceId] = useState("");
   const [saving, setSaving] = useState(false);
   const options = companies.filter((c) => c.id !== targetCompanyId);
@@ -234,37 +202,12 @@ function CopyFieldsModal({ companies, targetCompanyId, onClose, onCopied }: {
   }
 
   return (
-    <Portal>
-    <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[400px]">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-(--border-default)">
-          <h2 className="text-mac-body font-semibold text-(--text-primary)">Copiar campos de outra empresa</h2>
-          <button onClick={onClose} className="p-1 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover)">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="p-5 space-y-4">
-          <p className="text-mac-caption text-(--text-tertiary)">
-            Copia só o catálogo (nome, tipo, formato). Campos com o mesmo nome já existentes aqui não são duplicados.
-            A aplicação nas pastas não é copiada — as estruturas de pasta são diferentes entre empresas.
-          </p>
-          <div>
-            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Empresa de origem</label>
-            <Dropdown
-              value={sourceId}
-              placeholder="Selecione…"
-              onChange={setSourceId}
-              options={options.map((c) => ({ value: c.id, label: c.name }))}
-            />
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default)">
-          <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
-          <Button size="sm" loading={saving} onClick={copy} disabled={!sourceId}>Copiar</Button>
-        </div>
-      </div>
-    </div>
-    </Portal>
+    <Dialog onClose={onClose} title="Copiar campos de outra empresa" size="sm" busy={saving}
+      description="Copia o catálogo (nome, tipo e opções). Campos com o mesmo nome não são duplicados; a aplicação nas pastas não vem junto."
+      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={saving} onClick={copy} disabled={!sourceId}>Copiar</Button></>}>
+      <label id="cf-origem" className="block text-mac-body font-medium text-(--text-secondary) mb-1">Empresa de origem</label>
+      <Dropdown ariaLabelledby="cf-origem" value={sourceId} placeholder="Selecione…" onChange={setSourceId} options={options.map((c) => ({ value: c.id, label: c.name }))} />
+    </Dialog>
   );
 }
 
@@ -278,13 +221,45 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
   const [showCopy, setShowCopy] = useState(false);
   const [archiving, setArchiving] = useState<CustomField | null>(null);
   const [deleting, setDeleting] = useState<CustomField | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [archived, setArchived] = useState<CustomField[]>([]);
+  const [renaming, setRenaming] = useState<CustomField | null>(null);
+  const [applying, setApplying] = useState<CustomField | null>(null);
+  const [newLabel, setNewLabel] = useState("");
 
   function load() {
     setLoading(true);
-    api.get<CustomField[]>("/custom-fields", { params: { company_id: companyId } })
-      .then((r) => setFields(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setFields([]))
+    setFailed(false);
+    api.get<CustomField[]>("/custom-fields", { params: { company_id: companyId, include_archived: true } })
+      .then((r) => {
+        const all = Array.isArray(r.data) ? r.data : [];
+        setFields(all.filter((f: any) => !f.archived_at));
+        setArchived(all.filter((f: any) => f.archived_at));
+      })
+      .catch(() => setFailed(true))
       .finally(() => setLoading(false));
+  }
+
+  async function rename() {
+    if (!renaming || !newLabel.trim()) return;
+    try {
+      await api.patch(`/custom-fields/${renaming.id}`, { label: newLabel.trim() });
+      success("Nome do campo atualizado.");
+      setRenaming(null);
+      load();
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível renomear.");
+    }
+  }
+
+  async function restore(f: CustomField) {
+    try {
+      await api.post(`/custom-fields/${f.id}/restore`);
+      success(`“${f.label}” voltou ao catálogo e às pastas onde estava.`);
+      load();
+    } catch (e: any) {
+      showError(e?.response?.data?.detail ?? "Não foi possível reativar.");
+    }
   }
 
   useEffect(load, [companyId]);
@@ -339,34 +314,54 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
         <div className="space-y-2">
           {[0, 1, 2].map((i) => <div key={i} className="h-12 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />)}
         </div>
+      ) : failed ? (
+        <div role="alert" className="flex flex-wrap items-center gap-3 rounded-(--radius-control) border border-(--border-default) px-4 py-3">
+          <p className="flex-1 text-mac-body text-(--text-primary)">Não foi possível carregar os campos.</p>
+          <Button variant="secondary" size="sm" onClick={load}>Tentar de novo</Button>
+        </div>
       ) : fields.length === 0 ? (
         <EmptyState title="Nenhum campo personalizado ainda" description="Crie campos como CPF, competência ou instituição financeira." icon={<Tags className="w-6 h-6" />} />
       ) : (
         <ul className="border border-(--border-default) rounded-(--radius-control) divide-y divide-(--border-default) overflow-hidden">
           {fields.map((f) => (
-            <li key={f.id} className="flex items-center gap-3 px-4 py-3">
-              <div className="flex-1 min-w-0">
+            <li key={f.id} className="flex flex-wrap items-center gap-2 px-4 py-3">
+              <div className="flex-1 min-w-40">
                 <p className="text-mac-body text-(--text-primary)">{f.label}</p>
-                <p className="text-mac-caption text-(--text-tertiary)">{f.field_key}</p>
+                <p className="text-mac-caption text-(--text-secondary)">{TYPE_LABEL[f.type]}</p>
               </div>
-              <Badge variant="default">{TYPE_LABEL[f.type]}</Badge>
-              <button
-                onClick={() => setArchiving(f)}
-                title="Arquivar campo"
-                className="p-1.5 rounded-[6px] text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--bg-hover) transition-colors duration-fast"
-              >
-                <Archive className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setDeleting(f)}
-                title="Excluir campo (só se nunca foi preenchido)"
-                className="p-1.5 rounded-[6px] text-(--text-tertiary) hover:text-red-500 hover:bg-(--bg-hover) transition-colors duration-fast"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              <Button variant="ghost" size="sm" onClick={() => setApplying(f)} aria-label={`Aplicar ${f.label} em pastas`}>Aplicar em pastas…</Button>
+              <Button variant="ghost" size="sm" onClick={() => { setRenaming(f); setNewLabel(f.label); }} aria-label={`Renomear ${f.label}`}>Renomear</Button>
+              <Button variant="ghost" size="sm" onClick={() => setArchiving(f)} aria-label={`Arquivar ${f.label}`}><Archive className="w-3.5 h-3.5" aria-hidden="true" /> Arquivar</Button>
+              <Button variant="ghost" size="sm" onClick={() => setDeleting(f)} aria-label={`Excluir ${f.label}`}><Trash2 className="w-3.5 h-3.5 text-(--text-danger)" aria-hidden="true" /> Excluir</Button>
             </li>
           ))}
         </ul>
+      )}
+
+      {archived.length > 0 && !loading && !failed && (
+        <details className="mt-3">
+          <summary className="cursor-pointer text-mac-caption font-medium text-(--text-accent)">{archived.length} arquivado{archived.length > 1 ? "s" : ""}</summary>
+          <ul className="mt-2 space-y-1">
+            {archived.map((f) => (
+              <li key={f.id} className="flex items-center gap-2 text-mac-body text-(--text-secondary)">
+                <span className="flex-1">{f.label} · {TYPE_LABEL[f.type]}</span>
+                <Button variant="ghost" size="sm" onClick={() => restore(f)}>Reativar</Button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {applying && <ApplyFieldDialog companyId={companyId} field={applying} onClose={() => setApplying(null)} />}
+
+      {renaming && (
+        <Dialog onClose={() => setRenaming(null)} title={`Renomear “${renaming.label}”`} size="sm"
+          description="O nome muda em todas as pastas e documentos; os valores já preenchidos continuam."
+          footer={<><Button variant="secondary" onClick={() => setRenaming(null)}>Cancelar</Button><Button disabled={!newLabel.trim()} onClick={rename}>Salvar</Button></>}>
+          <form onSubmit={(e) => { e.preventDefault(); rename(); }}>
+            <Input label="Nome do campo" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} maxLength={80} autoFocus />
+          </form>
+        </Dialog>
       )}
 
       {showNew && (
@@ -550,18 +545,18 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
                 const isOwn = ownFieldIds.has(f.custom_field_id);
                 const ownRule = rules.find((r) => r.custom_field_id === f.custom_field_id && r.mode === "apply");
                 return (
-                  <li key={f.custom_field_id} className="flex items-center gap-3 px-4 py-3">
-                    <GripVertical className="w-4 h-4 text-(--text-placeholder) shrink-0" />
-                    <div className="flex-1 min-w-0">
+                  <li key={f.custom_field_id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
+                    <div className="flex-1 min-w-40">
                       <p className="text-mac-body text-(--text-primary)">{f.label}</p>
-                      <p className="text-mac-caption text-(--text-tertiary)">
-                        {TYPE_LABEL[f.type]}{!isOwn && " · herdado"}
+                      <p className="text-mac-caption text-(--text-secondary)">
+                        {TYPE_LABEL[f.type]}{!isOwn && ` · vem de ${(f as any).source_folder_name ?? "uma pasta acima"}`}{(f as any).required ? " · obrigatório" : ""}{(f as any).default_value ? ` · padrão “${(f as any).default_value}”` : ""}
                       </p>
                     </div>
                     {isOwn && ownRule ? (
                       <>
                         <input
                           type="text"
+                          aria-label={`Valor padrão de ${f.label}`}
                           defaultValue={ownRule.default_value ?? ""}
                           placeholder="Valor padrão"
                           onBlur={(e) => saveDefaultValue(ownRule, e.target.value)}
@@ -593,6 +588,20 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
             </ul>
           )}
 
+          {rules.filter((r) => r.mode === "exclude").length > 0 && (
+            <div className="mb-4 rounded-(--radius-control) border border-dashed border-(--border-control) p-3 space-y-1.5">
+              <p className="text-mac-caption font-medium text-(--text-secondary)">Não herdados nesta pasta</p>
+              <ul className="space-y-1">
+                {rules.filter((r) => r.mode === "exclude").map((r) => (
+                  <li key={r.id} className="flex items-center gap-2 text-mac-body text-(--text-primary)">
+                    <span className="flex-1">{r.label}</span>
+                    <Button variant="ghost" size="sm" onClick={() => setRemoving(r)}>Voltar a herdar</Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {availableToAdd.length > 0 && (
             <div className="flex items-center gap-2">
               <Dropdown
@@ -612,10 +621,10 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
 
       {removing && (
         <ConfirmModal
-          title={`Remover "${removing.label}" desta pasta?`}
+          title={removing.mode === "exclude" ? `Voltar a herdar "${removing.label}" aqui?` : `Remover "${removing.label}" desta pasta?`}
           description="A pasta volta a herdar a configuração do ancestral mais próximo (se houver alguma)."
-          confirmLabel="Remover"
-          danger
+          confirmLabel={removing.mode === "exclude" ? "Voltar a herdar" : "Remover"}
+          danger={removing.mode !== "exclude"}
           onConfirm={confirmRemove}
           onClose={() => setRemoving(null)}
         />
@@ -635,6 +644,11 @@ export default function Metadata() {
   const [searchParams] = useSearchParams();
   const initialFolderId = searchParams.get("folder") ?? undefined;
   const [tab, setTab] = useState<"catalog" | "tree">(searchParams.get("tab") === "tree" ? "tree" : "catalog");
+  const [, setSearchParams] = useSearchParams();
+  function changeTab(t: "catalog" | "tree") {
+    setTab(t);
+    setSearchParams((p) => { const n = new URLSearchParams(p); n.set("tab", t); return n; }, { replace: true });
+  }
 
   if (!current) return null;
 
@@ -644,9 +658,11 @@ export default function Metadata() {
         {/* Controle segmentado (cápsula com o segmento ativo em destaque) —
             a Apple nunca usa abas sublinhadas de texto dentro de um painel
             de Settings, o padrão nativo é esse pill de segmentos. */}
-        <div className="inline-flex items-center gap-0.5 p-1 mb-6 rounded-full bg-(--bg-hover)">
+        <div role="tablist" aria-label="Metadados" className="inline-flex items-center gap-0.5 p-1 mb-6 rounded-full bg-(--bg-hover)">
           <button
-            onClick={() => setTab("catalog")}
+            role="tab"
+            aria-selected={tab === "catalog"}
+            onClick={() => changeTab("catalog")}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-mac-body transition-colors duration-fast ${
               tab === "catalog"
                 ? "bg-(--bg-card) text-(--text-primary) font-medium shadow-xs"
@@ -656,19 +672,74 @@ export default function Metadata() {
             <Tags className="w-4 h-4" /> Catálogo
           </button>
           <button
-            onClick={() => setTab("tree")}
+            role="tab"
+            aria-selected={tab === "tree"}
+            onClick={() => changeTab("tree")}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-mac-body transition-colors duration-fast ${
               tab === "tree"
                 ? "bg-(--bg-card) text-(--text-primary) font-medium shadow-xs"
                 : "text-(--text-secondary) hover:text-(--text-primary)"
             }`}
           >
-            <FolderTree className="w-4 h-4" /> Aplicação na árvore
+            <FolderTree className="w-4 h-4" aria-hidden="true" /> Por pasta
           </button>
         </div>
 
         {tab === "catalog" ? <CatalogTab companyId={current.id} companies={companies} /> : <TreeTab companyId={current.id} initialFolderId={initialFolderId} />}
       </div>
     </div>
+  );
+}
+
+/**
+ * Aplicar um campo em várias pastas de uma vez (achado A8-13): antes era
+ * uma pasta por vez, indo e voltando entre abas.
+ */
+function ApplyFieldDialog({ companyId, field, onClose }: { companyId: string; field: CustomField; onClose: () => void }) {
+  const { success, error: showError } = useToast();
+  const [folders, setFolders] = useState<FolderOption[] | null>(null);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [required, setRequired] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(0);
+  useEffect(() => {
+    api.get<FolderOption[]>("/folders", { params: { company_id: companyId, flat: true } }).then((r) => setFolders(r.data ?? [])).catch(() => setFolders([]));
+  }, [companyId]);
+  const sorted = [...(folders ?? [])].sort((a, b) => a.path.localeCompare(b.path));
+  async function apply() {
+    setSaving(true);
+    let ok = 0;
+    const falhas: string[] = [];
+    for (const id of sel) {
+      try { await api.put("/folder-fields", { company_id: companyId, folder_id: id, custom_field_id: field.id, mode: "apply", required, display_order: 0 }); ok++; }
+      catch { falhas.push(sorted.find((f) => f.id === id)?.name ?? id); }
+      setDone((d) => d + 1);
+    }
+    setSaving(false);
+    if (!falhas.length) { success(`“${field.label}” aplicado em ${ok} ${ok === 1 ? "pasta" : "pastas"} (e nas subpastas delas).`); onClose(); }
+    else showError(`Aplicado em ${ok}. Falhou em: ${falhas.slice(0, 3).join(", ")}${falhas.length > 3 ? "…" : ""}`);
+  }
+  return (
+    <Dialog onClose={onClose} title={`Aplicar “${field.label}” em pastas`} size="md" busy={saving}
+      description="Marque as pastas: o campo vale nelas e nas subpastas. Onde já estava aplicado, a regra é atualizada."
+      footer={<><Button variant="secondary" onClick={onClose} disabled={saving}>Cancelar</Button><Button loading={saving} disabled={!sel.size} onClick={apply}>{saving ? `${done} de ${sel.size}…` : `Aplicar em ${sel.size}`}</Button></>}>
+      {!folders ? <div className="h-32 rounded bg-(--bg-hover) animate-pulse" /> : sorted.length === 0 ? <p className="text-mac-body text-(--text-secondary)">Nenhuma pasta nesta empresa.</p> : (
+        <div className="space-y-3">
+          <ul className="max-h-72 overflow-y-auto rounded-(--radius-control) border border-(--border-default) divide-y divide-(--border-default)">
+            {sorted.map((f) => (
+              <li key={f.id}>
+                <label className="flex items-center gap-2 px-3 min-h-10 pointer-coarse:min-h-11 cursor-pointer hover:bg-(--bg-hover)" style={{ paddingLeft: `${12 + (f.path.split(".").length - 1) * 16}px` }}>
+                  <Checkbox checked={sel.has(f.id)} onChange={() => setSel((s) => { const n = new Set(s); if (n.has(f.id)) n.delete(f.id); else n.add(f.id); return n; })} />
+                  <span className="text-mac-body text-(--text-primary) truncate">{f.name}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <label className="flex items-center gap-2 text-mac-body text-(--text-primary)">
+            <Checkbox checked={required} onChange={(e) => setRequired(e.target.checked)} /> Obrigatório nestas pastas
+          </label>
+        </div>
+      )}
+    </Dialog>
   );
 }

@@ -13,7 +13,7 @@ from uuid import UUID
 
 import asyncpg
 
-VALID_TYPES = ("texto", "cpf", "cnpj", "data", "competencia", "numero", "selecao")
+VALID_TYPES = ("texto", "cpf", "cnpj", "data", "competencia", "numero", "selecao", "moeda", "email", "telefone", "cep", "booleano")
 
 
 def _decode_field_row(row: asyncpg.Record) -> dict[str, Any]:
@@ -197,7 +197,14 @@ class CustomFieldsService:
             """
             SELECT rf.custom_field_id::text, rf.required, rf.display_order, rf.column_width, rf.default_value,
                    cf.label, cf.field_key, cf.type, cf.format_config,
-                   cf.condition_field_id::text, cf.condition_value
+                   cf.condition_field_id::text, cf.condition_value,
+                   -- De qual pasta vem a regra que vale aqui (A8-21).
+                   (SELECT COALESCE(f2.name, 'Empresa toda')
+                      FROM public.folder_field ff2
+                      LEFT JOIN public.folders f2 ON f2.company_id = ff2.company_id AND f2.path = ff2.folder_path
+                     WHERE ff2.company_id = $1 AND ff2.custom_field_id = rf.custom_field_id AND ff2.mode = 'apply'
+                       AND (ff2.folder_path IS NULL OR ($2::ltree IS NOT NULL AND ff2.folder_path @> $2::ltree))
+                     ORDER BY nlevel(ff2.folder_path) DESC NULLS LAST LIMIT 1) AS source_folder_name
             FROM public.resolve_folder_fields($1, $2::ltree) rf
             JOIN public.custom_field cf ON cf.id = rf.custom_field_id
             WHERE cf.archived_at IS NULL

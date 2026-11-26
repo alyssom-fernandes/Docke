@@ -9,9 +9,9 @@ const variants: Record<Variant, string> = {
   default: "bg-(--bg-hover) text-(--text-secondary)",
   teal: "status-badge",
   success: "status-badge",
-  error: "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-  warning: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-  info: "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  error: "bg-red-50 text-(--text-danger) dark:bg-red-900/30 dark:text-red-400",
+  warning: "bg-amber-50 text-(--text-warning) dark:bg-amber-900/30 dark:text-amber-400",
+  info: "bg-blue-50 text-(--text-primary) dark:bg-blue-900/30 dark:text-blue-400",
 };
 
 export default function Badge({

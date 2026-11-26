@@ -4,8 +4,10 @@ import TopBar from "./TopBar";
 import Dock from "./Dock";
 import Footer from "./Footer";
 import CommandPalette from "@/components/shared/CommandPalette";
+import KeyboardShortcuts from "@/components/shared/KeyboardShortcuts";
 import ErrorBoundary from "@/components/shared/ErrorBoundary";
 import BottomTabBar from "./BottomTabBar";
+import { prefetchCommonRoutes } from "@/lib/routePrefetch";
 
 interface AppShellProps {
   children: ReactNode;
@@ -19,6 +21,9 @@ export default function AppShell({ children }: AppShellProps) {
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0 });
   }, [location.pathname]);
+
+  // Documentos e Busca pré-carregados com o navegador ocioso (A1-35).
+  useEffect(() => { prefetchCommonRoutes(); }, []);
 
   // Mede a largura REAL reservada pela barra de rolagem (não necessariamente
   // igual ao width:7px do ::-webkit-scrollbar em tokens.css — varia com
@@ -56,15 +61,29 @@ export default function AppShell({ children }: AppShellProps) {
   }, [location.pathname]);
 
   return (
-    <div className="h-screen overflow-hidden relative" style={{ background: 'var(--wallpaper)' }}>
+    <div className="h-dvh overflow-hidden relative" style={{ background: 'var(--wallpaper)' }}>
+      {/* Pular direto para o conteúdo (achado A2-04). */}
+      <a href="#conteudo" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[90] focus:rounded-full focus:bg-teal-600 focus:px-4 focus:py-2 focus:text-mac-body focus:text-white">
+        Pular para o conteúdo
+      </a>
       {/* TopBar flutua fixa sobre o conteúdo — mesmo comportamento do Dock,
           não mais um bloco em fluxo normal acima do <main> */}
-      <TopBar onUploadClick={() => navigate("/documents")} />
+      <TopBar onUploadClick={() => navigate("/documents?acao=enviar")} />
+
+      {/* Navegação (barra inferior no celular, Dock a partir de 768 px) antes do
+          conteúdo na ordem do Tab (A2-15); a posição na tela é fixa. */}
+      <BottomTabBar />
+      <Dock />
+      {/* Degradê sob a navegação inferior (A2-02): o conteúdo que rola some
+          aos poucos em vez de passar nítido por trás do vidro do Dock. */}
+      <div aria-hidden="true" className="pointer-events-none fixed inset-x-0 bottom-0 z-20 h-24 md:h-28 bg-linear-to-t from-(--bg-page) via-(--bg-page)/70 to-transparent" />
 
       {/* pt: espaço pra TopBar fixa (56px + respiro). pb: espaço pro Dock/barra inferior flutuantes */}
       <main
         ref={mainRef}
-        className="h-full overlay-scroll px-3 md:px-5 pt-[84px] md:pt-[92px] pb-28 md:pb-8 lg:pb-28 flex flex-col"
+        id="conteudo"
+        tabIndex={-1}
+        className="h-full overlay-scroll px-3 md:px-5 pt-[84px] md:pt-[92px] pb-28 flex flex-col focus:outline-hidden"
       >
         <ErrorBoundary key={location.pathname}>
           {/* Só padding vertical aqui — o horizontal já vem do px-3/md:px-5 do
@@ -78,14 +97,13 @@ export default function AppShell({ children }: AppShellProps) {
             {children}
           </div>
         </ErrorBoundary>
-        <Footer />
+        {/* A assinatura fica em Ajustes (J1-10, A2-06): nas telas de trabalho ela
+            competia com o teal e tirava altura útil no celular. */}
+        {location.pathname.startsWith("/settings") && <Footer />}
       </main>
 
-      {/* Navegação inferior: barra mobile (<md) ou dock flutuante desktop (lg+) */}
-      <BottomTabBar />
-      <Dock />
-
       <CommandPalette />
+      <KeyboardShortcuts />
     </div>
   );
 }

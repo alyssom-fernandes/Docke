@@ -10,6 +10,7 @@ só via CLI.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import secrets
 
@@ -34,17 +35,38 @@ async def _demo_password_works() -> bool:
     return resp.status_code == 200
 
 
-async def reset_demo_data(conn: asyncpg.Connection) -> None:
+# Chave do advisory lock do reset (qualquer bigint fixo serve; este é "dockdemo").
+_RESET_LOCK_KEY = 0x646F636B64656D6F
+
+
+async def reset_demo_data(conn: asyncpg.Connection) -> bool:
     """
     Restaura as 3 empresas demo ao estado padrão (mesma lógica do
     `python -m app.seed.demo_data`, mas usando uma conexão já aberta do
     pool admin do app). `conn` deve vir de get_db_admin ou de
     `_admin_pool.acquire()` — bypassa RLS, igual ao worker de manutenção.
+
+    Um reset por vez: em 25/11/2026 o reset manual coincidiu com o da partida
+    da máquina e os dois recriaram as empresas, que ficaram duplicadas. O
+    advisory lock de sessão faz o segundo pedido desistir em vez de competir.
+    Devolve False só quando outro reset está em andamento.
     """
     if not DEMO_USER_PASSWORD:
         logger.warning("DEMO_PASSWORD não configurada — reset de demo abortado.")
-        return
+        return True
 
+    if not await conn.fetchval("SELECT pg_try_advisory_lock($1)", _RESET_LOCK_KEY):
+        logger.info("Reset da demo ignorado: outro reset já está em andamento.")
+        return False
+    try:
+        await _reset_locked(conn)
+    finally:
+        await conn.execute("SELECT pg_advisory_unlock($1)", _RESET_LOCK_KEY)
+    return True
+
+
+async def _reset_locked(conn: asyncpg.Connection) -> None:
+    """O reset em si; só roda com o advisory lock de reset_demo_data."""
     # O Fly secret DEMO_PASSWORD é a única fonte da senha: se ela foi trocada
     # (rotação), a conta demo no Auth é atualizada aqui, no próximo reset —
     # sem precisar mexer também no painel do Supabase. Quando a senha já
@@ -60,7 +82,13 @@ async def reset_demo_data(conn: asyncpg.Connection) -> None:
         extra_user_ids[email] = await _ensure_auth_account(email, secrets.token_urlsafe(24))
 
     async with conn.transaction():
-        await _build_demo_data(conn, demo_user_id, extra_user_ids)
+        stale_keys = await _build_demo_data(conn, demo_user_id, extra_user_ids)
+
+    # Arquivos da demo anterior saem do storage só depois do COMMIT (X3-08).
+    from app.services import storage_service
+    falhas = await asyncio.to_thread(storage_service.delete_document_objects, stale_keys)
+    if falhas:
+        logger.warning("Reset da demo: %d objeto(s) antigos não saíram do storage.", len(falhas))
 
     # O reset recria as 3 empresas com IDs novos; sem atualizar a view agora,
     # o painel da demo ficava sem contadores (/stats → 404) até o próximo

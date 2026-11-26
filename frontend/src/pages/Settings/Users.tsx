@@ -1,983 +1,530 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Users as UsersIcon, UserPlus, X, Shield, RefreshCw, Plus, Folder, ChevronDown, UsersRound, Trash2, HelpCircle, Check, XCircle, Filter } from "lucide-react";
+import {
+  UserPlus, RefreshCw, Plus, Trash2, Check, AlertTriangle, Search, UsersRound, KeyRound, Ban, RotateCcw, Copy, ChevronRight, HelpCircle, Download,
+} from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { useFocusTrap } from "@/hooks/useFocusTrap";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
 import { useAuthContext } from "@/lib/AuthContext";
+import { relativeDate } from "@/lib/date";
 import Avatar from "@/components/ui/Avatar";
-import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
-import EmptyState from "@/components/shared/EmptyState";
+import Dialog from "@/components/ui/Dialog";
+import Input from "@/components/ui/Input";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import Dropdown from "@/components/ui/Dropdown";
-import Portal from "@/components/ui/Portal";
+import { friendly } from "@/components/obligations/shared";
 
-interface Grant {
-  access_id: string;
-  user_id: string;
-  full_name: string;
-  username: string;
-  role: string;
-  folder_id: string | null;
-  folder_name: string | null;
+interface DirectGrant { access_id: string; role: string; folder_id: string | null; folder_name: string | null }
+interface GroupGrantRef { group_id: string; group_name: string; role: string; folder_id: string | null; folder_name: string | null }
+interface Person {
+  user_id: string; username: string; full_name: string; email: string | null; is_active: boolean; role: string;
+  must_change_password: boolean; last_sign_in_at: string | null; grants: DirectGrant[]; via_groups: GroupGrantRef[]; company_count: number;
 }
-
-interface FolderOption {
-  id: string;
-  name: string;
-  path: string;
-}
-
-interface GroupSummary {
-  id: string;
-  name: string;
-  created_at: string;
-  member_count: number;
-  grant_count: number;
-}
-
-interface GroupMember {
-  user_id: string;
-  full_name: string;
-  username: string;
-  added_at: string;
-}
-
-interface GroupGrant {
-  access_id: string;
-  role: string;
-  folder_id: string | null;
-  folder_name: string | null;
-  created_at: string;
-}
-
+interface FolderOption { id: string; name: string; path: string }
+interface GroupSummary { id: string; name: string; member_count: number; grant_count: number }
 interface GroupDetail extends GroupSummary {
-  members: GroupMember[];
-  grants: GroupGrant[];
+  members: { user_id: string; full_name: string; username: string }[];
+  grants: { access_id: string; role: string; folder_id: string | null; folder_name: string | null }[];
 }
-
-interface ExplainCandidate {
-  source: "direto" | "grupo";
-  group_name: string | null;
-  permission_level: string;
-  folder_path: string | null;
-  folder_name: string | null;
-  specificity: number;
-  is_winner: boolean;
-}
-
 interface ExplainResult {
   resolved: string | null;
-  candidates: ExplainCandidate[];
+  candidates: { source: "direto" | "grupo"; group_name: string | null; permission_level: string; folder_path: string | null; folder_name: string | null; is_winner: boolean }[];
 }
 
-const ROLE_LABEL: Record<string, string> = { visualizador: "Visualizador", operador: "Operador", admin: "Admin" };
-const ROLE_VARIANT: Record<string, "teal" | "info" | "default"> = { admin: "teal", operador: "info", visualizador: "default" };
+const ROLE_LABEL: Record<string, string> = { visualizador: "Visualizador", operador: "Operador", admin: "Administrador" };
+const ROLE_HELP: Record<string, string> = {
+  visualizador: "Vê e baixa documentos e acompanha a atividade. Não cria, move nem exclui.",
+  operador: "Também envia e move documentos no seu escopo; exclui só o que ele mesmo enviou. Não mexe em pastas.",
+  admin: "Tudo na empresa ou na pasta: enviar, mover, excluir, versões, pessoas, obrigações e retenção.",
+};
+const ROLE_OPTS = Object.entries(ROLE_LABEL).map(([value, label]) => ({ value, label }));
 
-const ROLES = [
-  { role: "visualizador", label: "Visualizador", description: "Pode ver, baixar documentos e acompanhar o log de atividade. Não pode criar, mover ou excluir nada." },
-  { role: "operador", label: "Operador", description: "Além de visualizar, pode fazer upload e mover documentos dentro do seu escopo — mas só pode excluir os documentos que ele mesmo inseriu. Não cria, renomeia ou exclui pastas." },
-  { role: "admin", label: "Admin", description: "Acesso completo à empresa: upload, mover, excluir, versionar, gerenciar usuários e dados da organização." },
-];
+function where(folder: string | null) { return folder ? `em ${folder}` : "na empresa toda"; }
+
+function folderOptions(folders: FolderOption[]) {
+  return [{ value: "", label: "Empresa toda" }, ...[...folders].sort((a, b) => a.path.localeCompare(b.path)).map((f) => ({ value: f.id, label: f.name, depth: f.path.split(".").length - 1 }))];
+}
 
 function generatePassword() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-  return Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+  const a = new Uint32Array(12);
+  crypto.getRandomValues(a);
+  return Array.from(a, (n) => chars[n % chars.length]).join("");
 }
 
-function folderDepth(path: string) {
-  return path.split(".").length;
-}
-
-function FolderSelect({ folders, value, onChange }: { folders: FolderOption[]; value: string; onChange: (v: string) => void }) {
-  return (
-    <Dropdown
-      value={value}
-      placeholder="Empresa toda"
-      onChange={onChange}
-      options={[
-        { value: "", label: "Empresa toda" },
-        ...folders.map((f) => ({ value: f.id, label: f.name, depth: Math.max(0, folderDepth(f.path) - 1) })),
-      ]}
-    />
-  );
-}
-
-function CreateMemberModal({ companyId, folders, onClose, onDone }: { companyId: string; folders: FolderOption[]; onClose: () => void; onDone: () => void }) {
-  const { success, error: showError } = useToast();
-  const [email, setEmail] = useState("");
-  const [username, setUsername] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [password, setPassword] = useState(generatePassword());
-  const [role, setRole] = useState("visualizador");
-  const [folderId, setFolderId] = useState("");
-  const [saving, setSaving] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(containerRef);
-
-  async function create() {
-    if (!email.trim() || !username.trim() || !fullName.trim()) return;
-    setSaving(true);
-    try {
-      await api.post(`/companies/${companyId}/members`, {
-        email: email.trim(),
-        password,
-        username: username.trim(),
-        full_name: fullName.trim(),
-        permission_level: role,
-        folder_id: folderId || null,
-      });
-      success(`Usuário ${fullName.trim()} criado. Senha inicial: ${password}`);
-      onDone();
-      onClose();
-    } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Não foi possível criar o usuário.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Portal>
-    <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[440px]">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-(--border-default)">
-          <h2 className="text-mac-body font-semibold text-(--text-primary)">Novo usuário</h2>
-          <button onClick={onClose} className="p-1 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover)">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="p-5 space-y-4">
-          <div>
-            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Nome completo</label>
-            <input
-              autoFocus
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="Maria Silva"
-              className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-            />
-          </div>
-          <div>
-            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Username</label>
-            <input
-              value={username}
-              onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/\s+/g, "."))}
-              placeholder="maria.silva"
-              className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-            />
-          </div>
-          <div>
-            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">E-mail (credencial de login)</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="maria@empresa.com"
-              className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-            />
-          </div>
-          <div>
-            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Senha inicial</label>
-            <div className="flex gap-2">
-              <input
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="flex-1 h-9 px-3 text-mac-body font-mono bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-              />
-              <button
-                type="button"
-                onClick={() => setPassword(generatePassword())}
-                title="Gerar outra senha"
-                className="h-9 w-9 flex items-center justify-center rounded-full border border-(--border-default) text-(--text-secondary) hover:bg-(--bg-hover) transition-colors duration-fast"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            <p className="text-mac-caption text-(--text-tertiary) mt-1">Repasse essa senha por um canal seguro — a pessoa pode trocá-la depois em Configurações → Segurança.</p>
-          </div>
-          <div>
-            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Papel</label>
-            <Dropdown
-              value={role}
-              placeholder="Selecione…"
-              onChange={setRole}
-              options={[
-                { value: "visualizador", label: "Visualizador" },
-                { value: "operador", label: "Operador" },
-                { value: "admin", label: "Admin" },
-              ]}
-            />
-          </div>
-          {role !== "admin" && (
-            <div>
-              <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Escopo (pasta)</label>
-              <FolderSelect folders={folders} value={folderId} onChange={setFolderId} />
-              <p className="text-mac-caption text-(--text-tertiary) mt-1">Restrinja o acesso a uma pasta específica (ex: só o RH), ou deixe "Empresa toda" para acesso amplo.</p>
-            </div>
-          )}
-        </div>
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default)">
-          <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
-          <Button size="sm" loading={saving} onClick={create} disabled={!email.trim() || !username.trim() || !fullName.trim()}>
-            Criar usuário
-          </Button>
-        </div>
-      </div>
-    </div>
-    </Portal>
-  );
-}
-
-function AddGrantModal({ companyId, memberId, memberName, folders, onClose, onDone }: {
-  companyId: string; memberId: string; memberName: string; folders: FolderOption[]; onClose: () => void; onDone: () => void;
-}) {
-  const { success, error: showError } = useToast();
-  const [role, setRole] = useState("visualizador");
-  const [folderId, setFolderId] = useState("");
-  const [saving, setSaving] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(containerRef);
-
-  async function save() {
-    setSaving(true);
-    try {
-      await api.post(`/companies/${companyId}/members/${memberId}/access`, {
-        permission_level: role,
-        folder_id: folderId || null,
-      });
-      success(`Nova concessão adicionada para ${memberName}.`);
-      onDone();
-      onClose();
-    } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Não foi possível adicionar a concessão.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Portal>
-    <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[400px]">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-(--border-default)">
-          <h2 className="text-mac-body font-semibold text-(--text-primary)">Nova concessão — {memberName}</h2>
-          <button onClick={onClose} className="p-1 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover)">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="p-5 space-y-4">
-          <div>
-            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Papel</label>
-            <Dropdown
-              value={role}
-              placeholder="Selecione…"
-              onChange={setRole}
-              options={[
-                { value: "visualizador", label: "Visualizador" },
-                { value: "operador", label: "Operador" },
-                { value: "admin", label: "Admin" },
-              ]}
-            />
-          </div>
-          <div>
-            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Escopo (pasta)</label>
-            <FolderSelect folders={folders} value={folderId} onChange={setFolderId} />
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default)">
-          <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
-          <Button size="sm" loading={saving} onClick={save}>Adicionar</Button>
-        </div>
-      </div>
-    </div>
-    </Portal>
-  );
-}
-
-function ExplainAccessModal({ companyId, userId, userName, folders, onClose }: {
-  companyId: string; userId: string; userName: string; folders: FolderOption[]; onClose: () => void;
-}) {
-  const [folderId, setFolderId] = useState("");
-  const [result, setResult] = useState<ExplainResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const containerRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(containerRef);
-
-  function load(fid: string) {
-    setLoading(true);
-    api.get<ExplainResult>(`/companies/${companyId}/explain-access`, {
-      params: { user_id: userId, folder_id: fid || undefined },
-    })
-      .then((res) => setResult(res.data))
-      .catch(() => setResult(null))
-      .finally(() => setLoading(false));
-  }
-  useEffect(() => load(folderId), [folderId]);
-
-  return (
-    <Portal>
-      <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-        <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[480px]">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-(--border-default)">
-            <h2 className="text-mac-body font-semibold text-(--text-primary) flex items-center gap-2">
-              <HelpCircle className="w-4 h-4 text-teal-500" />
-              Por que {userName} tem esse acesso?
-            </h2>
-            <button onClick={onClose} className="p-1 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover)">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="p-5 space-y-4">
-            <div>
-              <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Escopo a verificar</label>
-              <FolderSelect folders={folders} value={folderId} onChange={setFolderId} />
-            </div>
-
-            {loading ? (
-              <div className="space-y-2">
-                {[0, 1].map((i) => <div key={i} className="h-8 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />)}
-              </div>
-            ) : !result || result.candidates.length === 0 ? (
-              <div className="space-y-2">
-                <p className="text-mac-body text-(--text-primary)">{userName} NÃO possui acesso a este escopo porque:</p>
-                <ul className="space-y-1.5">
-                  <li className="flex items-center gap-2 text-mac-body text-(--text-secondary)">
-                    <XCircle className="w-4 h-4 text-red-500 shrink-0" /> Não possui concessão direta que cubra este escopo
-                  </li>
-                  <li className="flex items-center gap-2 text-mac-body text-(--text-secondary)">
-                    <XCircle className="w-4 h-4 text-red-500 shrink-0" /> Não pertence a nenhum grupo com acesso a este escopo
-                  </li>
-                </ul>
-                <div className="pt-2 border-t border-(--border-default) flex items-center justify-between">
-                  <span className="text-mac-caption text-(--text-tertiary)">Resultado</span>
-                  <Badge variant="default">Sem acesso</Badge>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-mac-body text-(--text-primary)">{userName} possui acesso porque:</p>
-                <ul className="space-y-1.5">
-                  {result.candidates.map((c, i) => (
-                    <li key={i} className={`flex items-start gap-2 text-mac-body ${c.is_winner ? "text-(--text-primary)" : "text-(--text-tertiary) line-through decoration-(--border-default)"}`}>
-                      {c.is_winner ? <Check className="w-4 h-4 text-teal-500 shrink-0 mt-0.5" /> : <span className="w-4 h-4 shrink-0" />}
-                      <span>
-                        {c.source === "grupo" ? <>Está no grupo <strong>{c.group_name}</strong>, que tem</> : "Tem concessão direta de"}{" "}
-                        <Badge variant={ROLE_VARIANT[c.permission_level] ?? "default"}>{ROLE_LABEL[c.permission_level] ?? c.permission_level}</Badge>{" "}
-                        {c.folder_path ? `na pasta "${c.folder_name ?? "?"}"` : "na empresa toda"}
-                        {!c.is_winner && <span className="text-mac-caption"> (perde para uma concessão mais específica)</span>}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="pt-2 border-t border-(--border-default) flex items-center justify-between">
-                  <span className="text-mac-caption text-(--text-tertiary)">Resultado</span>
-                  <Badge variant={ROLE_VARIANT[result.resolved ?? ""] ?? "default"}>{ROLE_LABEL[result.resolved ?? ""] ?? result.resolved}</Badge>
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default)">
-            <Button variant="secondary" size="sm" onClick={onClose}>Fechar</Button>
-          </div>
-        </div>
-      </div>
-    </Portal>
-  );
-}
-
-function GroupDetailPanel({ companyId, group, members, folders, canManage, onClose, onChanged }: {
-  companyId: string; group: GroupSummary; members: { user_id: string; full_name: string; username: string }[];
-  folders: FolderOption[]; canManage: boolean; onClose: () => void; onChanged: () => void;
-}) {
-  const { success, error: showError } = useToast();
-  const [detail, setDetail] = useState<GroupDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [addingMember, setAddingMember] = useState(false);
-  const [memberToAdd, setMemberToAdd] = useState("");
-  const [addingGrant, setAddingGrant] = useState(false);
-  const [grantRole, setGrantRole] = useState("visualizador");
-  const [grantFolder, setGrantFolder] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  function load() {
-    setLoading(true);
-    api.get<GroupDetail>(`/companies/${companyId}/groups/${group.id}`)
-      .then((res) => setDetail(res.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }
-  useEffect(load, [group.id]);
-
-  const memberOptions = members.filter((m) => !detail?.members.some((dm) => dm.user_id === m.user_id));
-
-  async function addMember() {
-    if (!memberToAdd) return;
-    setBusy(true);
-    try {
-      await api.post(`/companies/${companyId}/groups/${group.id}/members`, { user_id: memberToAdd });
-      success("Membro adicionado ao grupo.");
-      setAddingMember(false);
-      setMemberToAdd("");
-      load();
-      onChanged();
-    } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Não foi possível adicionar o membro.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function removeMember(userId: string) {
-    setBusy(true);
-    try {
-      await api.delete(`/companies/${companyId}/groups/${group.id}/members/${userId}`);
-      load();
-      onChanged();
-    } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Não foi possível remover o membro.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function addGrant() {
-    setBusy(true);
-    try {
-      await api.post(`/companies/${companyId}/groups/${group.id}/access`, {
-        permission_level: grantRole,
-        folder_id: grantFolder || null,
-      });
-      success("Concessão adicionada ao grupo.");
-      setAddingGrant(false);
-      setGrantFolder("");
-      load();
-      onChanged();
-    } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Não foi possível adicionar a concessão.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function removeGrant(accessId: string) {
-    setBusy(true);
-    try {
-      await api.delete(`/companies/${companyId}/groups/${group.id}/access/${accessId}`);
-      load();
-      onChanged();
-    } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Não foi possível remover a concessão.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <li className="border-b border-(--border-default) last:border-0 bg-(--bg-page)/40">
-      <div className="px-5 py-3">
-        {loading || !detail ? (
-          <div className="h-6 bg-(--bg-hover) rounded-(--radius-control) animate-pulse w-1/3" />
-        ) : (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-mac-caption font-semibold uppercase tracking-wide text-(--text-tertiary)">Membros</p>
-              {canManage && !addingMember && (
-                <button onClick={() => setAddingMember(true)} className="inline-flex items-center gap-1 text-mac-caption text-teal-500 hover:text-teal-600">
-                  <Plus className="w-3 h-3" /> Adicionar
-                </button>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {detail.members.length === 0 && <span className="text-mac-caption text-(--text-tertiary)">Nenhum membro ainda.</span>}
-              {detail.members.map((m) => (
-                <span key={m.user_id} className="inline-flex items-center gap-1.5 pl-2 pr-1.5 py-0.5 rounded-full bg-(--bg-card) border border-(--border-default) text-mac-caption text-(--text-primary)">
-                  {m.full_name}
-                  {canManage && (
-                    <button onClick={() => removeMember(m.user_id)} disabled={busy} className="text-(--text-tertiary) hover:text-(--text-primary)">
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
-                </span>
-              ))}
-            </div>
-            {addingMember && (
-              <div className="flex items-center gap-2">
-                <div className="flex-1">
-                  <Dropdown
-                    value={memberToAdd}
-                    placeholder="Selecione um usuário…"
-                    onChange={setMemberToAdd}
-                    options={memberOptions.map((m) => ({ value: m.user_id, label: `${m.full_name} (@${m.username})` }))}
-                  />
-                </div>
-                <Button size="sm" onClick={addMember} loading={busy} disabled={!memberToAdd}>Adicionar</Button>
-                <Button size="sm" variant="secondary" onClick={() => { setAddingMember(false); setMemberToAdd(""); }}>Cancelar</Button>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between pt-2 border-t border-(--border-default)">
-              <p className="text-mac-caption font-semibold uppercase tracking-wide text-(--text-tertiary)">Acesso concedido ao grupo</p>
-              {canManage && !addingGrant && (
-                <button onClick={() => setAddingGrant(true)} className="inline-flex items-center gap-1 text-mac-caption text-teal-500 hover:text-teal-600">
-                  <Plus className="w-3 h-3" /> Conceder
-                </button>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {detail.grants.length === 0 && <span className="text-mac-caption text-(--text-tertiary)">Nenhuma concessão ainda — o grupo não dá acesso a nada.</span>}
-              {detail.grants.map((g) => (
-                <span key={g.access_id} className="inline-flex items-center gap-1.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-(--bg-page) border border-(--border-default)">
-                  <Badge variant={ROLE_VARIANT[g.role] ?? "default"}>{ROLE_LABEL[g.role] ?? g.role}</Badge>
-                  <span className="text-mac-caption text-(--text-secondary) flex items-center gap-1">
-                    {g.folder_id ? (<><Folder className="w-3 h-3" />{g.folder_name ?? "Pasta"}</>) : "Empresa toda"}
-                  </span>
-                  {canManage && (
-                    <button onClick={() => removeGrant(g.access_id)} disabled={busy} className="text-(--text-tertiary) hover:text-(--text-primary)">
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
-                </span>
-              ))}
-            </div>
-            {addingGrant && (
-              <div className="flex items-end gap-2 flex-wrap">
-                <div className="w-[160px]">
-                  <label className="block text-mac-caption text-(--text-tertiary) mb-1">Papel</label>
-                  <Dropdown value={grantRole} placeholder="Selecione…" onChange={setGrantRole} options={[
-                    { value: "visualizador", label: "Visualizador" },
-                    { value: "operador", label: "Operador" },
-                    { value: "admin", label: "Admin" },
-                  ]} />
-                </div>
-                <div className="flex-1 min-w-[180px]">
-                  <label className="block text-mac-caption text-(--text-tertiary) mb-1">Escopo</label>
-                  <FolderSelect folders={folders} value={grantFolder} onChange={setGrantFolder} />
-                </div>
-                <Button size="sm" onClick={addGrant} loading={busy}>Conceder</Button>
-                <Button size="sm" variant="secondary" onClick={() => { setAddingGrant(false); setGrantFolder(""); }}>Cancelar</Button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-      <button onClick={onClose} className="w-full px-5 py-1.5 border-t border-(--border-default) text-mac-caption text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--bg-hover) transition-colors duration-fast">
-        Recolher
-      </button>
-    </li>
-  );
-}
-
-function GroupsSection({ companyId, members, folders, canManage }: {
-  companyId: string; members: { user_id: string; full_name: string; username: string }[]; folders: FolderOption[]; canManage: boolean;
-}) {
-  const { success, error: showError } = useToast();
-  const [groups, setGroups] = useState<GroupSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<string | null>(null);
+/**
+ * Pessoas e acessos (A9-16..A9-39): lista com acesso direto e por grupo,
+ * busca e filtros; cada pessoa num painel com papel trocado no lugar,
+ * explicar acesso, desativar, senha provisória e remover; grupos com
+ * diálogos acessíveis. Erro é erro, não "nenhum usuário".
+ */
+export default function Users() {
+  usePageTitle("Pessoas e acessos");
+  const { current } = useCompany();
+  const { user } = useAuthContext();
+  const [params, setParams] = useSearchParams();
+  const uid = useId();
+  const folderFilter = params.get("folder");
+  const [people, setPeople] = useState<Person[] | null>(null);
+  const [state, setState] = useState<"loading" | "ok" | "error" | "forbidden">("loading");
+  const [folders, setFolders] = useState<FolderOption[]>([]);
+  const [q, setQ] = useState("");
+  const [papel, setPapel] = useState("");
+  const [estado, setEstado] = useState("ativas");
+  const [open, setOpen] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [removing, setRemoving] = useState<GroupSummary | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [aba, setAba] = useState<"pessoas" | "grupos">("pessoas");
 
   function load() {
-    setLoading(true);
-    api.get<GroupSummary[]>(`/companies/${companyId}/groups`)
-      .then((res) => setGroups(Array.isArray(res.data) ? res.data : []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    if (!current) return;
+    api.get<Person[]>(`/companies/${current.id}/people`)
+      .then((r) => { setPeople(r.data ?? []); setState("ok"); })
+      .catch((e) => setState(e?.response?.status === 403 ? "forbidden" : "error"));
+    api.get<FolderOption[]>("/folders", { params: { company_id: current.id, flat: true } }).then((r) => setFolders(r.data ?? [])).catch(() => setFolders([]));
   }
-  useEffect(load, [companyId]);
+  useEffect(load, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function createGroup() {
-    const name = newName.trim();
-    if (!name) return;
-    setSaving(true);
-    try {
-      await api.post(`/companies/${companyId}/groups`, { name });
-      success(`Grupo "${name}" criado.`);
-      setNewName("");
-      setCreating(false);
-      load();
-    } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Não foi possível criar o grupo.");
-    } finally {
-      setSaving(false);
+  const folderName = folderFilter ? folders.find((f) => f.id === folderFilter)?.name : null;
+  const visible = useMemo(() => {
+    let list = people ?? [];
+    if (estado === "ativas") list = list.filter((p) => p.is_active);
+    if (estado === "desativadas") list = list.filter((p) => !p.is_active);
+    if (estado === "grupo") list = list.filter((p) => p.via_groups.length > 0);
+    if (papel) list = list.filter((p) => p.grants.some((g) => g.role === papel) || p.via_groups.some((g) => g.role === papel));
+    if (folderFilter) list = list.filter((p) => p.grants.some((g) => !g.folder_id || g.folder_id === folderFilter) || p.via_groups.some((g) => !g.folder_id || g.folder_id === folderFilter));
+    const s = q.trim().toLocaleLowerCase("pt-BR");
+    if (s) list = list.filter((p) => `${p.full_name} ${p.username} ${p.email ?? ""}`.toLocaleLowerCase("pt-BR").includes(s));
+    return list;
+  }, [people, estado, papel, q, folderFilter]);
+
+  const person = people?.find((p) => p.user_id === open) ?? null;
+
+  function exportAccessCsv() {
+    if (!people || !current) return;
+    const papel: Record<string, string> = { admin: "Administrador", operador: "Operador", visualizador: "Visualizador" };
+    const linhas: string[][] = [["Pessoa", "E-mail", "Situação", "Último acesso", "Papel", "Onde", "Origem"]];
+    for (const p of people) {
+      const base = [p.full_name, p.email ?? "", p.is_active ? "Ativa" : "Desativada", p.last_sign_in_at ? new Date(p.last_sign_in_at).toLocaleString("pt-BR") : "Nunca entrou"];
+      for (const g of p.grants) linhas.push([...base, papel[g.role] ?? g.role, g.folder_name ?? "Empresa toda", "Direto"]);
+      for (const g of p.via_groups) linhas.push([...base, papel[g.role] ?? g.role, g.folder_name ?? "Empresa toda", `Grupo ${g.group_name}`]);
+      if (!p.grants.length && !p.via_groups.length) linhas.push([...base, "—", "—", "Sem acesso"]);
     }
+    const csv = "\ufeff" + linhas.map((l) => l.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\r\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    a.download = `acessos_${current.name.replace(/[^\w]+/g, "-")}_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   }
 
-  async function deleteGroup(g: GroupSummary) {
-    setBusy(true);
-    try {
-      await api.delete(`/companies/${companyId}/groups/${g.id}`);
-      success(`Grupo "${g.name}" removido.`);
-      setRemoving(null);
-      if (expanded === g.id) setExpanded(null);
-      load();
-    } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Não foi possível remover o grupo.");
-    } finally {
-      setBusy(false);
-    }
-  }
+  if (!current) return null;
 
   return (
-    <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-(--border-default)">
-        <div className="flex items-center gap-2">
-          <UsersRound className="w-4 h-4 text-teal-500" />
-          <h3 className="text-mac-body font-medium text-(--text-primary)">Grupos</h3>
-        </div>
-        {canManage && !creating && (
-          <Button size="sm" variant="secondary" onClick={() => setCreating(true)}>
-            <Plus className="w-3.5 h-3.5" /> Novo grupo
-          </Button>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <p className="text-mac-caption text-(--text-secondary) max-w-2xl">Quem acessa {current.name}, com que papel e onde. O acesso pode vir direto ou por um grupo.</p>
+        {state === "ok" && (
+          <div className="flex flex-wrap gap-2">
+            {/* Revisão de acessos (A9-21): a lista de quem acessa o quê, para conferir à mão. */}
+            <Button variant="secondary" onClick={exportAccessCsv}><Download className="w-4 h-4" aria-hidden="true" /> Exportar acessos (CSV)</Button>
+            <Button onClick={() => setCreating(true)}><UserPlus className="w-4 h-4" aria-hidden="true" /> Nova pessoa</Button>
+          </div>
         )}
       </div>
 
-      {creating && (
-        <div className="flex items-center gap-2 px-5 py-3 border-b border-(--border-default)">
-          <input
-            autoFocus
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") createGroup(); if (e.key === "Escape") setCreating(false); }}
-            placeholder="Nome do grupo (ex: Grupo Financeiro)"
-            className="flex-1 h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-          />
-          <Button size="sm" onClick={createGroup} loading={saving} disabled={!newName.trim()}>Criar</Button>
-          <Button size="sm" variant="secondary" onClick={() => { setCreating(false); setNewName(""); }}>Cancelar</Button>
+      <div role="tablist" aria-label="Pessoas ou grupos" className="flex items-center gap-0.5 p-0.5 rounded-full bg-(--bg-hover) w-fit">
+        {([["pessoas", "Pessoas"], ["grupos", "Grupos"]] as const).map(([v, l]) => (
+          <button key={v} role="tab" aria-selected={aba === v} onClick={() => setAba(v)}
+            className={`px-3 h-8 pointer-coarse:h-10 rounded-full text-mac-body font-medium transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${aba === v ? "bg-(--bg-card) text-(--text-primary) shadow-sm" : "text-(--text-secondary) hover:text-(--text-primary)"}`}>{l}</button>
+        ))}
+      </div>
+
+      {state === "forbidden" ? (
+        <p className="glass-panel glass-blur-card rounded-(--radius-panel) px-5 py-4 text-mac-body text-(--text-primary)">Só quem administra a empresa toda vê e gerencia as pessoas daqui.</p>
+      ) : state === "error" ? (
+        <div role="alert" className="glass-panel glass-blur-card rounded-(--radius-panel) flex flex-wrap items-center gap-3 px-5 py-4">
+          <AlertTriangle className="w-4 h-4 text-(--text-warning)" aria-hidden="true" />
+          <p className="flex-1 text-mac-body text-(--text-primary)">Não foi possível carregar as pessoas.</p>
+          <Button variant="secondary" size="sm" onClick={load}><RefreshCw className="w-3.5 h-3.5" aria-hidden="true" /> Tentar de novo</Button>
         </div>
+      ) : state === "loading" ? (
+        <div className="space-y-2" aria-label="Carregando">{[0, 1, 2, 3].map((i) => <div key={i} className="h-16 rounded-(--radius-control) bg-(--bg-hover) animate-pulse" />)}</div>
+      ) : aba === "grupos" ? (
+        <GroupsTab companyId={current.id} people={people ?? []} folders={folders} onChanged={load} />
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-48 max-w-80">
+              <label htmlFor={`${uid}-q`} className="sr-only">Buscar pessoa</label>
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-(--text-secondary)" aria-hidden="true" />
+              <input id={`${uid}-q`} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nome, usuário ou e-mail"
+                className="h-9 pointer-coarse:h-11 w-full rounded-full border border-(--border-control) bg-(--bg-card) pl-8 pr-3 text-mac-body pointer-coarse:text-[16px] text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring)" />
+            </div>
+            <div className="w-44"><Dropdown ariaLabel="Filtrar por papel" value={papel} onChange={setPapel} options={[{ value: "", label: "Todos os papéis" }, ...ROLE_OPTS]} /></div>
+            <div className="w-48"><Dropdown ariaLabel="Filtrar por estado" value={estado} onChange={setEstado}
+              options={[{ value: "ativas", label: "Contas ativas" }, { value: "desativadas", label: "Desativadas" }, { value: "grupo", label: "Com acesso por grupo" }, { value: "todas", label: "Todas" }]} /></div>
+            {folderFilter && (
+              <button onClick={() => setParams((p) => { const n = new URLSearchParams(p); n.delete("folder"); return n; }, { replace: true })}
+                className="h-9 px-3 rounded-full bg-teal-500/12 text-mac-caption font-medium text-(--text-accent)">Com acesso a {folderName ?? "pasta"} ✕</button>
+            )}
+          </div>
+          <p className="sr-only" role="status" aria-live="polite">{visible.length} pessoas</p>
+          {visible.length === 0 ? <p className="text-mac-body text-(--text-secondary)">Ninguém com esses filtros.</p> : (
+            <ul className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
+              {visible.map((p) => {
+                const resumo = [
+                  ...p.grants.map((g) => `${ROLE_LABEL[g.role]} ${where(g.folder_name)}`),
+                  ...p.via_groups.map((g) => `${ROLE_LABEL[g.role]} ${where(g.folder_name)} (grupo ${g.group_name})`),
+                ];
+                return (
+                  <li key={p.user_id} className="border-b border-(--border-default) last:border-0">
+                    <button onClick={() => setOpen(p.user_id)}
+                      className="w-full text-left flex items-center gap-3 px-4 sm:px-5 py-3 min-h-16 hover:bg-(--bg-hover) transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-(--focus-ring)">
+                      <Avatar name={p.full_name} size="md" />
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-mac-body text-(--text-primary) truncate">
+                          {p.full_name}{p.user_id === user?.id && <span className="text-(--text-secondary)"> (você)</span>}
+                          {!p.is_active && <span className="ml-2 text-mac-caption font-medium text-(--text-danger)">desativada</span>}
+                          {p.must_change_password && <span className="ml-2 text-mac-caption font-medium text-(--text-warning)">senha provisória</span>}
+                        </span>
+                        <span className="block text-mac-caption text-(--text-secondary) truncate">{resumo.join(" · ") || "sem acesso"}</span>
+                        <span className="block text-mac-caption text-(--text-secondary) truncate">
+                          {p.email ?? p.username} · {p.last_sign_in_at ? `último acesso ${relativeDate(p.last_sign_in_at)}` : "nunca entrou"}
+                        </span>
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-(--text-secondary) shrink-0" aria-hidden="true" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <details className="text-mac-caption text-(--text-secondary)">
+            <summary className="cursor-pointer font-medium text-(--text-accent)">O que cada papel pode fazer</summary>
+            <dl className="mt-2 space-y-1">{Object.entries(ROLE_HELP).map(([r, t]) => <div key={r}><dt className="inline font-medium text-(--text-primary)">{ROLE_LABEL[r]}: </dt><dd className="inline">{t}</dd></div>)}</dl>
+          </details>
+        </>
       )}
 
-      {loading ? (
-        <div className="p-5 space-y-2">
-          {[0, 1].map((i) => <div key={i} className="h-10 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />)}
-        </div>
-      ) : groups.length === 0 ? (
-        <div className="py-6 px-5 text-mac-caption text-(--text-tertiary)">
-          Nenhum grupo ainda. Grupos permitem conceder acesso a vários usuários de uma vez — o acesso de um usuário via grupo é resolvido junto com as concessões diretas dele, com a mesma regra de especificidade (a mais próxima da pasta vence).
-        </div>
-      ) : (
-        <ul>
-          {groups.map((g) => (
-            <div key={g.id}>
-              <li
-                className="flex items-center gap-3 px-5 py-3 hover:bg-(--bg-hover) border-b border-(--border-default) cursor-pointer group"
-                onClick={() => setExpanded(expanded === g.id ? null : g.id)}
-              >
-                <div className="w-8 h-8 rounded-full bg-indigo-500/15 flex items-center justify-center shrink-0">
-                  <UsersRound className="w-4 h-4 text-indigo-500" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-mac-body font-medium text-(--text-primary) truncate">{g.name}</p>
-                  <p className="text-mac-caption text-(--text-tertiary)">
-                    {g.member_count} {g.member_count === 1 ? "membro" : "membros"} · {g.grant_count} {g.grant_count === 1 ? "concessão" : "concessões"}
-                  </p>
-                </div>
-                <ChevronDown className={`w-3.5 h-3.5 text-(--text-tertiary) transition-transform duration-fast ${expanded === g.id ? "rotate-180" : ""}`} />
-                {canManage && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setRemoving(g); }}
-                    className="opacity-0 group-hover:opacity-100 p-1.5 rounded-[6px] text-(--text-tertiary) hover:text-red-500 hover:bg-red-500/10 transition-all duration-fast"
-                    title="Excluir grupo"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </li>
-              {expanded === g.id && (
-                <GroupDetailPanel
-                  companyId={companyId}
-                  group={g}
-                  members={members}
-                  folders={folders}
-                  canManage={canManage}
-                  onClose={() => setExpanded(null)}
-                  onChanged={load}
-                />
-              )}
+      {person && <PersonDialog companyId={current.id} person={person} folders={folders} isSelf={person.user_id === user?.id} onClose={() => setOpen(null)} onChanged={load} />}
+      {creating && <NewPersonDialog companyId={current.id} folders={folders} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); load(); }} />}
+    </div>
+  );
+}
+
+function PersonDialog({ companyId, person, folders, isSelf, onClose, onChanged }: {
+  companyId: string; person: Person; folders: FolderOption[]; isSelf: boolean; onClose: () => void; onChanged: () => void;
+}) {
+  const { success, error: showError } = useToast();
+  const uid = useId();
+  const [busy, setBusy] = useState(false);
+  const [newRole, setNewRole] = useState("visualizador");
+  const [newFolder, setNewFolder] = useState("");
+  const [confirm, setConfirm] = useState<null | { kind: "revoke"; grant: DirectGrant } | { kind: "remove" } | { kind: "deactivate" }>(null);
+  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [explainFolder, setExplainFolder] = useState("");
+  const [explain, setExplain] = useState<ExplainResult | null | "erro">(null);
+
+  useEffect(() => {
+    setExplain(null);
+    api.get<ExplainResult>(`/companies/${companyId}/explain-access`, { params: { user_id: person.user_id, folder_id: explainFolder || undefined } })
+      .then((r) => setExplain(r.data)).catch(() => setExplain("erro"));
+  }, [companyId, person.user_id, explainFolder, person.grants.length, person.via_groups.length]);
+
+  async function act(fn: () => Promise<unknown>, ok: string, fallback: string) {
+    setBusy(true);
+    try { await fn(); success(ok); onChanged(); return true; } catch (e) { showError(friendly(e, fallback)); return false; } finally { setBusy(false); }
+  }
+
+  const opts = folderOptions(folders);
+  return (
+    <>
+      <Dialog onClose={onClose} title={person.full_name} description={`${person.email ?? person.username}${person.company_count > 1 ? ` · acessa ${person.company_count} empresas` : ""}`} size="lg" busy={busy}>
+        <div className="space-y-6">
+          {!person.is_active && <p className="rounded-(--radius-control) bg-red-500/10 px-3 py-2 text-mac-body text-(--text-primary)">Conta desativada: não entra no Docke. O histórico e os documentos dela continuam.</p>}
+
+          <section aria-labelledby={`${uid}-dir`} className="space-y-2">
+            <h3 id={`${uid}-dir`} className="text-mac-body font-semibold text-(--text-primary)">Acessos diretos</h3>
+            {person.grants.length === 0 ? <p className="text-mac-body text-(--text-secondary)">Nenhum: o acesso vem só dos grupos abaixo.</p> : (
+              <ul className="divide-y divide-(--border-default) rounded-(--radius-control) border border-(--border-default)">
+                {person.grants.map((g) => (
+                  <li key={g.access_id} className="flex flex-wrap items-center gap-2 px-3 py-2">
+                    <span className="flex-1 min-w-36 text-mac-body text-(--text-primary)">{g.folder_name ?? "Empresa toda"}</span>
+                    <div className="w-44">
+                      <Dropdown ariaLabel={`Papel ${where(g.folder_name)}`} value={g.role} disabled={busy}
+                        onChange={(v) => act(() => api.patch(`/companies/${companyId}/access/${g.access_id}`, { permission_level: v }), `Agora é ${ROLE_LABEL[v]} ${where(g.folder_name)}.`, "Não foi possível trocar o papel.")}
+                        options={ROLE_OPTS} />
+                    </div>
+                    <Button variant="icon" size="sm" aria-label={`Tirar acesso ${where(g.folder_name)}`} onClick={() => setConfirm({ kind: "revoke", grant: g })}>
+                      <Trash2 className="w-4 h-4" aria-hidden="true" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="w-44"><label id={`${uid}-nr`} className="block text-mac-caption text-(--text-secondary) mb-1">Papel</label><Dropdown ariaLabelledby={`${uid}-nr`} value={newRole} onChange={setNewRole} options={ROLE_OPTS} /></div>
+              <div className="w-56"><label id={`${uid}-nf`} className="block text-mac-caption text-(--text-secondary) mb-1">Onde</label><Dropdown ariaLabelledby={`${uid}-nf`} value={newFolder} onChange={setNewFolder} options={opts} /></div>
+              <Button variant="secondary" size="sm" disabled={busy}
+                onClick={() => act(() => api.post(`/companies/${companyId}/members/${person.user_id}/access`, { permission_level: newRole, folder_id: newFolder || null }), "Acesso adicionado.", "Não foi possível adicionar o acesso.")}>
+                <Plus className="w-3.5 h-3.5" aria-hidden="true" /> Adicionar acesso
+              </Button>
             </div>
+            <p className="text-mac-caption text-(--text-secondary)">{ROLE_HELP[newRole]}</p>
+          </section>
+
+          {person.via_groups.length > 0 && (
+            <section aria-labelledby={`${uid}-gr`} className="space-y-2">
+              <h3 id={`${uid}-gr`} className="text-mac-body font-semibold text-(--text-primary)">Acessos por grupo</h3>
+              <ul className="space-y-1">
+                {person.via_groups.map((g, i) => (
+                  <li key={i} className="flex items-center gap-2 text-mac-body text-(--text-primary)">
+                    <UsersRound className="w-4 h-4 text-(--text-secondary)" aria-hidden="true" /> {ROLE_LABEL[g.role]} {where(g.folder_name)} <span className="text-(--text-secondary)">pelo grupo {g.group_name}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          <section aria-labelledby={`${uid}-ex`} className="space-y-2">
+            <h3 id={`${uid}-ex`} className="flex items-center gap-1.5 text-mac-body font-semibold text-(--text-primary)"><HelpCircle className="w-4 h-4 text-(--text-accent)" aria-hidden="true" /> O que vê, e por quê</h3>
+            <div className="w-64"><Dropdown ariaLabel="Lugar para conferir" value={explainFolder} onChange={setExplainFolder} options={opts} /></div>
+            <div aria-live="polite">
+              {explain === null ? <p className="text-mac-caption text-(--text-secondary)">Conferindo…</p>
+                : explain === "erro" ? <p className="text-mac-body text-(--text-danger)">Não foi possível conferir agora. Isso não quer dizer que a pessoa não tenha acesso.</p>
+                : explain.candidates.length === 0 ? <p className="text-mac-body text-(--text-primary)">Sem acesso {explainFolder ? "a esta pasta" : "à empresa toda"}: nenhuma concessão direta nem grupo cobre este lugar.</p>
+                : (
+                  <div className="space-y-1">
+                    <p className="text-mac-body text-(--text-primary)">Resultado: <strong>{ROLE_LABEL[explain.resolved ?? ""] ?? explain.resolved}</strong> {explainFolder ? "nesta pasta (e nas subpastas)" : "na empresa toda"}. {ROLE_HELP[explain.resolved ?? ""]}</p>
+                    <ul className="space-y-0.5">
+                      {explain.candidates.map((c, i) => (
+                        <li key={i} className={`flex items-start gap-1.5 text-mac-caption ${c.is_winner ? "text-(--text-primary)" : "text-(--text-secondary)"}`}>
+                          {c.is_winner ? <Check className="w-3.5 h-3.5 mt-0.5 text-(--text-success)" aria-hidden="true" /> : <span className="w-3.5" />}
+                          {c.source === "grupo" ? `Grupo ${c.group_name}` : "Concessão direta"}: {ROLE_LABEL[c.permission_level]} {c.folder_path ? `em ${c.folder_name ?? "pasta"}` : "na empresa toda"}
+                          {c.is_winner ? " (vale esta)" : " (perde para uma mais específica)"}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+            </div>
+          </section>
+
+          {!isSelf && (
+            <section aria-label="Conta" className="flex flex-wrap gap-2 border-t border-(--border-default) pt-4">
+              {person.is_active ? (
+                <Button variant="secondary" size="sm" disabled={busy} onClick={() => setConfirm({ kind: "deactivate" })}><Ban className="w-3.5 h-3.5" aria-hidden="true" /> Desativar conta</Button>
+              ) : (
+                <Button variant="secondary" size="sm" disabled={busy} onClick={() => act(() => api.post(`/companies/${companyId}/members/${person.user_id}/activate`), "Conta reativada.", "Não foi possível reativar.")}><RotateCcw className="w-3.5 h-3.5" aria-hidden="true" /> Reativar conta</Button>
+              )}
+              <Button variant="secondary" size="sm" disabled={busy || !person.is_active}
+                onClick={async () => {
+                  setBusy(true);
+                  try { const r = await api.post(`/companies/${companyId}/members/${person.user_id}/reset-password`); setTempPassword(r.data.temporary_password); onChanged(); }
+                  catch (e) { showError(friendly(e, "Não foi possível gerar a senha.")); } finally { setBusy(false); }
+                }}>
+                <KeyRound className="w-3.5 h-3.5" aria-hidden="true" /> Gerar senha provisória
+              </Button>
+              <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirm({ kind: "remove" })}><Trash2 className="w-3.5 h-3.5 text-(--text-danger)" aria-hidden="true" /> Remover desta empresa</Button>
+            </section>
+          )}
+        </div>
+      </Dialog>
+
+      {confirm?.kind === "revoke" && (
+        <ConfirmModal title="Tirar este acesso?" loading={busy} confirmLabel="Tirar" danger
+          description={<>{person.full_name} deixa de ser {ROLE_LABEL[confirm.grant.role]} {where(confirm.grant.folder_name)}.{person.grants.length === 1 && person.via_groups.length === 0 ? " É o último acesso dela: use “Remover desta empresa”." : ""}</>}
+          onClose={() => setConfirm(null)}
+          onConfirm={async () => { if (await act(() => api.delete(`/companies/${companyId}/access/${confirm.grant.access_id}`), "Acesso retirado.", "Não foi possível tirar o acesso.")) setConfirm(null); }} />
+      )}
+      {confirm?.kind === "deactivate" && (
+        <ConfirmModal title={`Desativar a conta de ${person.full_name}?`} loading={busy} confirmLabel="Desativar" danger
+          description={<>A pessoa não entra mais{person.company_count > 1 ? " em nenhuma das empresas" : ""} e o que estiver aberto para na próxima ação. Nada é apagado; dá para reativar.</>}
+          onClose={() => setConfirm(null)}
+          onConfirm={async () => { if (await act(() => api.post(`/companies/${companyId}/members/${person.user_id}/deactivate`), "Conta desativada.", "Não foi possível desativar.")) setConfirm(null); }} />
+      )}
+      {confirm?.kind === "remove" && (
+        <ConfirmModal title={`Remover ${person.full_name} desta empresa?`} loading={busy} confirmLabel="Remover" danger
+          description="Saem todos os acessos diretos e os grupos desta empresa. A conta continua (se ela acessa outras empresas) e o histórico fica."
+          onClose={() => setConfirm(null)}
+          onConfirm={async () => { if (await act(() => api.delete(`/companies/${companyId}/members/${person.user_id}`), "Removida da empresa.", "Não foi possível remover.")) { setConfirm(null); onClose(); } }} />
+      )}
+      {tempPassword && <PasswordShown name={person.full_name} password={tempPassword} onClose={() => setTempPassword(null)} />}
+    </>
+  );
+}
+
+function PasswordShown({ name, password, onClose }: { name: string; password: string; onClose: () => void }) {
+  const { success } = useToast();
+  return (
+    <Dialog onClose={onClose} title="Senha provisória" size="sm" description={`Entregue a ${name} por um canal seguro. No primeiro acesso ela cria a própria senha. Esta senha não aparece de novo.`}
+      footer={<Button onClick={onClose}>Pronto</Button>}>
+      <div className="flex items-center gap-2">
+        <code className="flex-1 rounded-(--radius-control) bg-(--bg-hover) px-3 py-2 font-mono text-mac-callout text-(--text-primary) select-all">{password}</code>
+        <Button variant="secondary" size="sm" onClick={() => navigator.clipboard.writeText(password).then(() => success("Senha copiada."))}><Copy className="w-3.5 h-3.5" aria-hidden="true" /> Copiar</Button>
+      </div>
+    </Dialog>
+  );
+}
+
+function NewPersonDialog({ companyId, folders, onClose, onCreated }: { companyId: string; folders: FolderOption[]; onClose: () => void; onCreated: () => void }) {
+  const { error: showError } = useToast();
+  const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [password] = useState(generatePassword);
+  const [role, setRole] = useState("visualizador");
+  const [folderId, setFolderId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
+  const [touched, setTouched] = useState(false);
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const errors = { name: !fullName.trim() ? "Informe o nome." : "", user: !/^[a-z0-9._-]{3,}$/.test(username) ? "Use 3 ou mais letras minúsculas, números, ponto ou hífen." : "", email: !emailOk ? "E-mail inválido." : "" };
+  const invalid = Object.values(errors).some(Boolean);
+
+  async function create() {
+    setTouched(true);
+    if (invalid) return;
+    setSaving(true);
+    try {
+      await api.post(`/companies/${companyId}/members`, { email: email.trim(), password, username, full_name: fullName.trim(), permission_level: role, folder_id: folderId || null });
+      setDone(true);
+    } catch (e) { showError(friendly(e, "Não foi possível criar a pessoa.")); } finally { setSaving(false); }
+  }
+
+  if (done) return <PasswordShown name={fullName.trim()} password={password} onClose={onCreated} />;
+  return (
+    <Dialog onClose={onClose} title="Nova pessoa" description="A conta já nasce pronta para entrar. Você entrega a senha inicial." size="md" busy={saving}
+      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={saving} onClick={create}>Criar</Button></>}>
+      <div className="space-y-4">
+        <Input label="Nome completo" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Maria Silva" error={touched ? errors.name : undefined} autoFocus />
+        <Input label="Nome de usuário" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/\s+/g, "."))} placeholder="maria.silva" error={touched ? errors.user : undefined} />
+        <Input label="E-mail (usado para entrar)" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="maria@empresa.com.br" error={touched ? errors.email : undefined} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div><label id="np-role" className="block text-mac-body font-medium text-(--text-secondary) mb-1">Papel</label><Dropdown ariaLabelledby="np-role" value={role} onChange={setRole} options={ROLE_OPTS} /></div>
+          <div><label id="np-f" className="block text-mac-body font-medium text-(--text-secondary) mb-1">Onde</label><Dropdown ariaLabelledby="np-f" value={folderId} onChange={setFolderId} options={folderOptions(folders)} /></div>
+        </div>
+        <p className="text-mac-caption text-(--text-secondary)">{ROLE_HELP[role]}</p>
+      </div>
+    </Dialog>
+  );
+}
+
+function GroupsTab({ companyId, people, folders, onChanged }: { companyId: string; people: Person[]; folders: FolderOption[]; onChanged: () => void }) {
+  const { success, error: showError } = useToast();
+  const [groups, setGroups] = useState<GroupSummary[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [name, setName] = useState("");
+  const [open, setOpen] = useState<GroupSummary | null>(null);
+  const [removing, setRemoving] = useState<GroupSummary | null>(null);
+  const [busy, setBusy] = useState(false);
+  function load() { setFailed(false); api.get<GroupSummary[]>(`/companies/${companyId}/groups`).then((r) => setGroups(r.data ?? [])).catch(() => setFailed(true)); }
+  useEffect(load, [companyId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function create() {
+    if (!name.trim()) return;
+    setBusy(true);
+    try { await api.post(`/companies/${companyId}/groups`, { name: name.trim() }); setName(""); success("Grupo criado. Abra para pôr pessoas e acessos."); load(); }
+    catch (e) { showError(friendly(e, "Não foi possível criar o grupo.")); } finally { setBusy(false); }
+  }
+
+  if (failed) return <p role="alert" className="text-mac-body text-(--text-danger)">Não foi possível carregar os grupos. <button className="underline" onClick={load}>Tentar de novo</button></p>;
+  if (!groups) return <div className="h-24 rounded bg-(--bg-hover) animate-pulse" />;
+  return (
+    <div className="space-y-3">
+      <p className="text-mac-caption text-(--text-secondary) max-w-2xl">Um grupo junta pessoas que precisam do mesmo acesso (ex.: “Fiscal”, “RH”). Quem entra no grupo recebe os acessos dele; quem sai, perde.</p>
+      <form onSubmit={(e) => { e.preventDefault(); create(); }} className="flex gap-2 max-w-md">
+        <label htmlFor="novo-grupo" className="sr-only">Nome do grupo</label>
+        <input id="novo-grupo" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome do novo grupo" maxLength={60}
+          className="h-9 pointer-coarse:h-11 flex-1 rounded-(--radius-control) border border-(--border-control) bg-(--bg-card) px-3 text-mac-body pointer-coarse:text-[16px] text-(--text-primary) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring)" />
+        <Button type="submit" variant="secondary" disabled={!name.trim() || busy}><Plus className="w-3.5 h-3.5" aria-hidden="true" /> Criar</Button>
+      </form>
+      {groups.length === 0 ? <p className="text-mac-body text-(--text-secondary)">Nenhum grupo ainda.</p> : (
+        <ul className="glass-panel glass-blur-card rounded-(--radius-panel) divide-y divide-(--border-default)">
+          {groups.map((g) => (
+            <li key={g.id} className="flex items-center gap-3 px-4 py-2.5 min-h-12">
+              <UsersRound className="w-4 h-4 text-(--text-secondary)" aria-hidden="true" />
+              <button onClick={() => setOpen(g)} className="flex-1 text-left min-w-0 rounded-[6px] hover:underline focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)">
+                <span className="block text-mac-body text-(--text-primary)">{g.name}</span>
+                <span className="block text-mac-caption text-(--text-secondary)">{g.member_count} {g.member_count === 1 ? "pessoa" : "pessoas"} · {g.grant_count} {g.grant_count === 1 ? "acesso" : "acessos"}</span>
+              </button>
+              <Button variant="icon" size="sm" aria-label={`Excluir grupo ${g.name}`} onClick={() => setRemoving(g)}><Trash2 className="w-4 h-4" aria-hidden="true" /></Button>
+            </li>
           ))}
         </ul>
       )}
-
+      {open && <GroupDialog companyId={companyId} group={open} people={people} folders={folders} onClose={() => { setOpen(null); load(); onChanged(); }} />}
       {removing && (
-        <ConfirmModal
-          title={`Excluir o grupo "${removing.name}"?`}
-          description="Todos os membros e concessões de acesso deste grupo são removidos junto. Usuários que só tinham acesso via este grupo perdem esse acesso — o restante das concessões deles (diretas ou de outros grupos) não é afetado."
-          confirmLabel="Excluir grupo"
-          danger
-          loading={busy}
-          onConfirm={() => deleteGroup(removing)}
+        <ConfirmModal title={`Excluir o grupo “${removing.name}”?`} confirmLabel="Excluir" danger loading={busy}
+          description={`${removing.member_count} ${removing.member_count === 1 ? "pessoa perde" : "pessoas perdem"} os acessos que vinham dele (os diretos continuam).`}
           onClose={() => setRemoving(null)}
-        />
+          onConfirm={async () => {
+            setBusy(true);
+            try { await api.delete(`/companies/${companyId}/groups/${removing.id}`); success("Grupo excluído."); setRemoving(null); load(); onChanged(); }
+            catch (e) { showError(friendly(e, "Não foi possível excluir.")); } finally { setBusy(false); }
+          }} />
       )}
     </div>
   );
 }
 
-export default function Users() {
-  usePageTitle("Usuários");
-  const { current } = useCompany();
-  const { user } = useAuthContext();
+function GroupDialog({ companyId, group, people, folders, onClose }: { companyId: string; group: GroupSummary; people: Person[]; folders: FolderOption[]; onClose: () => void }) {
   const { success, error: showError } = useToast();
-  // Fase 10.1: deep link vindo do menu de contexto da pasta em Documents.tsx
-  // (/settings/users?folder=<id>) — filtra a lista pras concessões dessa
-  // pasta específica, em vez de mostrar todas as concessões da empresa.
-  const [searchParams, setSearchParams] = useSearchParams();
-  const folderFilter = searchParams.get("folder");
-  const [grants, setGrants] = useState<Grant[]>([]);
-  const [folders, setFolders] = useState<FolderOption[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
-  const [addingGrantFor, setAddingGrantFor] = useState<{ id: string; name: string } | null>(null);
-  const [explaining, setExplaining] = useState<{ id: string; name: string } | null>(null);
-  const [removingGrant, setRemovingGrant] = useState<Grant | null>(null);
+  const [data, setData] = useState<GroupDetail | null>(null);
+  const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [rolesOpen, setRolesOpen] = useState(false);
-
-  const canManage = user?.role === "supremo" || current?.permission_level === "admin";
-
-  function load() {
-    if (!current) return;
-    setLoading(true);
-    Promise.all([
-      api.get<Grant[]>(`/companies/${current.id}/members`),
-      api.get<FolderOption[]>(`/folders`, { params: { company_id: current.id, flat: true } }),
-    ])
-      .then(([membersRes, foldersRes]) => {
-        setGrants(Array.isArray(membersRes.data) ? membersRes.data : []);
-        setFolders(Array.isArray(foldersRes.data) ? foldersRes.data : []);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }
-
-  useEffect(load, [current?.id]);
-
-  const [grantImpact, setGrantImpact] = useState<string | null>(null);
-
-  // Fase 9.4 — preview de impacto: antes de confirmar a remoção, calcula qual
-  // seria o acesso efetivo resultante (reaproveita o Explain Access da 9.3
-  // em vez de duplicar a lógica de resolução no frontend).
-  function openRemoveGrant(g: Grant) {
-    setRemovingGrant(g);
-    setGrantImpact(null);
-    if (!current) return;
-    api.get<ExplainResult>(`/companies/${current.id}/explain-access`, {
-      params: { user_id: g.user_id, folder_id: g.folder_id || undefined },
-    })
-      .then((res) => {
-        const remaining = res.data.candidates.filter((c) => !(
-          c.source === "direto" &&
-          c.permission_level === g.role &&
-          (g.folder_id ? c.folder_name === g.folder_name : c.folder_path === null)
-        ));
-        if (remaining.length === 0) {
-          setGrantImpact(`Depois de remover, ${g.full_name} perde completamente o acesso a este escopo.`);
-        } else {
-          const next = remaining[0];
-          setGrantImpact(
-            `Depois de remover, o acesso efetivo de ${g.full_name} aqui passa a ser "${ROLE_LABEL[next.permission_level] ?? next.permission_level}"` +
-            (next.source === "grupo" ? ` (via grupo ${next.group_name}).` : " (outra concessão direta).")
-          );
-        }
-      })
-      .catch(() => setGrantImpact(null));
-  }
-
-  async function removeGrant(g: Grant) {
-    if (!current) return;
+  const [add, setAdd] = useState("");
+  const [role, setRole] = useState("visualizador");
+  const [folder, setFolder] = useState("");
+  function load() { setFailed(false); api.get<GroupDetail>(`/companies/${companyId}/groups/${group.id}`).then((r) => setData(r.data)).catch(() => setFailed(true)); }
+  useEffect(load, [group.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  async function act(fn: () => Promise<unknown>, ok: string, fallback: string) {
     setBusy(true);
-    try {
-      await api.delete(`/companies/${current.id}/access/${g.access_id}`);
-      success(`Concessão de ${g.full_name} removida.`);
-      setRemovingGrant(null);
-      load();
-    } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Não foi possível remover a concessão.");
-    } finally {
-      setBusy(false);
-    }
+    try { await fn(); success(ok); load(); } catch (e) { showError(friendly(e, fallback)); } finally { setBusy(false); }
   }
-
-  // Agrupa concessões por usuário — um mesmo usuário pode ter várias linhas
-  // (uma por pasta escopada), cada uma com seu próprio access_id. Quando
-  // filtrado por pasta (folderFilter), mostra só as linhas daquela pasta
-  // exata (não da empresa toda nem de outras pastas) — é um raio-x de quem
-  // tem concessão DIRETA especificamente ali, não o efetivo (que já é
-  // coberto pelo Explain Access da 9.3).
-  const filteredGrants = folderFilter ? grants.filter((g) => g.folder_id === folderFilter) : grants;
-  const byUser = filteredGrants.reduce<Record<string, Grant[]>>((acc, g) => {
-    (acc[g.user_id] ??= []).push(g);
-    return acc;
-  }, {});
-  const filteredFolderName = folderFilter ? folders.find((f) => f.id === folderFilter)?.name : undefined;
-
+  const fora = people.filter((p) => p.is_active && !data?.members.some((m) => m.user_id === p.user_id));
   return (
-    <div className="space-y-4">
-      {folderFilter && (
-        <div className="flex items-center gap-2 px-4 py-2.5 rounded-(--radius-control) bg-teal-500/10 border border-teal-500/30 text-mac-body text-(--text-primary)">
-          <Filter className="w-4 h-4 text-teal-500 shrink-0" />
-          <span className="flex-1">Mostrando só concessões diretas da pasta <strong>{filteredFolderName ?? "selecionada"}</strong>.</span>
-          <button onClick={() => setSearchParams({})} className="text-mac-caption text-teal-500 hover:text-teal-600 font-medium shrink-0">
-            Ver todos
-          </button>
+    <Dialog onClose={onClose} title={`Grupo ${group.name}`} size="lg" busy={busy}>
+      {failed ? <p role="alert" className="text-mac-body text-(--text-danger)">Não foi possível abrir o grupo. <button className="underline" onClick={load}>Tentar de novo</button></p> : !data ? <div className="h-32 rounded bg-(--bg-hover) animate-pulse" /> : (
+        <div className="space-y-6">
+          <section aria-labelledby="gd-acc" className="space-y-2">
+            <h3 id="gd-acc" className="text-mac-body font-semibold text-(--text-primary)">Acessos do grupo</h3>
+            {data.grants.length === 0 ? <p className="text-mac-body text-(--text-secondary)">Nenhum: o grupo ainda não dá acesso a nada.</p> : (
+              <ul className="space-y-1">{data.grants.map((g) => (
+                <li key={g.access_id} className="flex items-center gap-2 text-mac-body text-(--text-primary)">
+                  <span className="flex-1">{ROLE_LABEL[g.role]} {where(g.folder_name)}</span>
+                  <Button variant="icon" size="sm" aria-label={`Tirar ${ROLE_LABEL[g.role]} ${where(g.folder_name)} do grupo`} disabled={busy}
+                    onClick={() => act(() => api.delete(`/companies/${companyId}/groups/${group.id}/access/${g.access_id}`), "Acesso tirado do grupo.", "Não foi possível tirar.")}><Trash2 className="w-4 h-4" aria-hidden="true" /></Button>
+                </li>))}
+              </ul>
+            )}
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="w-44"><Dropdown ariaLabel="Papel do grupo" value={role} onChange={setRole} options={ROLE_OPTS} /></div>
+              <div className="w-56"><Dropdown ariaLabel="Onde" value={folder} onChange={setFolder} options={folderOptions(folders)} /></div>
+              <Button variant="secondary" size="sm" disabled={busy} onClick={() => act(() => api.post(`/companies/${companyId}/groups/${group.id}/access`, { permission_level: role, folder_id: folder || null }), "Acesso dado ao grupo.", "Não foi possível dar o acesso.")}><Plus className="w-3.5 h-3.5" aria-hidden="true" /> Dar acesso</Button>
+            </div>
+          </section>
+          <section aria-labelledby="gd-mem" className="space-y-2">
+            <h3 id="gd-mem" className="text-mac-body font-semibold text-(--text-primary)">Pessoas ({data.members.length})</h3>
+            <ul className="space-y-1">{data.members.map((m) => (
+              <li key={m.user_id} className="flex items-center gap-2 text-mac-body text-(--text-primary)">
+                <Avatar name={m.full_name} size="sm" /><span className="flex-1">{m.full_name}</span>
+                <Button variant="icon" size="sm" aria-label={`Tirar ${m.full_name} do grupo`} disabled={busy}
+                  onClick={() => act(() => api.delete(`/companies/${companyId}/groups/${group.id}/members/${m.user_id}`), `${m.full_name} saiu do grupo e perdeu os acessos dele.`, "Não foi possível tirar.")}><Trash2 className="w-4 h-4" aria-hidden="true" /></Button>
+              </li>))}
+            </ul>
+            {fora.length > 0 && (
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="w-64"><Dropdown ariaLabel="Pessoa para pôr no grupo" value={add} onChange={setAdd} placeholder="Escolha a pessoa" options={fora.map((p) => ({ value: p.user_id, label: p.full_name }))} /></div>
+                <Button variant="secondary" size="sm" disabled={!add || busy} onClick={() => act(async () => { await api.post(`/companies/${companyId}/groups/${group.id}/members`, { user_id: add }); setAdd(""); }, "Pessoa adicionada ao grupo.", "Não foi possível adicionar.")}><Plus className="w-3.5 h-3.5" aria-hidden="true" /> Pôr no grupo</Button>
+              </div>
+            )}
+          </section>
         </div>
       )}
-
-      {canManage && current && (
-        <div className="flex justify-end">
-          <Button size="sm" onClick={() => setCreating(true)}>
-            <UserPlus className="w-3.5 h-3.5" />
-            Novo usuário
-          </Button>
-        </div>
-      )}
-
-      {/* Uma única janela de vidro pra usuários + níveis de acesso (antes
-          eram dois glass-panel empilhados, lendo como "duas caixas" — mesmo
-          ajuste de unificação feito em Settings/Documents) — a segunda seção
-          fica separada só por um border-t, igual ao padrão de Preferences.tsx
-          (Tema/Densidade dentro do mesmo cartão). */}
-      <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
-        {loading ? (
-          <div className="p-5 space-y-2">
-            {[0, 1, 2].map((i) => <div key={i} className="h-14 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />)}
-          </div>
-        ) : Object.keys(byUser).length === 0 ? (
-          <div className="py-8">
-            <EmptyState title="Nenhum usuário" icon={<UsersIcon className="w-6 h-6" />} />
-          </div>
-        ) : (
-          <ul>
-            {Object.values(byUser).map((userGrants) => {
-              const first = userGrants[0];
-              return (
-                <li key={first.user_id} className="flex items-start gap-3 px-5 py-3 hover:bg-(--bg-hover) border-b border-(--border-default) last:border-0 group">
-                  <Avatar name={first.full_name} size="sm" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-mac-body font-medium text-(--text-primary) truncate">{first.full_name}</p>
-                      {canManage && (
-                        <button
-                          onClick={() => setExplaining({ id: first.user_id, name: first.full_name })}
-                          title="Explicar este acesso"
-                          className="text-(--text-tertiary) hover:text-teal-500 transition-colors duration-fast shrink-0"
-                        >
-                          <HelpCircle className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                    <p className="text-mac-caption text-(--text-secondary) truncate mb-1.5">@{first.username}</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {userGrants.map((g) => (
-                        <span key={g.access_id} className="inline-flex items-center gap-1.5 pl-0.5 pr-1.5 py-0.5 rounded-full bg-(--bg-page) border border-(--border-default)">
-                          <Badge variant={ROLE_VARIANT[g.role] ?? "default"}>{ROLE_LABEL[g.role] ?? g.role}</Badge>
-                          <span className="text-mac-caption text-(--text-secondary) flex items-center gap-1">
-                            {g.folder_id ? (<><Folder className="w-3 h-3" />{g.folder_name ?? "Pasta"}</>) : "Empresa toda"}
-                          </span>
-                          {canManage && (
-                            <button
-                              onClick={() => openRemoveGrant(g)}
-                              className="text-(--text-tertiary) hover:text-(--text-primary) transition-colors duration-fast"
-                              title="Remover esta concessão"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          )}
-                        </span>
-                      ))}
-                      {canManage && (
-                        <button
-                          onClick={() => setAddingGrantFor({ id: first.user_id, name: first.full_name })}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-dashed border-(--border-default) text-mac-caption text-(--text-tertiary) hover:text-teal-500 hover:border-teal-400 transition-colors duration-fast"
-                        >
-                          <Plus className="w-3 h-3" />
-                          Adicionar
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-
-        {/* Recolhível — é texto de referência/ajuda, não uma configuração em
-            si, então não deve competir em espaço com a lista de usuários
-            (a razão do pane existir). Fechado por padrão. */}
-        <button
-          onClick={() => setRolesOpen((v) => !v)}
-          className="w-full px-5 py-3 border-t border-(--border-default) flex items-center gap-2 text-left hover:bg-(--bg-hover) transition-colors duration-fast"
-        >
-          <Shield className="w-4 h-4 text-teal-500" />
-          <h3 className="text-mac-body font-medium text-(--text-primary) flex-1">Sobre os níveis de acesso</h3>
-          <ChevronDown className={`w-3.5 h-3.5 text-(--text-tertiary) transition-transform duration-fast ${rolesOpen ? "rotate-180" : ""}`} />
-        </button>
-        {rolesOpen && (
-          <ul className="border-t border-(--border-default)">
-            {ROLES.map((r) => (
-              <li key={r.role} className="flex items-start gap-4 px-5 py-4 border-b border-(--border-default) last:border-0">
-                <Badge variant={ROLE_VARIANT[r.role] ?? "default"}>{r.label}</Badge>
-                <p className="text-mac-body text-(--text-secondary)">{r.description}</p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      {current && (
-        <GroupsSection
-          companyId={current.id}
-          members={Object.values(byUser).map((g) => ({ user_id: g[0].user_id, full_name: g[0].full_name, username: g[0].username }))}
-          folders={folders}
-          canManage={canManage}
-        />
-      )}
-
-      {creating && current && (
-        <CreateMemberModal companyId={current.id} folders={folders} onClose={() => setCreating(false)} onDone={load} />
-      )}
-
-      {explaining && current && (
-        <ExplainAccessModal
-          companyId={current.id}
-          userId={explaining.id}
-          userName={explaining.name}
-          folders={folders}
-          onClose={() => setExplaining(null)}
-        />
-      )}
-
-      {addingGrantFor && current && (
-        <AddGrantModal
-          companyId={current.id}
-          memberId={addingGrantFor.id}
-          memberName={addingGrantFor.name}
-          folders={folders}
-          onClose={() => setAddingGrantFor(null)}
-          onDone={load}
-        />
-      )}
-
-      {removingGrant && (
-        <ConfirmModal
-          title={`Remover concessão de ${removingGrant.full_name}?`}
-          description={grantImpact ?? "Calculando impacto…"}
-          confirmLabel="Remover"
-          danger
-          loading={busy}
-          onConfirm={() => removeGrant(removingGrant)}
-          onClose={() => setRemovingGrant(null)}
-        />
-      )}
-    </div>
+    </Dialog>
   );
 }

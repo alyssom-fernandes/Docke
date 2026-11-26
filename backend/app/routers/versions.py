@@ -16,14 +16,17 @@ import logging
 from typing import Any
 from uuid import UUID, uuid4
 
+import asyncio
+
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from app.config import settings
 from app.dependencies import get_current_user, get_db, get_db_admin
 from app.services import storage_service
 from app.services.documents_service import DocumentsService
+from app.services.file_signature import content_matches_extension, describe as describe_ext
 from app.services.notification_service import notify_document_watchers
 
 logger = logging.getLogger("docke.versions")
@@ -47,6 +50,10 @@ _MIME_MAP: dict[str, str] = {
     "gif": "image/gif",
     "txt": "text/plain",
 }
+
+
+class VersionLabelRequest(BaseModel):
+    label: str | None = None
 
 
 class VersionUploadRequest(BaseModel):
@@ -127,6 +134,7 @@ async def create_version_upload_url(
         "version_id": str(version_id),
         "version_number": next_number,
         "upload_url": upload_url,
+        "content_type": content_type,  # o PUT precisa mandar exatamente este tipo (X2-03)
         "expires_at": expires_at.isoformat(),
         "mock_mode": storage_service.is_mock(),
     }
@@ -150,7 +158,7 @@ async def confirm_version(
     if version is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Versão não encontrada.")
 
-    meta = storage_service.head_object(version["storage_key"])
+    meta = await asyncio.to_thread(storage_service.head_object, version["storage_key"])
     if meta is None:
         raise HTTPException(
             status_code=status.HTTP_424_FAILED_DEPENDENCY,
@@ -163,7 +171,7 @@ async def confirm_version(
     real_size_bytes = meta.get("ContentLength")
     if real_size_bytes is not None and real_size_bytes > settings.MAX_FILE_SIZE_BYTES:
         try:
-            storage_service.delete_object(version["storage_key"])
+            await asyncio.to_thread(storage_service.delete_object, version["storage_key"])
         except Exception:
             pass
         await VersionsService.delete_pending_version(admin_conn, version_id)
@@ -172,12 +180,32 @@ async def confirm_version(
             detail=f"Arquivo excede o limite de {settings.MAX_FILE_SIZE_BYTES // 1_048_576}MB.",
         )
 
+    # O conteúdo da versão tem de bater com a extensão do documento (X3-18).
+    doc_name = await admin_conn.fetchval("SELECT name FROM public.documents WHERE id = $1", document_id)
+    head = await asyncio.to_thread(storage_service.read_head, version["storage_key"])
+    if doc_name and head is not None and not content_matches_extension(doc_name, head):
+        try:
+            await asyncio.to_thread(storage_service.delete_object, version["storage_key"])
+        except Exception:
+            pass
+        await VersionsService.delete_pending_version(admin_conn, version_id)
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"A nova versão precisa ser do mesmo tipo de \"{doc_name}\": o conteúdo enviado não é de um arquivo {describe_ext(doc_name)}.",
+        )
+
+    # Impressão digital desta versão (J1-08): calculada no servidor a partir
+    # do arquivo guardado, como no envio original.
+    sha256 = await asyncio.to_thread(storage_service.compute_sha256, version["storage_key"])
+
     async with admin_conn.transaction():
         await VersionsService.activate_version(
             admin_conn, document_id=document_id, version_id=version_id,
             storage_key=version["storage_key"], mime_type=version["mime_type"],
             size_bytes=real_size_bytes if real_size_bytes is not None else version["size_bytes"],
         )
+        if sha256:
+            await admin_conn.execute("UPDATE public.document_versions SET sha256 = $2 WHERE id = $1", version_id, sha256)
         await DocumentsService.enqueue_ocr(admin_conn, document_id)
         await VersionsService.log_version_upload(admin_conn, document_id=document_id, user_id=claims["sub"])
         doc_row = await VersionsService.get_document_name_and_company(admin_conn, document_id)
@@ -224,7 +252,7 @@ async def restore_version(
         await VersionsService.insert_version(
             admin_conn, version_id=new_version_id, document_id=document_id, version_number=next_number,
             storage_key=old_version["storage_key"], size_bytes=old_version["size_bytes"],
-            mime_type=old_version["mime_type"], uploaded_by=user_id,
+            mime_type=old_version["mime_type"], uploaded_by=user_id, sha256=old_version["sha256"],
         )
         await VersionsService.activate_version(
             admin_conn, document_id=document_id, version_id=new_version_id,
@@ -233,7 +261,7 @@ async def restore_version(
         await DocumentsService.enqueue_ocr(admin_conn, document_id)
         await VersionsService.log_version_restore(
             admin_conn, document_id=document_id, user_id=user_id,
-            restored_version=next_number - 1, new_version=next_number,
+            restored_version=old_version["version_number"], new_version=next_number,
         )
         doc_row = await VersionsService.get_document_name_and_company(admin_conn, document_id)
         await notify_document_watchers(
@@ -248,10 +276,43 @@ async def restore_version(
 # GET /documents/:id/versions/:version_id/download-url — baixa versão específica
 # ---------------------------------------------------------------------------
 
+@router.patch("/{document_id}/versions/{version_id}")
+async def label_version(
+    document_id: UUID,
+    version_id: UUID,
+    body: VersionLabelRequest,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Dá nome a uma versão ("aprovada pelo jurídico") ou tira o nome (A5-66)."""
+    await _check_write_access(conn, document_id)
+    label = (body.label or "").strip() or None
+    if label is not None and len(label) > 80:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="O nome da versão vai até 80 caracteres.")
+    row = await admin_conn.fetchrow(
+        "UPDATE public.document_versions SET label = $3 WHERE id = $1 AND document_id = $2 RETURNING version_number",
+        version_id, document_id, label,
+    )
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Versão não encontrada.")
+    await admin_conn.execute(
+        """
+        INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, metadata)
+        SELECT $2::uuid, d.company_id, 'version_label', 'document', $1::uuid, d.name,
+               jsonb_build_object('version', $3::int, 'label', $4::text)
+        FROM public.documents d WHERE d.id = $1
+        """,
+        document_id, claims["sub"], row["version_number"], label,
+    )
+    return {"version_number": row["version_number"], "label": label}
+
+
 @router.get("/{document_id}/versions/{version_id}/download-url")
 async def get_version_download_url(
     document_id: UUID,
     version_id: UUID,
+    inline: bool = Query(False),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> dict[str, Any]:
     doc = await VersionsService.get_document_for_download(conn, document_id)
@@ -263,10 +324,16 @@ async def get_version_download_url(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Versão não encontrada.")
 
     filename = f"v{version['version_number']}_{doc['name']}"
-    download_url, expires_at = storage_service.generate_download_url(
-        key=version["storage_key"], filename=filename, content_type=version["mime_type"],
-    )
-    return {"download_url": download_url, "expires_at": expires_at.isoformat(), "name": filename}
+    if inline:
+        # Abrir uma versão antiga no visualizador, sem baixar (A5-66).
+        download_url, expires_at = storage_service.generate_preview_url(
+            key=version["storage_key"], content_type=version["mime_type"],
+        )
+    else:
+        download_url, expires_at = storage_service.generate_download_url(
+            key=version["storage_key"], filename=filename, content_type=version["mime_type"],
+        )
+    return {"download_url": download_url, "expires_at": expires_at.isoformat(), "name": filename, "mime_type": version["mime_type"]}
 
 
 # ---------------------------------------------------------------------------
@@ -282,13 +349,15 @@ async def get_version_content(
     document_id: UUID,
     version_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
 ) -> dict[str, Any]:
     """
-    Só disponível pra arquivos de texto puro (txt/csv/xml) — o conteúdo é lido
-    direto do storage, sem precisar de OCR (o valor já é texto). PDF/imagem
-    dependeriam de OCR por versão, que a Fase 3.2 nunca implementou (só a
-    versão ATUAL tem texto extraído — document_versions.ocr_text existe no
-    schema desde a Fase v2, mas nunca foi populado por nenhum worker).
+    Texto de uma versão, para a comparação entre versões.
+    - TXT, CSV e XML: o próprio conteúdo, lido do storage.
+    - PDF, DOCX, XLSX, imagem e afins: o texto extraído da versão. A versão
+      atual já o recebe do worker de OCR; uma versão antiga sem texto é lida
+      agora (até 10 páginas escaneadas) e o resultado fica guardado.
+    Antes, só arquivos de texto puro podiam ser comparados (achado A5-51).
     """
     doc = await VersionsService.get_document_for_download(conn, document_id)
     if doc is None:
@@ -298,19 +367,51 @@ async def get_version_content(
     if version is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Versão não encontrada.")
 
-    if version["mime_type"] not in _TEXT_MIME_TYPES:
-        return {"available": False, "text": None, "reason": "Comparação de texto disponível só para arquivos .txt, .csv ou .xml."}
+    if version["mime_type"] in _TEXT_MIME_TYPES:
+        raw = storage_service.read_object(version["storage_key"])
+        if raw is None:
+            return {"available": False, "text": None, "reason": "O arquivo desta versão não foi encontrado no armazenamento."}
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text = raw.decode("latin-1", errors="replace")
+        return {"available": True, "text": text[:200_000], "reason": None, "source": "arquivo"}
 
-    raw = storage_service.read_object(version["storage_key"])
-    if raw is None:
-        return {"available": False, "text": None, "reason": "Arquivo não encontrado no storage."}
+    text = version["ocr_text"]
+    if not text:
+        from app.services.ocr_service import UnsupportedFormat
+        from app.workers.ocr_worker import extract_document_text
 
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        text = raw.decode("latin-1", errors="replace")
+        try:
+            extraction = await extract_document_text(
+                _text_provider(), version["storage_key"], version["mime_type"], max_ocr_pages=10,
+            )
+        except UnsupportedFormat:
+            return {"available": False, "text": None, "reason": "Este formato não tem texto para comparar. Abra as duas versões lado a lado."}
+        except Exception:
+            logger.exception("Falha ao ler o texto da versão %s do documento %s", version_id, document_id)
+            return {"available": False, "text": None, "reason": "Não foi possível ler o texto desta versão agora. Tente de novo em instantes."}
+        text = extraction.text
+        await admin_conn.execute(
+            "UPDATE public.document_versions SET ocr_text = $2, ocr_status = 'done' WHERE id = $1",
+            version_id, text,
+        )
+    if not text:
+        return {"available": False, "text": None, "reason": "Esta versão não tem texto reconhecível (por exemplo, uma imagem sem escrita)."}
+    return {"available": True, "text": text[:200_000], "reason": None, "source": "texto_extraido"}
 
-    return {"available": True, "text": text[:200_000], "reason": None}
+
+_provider_cache = None
+
+
+def _text_provider():
+    """O mesmo provedor do worker (com Tesseract em produção), criado uma vez."""
+    global _provider_cache
+    if _provider_cache is None:
+        from app.services.ocr_service import get_provider
+
+        _provider_cache = get_provider()
+    return _provider_cache
 
 
 # ---------------------------------------------------------------------------
@@ -334,13 +435,33 @@ async def delete_version(
     if await VersionsService.is_current_version(admin_conn, document_id, version_id):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Não é possível excluir a versão atual.")
 
+    # Legal hold e retenção travada também protegem as versões (achado A5-65);
+    # o trigger do banco recusaria, aqui a mensagem já sai clara.
+    motivo = await admin_conn.fetchval("SELECT public.document_deletion_block_reason($1)", document_id)
+    if motivo:
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail="Este documento está sob legal hold ou retenção obrigatória: as versões antigas também ficam guardadas.",
+        )
+
+    doc_row = await admin_conn.fetchrow("SELECT name, company_id FROM public.documents WHERE id = $1", document_id)
     await VersionsService.delete_version_row(admin_conn, version_id)
+    # A exclusão entra na trilha de auditoria (antes não deixava rastro).
+    if doc_row is not None:
+        await admin_conn.execute(
+            """
+            INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, metadata)
+            VALUES ($1::uuid, $2::uuid, 'version_delete', 'document', $3::uuid, $4, $5::jsonb)
+            """,
+            claims["sub"], doc_row["company_id"], str(document_id), doc_row["name"],
+            f'{{"versao": {int(version["version_number"])}}}',
+        )
 
     # Só remove o objeto do storage se nenhuma outra versão ainda referencia a
     # mesma chave (acontece quando uma restauração cloneou o storage_key).
     if not await VersionsService.storage_key_still_referenced(admin_conn, version["storage_key"]):
         try:
-            storage_service.delete_object(version["storage_key"])
+            await asyncio.to_thread(storage_service.delete_object, version["storage_key"])
         except Exception:
             logger.exception(
                 "Falha ao remover objeto do storage após excluir versão %s do documento %s (key=%s) — objeto pode ter ficado órfão.",

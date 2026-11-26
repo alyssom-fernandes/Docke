@@ -13,7 +13,7 @@ class SharesService:
     @staticmethod
     async def get_document_for_share(conn: asyncpg.Connection, document_id: UUID) -> asyncpg.Record | None:
         return await conn.fetchrow(
-            "SELECT id, company_id, current_version_id FROM public.documents WHERE id = $1 AND deleted_at IS NULL",
+            "SELECT id, company_id, folder_id, current_version_id FROM public.documents WHERE id = $1 AND deleted_at IS NULL",
             document_id,
         )
 
@@ -28,15 +28,18 @@ class SharesService:
     async def insert_share(
         conn: asyncpg.Connection, *, resource_type: str, resource_id: UUID, company_id, token_hash: str,
         password_hash: str | None, expires_at: datetime | None, pin_to_version_id, created_by: str,
+        max_views: int | None = None, allow_download: bool = True,
     ) -> asyncpg.Record:
         return await conn.fetchrow(
             """
             INSERT INTO public.shares
-              (resource_type, resource_id, company_id, token_hash, password_hash, expires_at, pin_to_version_id, created_by)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+              (resource_type, resource_id, company_id, token_hash, password_hash, expires_at, pin_to_version_id, created_by,
+               max_views, allow_download)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING id::text, created_at
             """,
             resource_type, resource_id, company_id, token_hash, password_hash, expires_at, pin_to_version_id, created_by,
+            max_views, allow_download,
         )
 
     @staticmethod
@@ -51,12 +54,14 @@ class SharesService:
             """
             SELECT s.id::text, s.resource_type, s.resource_id::text, s.company_id::text,
                    s.expires_at, s.revoked_at, s.view_count, s.last_accessed_at, s.created_at,
-                   (s.password_hash IS NOT NULL) AS has_password,
+                   (s.password_hash IS NOT NULL) AS has_password, s.max_views, s.allow_download, s.pin_to_version_id::text,
                    CASE WHEN s.resource_type = 'document' THEN d.name ELSE f.name END AS resource_name,
                    -- pasta que contém o documento compartilhado — necessário pro
                    -- frontend montar o deep-link /documents?folder_id=...&doc=...
-                   d.folder_id::text AS document_folder_id
+                   d.folder_id::text AS document_folder_id,
+                   s.created_by::text, u.full_name AS created_by_name, s.expired_at
             FROM public.shares s
+            LEFT JOIN public.users u ON u.id = s.created_by
             LEFT JOIN public.documents d ON d.id = s.resource_id AND s.resource_type = 'document'
             LEFT JOIN public.folders   f ON f.id = s.resource_id AND s.resource_type = 'folder'
             WHERE ($1::text IS NULL OR s.resource_type = $1)
@@ -83,7 +88,8 @@ class SharesService:
         return await admin_conn.fetchrow(
             """
             SELECT s.id, s.resource_type, s.resource_id, s.company_id, s.password_hash,
-                   s.expires_at, s.revoked_at, s.expired_at, s.pin_to_version_id
+                   s.expires_at, s.revoked_at, s.expired_at, s.pin_to_version_id,
+                   s.view_count, s.max_views, s.allow_download
             FROM public.shares s
             WHERE s.token_hash = $1
             """,
@@ -92,7 +98,7 @@ class SharesService:
 
     @staticmethod
     async def get_document_name(admin_conn: asyncpg.Connection, document_id: UUID) -> asyncpg.Record | None:
-        return await admin_conn.fetchrow("SELECT name, deleted_at FROM public.documents WHERE id = $1", document_id)
+        return await admin_conn.fetchrow("SELECT name, size_bytes, deleted_at FROM public.documents WHERE id = $1", document_id)
 
     @staticmethod
     async def get_folder_name(admin_conn: asyncpg.Connection, folder_id: UUID) -> asyncpg.Record | None:

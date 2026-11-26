@@ -31,6 +31,63 @@ class SearchService:
         return " ".join(cleaned.split())  # colapsa espaços múltiplos
 
     @staticmethod
+    def digits_pattern(raw: str) -> str | None:
+        """
+        CNPJ, CPF, chave de acesso e números de nota com ou sem pontuação
+        (achado X2/A6): "12.345.678/0001-90" e "12345678000190" acham o mesmo
+        documento. Só vale para termos que são basicamente número (8+ dígitos
+        e nenhuma letra); devolve uma expressão que aceita até 2 separadores
+        entre os dígitos.
+        """
+        term = raw.strip()
+        digits = re.sub(r"\D", "", term)
+        if len(digits) < 8 or re.search(r"[^\d\s.\-/]", term):
+            return None
+        return r"\D{0,2}".join(digits)
+
+    _WHERE = """
+      d.company_id = $2
+      AND d.deleted_at IS NULL AND d.content_hash IS NOT NULL
+      AND (
+        d.search_tsv @@ sq.tsq
+        OR to_tsvector('portuguese', public.immutable_unaccent(coalesce(ft.txt, ''))) @@ sq.tsq
+        OR d.name ILIKE '%' || $3 || '%'
+        OR d.ocr_text ILIKE '%' || $3 || '%'
+        OR ft.txt ILIKE '%' || $3 || '%'
+        OR ($4::text IS NOT NULL AND (d.name ~ $4 OR d.ocr_text ~ $4 OR ft.txt ~ $4))
+      )
+      AND ($5::ltree IS NULL OR f.path <@ $5::ltree)
+      AND ($6::date IS NULL OR d.created_at >= $6::date)
+      AND ($7::date IS NULL OR d.created_at < ($7::date + 1))
+      AND ($8::uuid IS NULL OR d.folder_id = $8)
+    """
+
+    _FROM = """
+      FROM public.documents d
+      JOIN public.folders f ON f.id = d.folder_id
+      LEFT JOIN (
+        SELECT dfv.document_id,
+               string_agg(coalesce(dfv.value_text, dfv.value_number::text, dfv.value_date::text), ' ') AS txt
+        FROM public.document_field_value dfv
+        GROUP BY dfv.document_id
+      ) ft ON ft.document_id = d.id
+      CROSS JOIN (SELECT websearch_to_tsquery('portuguese', unaccent($1)) AS tsq) sq
+      CROSS JOIN LATERAL (
+        -- nome (A), setor/fiscal (C) e texto lido (D) já vêm calculados na
+        -- coluna gerada com índice (X3-05); só o metadado (B) é somado aqui.
+        SELECT d.search_tsv ||
+          setweight(to_tsvector('portuguese', public.immutable_unaccent(coalesce(ft.txt, ''))), 'B') AS tsv
+      ) dtv
+    """
+
+    _ORDER = {
+        "relevancia": "rank DESC, d.created_at DESC",
+        "recentes": "d.created_at DESC",
+        "antigos": "d.created_at ASC",
+        "nome": "lower(d.name) ASC",
+    }
+
+    @staticmethod
     async def search(
         conn: asyncpg.Connection,
         *,
@@ -42,145 +99,58 @@ class SearchService:
         file_type: str | None,
         page: int,
         page_size: int,
+        date_from=None,
+        date_to=None,
+        sort: str = "relevancia",
+        folder_path: str | None = None,
+        exact_folder_id: UUID | None = None,
     ) -> dict[str, Any]:
+        """
+        Busca com filtros de pasta (com subpastas), período e tipo, ordenação
+        e paginação (A6-03, A6-04). O termo cru alimenta o ILIKE (códigos com
+        pontuação) e os números entram também sem pontuação.
+        """
         offset = (page - 1) * page_size
-        # Fase 7.1 fix: o fallback ILIKE precisa do termo CRU (com pontuação),
-        # não do normalizado — normalize_query() troca "." e outros símbolos
-        # por espaço pra alimentar o tsquery, o que faz "529.982.247-25" virar
-        # "529 982 247-25" e nunca bater com o valor armazenado (que tem
-        # pontos). Um CPF/CNPJ/código é exatamente o caso que o trigram deveria
-        # salvar — usar o normalizado aqui destruía o próprio propósito do fix
-        # 6.1. ft.txt também nunca era checado pelo ILIKE: um código só
-        # guardado em metadado customizado (não no nome nem no OCR) ficava
-        # invisível pra busca inteira, não só pro fallback.
         raw_term = q.strip()
+        digits = SearchService.digits_pattern(raw_term)
+        order = SearchService._ORDER.get(sort, SearchService._ORDER["relevancia"])
         rows = await conn.fetch(
-            """
-            WITH search_query AS (
-              SELECT websearch_to_tsquery('portuguese',
-                       unaccent($1)
-                     ) AS tsq
-            ),
-            field_text AS (
-              -- Fase 7.1: valores de metadado customizado (onde ficam CPF/CNPJ/
-              -- número de nota) viram peso B, entre o nome e os campos estruturados.
-              SELECT dfv.document_id,
-                     string_agg(coalesce(dfv.value_text, dfv.value_number::text, dfv.value_date::text), ' ') AS txt
-              FROM public.document_field_value dfv
-              GROUP BY dfv.document_id
-            )
+            f"""
             SELECT
-              d.id::text,
-              d.name,
-              d.file_type,
-              d.size_bytes,
-              d.sector,
-              d.competencia,
-              d.tipo_fiscal,
-              d.ocr_status,
-              d.folder_id::text,
-              d.company_id::text,
-              d.created_at,
-              f.name AS folder_name,
+              d.id::text, d.name, d.file_type, d.size_bytes, d.sector, d.competencia, d.tipo_fiscal,
+              d.ocr_status, d.folder_id::text, d.company_id::text, d.created_at, f.name AS folder_name,
               ts_rank_cd(dtv.tsv, sq.tsq, 4) AS rank,
-              -- ADR-035: snippet só aparece quando o match vem do conteúdo OCR, não
-              -- do nome do arquivo (evita ruído sem propósito quando o nome já basta).
               CASE
                 WHEN d.ocr_text IS NOT NULL
-                 AND (
-                   to_tsvector('portuguese', public.immutable_unaccent(d.ocr_text)) @@ sq.tsq
-                   OR d.ocr_text ILIKE '%' || $8 || '%'
-                 )
-                THEN ts_headline(
-                  'portuguese',
-                  -- ADR-035 (Adendo 07): trunca o texto antes do ts_headline — gerar o
-                  -- snippet a partir do documento inteiro degrada performance em OCRs
-                  -- longos sem ganho de qualidade (o termo buscado quase sempre aparece
-                  -- bem antes dos primeiros 8000 caracteres).
-                  left(d.ocr_text, 8000),
-                  sq.tsq,
-                  -- Fase 7.3: HighlightAll=false faz o ts_headline escolher os
-                  -- trechos com maior densidade de termos batidos (não o
-                  -- primeiro que aparece); MaxFragments=3 mostra mais de um
-                  -- trecho quando o documento tem matches espalhados, e o
-                  -- FragmentDelimiter marca a quebra pro frontend renderizar
-                  -- cada trecho em linha própria.
-                  'StartSel=<mark>, StopSel=</mark>, MaxWords=40, MinWords=10, ShortWord=3, HighlightAll=false, MaxFragments=3, FragmentDelimiter=<hr/>'
-                )
+                 AND (to_tsvector('portuguese', public.immutable_unaccent(d.ocr_text)) @@ sq.tsq
+                      OR d.ocr_text ILIKE '%' || $3 || '%')
+                THEN ts_headline('portuguese', left(d.ocr_text, 8000), sq.tsq,
+                  'StartSel=<mark>, StopSel=</mark>, MaxWords=40, MinWords=10, ShortWord=3, HighlightAll=false, MaxFragments=3, FragmentDelimiter=<hr/>')
                 ELSE NULL
               END AS snippet,
+              (SELECT string_agg(anc.name, ' / ' ORDER BY nlevel(anc.path))
+                 FROM public.folders anc WHERE anc.company_id = d.company_id AND anc.path @> f.path) AS folder_path_label,
               count(*) OVER () AS total_count
-            FROM public.documents d
-            JOIN public.folders   f ON f.id = d.folder_id
-            LEFT JOIN field_text  ft ON ft.document_id = d.id
-            CROSS JOIN search_query sq
-            CROSS JOIN LATERAL (
-              -- Fase 7.1: setweight por campo — nome (A) > metadado customizado (B)
-              -- > metadados estruturados/setor/fiscal (C) > texto OCR (D).
-              SELECT
-                setweight(to_tsvector('portuguese', public.immutable_unaccent(d.name)), 'A') ||
-                setweight(to_tsvector('portuguese', public.immutable_unaccent(coalesce(ft.txt, ''))), 'B') ||
-                setweight(to_tsvector('portuguese', public.immutable_unaccent(coalesce(d.sector, '') || ' ' || coalesce(d.tipo_fiscal, ''))), 'C') ||
-                setweight(to_tsvector('portuguese', public.immutable_unaccent(coalesce(d.ocr_text, ''))), 'D') AS tsv
-            ) dtv
-            WHERE d.company_id = $2
-              AND d.deleted_at IS NULL
-              AND (
-                dtv.tsv @@ sq.tsq
-                OR d.name ILIKE '%' || $8 || '%'
-                -- Fase 6.1/7.1: fallback pg_trgm — contenção de substring pura,
-                -- sem stemming/tokenização, com o termo cru (não normalizado)
-                -- pra não perder pontuação de código/CNPJ/CPF; cobre nome,
-                -- OCR e agora também metadado customizado.
-                OR d.ocr_text ILIKE '%' || $8 || '%'
-                OR ft.txt ILIKE '%' || $8 || '%'
-              )
-              AND ($3::uuid IS NULL OR d.folder_id = $3)
-              AND ($4::text  IS NULL OR d.sector    = $4)
-              AND ($5::text  IS NULL OR d.file_type = $5)
-            ORDER BY rank DESC, d.created_at DESC
-            LIMIT $6 OFFSET $7
+            {SearchService._FROM}
+            WHERE {SearchService._WHERE}
+              AND ($9::text IS NULL OR d.sector = $9)
+              AND ($10::text IS NULL OR d.file_type = $10)
+            ORDER BY {order}
+            LIMIT $11 OFFSET $12
             """,
-            normalized, company_id, folder_id, sector, file_type, page_size, offset, raw_term,
+            normalized, company_id, raw_term, digits, folder_path, date_from, date_to, exact_folder_id,
+            sector, file_type, page_size, offset,
         )
-
         total = rows[0]["total_count"] if rows else 0
 
-        # Fase 7.2: facetas dinâmicas — contagem por setor/tipo de arquivo entre
-        # os documentos que batem com a busca, ignorando o próprio filtro de
-        # cada dimensão (senão a faceta escolhida sempre mostraria 100%).
+        # Facetas: contagem por setor/tipo entre os que batem, ignorando o
+        # filtro da própria dimensão.
         facet_rows = await conn.fetch(
-            """
-            WITH search_query AS (
-              SELECT websearch_to_tsquery('portuguese', unaccent($1)) AS tsq
-            ),
-            field_text AS (
-              SELECT dfv.document_id,
-                     string_agg(coalesce(dfv.value_text, dfv.value_number::text, dfv.value_date::text), ' ') AS txt
-              FROM public.document_field_value dfv
-              GROUP BY dfv.document_id
-            ),
-            matched AS (
+            f"""
+            WITH matched AS (
               SELECT d.sector, d.file_type
-              FROM public.documents d
-              LEFT JOIN field_text ft ON ft.document_id = d.id
-              CROSS JOIN search_query sq
-              CROSS JOIN LATERAL (
-                SELECT
-                  setweight(to_tsvector('portuguese', public.immutable_unaccent(d.name)), 'A') ||
-                  setweight(to_tsvector('portuguese', public.immutable_unaccent(coalesce(ft.txt, ''))), 'B') ||
-                  setweight(to_tsvector('portuguese', public.immutable_unaccent(coalesce(d.sector, '') || ' ' || coalesce(d.tipo_fiscal, ''))), 'C') ||
-                  setweight(to_tsvector('portuguese', public.immutable_unaccent(coalesce(d.ocr_text, ''))), 'D') AS tsv
-              ) dtv
-              WHERE d.company_id = $2
-                AND d.deleted_at IS NULL
-                AND ($3::uuid IS NULL OR d.folder_id = $3)
-                AND (
-                  dtv.tsv @@ sq.tsq
-                  OR d.name ILIKE '%' || $4 || '%'
-                  OR d.ocr_text ILIKE '%' || $4 || '%'
-                  OR ft.txt ILIKE '%' || $4 || '%'
-                )
+              {SearchService._FROM}
+              WHERE {SearchService._WHERE}
             )
             SELECT 'sector' AS dimension, sector AS value, count(*) AS count
             FROM matched WHERE sector IS NOT NULL GROUP BY sector
@@ -188,13 +158,23 @@ class SearchService:
             SELECT 'file_type' AS dimension, file_type AS value, count(*) AS count
             FROM matched WHERE file_type IS NOT NULL GROUP BY file_type
             """,
-            normalized, company_id, folder_id, raw_term,
+            normalized, company_id, raw_term, digits, folder_path, date_from, date_to, exact_folder_id,
         )
         facets: dict[str, list[dict[str, Any]]] = {"sector": [], "file_type": []}
         for r in facet_rows:
             facets[r["dimension"]].append({"value": r["value"], "count": r["count"]})
         for dim in facets:
             facets[dim].sort(key=lambda x: x["count"], reverse=True)
+
+        # Quantos documentos ainda não entram na busca pelo conteúdo (A6-06).
+        sem_texto = await conn.fetchval(
+            """
+            SELECT count(*) FROM public.documents d
+            WHERE d.company_id = $1 AND d.deleted_at IS NULL AND d.content_hash IS NOT NULL
+              AND d.ocr_status IN ('pending', 'processing', 'failed')
+            """,
+            company_id,
+        )
 
         return {
             "results": [{k: v for k, v in dict(r).items() if k != "total_count"} for r in rows],
@@ -203,6 +183,7 @@ class SearchService:
             "page_size": page_size,
             "query": q,
             "facets": facets,
+            "sem_texto": int(sem_texto or 0),
         }
 
     @staticmethod
@@ -215,7 +196,11 @@ class SearchService:
     ) -> list[dict[str, Any]]:
         # Monta tsquery com prefix matching na última palavra:
         # "nota fiscal" → "nota & fiscal:*"
-        words = normalized.split()
+        # Só letras e números entram na sintaxe do to_tsquery (X3-06): aspas,
+        # apóstrofo ("d'água") ou hífen solto quebravam a consulta com erro 500.
+        words = re.findall(r"\w+", normalized, flags=re.UNICODE)
+        if not words:
+            return []
         if len(words) == 1:
             prefix_query = f"{words[0]}:*"
         else:

@@ -1,15 +1,14 @@
-import { Fragment, useEffect, useRef, useState, useCallback, type ElementType } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { Fragment, useEffect, useRef, useState, useCallback, useId, type ElementType, type ReactNode, useMemo } from "react";
+import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { relativeDate, fullDate } from "@/lib/date";
 import { getFileStyle } from "@/lib/fileType";
 import {
-  FileText,
   Folder,
   FolderOpen,
   FolderPlus,
+  ShieldAlert,
   Upload,
   Trash2,
   Anchor,
@@ -44,6 +43,11 @@ import {
   Archive,
   Lock,
   Check,
+  FolderInput,
+  Link2,
+  RefreshCw,
+  AlertTriangle,
+  FolderUp,
 } from "lucide-react";
 import api from "@/lib/api";
 import { useTaskCenter } from "@/lib/TaskContext";
@@ -61,12 +65,22 @@ import ConfirmModal from "@/components/ui/ConfirmModal";
 import PreviewModal from "@/components/documents/PreviewModal";
 import VersionsPanel from "@/components/documents/VersionsPanel";
 import ActivityFeed from "@/components/shared/ActivityFeed";
+import { StatusChip, type Instance } from "@/components/obligations/shared";
 import ShareModal from "@/components/documents/ShareModal";
 import CopyStructureModal from "@/components/documents/CopyStructureModal";
 import FolderTree from "@/components/documents/FolderTree";
-import Portal from "@/components/ui/Portal";
+import Dialog from "@/components/ui/Dialog";
+import Menu, { type MenuItem } from "@/components/ui/Menu";
+import FolderPickerDialog, { type PickedFolder } from "@/components/documents/FolderPickerDialog";
+import { pushUndo, takeUndo, isUndoShortcut } from "@/lib/undo";
+import { maskValue, validateValue, PLACEHOLDER, INPUT_MODE, fieldOptions, isChoice, type FieldType } from "@/components/documents/fieldMasks";
 import { SkeletonTableRow, SkeletonGridItem } from "@/components/shared/Skeleton";
 import { useDelayedLoading } from "@/hooks/useDelayedLoading";
+import { prefetchPdfViewer } from "@/lib/prefetch";
+import PrivacyDialog, { PRIVACY_LABEL } from "@/components/documents/PrivacyDialog";
+import { friendlyError } from "@/lib/errors";
+import IntegrityCheck from "@/components/documents/IntegrityCheck";
+import LinkAccesses from "@/components/documents/LinkAccesses";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -83,6 +97,8 @@ interface Document {
   size_bytes: number;
   ocr_status: "pending" | "processing" | "done" | "failed" | "skipped";
   created_at: string;
+  updated_at?: string;
+  uploaded_by_name?: string | null;
   folder_id: string | null;
   favorited?: boolean;
   active_share_count?: number;
@@ -90,7 +106,7 @@ interface Document {
 
 // Metadados personalizados (ADENDO-08) — campo resolvido pra pasta atual
 // (já com herança/override aplicados pelo backend) e valor preenchido por documento.
-export type CustomFieldType = "texto" | "cpf" | "cnpj" | "data" | "competencia" | "numero" | "selecao";
+export type CustomFieldType = "texto" | "cpf" | "cnpj" | "data" | "competencia" | "numero" | "selecao" | "moeda" | "email" | "telefone" | "cep" | "booleano";
 
 export interface ResolvedField {
   custom_field_id: string;
@@ -120,8 +136,8 @@ type Item = { kind: "folder"; data: Folder } | { kind: "document"; data: Documen
 
 function fmtSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1).replace(".", ",")} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
 }
 
 const fmtDate = relativeDate;
@@ -129,6 +145,38 @@ const fmtDateFull = fullDate;
 
 // Caracteres proibidos em nomes de arquivo/pasta (compatibilidade Windows/macOS)
 const FORBIDDEN_NAME_CHARS = /[\\/:*?"<>|]/;
+
+const ALLOWED_EXT = ["pdf", "xlsx", "xls", "csv", "docx", "doc", "xml", "jpg", "jpeg", "png", "gif", "txt"];
+const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
+
+function chunks<T>(list: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+  return out;
+}
+
+const plural = (n: number, um: string, varios: string) => `${n.toLocaleString("pt-BR")} ${n === 1 ? um : varios}`;
+
+
+/** Envia o arquivo direto ao armazenamento com progresso (fetch não informa). */
+function putWithProgress(url: string, body: Blob, contentType: string | null, onProgress: (pct: number) => void, signal?: AbortSignal): Promise<number> {
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    // Cancelar pela Central de tarefas (A2-26): -1 = cancelado por quem enviou.
+    if (signal?.aborted) { resolve(-1); return; }
+    signal?.addEventListener("abort", () => xhr.abort(), { once: true });
+    xhr.onabort = () => resolve(-1);
+    xhr.open("PUT", url);
+    if (contentType) xhr.setRequestHeader("Content-Type", contentType);
+    xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) onProgress(Math.round((ev.loaded / ev.total) * 100)); };
+    xhr.onload = () => resolve(xhr.status);
+    xhr.onerror = () => resolve(0);
+    xhr.ontimeout = () => resolve(0);
+    xhr.send(body);
+  });
+}
+
+const CANCELADO = "Envio cancelado. Dá para tentar de novo.";
 
 // Separa nome-base e extensão pra manter a extensão fixa durante renomeação inline
 function splitExt(name: string): [string, string] {
@@ -174,19 +222,20 @@ function ocrBadge(status: Document["ocr_status"]) {
   return <Badge variant={variant}>{label}</Badge>;
 }
 
-function OcrIcon({ status }: { status: Document["ocr_status"] }) {
+// Situação da leitura do texto (OCR), com rótulo que diz o que significa (A4-19).
+function OcrIcon({ status, inverted = false }: { status: Document["ocr_status"]; inverted?: boolean }) {
   const map: Record<Document["ocr_status"], { Icon: ElementType; className: string; label: string }> = {
-    pending: { Icon: Clock, className: "text-(--text-tertiary)", label: "Aguardando OCR" },
-    processing: { Icon: Loader2, className: "text-amber-500 animate-spin", label: "Processando OCR" },
-    done: { Icon: CheckCircle2, className: "text-emerald-500", label: "OCR concluído" },
-    failed: { Icon: AlertCircle, className: "text-red-500", label: "OCR falhou" },
-    skipped: { Icon: MinusCircle, className: "text-(--text-tertiary)", label: "OCR ignorado" },
+    pending: { Icon: Clock, className: "text-(--text-tertiary)", label: "Na fila para ler o texto" },
+    processing: { Icon: Loader2, className: "text-(--text-warning) animate-spin motion-reduce:animate-none", label: "Lendo o texto…" },
+    done: { Icon: CheckCircle2, className: "text-(--text-success)", label: "Texto pronto: aparece na busca pelo conteúdo" },
+    failed: { Icon: AlertCircle, className: "text-(--text-danger)", label: "Não foi possível ler o texto. Abra os detalhes para tentar de novo" },
+    skipped: { Icon: MinusCircle, className: "text-(--text-tertiary)", label: "Sem texto para ler" },
   };
   const { Icon, className, label } = map[status] ?? map.pending;
   return (
     <Tooltip label={label}>
-      <span aria-label={label} className="inline-flex">
-        <Icon className={`w-4 h-4 ${className}`} />
+      <span role="img" aria-label={label} className="inline-flex">
+        <Icon className={`w-4 h-4 ${inverted ? "text-white" : className}`} aria-hidden />
       </span>
     </Tooltip>
   );
@@ -233,7 +282,7 @@ function saveFolderPref(folderId: string | null, patch: Partial<FolderPref>) {
 
 const DEFAULT_COL_WIDTHS = { name: 320, kind: 150, size: 100, ocr: 70, created: 110 };
 
-function SortableHeader({ label, sortKey, sort, onSort, className = "", align = "left", onResizeStart, onResizeReset }: {
+function SortableHeader({ label, sortKey, sort, onSort, className = "", align = "left", onResizeStart, onResizeReset, onResizeNudge, width }: {
   label: string;
   sortKey: SortKey;
   sort: { key: SortKey; dir: "asc" | "desc" };
@@ -245,6 +294,9 @@ function SortableHeader({ label, sortKey, sort, onSort, className = "", align = 
   onResizeStart?: (e: React.MouseEvent) => void;
   /** Duplo-clique na borda reseta pro tamanho padrão (autofit simplificado) */
   onResizeReset?: () => void;
+  /** Teclado: setas ajustam a largura (X1-11). */
+  onResizeNudge?: (delta: number) => void;
+  width?: number;
 }) {
   const active = sort.key === sortKey;
   return (
@@ -266,13 +318,37 @@ function SortableHeader({ label, sortKey, sort, onSort, className = "", align = 
         ))}
       </button>
       {onResizeStart && (
-        <div
-          onMouseDown={onResizeStart}
-          onDoubleClick={(e) => { e.stopPropagation(); onResizeReset?.(); }}
-          className="absolute top-0 right-0 h-full w-2 cursor-col-resize select-none hover:bg-teal-400/40 active:bg-teal-400/60"
-        />
+        <ColumnResizeHandle label={label} width={width ?? 0} onMouseDown={onResizeStart}
+          onReset={() => onResizeReset?.()} onNudge={(d) => onResizeNudge?.(d)} />
       )}
     </th>
+  );
+}
+
+// Alça de largura de coluna (X1-11): arrastar com o mouse, setas ←/→ no
+// teclado (Shift = passo maior), Home volta ao padrão, duplo clique também.
+function ColumnResizeHandle({ label, width, onMouseDown, onReset, onNudge }: {
+  label: string; width: number; onMouseDown: (e: React.MouseEvent) => void; onReset: () => void; onNudge: (delta: number) => void;
+}) {
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`Largura da coluna ${label}`}
+      aria-valuenow={width}
+      aria-valuemin={60}
+      aria-valuemax={800}
+      tabIndex={0}
+      onMouseDown={onMouseDown}
+      onDoubleClick={(e) => { e.stopPropagation(); onReset(); }}
+      onKeyDown={(e) => {
+        const step = e.shiftKey ? 48 : 16;
+        if (e.key === "ArrowRight") { e.preventDefault(); onNudge(step); }
+        else if (e.key === "ArrowLeft") { e.preventDefault(); onNudge(-step); }
+        else if (e.key === "Home") { e.preventDefault(); onReset(); }
+      }}
+      className="absolute top-0 right-0 h-full w-2 cursor-col-resize select-none hover:bg-teal-400/40 active:bg-teal-400/60 focus-visible:outline-hidden focus-visible:bg-teal-500/60"
+    />
   );
 }
 
@@ -351,15 +427,42 @@ function pollOcrStatus(items: { documentId: string; taskId: string; fileName: st
   setTimeout(tick, 3000);
 }
 
-function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: string | null; companyId: string; onClose: () => void; onDone: () => void }) {
-  const { success, error: showError } = useToast();
-  const { addTask, updateTask, registerRetry } = useTaskCenter();
+function UploadModal({ folderId, folderName, companyId, onClose, onDone }: { folderId: string | null; folderName: string; companyId: string; onClose: () => void; onDone: () => void }) {
+  const { success, warning } = useToast();
+  const { addTask, updateTask, registerRetry, registerCancel } = useTaskCenter();
   const [pending, setPending] = useState<PendingFile[]>([]);
+  const [rejected, setRejected] = useState<{ name: string; reason: string }[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
   const [dragOver, setDragOver] = useState(false);
-  const uploadContainerRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(uploadContainerRef);
+  const [dest, setDest] = useState<{ id: string | null; name: string }>({ id: folderId, name: folderName });
+  const [picking, setPicking] = useState(false);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+
+  // Escolher uma pasta inteira pelo botão (antes só arrastando — achado A4-52).
+  useEffect(() => {
+    folderInputRef.current?.setAttribute("webkitdirectory", "");
+    folderInputRef.current?.setAttribute("directory", "");
+  }, []);
+
+  // Valida antes de enviar (achado A4-53): extensão, tamanho, vazio e repetido.
+  function addFiles(items: PendingFile[]) {
+    const ok: PendingFile[] = [];
+    const bad: { name: string; reason: string }[] = [];
+    const seen = new Set(pending.map((p) => `${p.relativePath}/${p.file.name}`.toLowerCase()));
+    for (const it of items) {
+      const label = it.relativePath ? `${it.relativePath}/${it.file.name}` : it.file.name;
+      const ext = it.file.name.split(".").pop()?.toLowerCase() ?? "";
+      if (it.file.name.startsWith(".") || ext === "ds_store" || it.file.name === "Thumbs.db") continue;
+      if (!ALLOWED_EXT.includes(ext)) bad.push({ name: label, reason: "tipo não aceito" });
+      else if (it.file.size === 0) bad.push({ name: label, reason: "arquivo vazio" });
+      else if (it.file.size > MAX_UPLOAD_BYTES) bad.push({ name: label, reason: "passa de 200 MB" });
+      else if (seen.has(label.toLowerCase())) continue;
+      else { seen.add(label.toLowerCase()); ok.push(it); }
+    }
+    setPending((prev) => [...prev, ...ok]);
+    if (bad.length) setRejected((prev) => [...prev, ...bad]);
+  }
 
   async function handleDrop(e: React.DragEvent) {
     e.preventDefault();
@@ -367,28 +470,35 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
     const items = e.dataTransfer.items;
     if (!items || !items.length) return;
     const collected: PendingFile[] = [];
-    const entries = Array.from(items)
-      .map((it) => (it as any).webkitGetAsEntry?.())
-      .filter(Boolean);
-    for (const entry of entries) {
-      await walkEntry(entry, "", collected);
-    }
-    setPending((prev) => [...prev, ...collected]);
+    const entries = Array.from(items).map((it) => (it as any).webkitGetAsEntry?.()).filter(Boolean);
+    for (const entry of entries) await walkEntry(entry, "", collected);
+    addFiles(collected);
   }
 
-  // Resolve o relativePath de um arquivo pra um folder_id, criando as
-  // subpastas que ainda não existem sob a pasta atualmente aberta.
+  // Subpasta do arquivo → id, reaproveitando a pasta que já existe com o mesmo
+  // nome (antes, reenviar uma pasta criava outra árvore com os mesmos nomes).
   async function resolveFolderId(path: string, cache: Map<string, string>): Promise<string> {
     if (!path) return cache.get("")!;
     if (cache.has(path)) return cache.get(path)!;
-    const segments = path.split("/");
     let parentPath = "";
     let parentId = cache.get("")!;
-    for (const seg of segments) {
+    for (const seg of path.split("/")) {
       const currentPath = parentPath ? `${parentPath}/${seg}` : seg;
       if (!cache.has(currentPath)) {
-        const { data } = await api.post("/folders", { name: seg, company_id: companyId, parent_id: parentId });
-        cache.set(currentPath, data.id);
+        const { data: children } = await api.get<Folder[]>("/folders", { params: { company_id: companyId, parent_id: parentId } });
+        let found = children.find((c) => c.name.toLowerCase() === seg.trim().toLowerCase());
+        if (!found) {
+          try {
+            const { data } = await api.post("/folders", { name: seg, company_id: companyId, parent_id: parentId });
+            found = data;
+          } catch (err: any) {
+            if (err?.response?.status !== 409) throw err;
+            const { data: again } = await api.get<Folder[]>("/folders", { params: { company_id: companyId, parent_id: parentId } });
+            found = again.find((c) => c.name.toLowerCase() === seg.trim().toLowerCase());
+            if (!found) throw err;
+          }
+        }
+        cache.set(currentPath, found!.id);
       }
       parentId = cache.get(currentPath)!;
       parentPath = currentPath;
@@ -401,7 +511,7 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
   const MULTIPART_THRESHOLD = 20 * 1024 * 1024;
 
   async function uploadFileMultipart(
-    file: File, targetFolderId: string, onProgress: (label: string, progress: number) => void,
+    file: File, targetFolderId: string, onProgress: (label: string, progress: number) => void, signal?: AbortSignal,
   ): Promise<string> {
     const { data: created } = await api.post("/documents/multipart/create", {
       folder_id: targetFolderId,
@@ -411,56 +521,39 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
       content_type: file.type || "application/octet-stream",
     });
     const { document_id: documentId, upload_id: uploadId, part_size: partSize, total_parts: totalParts } = created;
-
     try {
       const parts: { part_number: number; etag: string }[] = [];
       for (let partNumber = 1; partNumber <= totalParts; partNumber++) {
-        onProgress(`${file.name} · parte ${partNumber}/${totalParts}`, Math.round(((partNumber - 1) / totalParts) * 100));
+        if (signal?.aborted) throw new Error(CANCELADO);
         const start = (partNumber - 1) * partSize;
         const chunk = file.slice(start, start + partSize);
-
-        const { data: partUrlData } = await api.post(`/documents/multipart/${documentId}/part-url`, {
-          upload_id: uploadId,
-          part_number: partNumber,
-        });
-
-        const putResp = await fetch(partUrlData.upload_url, { method: "PUT", body: chunk });
-        if (!putResp.ok) throw new Error(`Falha ao enviar a parte ${partNumber}/${totalParts} (HTTP ${putResp.status}).`);
-
-        // R2/S3 exige o ETag de cada parte no complete — precisa que o bucket
-        // exponha esse header via CORS (Access-Control-Expose-Headers: ETag),
-        // senão o navegador nunca consegue ler o valor (fica null aqui).
+        const { data: partUrlData } = await api.post(`/documents/multipart/${documentId}/part-url`, { upload_id: uploadId, part_number: partNumber });
+        const putResp = await fetch(partUrlData.upload_url, { method: "PUT", body: chunk, signal }).catch(() => null);
+        if (signal?.aborted) throw new Error(CANCELADO);
+        if (!putResp || !putResp.ok) throw new Error("A conexão caiu durante o envio. Tente de novo.");
         const etag = putResp.headers.get("ETag");
-        if (!etag) {
-          throw new Error(
-            "O storage não devolveu o ETag da parte — confirme se o bucket R2 expõe o header ETag no CORS " +
-            "(Access-Control-Expose-Headers deve incluir \"ETag\")."
-          );
-        }
+        if (!etag) throw new Error("O armazenamento não confirmou uma parte do arquivo. Tente de novo; se continuar, avise o administrador.");
         parts.push({ part_number: partNumber, etag });
+        onProgress(`${file.name}`, Math.round((partNumber / totalParts) * 100));
       }
-
       await api.post(`/documents/multipart/${documentId}/complete`, { upload_id: uploadId, parts });
       return documentId;
     } catch (err) {
-      // Melhor esforço: aborta o multipart no storage e limpa o registro
-      // pendente, em vez de deixar lixo órfão pra sempre.
       try { await api.post(`/documents/multipart/${documentId}/abort`, { upload_id: uploadId }); } catch { /* ignore */ }
       throw err;
     }
   }
 
-  // Fase 11.3: extraído do loop principal pra ser reaproveitado tanto no
-  // primeiro envio quanto no "Tentar novamente" de um item que falhou
-  // sozinho — sem isso, retry precisaria duplicar as 3 etapas do upload.
   async function attemptUploadOne(
     file: File, relativePath: string, targetFolderId: string, taskId: string, displayName: string,
   ): Promise<{ ok: true; documentId: string; taskId: string; fileName: string } | { ok: false; reason: string }> {
-    updateTask(taskId, { status: "running", phase: "uploading", error: undefined, progress: undefined, label: displayName });
+    updateTask(taskId, { status: "running", phase: "uploading", error: undefined, progress: 0, label: displayName });
+    const controller = new AbortController();
+    registerCancel(taskId, () => controller.abort());
     try {
       let documentId: string;
       if (file.size >= MULTIPART_THRESHOLD) {
-        documentId = await uploadFileMultipart(file, targetFolderId, (label, progress) => updateTask(taskId, { label, progress }));
+        documentId = await uploadFileMultipart(file, targetFolderId, (label, p) => updateTask(taskId, { label, progress: p }), controller.signal);
       } else {
         const { data } = await api.post("/documents/upload-url", {
           folder_id: targetFolderId,
@@ -469,29 +562,27 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
           size_bytes: file.size,
           content_type: file.type || "application/octet-stream",
         });
-
-        const putResp = await fetch(data.upload_url, {
-          method: "PUT",
-          body: file,
-          headers: { "Content-Type": file.type || "application/octet-stream" },
-        });
-        if (!putResp.ok) throw new Error(`Storage PUT falhou: ${putResp.status}`);
-
+        // Mesmo tipo da assinatura da URL (o Chrome chama XML de text/xml e a
+        // URL vem assinada com application/xml — achado X2-03).
+        const status = await putWithProgress(data.upload_url, file, data.content_type ?? (file.type || "application/octet-stream"),
+          (p) => updateTask(taskId, { progress: p }), controller.signal);
+        if (status < 200 || status >= 300) {
+          api.post(`/documents/${data.document_id}/abort-upload`).catch(() => {});
+          throw new Error(status === -1 ? CANCELADO : status === 0
+            ? "A conexão caiu durante o envio. Confira a internet e tente de novo."
+            : `O armazenamento recusou o arquivo (código ${status}). Tente de novo; se continuar, avise o administrador.`);
+        }
         await api.post(`/documents/${data.document_id}/confirm`);
         documentId = data.document_id;
       }
-
-      // Fase 11.2: transição de estado explícita — upload terminou, agora
-      // é processamento (OCR), fora do controle do cliente. progress
-      // volta a indeterminado (não temos como saber % do OCR no worker).
-      updateTask(taskId, { label: `${displayName} · extraindo texto…`, phase: "processing", progress: undefined });
+      registerCancel(taskId, null);
+      updateTask(taskId, { label: `${displayName} · lendo o texto…`, phase: "processing", progress: undefined });
       pollOcrStatus([{ documentId, taskId, fileName: displayName }], updateTask);
       return { ok: true, documentId, taskId, fileName: displayName };
     } catch (fileErr: any) {
-      const reason = fileErr?.response?.data?.detail ?? fileErr?.message ?? "Falha no upload.";
+      registerCancel(taskId, null);
+      const reason = fileErr?.response ? friendlyError(fileErr, "Não foi possível enviar.") : (fileErr?.message ?? "Não foi possível enviar.");
       updateTask(taskId, { status: "failed", error: reason });
-      // Fase 11.3: registra como refazer JÁ COM O MESMO ARQUIVO — o Task
-      // Center não tem (nem deveria ter) acesso ao File original.
       registerRetry(taskId, () => { attemptUploadOne(file, relativePath, targetFolderId, taskId, displayName); });
       return { ok: false, reason };
     }
@@ -499,523 +590,504 @@ function UploadModal({ folderId, companyId, onClose, onDone }: { folderId: strin
 
   async function upload() {
     if (!pending.length) return;
-    if (!folderId) {
-      showError("Abra uma pasta antes de fazer upload.");
-      return;
-    }
+    if (!dest.id) { setPicking(true); return; }
     setUploading(true);
-    setProgress({ done: 0, total: pending.length });
-    const folderCache = new Map<string, string>([["", folderId]]);
-    // Fase 11.3: relatório de erros — um arquivo falhar NUNCA deve abortar
-    // os demais do lote (bug real: antes, o `throw` dentro do loop parava
-    // todo o resto do lote assim que o primeiro item falhava).
+    setProgress({ done: 0, total: pending.length, failed: 0 });
+    const folderCache = new Map<string, string>([["", dest.id]]);
     const failures: { name: string; reason: string }[] = [];
     let okCount = 0;
-    try {
-      for (const { file, relativePath } of pending) {
-        const displayName = relativePath ? `${relativePath}/${file.name}` : file.name;
+    // Três envios ao mesmo tempo (antes, um arquivo e uma parte por vez — A4-55).
+    const queue = [...pending];
+    async function worker() {
+      for (;;) {
+        const item = queue.shift();
+        if (!item) return;
+        const displayName = item.relativePath ? `${item.relativePath}/${item.file.name}` : item.file.name;
         const taskId = addTask({ kind: "upload", label: displayName, status: "running", phase: "uploading" });
-        const targetFolderId = await resolveFolderId(relativePath, folderCache);
-        const result = await attemptUploadOne(file, relativePath, targetFolderId, taskId, displayName);
-        if (result.ok) {
-          okCount++;
-        } else {
-          failures.push({ name: displayName, reason: result.reason });
+        let result: Awaited<ReturnType<typeof attemptUploadOne>>;
+        try {
+          const target = await resolveFolderId(item.relativePath, folderCache);
+          result = await attemptUploadOne(item.file, item.relativePath, target, taskId, displayName);
+        } catch (err: any) {
+          const reason = friendlyError(err, "Não foi possível criar a subpasta.");
+          updateTask(taskId, { status: "failed", error: reason });
+          result = { ok: false, reason };
         }
-        setProgress((p) => ({ ...p, done: p.done + 1 }));
+        if (result.ok) okCount++;
+        else failures.push({ name: displayName, reason: result.reason });
+        setProgress((p) => ({ ...p, done: p.done + 1, failed: failures.length }));
       }
-
-      if (okCount > 0) {
-        success(`${okCount} de ${pending.length} arquivo${pending.length > 1 ? "s" : ""} enviado${okCount > 1 ? "s" : ""}.`);
-      }
+    }
+    try {
+      await Promise.all([worker(), worker(), worker()]);
+      if (okCount > 0) success(`${plural(okCount, "arquivo enviado", "arquivos enviados")} para "${dest.name}".`);
       if (failures.length > 0) {
-        showError(
-          `${failures.length} arquivo${failures.length > 1 ? "s" : ""} falhou ao enviar: ` +
-          failures.map((f) => f.name).join(", ") +
-          " — veja a Central de Tarefas pra tentar de novo."
-        );
+        warning(`${plural(failures.length, "arquivo não foi enviado", "arquivos não foram enviados")}. Na Central de tarefas dá para ver o motivo e tentar de novo.`);
       }
       onDone();
       if (failures.length === 0) onClose();
-    } catch (e: any) {
-      showError(e?.response?.data?.detail ?? e?.message ?? "Erro ao fazer upload.");
+      else setPending((prev) => prev.filter((p) => failures.some((f) => f.name === (p.relativePath ? `${p.relativePath}/${p.file.name}` : p.file.name))));
     } finally {
       setUploading(false);
     }
   }
 
+  const totalBytes = pending.reduce((acc, p) => acc + p.file.size, 0);
+
   return (
-    <Portal>
-    <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={uploadContainerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[480px]">
-        <div className="px-5 py-4 border-b border-(--border-default)">
-          <h2 className="text-mac-body font-semibold text-(--text-primary)">Upload de documentos</h2>
-        </div>
-        <div className="p-5 space-y-4">
-          <label
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={handleDrop}
-            className={`block border-2 border-dashed rounded-(--radius-control) p-8 text-center cursor-pointer transition-colors duration-fast ${
-              dragOver ? "border-teal-400 bg-teal-500/5" : "border-(--border-default) hover:border-teal-400"
-            }`}
-          >
-            <Upload className="w-8 h-8 mx-auto mb-2 text-(--text-placeholder)" />
-            <p className="text-mac-body text-(--text-secondary)">
-              {pending.length > 0
-                ? `${pending.length} arquivo${pending.length > 1 ? "s" : ""} selecionado${pending.length > 1 ? "s" : ""}`
-                : "Clique para selecionar ou arraste arquivos ou pastas aqui"}
-            </p>
-            <p className="text-mac-caption text-(--text-tertiary) mt-1">PDF, DOCX, XLSX, JPG, PNG — máx. 200 MB cada. Arrastar uma pasta recria a estrutura de subpastas.</p>
-            <input
-              type="file"
-              multiple
-              className="sr-only"
-              onChange={(e) => setPending((prev) => [...prev, ...Array.from(e.target.files ?? []).map((file) => ({ file, relativePath: "" }))])}
-              accept=".pdf,.xlsx,.xls,.csv,.docx,.doc,.xml,.jpg,.jpeg,.png,.gif,.txt"
-            />
-          </label>
-          {pending.length > 0 && (
-            <ul className="max-h-32 overflow-y-auto space-y-1">
-              {pending.map((p, i) => (
-                <li key={i} className="flex items-center gap-2 text-mac-caption text-(--text-secondary)">
-                  <FileText className="w-3.5 h-3.5 shrink-0" />
-                  <span className="flex-1 truncate">{p.relativePath ? `${p.relativePath}/${p.file.name}` : p.file.name}</span>
-                  <span>{fmtSize(p.file.size)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        {!folderId && (
-          <div className="mx-5 mb-1 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-(--radius-control) text-mac-caption text-amber-800 dark:text-amber-300">
-            Abra uma pasta primeiro para habilitar o upload.
-          </div>
-        )}
-        {uploading && progress.total > 1 && (
-          <div className="mx-5 mb-1 text-mac-caption text-(--text-secondary)">
-            Enviando {progress.done + 1} de {progress.total}…
-          </div>
-        )}
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default)">
-          <Button variant="secondary" size="sm" onClick={onClose} disabled={uploading}>Cancelar</Button>
-          <Button size="sm" loading={uploading} onClick={upload} disabled={!pending.length || !folderId}>
-            Enviar
+    <>
+    <Dialog
+      onClose={onClose}
+      title="Enviar documentos"
+      description={
+        <span className="flex flex-wrap items-center gap-x-1.5">
+          Para:
+          <span className="inline-flex items-center gap-1 font-medium text-(--text-primary)">
+            <Folder className="w-3.5 h-3.5 text-(--text-accent)" aria-hidden />
+            {dest.id ? dest.name : "escolha uma pasta"}
+          </span>
+          <button type="button" onClick={() => setPicking(true)} disabled={uploading}
+            className="text-(--text-accent) font-medium underline-offset-2 hover:underline disabled:opacity-50 min-h-6 pointer-coarse:min-h-11">
+            {dest.id ? "Trocar" : "Escolher"}
+          </button>
+        </span>
+      }
+      size="md"
+      busy={uploading}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={uploading}>Cancelar</Button>
+          <Button loading={uploading} onClick={upload} disabled={!pending.length}>
+            {uploading ? `Enviando ${Math.min(progress.done + 1, progress.total)} de ${progress.total}…` : pending.length ? `Enviar ${plural(pending.length, "arquivo", "arquivos")}` : "Enviar"}
           </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <label
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
+          className={`block border-2 border-dashed rounded-(--radius-control) px-5 py-7 text-center cursor-pointer transition-colors duration-fast focus-within:ring-[3px] focus-within:ring-(--focus-ring) ${
+            dragOver ? "border-teal-500 bg-teal-500/8" : "border-(--border-control) hover:border-teal-500"
+          }`}
+        >
+          <Upload className="w-7 h-7 text-(--text-accent) mx-auto mb-2" aria-hidden />
+          <p className="text-mac-body text-(--text-primary)">Arraste arquivos ou pastas para cá, ou clique para escolher</p>
+          <p className="text-mac-caption text-(--text-secondary) mt-1">PDF, Word, Excel, CSV, XML (NF-e), TXT, JPG, PNG e GIF · até 200 MB cada · a pasta arrastada vem com as subpastas</p>
+          <input
+            type="file"
+            multiple
+            className="sr-only"
+            onChange={(e) => { addFiles(Array.from(e.target.files ?? []).map((file) => ({ file, relativePath: "" }))); e.target.value = ""; }}
+            accept=".pdf,.xlsx,.xls,.csv,.docx,.doc,.xml,.jpg,.jpeg,.png,.gif,.txt"
+          />
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" size="sm" type="button" onClick={() => folderInputRef.current?.click()} disabled={uploading}>
+            <FolderUp className="w-3.5 h-3.5" aria-hidden /> Escolher uma pasta inteira
+          </Button>
+          <input
+            ref={folderInputRef}
+            type="file"
+            multiple
+            className="sr-only"
+            tabIndex={-1}
+            onChange={(e) => {
+              addFiles(Array.from(e.target.files ?? []).map((file) => {
+                const rel = (file as any).webkitRelativePath as string | undefined;
+                return { file, relativePath: rel ? rel.split("/").slice(0, -1).join("/") : "" };
+              }));
+              e.target.value = "";
+            }}
+          />
         </div>
+        {pending.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-mac-caption text-(--text-secondary)" aria-live="polite">
+              {plural(pending.length, "arquivo", "arquivos")} · {fmtSize(totalBytes)}
+              {uploading && progress.failed > 0 && ` · ${plural(progress.failed, "falha", "falhas")}`}
+            </p>
+            <ul className="max-h-44 overflow-y-auto rounded-(--radius-control) border border-(--border-default) divide-y divide-(--border-default)">
+              {pending.map((p, i) => {
+                const st = getFileStyle(p.file.name);
+                const Icon = st.icon;
+                const label = p.relativePath ? `${p.relativePath}/${p.file.name}` : p.file.name;
+                return (
+                  <li key={`${label}-${i}`} className="flex items-center gap-2 px-2.5 h-9 pointer-coarse:h-11 text-mac-caption text-(--text-secondary)">
+                    <Icon className={`w-3.5 h-3.5 shrink-0 ${st.iconColor} ${st.fillColor}`} aria-hidden />
+                    <span className="flex-1 truncate text-(--text-primary)" title={label}>{label}</span>
+                    <span className="shrink-0 tabular-nums">{fmtSize(p.file.size)}</span>
+                    <button type="button" onClick={() => setPending((prev) => prev.filter((_, j) => j !== i))} disabled={uploading}
+                      aria-label={`Tirar ${label} da lista`}
+                      className="w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 -mr-1 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) disabled:opacity-40">
+                      <X className="w-3.5 h-3.5" aria-hidden />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+        {rejected.length > 0 && (
+          <div role="status" className="rounded-(--radius-control) border border-amber-500/30 bg-amber-500/8 px-3 py-2 text-mac-caption text-(--text-primary)">
+            <p className="font-medium">{plural(rejected.length, "arquivo ficou de fora", "arquivos ficaram de fora")}:</p>
+            <ul className="mt-1 max-h-20 overflow-y-auto space-y-0.5 text-(--text-secondary)">
+              {rejected.map((r, i) => <li key={i} className="truncate">{r.name} — {r.reason}</li>)}
+            </ul>
+          </div>
+        )}
       </div>
-    </div>
-    </Portal>
+    </Dialog>
+    {picking && (
+      <FolderPickerDialog
+        companyId={companyId}
+        title="Enviar para qual pasta?"
+        confirmLabel="Usar esta pasta"
+        initialId={dest.id}
+        onPick={(f) => { setDest({ id: f.id, name: f.name }); setPicking(false); }}
+        onClose={() => setPicking(false)}
+      />
+    )}
+    </>
   );
 }
 
 // ─── Create Folder Modal ──────────────────────────────────────────────────────
 
-function CreateFolderModal({ parentId, companyId, onClose, onDone }: { parentId: string | null; companyId: string; onClose: () => void; onDone: () => void }) {
-  const { success, error: showError } = useToast();
+function CreateFolderModal({ parentId, parentName, siblings, companyId, onClose, onDone }: {
+  parentId: string | null; parentName: string; siblings: string[]; companyId: string; onClose: () => void; onDone: (folder: Folder) => void;
+}) {
+  const { success } = useToast();
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
-  const folderContainerRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(folderContainerRef);
+  const [error, setError] = useState("");
+
+  // Mesma regra do backend (achado A4-40): avisa enquanto digita.
+  const trimmed = name.trim().replace(/\s+/g, " ");
+  const localError =
+    trimmed && FORBIDDEN_NAME_CHARS.test(trimmed) ? 'O nome não pode ter \\ / : * ? " < > |.'
+    : trimmed.endsWith(".") ? "O nome não pode terminar com ponto."
+    : trimmed && siblings.some((n) => n.toLowerCase() === trimmed.toLowerCase()) ? `Já existe uma pasta "${trimmed}" aqui.`
+    : "";
 
   async function create() {
-    if (!name.trim()) return;
+    if (!trimmed || localError) return;
     setSaving(true);
+    setError("");
     try {
-      await api.post("/folders", { name: name.trim(), company_id: companyId, parent_id: parentId });
-      success(`Pasta "${name.trim()}" criada.`);
-      onDone();
+      const { data } = await api.post("/folders", { name: trimmed, company_id: companyId, parent_id: parentId });
+      success(`Pasta "${data.name}" criada.`);
+      onDone(data);
       onClose();
     } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Não foi possível criar a pasta.");
+      setError(friendlyError(e, "Não foi possível criar a pasta."));
     } finally {
       setSaving(false);
     }
   }
 
+  const shown = error || localError;
   return (
-    <Portal>
-    <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={folderContainerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[360px]">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-(--border-default)">
-          <h2 className="text-mac-body font-semibold text-(--text-primary)">Nova pasta</h2>
-          <button onClick={onClose} className="p-1 rounded-full text-(--text-secondary) hover:bg-(--bg-hover)">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="p-5">
-          <input
-            autoFocus
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") create(); if (e.key === "Escape") onClose(); }}
-            placeholder="Nome da pasta"
-            className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-          />
-        </div>
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default)">
-          <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
-          <Button size="sm" loading={saving} onClick={create} disabled={!name.trim()}>
-            Criar
-          </Button>
-        </div>
-      </div>
-    </div>
-    </Portal>
+    <Dialog
+      onClose={onClose}
+      title="Nova pasta"
+      description={<>Em <strong className="font-medium text-(--text-primary)">{parentName}</strong></>}
+      size="sm"
+      busy={saving}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>Cancelar</Button>
+          <Button loading={saving} onClick={create} disabled={!trimmed || !!localError}>Criar pasta</Button>
+        </>
+      }
+    >
+      <label htmlFor="nova-pasta-nome" className="block text-mac-body font-medium text-(--text-secondary) mb-1.5">Nome</label>
+      <input
+        id="nova-pasta-nome"
+        type="text"
+        value={name}
+        maxLength={150}
+        onChange={(e) => { setName(e.target.value); setError(""); }}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); create(); } }}
+        placeholder="Ex.: Notas fiscais 2026"
+        aria-invalid={shown ? true : undefined}
+        aria-describedby={shown ? "nova-pasta-erro" : undefined}
+        className="w-full h-9 pointer-coarse:h-11 px-3 text-mac-body pointer-coarse:text-[16px] bg-(--bg-card) border border-(--border-control) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring)"
+      />
+      {shown && <p id="nova-pasta-erro" role="alert" className="mt-1.5 text-mac-caption text-(--text-danger)">{shown}</p>}
+    </Dialog>
   );
 }
 
 // ─── Detail Drawer ────────────────────────────────────────────────────────────
 
-// Metadados personalizados (ADENDO-08 M-G): campos resolvidos pra pasta do
-// documento, com formulário dinâmico por tipo. Some da tela se a pasta não
-// tem nenhum campo aplicado — não polui Detalhes pra quem não usa a feature.
+// Metadados personalizados (ADENDO-08 M-G): formulário por tipo, com máscara,
+// validação no próprio campo e salvamento automático anunciado (A5-11, A5-15).
 type FieldSaveStatus = "idle" | "saving" | "saved" | "error";
 
-function FieldStatusIndicator({ status }: { status: FieldSaveStatus }) {
+function FieldStatusIndicator({ status, message }: { status: FieldSaveStatus; message?: string }) {
   if (status === "idle") return null;
-  if (status === "saving") {
-    return <span className="text-mac-caption2 text-(--text-tertiary) flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full border-2 border-current border-t-transparent animate-spin" />salvando…</span>;
-  }
-  if (status === "error") {
-    return <span className="text-mac-caption2 text-red-500">não foi possível salvar</span>;
-  }
-  return <span className="text-mac-caption2 text-teal-600 dark:text-teal-400">✓ salvo</span>;
+  if (status === "saving") return <span className="text-mac-caption text-(--text-secondary)">salvando…</span>;
+  if (status === "error") return <span className="text-mac-caption text-(--text-danger)">{message ?? "não salvou"}</span>;
+  return <span className="reveal text-mac-caption text-(--text-success)">salvo</span>;
 }
 
-function MetadataSection({ doc, companyId, onChanged }: { doc: Document; companyId: string; onChanged: () => void }) {
-  const { error: showError } = useToast();
-  const [fields, setFields] = useState<ResolvedField[]>([]);
-  const [values, setValues] = useState<Record<string, string>>({});
-  // Fase 8.3: quais campos têm valor REALMENTE salvo no documento (distinto
-  // de um valor padrão herdado só exibido, nunca gravado) — usado pro ícone
-  // de "quebra de herança" quando o valor salvo diverge do padrão da pasta.
-  const [savedFieldIds, setSavedFieldIds] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(true);
-  // Autosave por campo (Fase 1.5): cada campo tem seu próprio status —
-  // idle/saving/saved/error — em vez de um botão único "Salvar metadados".
-  const [fieldStatus, setFieldStatus] = useState<Record<string, FieldSaveStatus>>({});
-  const debounceRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const savedFlashRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-
-  useEffect(() => {
-    if (!doc.folder_id) { setFields([]); setLoading(false); return; }
-    setLoading(true);
-    Promise.all([
-      api.get<ResolvedField[]>("/folder-fields/resolved", { params: { company_id: companyId, folder_id: doc.folder_id } }),
-      api.get<DocFieldValueRow[]>(`/documents/${doc.id}/field-values`),
-    ]).then(([fRes, vRes]) => {
-      const fetchedFields = Array.isArray(fRes.data) ? [...fRes.data].sort((a, b) => a.display_order - b.display_order) : [];
-      setFields(fetchedFields);
-      const vmap: Record<string, string> = {};
-      const saved = new Set<string>();
-      for (const row of Array.isArray(vRes.data) ? vRes.data : []) {
-        vmap[row.custom_field_id] = row.value_text;
-        saved.add(row.custom_field_id);
-      }
-      // Fase 8.3: campo sem valor salvo mas com valor padrão herdado da pasta
-      // mostra o padrão pré-preenchido — não grava sozinho, só exibe; salva
-      // de verdade só quando a pessoa confirma (blur/debounce), igual a
-      // qualquer outro campo.
-      for (const f of fetchedFields) {
-        if (!saved.has(f.custom_field_id) && f.default_value) vmap[f.custom_field_id] = f.default_value;
-      }
-      setValues(vmap);
-      setSavedFieldIds(saved);
-      setFieldStatus({});
-    }).catch(() => { setFields([]); setValues({}); setSavedFieldIds(new Set()); }).finally(() => setLoading(false));
-  }, [doc.id, doc.folder_id, companyId]);
-
-  // Limpa todos os timers pendentes ao desmontar (troca de documento, fecha modal).
-  useEffect(() => () => {
-    Object.values(debounceRefs.current).forEach(clearTimeout);
-    Object.values(savedFlashRefs.current).forEach(clearTimeout);
-  }, []);
-
-  async function saveField(fieldId: string, rawValue: string) {
-    const trimmed = rawValue.trim();
-    // Campos tipados (CPF/CNPJ/data/competência) dão 400 se vazios no backend
-    // — mesma regra que o botão antigo já respeitava: campo esvaziado não
-    // dispara chamada nenhuma (não existe "limpar" campo hoje, é limitação
-    // pré-existente, fora do escopo do autosave).
-    if (!trimmed) { setFieldStatus((s) => ({ ...s, [fieldId]: "idle" })); return; }
-
-    setFieldStatus((s) => ({ ...s, [fieldId]: "saving" }));
-    try {
-      await api.put(
-        `/documents/${doc.id}/field-values`,
-        [{ custom_field_id: fieldId, value: trimmed }],
-        { params: { company_id: companyId } },
-      );
-      setFieldStatus((s) => ({ ...s, [fieldId]: "saved" }));
-      setSavedFieldIds((s) => new Set(s).add(fieldId));
-      onChanged();
-      // "✓ salvo" também é transitório — volta a idle depois de um tempo,
-      // senão o indicador fica preso permanentemente no campo.
-      if (savedFlashRefs.current[fieldId]) clearTimeout(savedFlashRefs.current[fieldId]);
-      savedFlashRefs.current[fieldId] = setTimeout(() => {
-        setFieldStatus((s) => (s[fieldId] === "saved" ? { ...s, [fieldId]: "idle" } : s));
-      }, 3000);
-    } catch (e: any) {
-      setFieldStatus((s) => ({ ...s, [fieldId]: "error" }));
-      showError(e?.response?.data?.detail ?? `Não foi possível salvar "${fields.find((f) => f.custom_field_id === fieldId)?.label ?? "campo"}".`);
-    }
-  }
-
-  function handleFieldChange(fieldId: string, value: string) {
-    setValues((v) => ({ ...v, [fieldId]: value }));
-    setFieldStatus((s) => ({ ...s, [fieldId]: "idle" })); // sai do "salvo"/"erro" assim que volta a digitar
-    if (debounceRefs.current[fieldId]) clearTimeout(debounceRefs.current[fieldId]);
-    debounceRefs.current[fieldId] = setTimeout(() => saveField(fieldId, value), 900);
-  }
-
-  if (loading || fields.length === 0) return null;
-
-  // Fase 8.4: campos condicionais (Progressive Disclosure) — só aparece no
-  // formulário quando o campo do qual depende tem exatamente o valor exigido.
-  // Não remove do array (não altera fields/display_order), só filtra na hora
-  // de renderizar — o backend continua sendo a fonte de verdade do catálogo.
-  const visibleFields = fields.filter((f) => {
-    if (!f.condition_field_id) return true;
-    return (values[f.condition_field_id] ?? "") === (f.condition_value ?? "");
-  });
-  if (visibleFields.length === 0) return null;
-
+/** Acordeão acessível com altura animada (A5-05, A5-07, A5-22). */
+function Disclosure({ icon, title, summary, children, defaultOpen = false, onOpen }: {
+  icon: ReactNode; title: string; summary?: string; children: ReactNode; defaultOpen?: boolean; onOpen?: () => void;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const id = useId();
   return (
-    <div className="pt-2 border-t border-(--border-default) space-y-3">
-      <p className="text-mac-body font-semibold text-(--text-secondary)">Metadados</p>
-      {visibleFields.map((f) => {
-        // Fase 8.3: ícone de "quebra de herança" — o valor salvo no documento
-        // diverge do valor padrão da pasta (só faz sentido comparar quando
-        // ambos existem; sem padrão configurado não há herança pra quebrar).
-        const brokeInheritance = f.default_value != null && savedFieldIds.has(f.custom_field_id)
-          && values[f.custom_field_id] !== f.default_value;
-        return (
-        <div key={f.custom_field_id}>
-          <div className="flex items-center justify-between mb-1">
-            <label className="text-mac-caption font-medium text-(--text-secondary) flex items-center gap-1">
-              {f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}
-              {brokeInheritance && (
-                <Tooltip label={`Diferente do padrão da pasta ("${f.default_value}")`}>
-                  <span aria-label="Valor diferente do padrão herdado" className="inline-flex text-amber-500">
-                    <GitBranch className="w-3 h-3" />
-                  </span>
-                </Tooltip>
-              )}
-            </label>
-            <FieldStatusIndicator status={fieldStatus[f.custom_field_id] ?? "idle"} />
-          </div>
-          {f.type === "selecao" ? (
-            <Dropdown
-              value={values[f.custom_field_id] ?? ""}
-              onChange={(v) => { handleFieldChange(f.custom_field_id, v); saveField(f.custom_field_id, v); }}
-              placeholder="—"
-              options={((f.format_config?.options as string[]) ?? []).map((o) => ({ value: o, label: o }))}
-            />
-          ) : (
-            <input
-              type="text"
-              value={values[f.custom_field_id] ?? ""}
-              onChange={(e) => handleFieldChange(f.custom_field_id, e.target.value)}
-              onBlur={(e) => {
-                // Sair do campo confirma na hora em vez de esperar o debounce —
-                // não faz sentido a pessoa trocar de campo e ficar esperando.
-                if (debounceRefs.current[f.custom_field_id]) clearTimeout(debounceRefs.current[f.custom_field_id]);
-                saveField(f.custom_field_id, e.target.value);
-              }}
-              placeholder={
-                f.type === "cpf" ? "000.000.000-00" :
-                f.type === "cnpj" ? "00.000.000/0000-00" :
-                f.type === "data" ? "dd/mm/aaaa" :
-                f.type === "competencia" ? "mm/aaaa" :
-                f.type === "numero" ? "0" : ""
-              }
-              className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-            />
-          )}
-        </div>
-        );
-      })}
+    <div className="border-t border-(--border-default) pt-2">
+      <h3>
+        <button
+          aria-expanded={open}
+          aria-controls={`${id}-painel`}
+          onClick={() => { const next = !open; setOpen(next); if (next) onOpen?.(); }}
+          className="w-full flex items-center justify-between gap-2 min-h-9 pointer-coarse:min-h-11 rounded-[6px] text-mac-body text-(--text-primary) hover:text-(--text-accent)"
+        >
+          <span className="flex items-center gap-2">{icon}{title}{summary && <span className="text-mac-caption text-(--text-secondary) font-normal">{summary}</span>}</span>
+          <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} aria-hidden />
+        </button>
+      </h3>
+      <div id={`${id}-painel`} className={`grid transition-[grid-template-rows] duration-200 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`} inert={!open}>
+        <div className="overflow-hidden"><div className="pt-2 pb-1">{children}</div></div>
+      </div>
     </div>
   );
 }
 
-// Fase 14.1 — "ver cálculo": mostra a retenção efetiva do documento + todas
-// as políticas candidatas consideradas (mesmo padrão do Explain Access da
-// Fase 9.3, aplicado à retenção em vez de permissões).
+function MetadataSection({ doc, companyId, canEdit, onSaved }: { doc: Document; companyId: string; canEdit: boolean; onSaved: (fieldId: string, value: string) => void }) {
+  const [fields, setFields] = useState<ResolvedField[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [savedFieldIds, setSavedFieldIds] = useState<Set<string>>(new Set());
+  const [fieldStatus, setFieldStatus] = useState<Record<string, FieldSaveStatus>>({});
+  const [fieldError, setFieldError] = useState<Record<string, string>>({});
+  const debounceRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const uid = useId();
+
+  const load = useCallback(() => {
+    if (!doc.folder_id) { setFields([]); return; }
+    setFields(null);
+    setFailed(false);
+    Promise.all([
+      api.get<ResolvedField[]>("/folder-fields/resolved", { params: { company_id: companyId, folder_id: doc.folder_id } }),
+      api.get<DocFieldValueRow[]>(`/documents/${doc.id}/field-values`),
+    ]).then(([fRes, vRes]) => {
+      const fetched = Array.isArray(fRes.data) ? [...fRes.data].sort((a, b) => a.display_order - b.display_order) : [];
+      const vmap: Record<string, string> = {};
+      const saved = new Set<string>();
+      for (const row of Array.isArray(vRes.data) ? vRes.data : []) { vmap[row.custom_field_id] = row.value_text; saved.add(row.custom_field_id); }
+      for (const f of fetched) if (!saved.has(f.custom_field_id) && f.default_value) vmap[f.custom_field_id] = f.default_value;
+      setFields(fetched); setValues(vmap); setSavedFieldIds(saved); setFieldStatus({}); setFieldError({});
+    }).catch(() => { setFailed(true); setFields([]); });
+  }, [doc.id, doc.folder_id, companyId]);
+  useEffect(load, [load]);
+  useEffect(() => () => { Object.values(debounceRefs.current).forEach(clearTimeout); }, []);
+
+  async function saveField(f: ResolvedField, rawValue: string) {
+    const trimmed = rawValue.trim();
+    const invalid = validateValue(f.type as FieldType, trimmed);
+    if (invalid) { setFieldError((s) => ({ ...s, [f.custom_field_id]: invalid })); setFieldStatus((s) => ({ ...s, [f.custom_field_id]: "idle" })); return; }
+    setFieldError((s) => { const n = { ...s }; delete n[f.custom_field_id]; return n; });
+    if (!trimmed) { setFieldStatus((s) => ({ ...s, [f.custom_field_id]: "idle" })); return; }
+    setFieldStatus((s) => ({ ...s, [f.custom_field_id]: "saving" }));
+    try {
+      await api.put(`/documents/${doc.id}/field-values`, [{ custom_field_id: f.custom_field_id, value: trimmed }], { params: { company_id: companyId } });
+      setFieldStatus((s) => ({ ...s, [f.custom_field_id]: "saved" }));
+      setSavedFieldIds((s) => new Set(s).add(f.custom_field_id));
+      onSaved(f.custom_field_id, trimmed);
+      window.setTimeout(() => setFieldStatus((s) => (s[f.custom_field_id] === "saved" ? { ...s, [f.custom_field_id]: "idle" } : s)), 2500);
+    } catch (e: any) {
+      setFieldStatus((s) => ({ ...s, [f.custom_field_id]: "error" }));
+      setFieldError((s) => ({ ...s, [f.custom_field_id]: e?.response?.data?.detail ?? "Não salvou. Confira o valor e tente de novo." }));
+    }
+  }
+
+  if (fields === null) {
+    return <div className="border-t border-(--border-default) pt-3 space-y-2" aria-label="Carregando metadados">{[0, 1].map((i) => <div key={i} className="h-9 rounded-(--radius-control) bg-(--bg-hover) animate-pulse" />)}</div>;
+  }
+  if (failed) {
+    return <p role="alert" className="border-t border-(--border-default) pt-3 text-mac-body text-(--text-secondary)">Não carregou os metadados. <button onClick={load} className="font-medium text-(--text-accent) underline underline-offset-2">Tentar de novo</button></p>;
+  }
+  const visible = fields.filter((f) => !f.condition_field_id || (values[f.condition_field_id] ?? "") === (f.condition_value ?? ""));
+  if (visible.length === 0) return null;
+
+  return (
+    <section aria-labelledby={`${uid}-meta`} className="border-t border-(--border-default) pt-3 space-y-3">
+      <h3 id={`${uid}-meta`} className="text-mac-body font-semibold text-(--text-primary)">Metadados</h3>
+      {visible.map((f) => {
+        const fid = `${uid}-${f.custom_field_id}`;
+        const err = fieldError[f.custom_field_id];
+        const status = fieldStatus[f.custom_field_id] ?? "idle";
+        const brokeInheritance = f.default_value != null && savedFieldIds.has(f.custom_field_id) && values[f.custom_field_id] !== f.default_value;
+        const fromDefault = f.default_value != null && !savedFieldIds.has(f.custom_field_id) && values[f.custom_field_id] === f.default_value;
+        return (
+          <div key={f.custom_field_id}>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <label htmlFor={fid} className="text-mac-caption font-medium text-(--text-secondary) flex items-center gap-1">
+                {f.label}{f.required && <span className="text-(--text-danger)" aria-label="obrigatório">*</span>}
+                {brokeInheritance && <span className="text-(--text-warning) inline-flex" title={`Diferente do padrão da pasta ("${f.default_value}")`}><GitBranch className="w-3 h-3" aria-hidden /><span className="sr-only">diferente do padrão da pasta</span></span>}
+                {fromDefault && <span className="text-(--text-secondary) font-normal">· padrão da pasta</span>}
+              </label>
+              <span aria-live="polite"><FieldStatusIndicator status={status} message={status === "error" ? "não salvou" : undefined} /></span>
+            </div>
+            {isChoice(f.type) ? (
+              <Dropdown
+                id={fid}
+                value={values[f.custom_field_id] ?? ""}
+                onChange={(v) => { setValues((s) => ({ ...s, [f.custom_field_id]: v })); saveField(f, v); }}
+                placeholder="Escolha"
+                disabled={!canEdit}
+                ariaLabel={f.label}
+                options={fieldOptions(f.type, f.format_config?.options).map((o) => ({ value: o, label: o }))}
+              />
+            ) : (
+              <input
+                id={fid}
+                type="text"
+                inputMode={INPUT_MODE[f.type as FieldType]}
+                value={values[f.custom_field_id] ?? ""}
+                readOnly={!canEdit}
+                aria-invalid={err ? true : undefined}
+                aria-describedby={err ? `${fid}-erro` : undefined}
+                aria-required={f.required || undefined}
+                onChange={(e) => {
+                  const v = maskValue(f.type as FieldType, e.target.value);
+                  setValues((s) => ({ ...s, [f.custom_field_id]: v }));
+                  setFieldStatus((s) => ({ ...s, [f.custom_field_id]: "idle" }));
+                  if (debounceRefs.current[f.custom_field_id]) clearTimeout(debounceRefs.current[f.custom_field_id]);
+                  debounceRefs.current[f.custom_field_id] = setTimeout(() => saveField(f, v), 900);
+                }}
+                onBlur={(e) => {
+                  if (debounceRefs.current[f.custom_field_id]) clearTimeout(debounceRefs.current[f.custom_field_id]);
+                  saveField(f, e.target.value);
+                }}
+                placeholder={PLACEHOLDER[f.type as FieldType]}
+                className={`w-full h-9 pointer-coarse:h-11 px-3 text-mac-body pointer-coarse:text-[16px] bg-(--bg-card) border rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring) read-only:bg-(--bg-hover) ${err ? "border-red-500" : "border-(--border-control)"}`}
+              />
+            )}
+            {err && <p id={`${fid}-erro`} className="mt-1 text-mac-caption text-(--text-danger)">{err}</p>}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
 interface RetentionCandidate {
   policy_id: string; policy_name: string; locked: boolean; is_indeterminate: boolean;
   expires_at: string | null; company_wide: boolean; eligible: boolean; is_winner: boolean;
 }
 
+const brDate = (iso: string | null) => (iso ? new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString("pt-BR") : "—");
+
 function DocumentRetentionSection({ docId }: { docId: string }) {
-  const [open, setOpen] = useState(false);
-  const [showCalc, setShowCalc] = useState(false);
-  const [info, setInfo] = useState<{ policy_name: string | null; expires_at: string | null; is_indeterminate: boolean | null; locked: boolean; under_hold: boolean } | null>(null);
+  const [info, setInfo] = useState<{ policy_name: string | null; expires_at: string | null; is_indeterminate: boolean | null; locked: boolean; under_hold: boolean } | null | "erro">(null);
   const [candidates, setCandidates] = useState<RetentionCandidate[] | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    setLoading(true);
-    api.get(`/documents/${docId}/retention`)
-      .then((r) => setInfo(r.data))
-      .catch(() => setInfo(null))
-      .finally(() => setLoading(false));
-  }, [open, docId]);
-
-  useEffect(() => {
-    if (!showCalc) return;
-    api.get<{ candidates: RetentionCandidate[] }>(`/documents/${docId}/retention/explain`)
-      .then((r) => setCandidates(r.data.candidates))
-      .catch(() => setCandidates([]));
-  }, [showCalc, docId]);
-
+  const [showCalc, setShowCalc] = useState(false);
+  const load = () => { setInfo(null); api.get(`/documents/${docId}/retention`).then((r) => setInfo(r.data)).catch(() => setInfo("erro")); };
+  useEffect(() => { if (showCalc) api.get<{ candidates: RetentionCandidate[] }>(`/documents/${docId}/retention/explain`).then((r) => setCandidates(r.data.candidates)).catch(() => setCandidates([])); }, [showCalc, docId]);
   return (
-    <div className="border-t border-(--border-default) pt-3">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between text-mac-body text-(--text-primary) hover:text-teal-500 transition-colors duration-fast"
-      >
-        <span className="flex items-center gap-2">
-          <Archive className="w-4 h-4" />
-          Retenção
-        </span>
-        {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-      </button>
-      {open && (
-        <div className="mt-3 space-y-2">
-          {loading ? (
-            <div className="h-10 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />
-          ) : !info?.policy_name ? (
-            <p className="text-mac-caption text-(--text-tertiary)">Nenhuma política de retenção se aplica a este documento.</p>
+    <Disclosure icon={<Archive className="w-4 h-4" aria-hidden />} title="Retenção" onOpen={load}>
+      {info === null ? (
+        <div className="h-10 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />
+      ) : info === "erro" ? (
+        <p role="alert" className="text-mac-caption text-(--text-secondary)">Não foi possível conferir a retenção agora. Não descarte o documento sem conferir. <button onClick={load} className="font-medium text-(--text-accent) underline underline-offset-2">Tentar de novo</button></p>
+      ) : (
+        <div className="text-mac-caption text-(--text-secondary) space-y-1.5">
+          {info.under_hold && <p className="flex items-center gap-1.5 text-(--text-warning) font-medium"><Lock className="w-3.5 h-3.5" aria-hidden /> Sob retenção legal (legal hold): não pode ser excluído.</p>}
+          {!info.policy_name ? (
+            <p>Nenhuma política de retenção se aplica a este documento.</p>
           ) : (
-            <div className="text-mac-caption text-(--text-secondary) space-y-1">
-              <p>
-                Política: <span className="font-medium text-(--text-primary)">{info.policy_name}</span>
-                {info.locked && <Lock className="w-3 h-3 inline ml-1 text-amber-500" />}
-              </p>
-              <p>{info.is_indeterminate ? "Prazo indeterminado" : `Expira em ${info.expires_at}`}</p>
-              {info.under_hold && <p className="text-amber-500">Sob legal hold — descarte bloqueado.</p>}
-              <button
-                onClick={() => setShowCalc((v) => !v)}
-                className="text-teal-500 hover:text-teal-600 transition-colors duration-fast"
-              >
-                {showCalc ? "Ocultar cálculo" : "Ver cálculo"}
+            <>
+              <p>Política: <span className="font-medium text-(--text-primary)">{info.policy_name}</span>{info.locked && <span className="ml-1">(obrigatória)</span>}</p>
+              <p>{info.is_indeterminate ? "Guarda por prazo indeterminado." : `Pode ser descartado a partir de ${brDate(info.expires_at)}.`}</p>
+              <button onClick={() => setShowCalc((v) => !v)} aria-expanded={showCalc} className="font-medium text-(--text-accent) underline-offset-2 hover:underline min-h-6 pointer-coarse:min-h-11">
+                {showCalc ? "Ocultar como foi calculado" : "Ver como foi calculado"}
               </button>
               {showCalc && (
                 <ul className="space-y-1 pt-1">
-                  {candidates === null ? (
-                    <li className="h-8 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" />
-                  ) : candidates.length === 0 ? (
-                    <li className="text-(--text-tertiary)">Nenhuma política atribuída (empresa ou pasta) encontrada.</li>
-                  ) : (
-                    candidates.map((c) => (
-                      <li key={c.policy_id} className={`flex items-start gap-1.5 ${c.is_winner ? "text-(--text-primary)" : "text-(--text-tertiary) line-through decoration-(--border-default)"}`}>
-                        {c.is_winner ? <Check className="w-3 h-3 text-teal-500 shrink-0 mt-0.5" /> : <span className="w-3 h-3 shrink-0" />}
-                        <span>
-                          {c.policy_name} {c.locked && "(trava)"} — {c.is_indeterminate ? "indeterminado" : c.expires_at} · {c.company_wide ? "empresa toda" : "por pasta"}
-                        </span>
-                      </li>
-                    ))
-                  )}
+                  {candidates === null ? <li className="h-8 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" /> : candidates.length === 0 ? (
+                    <li>Nenhuma política atribuída à empresa ou às pastas deste documento.</li>
+                  ) : candidates.map((c) => (
+                    <li key={c.policy_id} className="flex items-start gap-1.5">
+                      {c.is_winner ? <Check className="w-3.5 h-3.5 text-(--text-success) shrink-0 mt-0.5" aria-hidden /> : <span className="w-3.5 shrink-0" />}
+                      <span className={c.is_winner ? "text-(--text-primary)" : ""}>
+                        {c.policy_name}{c.locked ? " (obrigatória)" : ""} — {c.is_indeterminate ? "indeterminado" : brDate(c.expires_at)} · {c.company_wide ? "empresa toda" : "pasta"}
+                        {c.is_winner ? <strong className="ml-1 text-(--text-success)">vale esta</strong> : !c.eligible ? " · perde para a obrigatória" : " · prazo menor"}
+                      </span>
+                    </li>
+                  ))}
                 </ul>
               )}
-            </div>
+            </>
           )}
         </div>
       )}
-    </div>
+    </Disclosure>
   );
 }
 
-// Fase 2.6: mesmo componente ActivityFeed do painel de administração
-// (Activity.tsx), só trocando o filtro inicial (item_id = este documento) —
-// colapsado por padrão, carrega só quando aberto (padrão igual ao de Versões).
-function DocumentActivitySection({ docId, companyId }: { docId: string; companyId: string }) {
-  const [open, setOpen] = useState(false);
+/** Obrigações que este documento comprova (achado A7-54): some quando não há nenhuma. */
+function DocumentObligations({ docId }: { docId: string }) {
+  const [items, setItems] = useState<Instance[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    api.get<Instance[]>(`/documents/${docId}/obligations`).then((r) => { if (alive) setItems(r.data ?? []); }).catch(() => { if (alive) setItems([]); });
+    return () => { alive = false; };
+  }, [docId]);
+  if (!items?.length) return null;
   return (
-    <div className="border-t border-(--border-default) pt-3">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between text-mac-body text-(--text-primary) hover:text-teal-500 transition-colors duration-fast"
-      >
-        <span className="flex items-center gap-2">
-          <Clock className="w-4 h-4" />
-          Atividade
-        </span>
-        {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-      </button>
-      {open && (
-        <div className="mt-3">
-          <ActivityFeed companyId={companyId} itemId={docId} pageSize={20} groupByDay={false} emptyDescription="Nenhuma atividade registrada neste documento ainda." />
-        </div>
-      )}
-    </div>
+    <section aria-label="Obrigações que este documento comprova" className="space-y-1.5">
+      <h3 className="text-mac-body font-semibold text-(--text-primary)">Comprova</h3>
+      <ul className="space-y-1">
+        {items.map((o) => (
+          <li key={o.id} className="flex items-center gap-2 min-h-8">
+            <Link to={`/obligations?instancia=${o.id}`} className="flex-1 min-w-0 truncate text-mac-caption text-(--text-accent) hover:underline">
+              {o.template_name} · {o.period_label}
+            </Link>
+            <StatusChip status={o.effective_status} />
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
-function DetailDrawer({ doc, companyId, variant = "modal", onClose, onFavorite, onPreview, onDelete, onChanged }: {
-  doc: Document; companyId: string; variant?: "modal" | "panel";
-  onClose: () => void; onFavorite: () => void; onPreview: () => void; onDelete: () => void; onChanged: () => void;
+function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit, onClose, onFavorite, onPreview, onMenu, onChanged, onFieldSaved }: {
+  doc: Document; companyId: string; variant?: "modal" | "panel"; path: string; canEdit: boolean;
+  onClose: () => void; onFavorite: () => void; onPreview: () => void; onMenu: (el: HTMLElement) => void; onChanged: () => void;
+  onFieldSaved: (docId: string, fieldId: string, value: string) => void;
 }) {
   const { success, error: showError } = useToast();
-  const containerRef = useRef<HTMLDivElement>(null);
-  // Painel lateral não bloqueia o resto da tela (não é modal) — trap de foco
-  // só faz sentido pro modal mobile, senão Tab fica preso no painel e nunca
-  // volta pra tabela.
-  useFocusTrap(containerRef, variant === "modal");
   const [favorited, setFavorited] = useState(doc.favorited ?? false);
   const [sharing, setSharing] = useState(false);
   const [shareCount, setShareCount] = useState(doc.active_share_count ?? 0);
-  // GET /favorites não expõe favorite_id em Document (só o boolean `favorited`) —
-  // o endpoint de remoção precisa do id do registro, então buscamos em paralelo
-  // assim que o modal abre (se já favoritado), pra desancorar poder ser otimista
-  // sem round-trip extra no clique.
-  const [favoriteId, setFavoriteId] = useState<string | null>(null);
+  // A âncora "cai" ao ancorar (A5-89): a animação anchor-drop que estava sem uso.
+  const [dropping, setDropping] = useState(false);
+  const headingRef = useRef<HTMLHeadingElement>(null);
 
-  useEffect(() => { setFavorited(doc.favorited ?? false); }, [doc.id, doc.favorited]);
-  useEffect(() => { setShareCount(doc.active_share_count ?? 0); }, [doc.id, doc.active_share_count]);
-  useEffect(() => {
-    setFavoriteId(null);
-    if (!doc.favorited) return;
-    let cancelled = false;
-    api.get<{ id: string; document_id: string | null }[]>("/favorites").then((r) => {
-      if (cancelled) return;
-      const match = r.data.find((f) => f.document_id === doc.id);
-      if (match) setFavoriteId(match.id);
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [doc.id, doc.favorited]);
+  useEffect(() => { setFavorited(doc.favorited ?? false); setShareCount(doc.active_share_count ?? 0); }, [doc.id, doc.favorited, doc.active_share_count]);
 
-  // Otimista: o ícone muda na hora do clique. Ancorar/desancorar é uma ação
-  // trivialmente reversível (ver Fase 1.4 do plano), então não precisa da
-  // janela de "Desfazer" com atraso usada em ações destrutivas — só rollback
-  // com motivo se a chamada falhar (nunca silencioso).
   async function toggleFavorite() {
     const goingTo = !favorited;
     setFavorited(goingTo);
     try {
-      if (goingTo) {
-        const r = await api.post("/favorites", { document_id: doc.id });
-        setFavoriteId(r.data.id);
-        success(`"${doc.name}" adicionado aos ancorados.`);
-      } else {
-        let idToDelete = favoriteId;
-        if (!idToDelete) {
-          const list = await api.get<{ id: string; document_id: string | null }[]>("/favorites");
-          idToDelete = list.data.find((f) => f.document_id === doc.id)?.id ?? null;
-        }
-        if (!idToDelete) throw new Error("favorite_id não encontrado");
-        await api.delete(`/favorites/${idToDelete}`);
-        setFavoriteId(null);
+      if (goingTo) { await api.post("/favorites", { document_id: doc.id }); success(`"${doc.name}" ancorado.`); }
+      else {
+        const list = await api.get<{ id: string; document_id: string | null }[]>("/favorites");
+        const id = list.data.find((f) => f.document_id === doc.id)?.id;
+        if (id) await api.delete(`/favorites/${id}`);
       }
       onFavorite();
     } catch (e: any) {
-      setFavorited(!goingTo); // rollback
-      if (goingTo && e?.response?.status === 409) { setFavorited(true); return; } // já estava ancorado, ok
-      showError(goingTo ? "Não foi possível ancorar. Tente novamente." : "Não foi possível remover a ancoragem. Tente novamente.");
+      if (goingTo && e?.response?.status === 409) return;
+      setFavorited(!goingTo);
+      showError(goingTo ? "Não foi possível ancorar. Tente de novo." : "Não foi possível desancorar. Tente de novo.");
     }
   }
 
@@ -1026,154 +1098,95 @@ function DetailDrawer({ doc, companyId, variant = "modal", onClose, onFavorite, 
       a.href = r.data.download_url;
       a.download = doc.name;
       a.click();
-    } catch {
-      showError("Erro ao baixar o documento.");
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível baixar."));
     }
   }
 
-  // Fase 8.1: o mesmo conteúdo alimenta tanto o modal (mobile) quanto o painel
-  // lateral persistente (desktop) — só a moldura muda entre os dois.
+  const s = getFileStyle(doc.name);
+  const FileIcon = s.icon;
+  const action = "flex flex-col items-center justify-center gap-1 h-14 pointer-coarse:h-16 rounded-(--radius-control) text-mac-caption text-(--text-primary) hover:bg-(--bg-hover) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)";
+
   const body = (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="flex items-start gap-3">
-        {(() => { const s = getFileStyle(doc.name); const Icon = s.icon; return (
-          <div className={`w-10 h-10 rounded-(--radius-control) flex items-center justify-center shrink-0 ${s.bgColor}`}>
-            <Icon className={`w-5 h-5 ${s.iconColor} ${s.fillColor}`} />
-          </div>
-        ); })()}
+        <div className={`w-11 h-11 rounded-(--radius-control) flex items-center justify-center shrink-0 ${s.bgColor}`}>
+          <FileIcon className={`w-5 h-5 ${s.iconColor} ${s.fillColor}`} aria-hidden />
+        </div>
         <div className="flex-1 min-w-0">
-          <p className="text-mac-body font-medium text-(--text-primary) wrap-break-word">{doc.name}</p>
-          <p className="text-mac-caption text-(--text-secondary) mt-0.5">{fmtSize(doc.size_bytes)}</p>
+          <h2 ref={headingRef} tabIndex={-1} className="text-mac-body font-semibold text-(--text-primary) break-words focus:outline-hidden">{doc.name}</h2>
+          <p className="text-mac-caption text-(--text-secondary) mt-0.5 break-words">{path}</p>
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Row label="Tipo" value={doc.mime_type} />
-        <Row label="Tamanho" value={fmtSize(doc.size_bytes)} />
-        <Row label="Criado em" value={fmtDateFull(doc.created_at)} />
-        <div className="flex justify-between py-1">
-          <span className="text-mac-caption text-(--text-secondary)">OCR</span>
-          {ocrBadge(doc.ocr_status)}
-        </div>
+      <div className="grid grid-cols-4 gap-1" role="group" aria-label="Ações do documento">
+        <button onClick={onPreview} className={`${action} text-(--text-accent) font-medium`}><Eye className="w-4 h-4" aria-hidden />Abrir</button>
+        <button onClick={download} className={action}><Download className="w-4 h-4" aria-hidden />Baixar</button>
+        <button onClick={() => { if (!favorited) { setDropping(true); window.setTimeout(() => setDropping(false), 340); } toggleFavorite(); }} aria-pressed={favorited} className={action}>
+          <Anchor className={`w-4 h-4 ${dropping ? "anchor-drop" : ""} ${favorited ? "fill-current text-(--text-accent)" : ""}`} aria-hidden />{favorited ? "Ancorado" : "Ancorar"}
+        </button>
+        <button onClick={(e) => onMenu(e.currentTarget)} aria-haspopup="menu" className={action}><MoreHorizontal className="w-4 h-4" aria-hidden />Mais</button>
       </div>
+      {canEdit && (
+        <button onClick={() => setSharing(true)} className="w-full flex items-center justify-center gap-2 h-9 pointer-coarse:h-11 rounded-full border border-(--border-control) text-mac-body text-(--text-primary) hover:bg-(--bg-hover)">
+          <Share2 className="w-4 h-4" aria-hidden />{shareCount > 0 ? `Compartilhado em ${shareCount} ${shareCount === 1 ? "link" : "links"}` : "Compartilhar por link"}
+        </button>
+      )}
 
-      <div className="flex flex-col gap-2 pt-2 border-t border-(--border-default)">
-        <button
-          onClick={onPreview}
-          className="w-full h-9 flex items-center justify-center gap-2 text-mac-body bg-teal-600 text-white rounded-full hover:bg-teal-500 transition-colors duration-fast"
-        >
-          <Eye className="w-4 h-4" />
-          Visualizar
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-mac-caption">
+        <dt className="text-(--text-secondary)">Tipo</dt><dd className="text-(--text-primary) text-right">{kindLabel(doc.name)}</dd>
+        <dt className="text-(--text-secondary)">Tamanho</dt><dd className="text-(--text-primary) text-right tabular-nums">{fmtSize(doc.size_bytes)}</dd>
+        <dt className="text-(--text-secondary)">Enviado</dt><dd className="text-(--text-primary) text-right">{fmtDateFull(doc.created_at)}{doc.uploaded_by_name ? ` por ${doc.uploaded_by_name}` : ""}</dd>
+        {doc.updated_at && <><dt className="text-(--text-secondary)">Modificado</dt><dd className="text-(--text-primary) text-right">{fmtDateFull(doc.updated_at)}</dd></>}
+        <dt className="text-(--text-secondary)">Texto</dt><dd className="text-right">{ocrBadge(doc.ocr_status)}</dd>
+      </dl>
+      {doc.ocr_status === "failed" && canEdit && (
+        <button onClick={() => api.post(`/documents/${doc.id}/retry-ocr`).then(() => { success("O texto vai ser lido de novo."); onChanged(); }).catch((e) => showError(friendlyError(e, "Não foi possível pôr na fila.")))}
+          className="w-full h-9 pointer-coarse:h-11 rounded-full border border-(--border-control) text-mac-body text-(--text-primary) hover:bg-(--bg-hover)">
+          Ler o texto de novo
         </button>
-        <button
-          onClick={download}
-          className="w-full h-9 flex items-center justify-center gap-2 text-mac-body border border-(--border-default) rounded-full text-(--text-primary) hover:bg-(--bg-hover) transition-colors duration-fast"
-        >
-          <Download className="w-4 h-4" />
-          Baixar
-        </button>
-        <button
-          onClick={toggleFavorite}
-          className={`w-full h-9 flex items-center justify-center gap-2 text-mac-body border rounded-full transition-colors duration-fast ${
-            favorited
-              ? "border-teal-200 dark:border-teal-900/40 text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20"
-              : "border-(--border-default) text-(--text-primary) hover:bg-(--bg-hover)"
-          }`}
-        >
-          <Anchor className={`w-4 h-4 ${favorited ? "fill-current" : ""}`} />
-          {favorited ? "Remover ancoragem" : "Ancorar como favorito"}
-        </button>
-        <button
-          onClick={() => setSharing(true)}
-          className={`w-full h-9 flex items-center justify-center gap-2 text-mac-body border rounded-full transition-colors duration-fast ${
-            shareCount > 0
-              ? "border-teal-200 dark:border-teal-900/40 text-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20"
-              : "border-(--border-default) text-(--text-primary) hover:bg-(--bg-hover)"
-          }`}
-        >
-          <Share2 className="w-4 h-4" />
-          {shareCount > 0 ? `Compartilhado (${shareCount})` : "Compartilhar"}
-        </button>
-        <button
-          onClick={onDelete}
-          className="w-full h-9 flex items-center justify-center gap-2 text-mac-body border border-red-200 dark:border-red-900/40 rounded-full text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors duration-fast"
-        >
-          <Trash2 className="w-4 h-4" />
-          Excluir
-        </button>
-      </div>
+      )}
 
-      <MetadataSection doc={doc} companyId={companyId} onChanged={onChanged} />
-
+      <MetadataSection doc={doc} companyId={companyId} canEdit={canEdit} onSaved={(fid, v) => onFieldSaved(doc.id, fid, v)} />
+      <IntegrityCheck key={doc.id} documentId={doc.id} />
       <VersionsPanel documentId={doc.id} documentName={doc.name} onChanged={onChanged} />
-
       <DocumentRetentionSection docId={doc.id} />
-
-      <DocumentActivitySection docId={doc.id} companyId={companyId} />
+      <DocumentObligations docId={doc.id} />
+      <Disclosure icon={<Clock className="w-4 h-4" aria-hidden />} title="Atividade">
+        <ActivityFeed companyId={companyId} itemId={doc.id} pageSize={20} groupByDay={false} emptyDescription="Nenhuma atividade registrada neste documento ainda." />
+        <LinkAccesses documentId={doc.id} />
+        <Link to={`/activity?item=${doc.id}&nome=${encodeURIComponent(doc.name)}`} className="mt-2 inline-flex items-center gap-1 min-h-6 pointer-coarse:min-h-11 text-mac-caption font-medium text-(--text-accent) hover:underline">
+          Ver tudo na Atividade <ChevronRight className="w-3.5 h-3.5" aria-hidden />
+        </Link>
+      </Disclosure>
     </div>
   );
 
   const shareModal = sharing && (
-    <ShareModal
-      resourceType="document"
-      resourceId={doc.id}
-      name={doc.name}
-      onClose={() => setSharing(false)}
-      onChanged={setShareCount}
-    />
+    <ShareModal resourceType="document" resourceId={doc.id} name={doc.name} onClose={() => setSharing(false)} onChanged={setShareCount} />
   );
 
   if (variant === "panel") {
-    // Painel fixo — vive dentro da mesma janela de vidro da tabela, nunca
-    // cobre o conteúdo (Fase 8.1, consenso das 11 rodadas: "painel lateral
-    // persistente, nunca modal"). Só desktop (lg+): no mobile não há largura
-    // sobrando pra split view, então o modal centralizado continua sendo o
-    // único jeito de ver detalhes.
+    // Painel lateral persistente (não modal), entra deslizando (A5-05).
     return (
-      <div className="hidden lg:flex flex-col w-[340px] shrink-0 border-l border-(--border-default) overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-(--border-default) shrink-0">
-          <h2 className="text-mac-body font-semibold text-(--text-primary)">Detalhes</h2>
-          <button onClick={onClose} className="p-1 rounded-full text-(--text-secondary) hover:bg-(--bg-hover)">
-            <X className="w-4 h-4" />
+      <aside aria-label={`Detalhes de ${doc.name}`} className="panel-in hidden lg:flex flex-col w-[340px] shrink-0 border-l border-(--border-default) overflow-hidden">
+        <div className="flex items-center justify-between px-5 h-12 border-b border-(--border-default) shrink-0">
+          <p className="text-mac-body font-semibold text-(--text-secondary)">Detalhes</p>
+          <button onClick={onClose} aria-label="Fechar detalhes" className="w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)">
+            <X className="w-4 h-4" aria-hidden />
           </button>
         </div>
-        <div ref={containerRef} className="flex-1 overflow-y-auto p-5">
-          {body}
-        </div>
+        <div className="flex-1 overflow-y-auto p-5">{body}</div>
         {shareModal}
-      </div>
+      </aside>
     );
   }
 
   return (
-    <Portal>
-    <div
-      className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4 lg:hidden"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[420px] max-h-[85vh] overflow-y-auto">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-(--border-default)">
-        <h2 className="text-mac-body font-semibold text-(--text-primary)">Detalhes</h2>
-        <button onClick={onClose} className="p-1 rounded-full text-(--text-secondary) hover:bg-(--bg-hover)">
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-      <div className="p-5">
-        {body}
-      </div>
-      </div>
+    <>
+      <Dialog onClose={onClose} title={`Detalhes de ${doc.name}`} hideTitle size="md">{body}</Dialog>
       {shareModal}
-    </div>
-    </Portal>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between py-1">
-      <span className="text-mac-caption text-(--text-secondary)">{label}</span>
-      <span className="text-mac-caption text-(--text-primary) truncate max-w-[180px] text-right">{value}</span>
-    </div>
+    </>
   );
 }
 
@@ -1191,107 +1204,103 @@ function BulkMetadataModal({
   documentIds, fields, fieldValues, companyId, onClose, onSaved,
 }: {
   documentIds: string[]; fields: ResolvedField[]; fieldValues: Record<string, Record<string, string>>;
-  companyId: string; onClose: () => void; onSaved: () => void;
+  companyId: string; onClose: () => void; onSaved: (applied: Record<string, string>) => void;
 }) {
   const { success, error: showError } = useToast();
-  const containerRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(containerRef);
   const [edited, setEdited] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const uid = useId();
 
-  function fieldSummary(fieldId: string): { varies: boolean; common: string } {
-    const values = documentIds.map((id) => fieldValues[id]?.[fieldId] ?? "");
-    const distinct = new Set(values.filter((v) => v !== ""));
+  function summary(fieldId: string): { varies: boolean; common: string } {
+    const distinct = new Set(documentIds.map((id) => fieldValues[id]?.[fieldId] ?? "").filter((v) => v !== ""));
     if (distinct.size === 0) return { varies: false, common: "" };
     if (distinct.size === 1) return { varies: false, common: [...distinct][0] };
     return { varies: true, common: "" };
   }
 
   async function save() {
-    const changedFieldIds = Object.keys(edited);
-    if (changedFieldIds.length === 0) { onClose(); return; }
+    const changed = Object.entries(edited).filter(([, v]) => v.trim() !== "");
+    if (!changed.length) { onClose(); return; }
+    const errs: Record<string, string> = {};
+    for (const [fid, v] of changed) {
+      const f = fields.find((x) => x.custom_field_id === fid);
+      const e = f ? validateValue(f.type as FieldType, v) : null;
+      if (e) errs[fid] = e;
+    }
+    setErrors(errs);
+    if (Object.keys(errs).length) return;
     setSaving(true);
-    const body = changedFieldIds.map((fieldId) => ({ custom_field_id: fieldId, value: edited[fieldId] }));
-    let failCount = 0;
-    for (const docId of documentIds) {
-      try {
-        await api.put(`/documents/${docId}/field-values`, body, { params: { company_id: companyId } });
-      } catch {
-        failCount++;
-      }
+    try {
+      await api.put("/documents/field-values/batch", {
+        document_ids: documentIds,
+        values: changed.map(([custom_field_id, value]) => ({ custom_field_id, value: value.trim() })),
+      }, { params: { company_id: companyId } });
+      success(`Metadados aplicados em ${plural(documentIds.length, "documento", "documentos")}.`);
+      onSaved(Object.fromEntries(changed.map(([k, v]) => [k, v.trim()])));
+      onClose();
+    } catch (e: any) {
+      showError(friendlyError(e, "Nada foi alterado: confira os valores e tente de novo."));
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    if (failCount === 0) {
-      success(`Metadados atualizados em ${documentIds.length} documento${documentIds.length > 1 ? "s" : ""}.`);
-    } else {
-      showError(`${failCount} de ${documentIds.length} documentos não foram atualizados — confira o formato dos valores.`);
-    }
-    onSaved();
-    onClose();
   }
 
   return (
-    <Portal>
-      <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-        <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[440px] max-h-[80vh] flex flex-col">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-(--border-default) shrink-0">
-            <h2 className="text-mac-body font-semibold text-(--text-primary)">
-              Editar metadados de {documentIds.length} documento{documentIds.length > 1 ? "s" : ""}
-            </h2>
-            <button onClick={onClose} className="p-1 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover)">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="p-5 space-y-4 overflow-y-auto">
-            {fields.length === 0 ? (
-              <p className="text-mac-caption text-(--text-tertiary)">Nenhum campo de metadado aplicado nesta pasta.</p>
-            ) : (
-              fields.map((f) => {
-                const { varies, common } = fieldSummary(f.custom_field_id);
-                const value = edited[f.custom_field_id] ?? "";
-                return (
-                  <div key={f.custom_field_id}>
-                    <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">{f.label}</label>
-                    {f.type === "selecao" ? (
-                      <Dropdown
-                        value={value}
-                        onChange={(v) => setEdited((e) => ({ ...e, [f.custom_field_id]: v }))}
-                        placeholder={varies ? "(varies)" : common || "—"}
-                        options={((f.format_config?.options as string[]) ?? []).map((o) => ({ value: o, label: o }))}
-                      />
-                    ) : (
-                      <input
-                        type="text"
-                        value={value}
-                        onChange={(e) => setEdited((prev) => ({ ...prev, [f.custom_field_id]: e.target.value }))}
-                        placeholder={varies ? "(varies)" : common || "—"}
-                        className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-                      />
-                    )}
-                  </div>
-                );
-              })
-            )}
-            {fields.length > 0 && (
-              <p className="text-mac-caption2 text-(--text-tertiary)">
-                Campos deixados como "(varies)" ou vazios não são alterados — só os que você preencher aqui são aplicados a todos os documentos selecionados.
-              </p>
-            )}
-          </div>
-          <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default) shrink-0">
-            <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
-            <Button size="sm" loading={saving} onClick={save} disabled={fields.length === 0}>Aplicar</Button>
-          </div>
+    <Dialog
+      onClose={onClose}
+      title={`Metadados de ${plural(documentIds.length, "documento", "documentos")}`}
+      description="Preencha só o que quer mudar em todos. Campos em branco ficam como estão em cada documento."
+      size="md"
+      busy={saving}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>Cancelar</Button>
+          <Button loading={saving} onClick={save} disabled={fields.length === 0 || !Object.values(edited).some((v) => v.trim())}>
+            Aplicar em {documentIds.length}
+          </Button>
+        </>
+      }
+    >
+      {fields.length === 0 ? (
+        <p className="text-mac-body text-(--text-secondary)">Esta pasta não tem campos de metadados. Crie em Ajustes → Metadados.</p>
+      ) : (
+        <div className="space-y-4">
+          {fields.map((f) => {
+            const { varies, common } = summary(f.custom_field_id);
+            const fid = `${uid}-${f.custom_field_id}`;
+            const err = errors[f.custom_field_id];
+            const hint = varies ? "Valores diferentes entre os documentos" : common ? `Hoje: ${common}` : "Vazio hoje";
+            return (
+              <div key={f.custom_field_id}>
+                <label htmlFor={fid} className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">
+                  {f.label}{f.required && <span className="text-(--text-danger)" aria-label="obrigatório"> *</span>}
+                </label>
+                {isChoice(f.type) ? (
+                  <Dropdown id={fid} ariaLabel={f.label} value={edited[f.custom_field_id] ?? ""} placeholder={hint}
+                    onChange={(v) => setEdited((e) => ({ ...e, [f.custom_field_id]: v }))}
+                    options={fieldOptions(f.type, f.format_config?.options).map((o) => ({ value: o, label: o }))} />
+                ) : (
+                  <input id={fid} type="text" inputMode={INPUT_MODE[f.type as FieldType]} value={edited[f.custom_field_id] ?? ""}
+                    onChange={(e) => { const v = maskValue(f.type as FieldType, e.target.value); setEdited((prev) => ({ ...prev, [f.custom_field_id]: v })); setErrors((x) => { const n = { ...x }; delete n[f.custom_field_id]; return n; }); }}
+                    placeholder={PLACEHOLDER[f.type as FieldType] || hint}
+                    aria-invalid={err ? true : undefined} aria-describedby={`${fid}-dica`}
+                    className={`w-full h-9 pointer-coarse:h-11 px-3 text-mac-body pointer-coarse:text-[16px] bg-(--bg-card) border rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring) ${err ? "border-red-500" : "border-(--border-control)"}`} />
+                )}
+                <p id={`${fid}-dica`} className={`mt-1 text-mac-caption ${err ? "text-(--text-danger)" : "text-(--text-secondary)"}`}>{err ?? hint}</p>
+              </div>
+            );
+          })}
         </div>
-      </div>
-    </Portal>
+      )}
+    </Dialog>
   );
 }
 
 export default function Documents() {
   usePageTitle("Documentos");
   const { current } = useCompany();
-  const { toast, success, error: showError } = useToast();
+  const { toast, dismiss: dismissToast, success, error: showError } = useToast();
   const nav = useNavigation();
   // Fase 8.1: painel lateral persistente só cabe em telas largas (mesmo
   // breakpoint `lg` já usado pra sidebar de pastas) — no mobile o modal
@@ -1303,6 +1312,10 @@ export default function Documents() {
 
   const [folders, setFolders] = useState<Folder[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
+  // Pasta com PDF: o visualizador baixa com o navegador ocioso (X1-22).
+  useEffect(() => {
+    if (documents.some((d) => d.name.toLowerCase().endsWith(".pdf"))) prefetchPdfViewer();
+  }, [documents]);
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(saved?.folderId ?? null);
   const [breadcrumbs, setBreadcrumbs] = useState<Array<{ id: string | null; name: string }>>(
     saved?.breadcrumbs ?? [{ id: null, name: "Início" }]
@@ -1395,48 +1408,96 @@ export default function Documents() {
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
   const [showUpload, setShowUpload] = useState(false);
   const [showNewFolder, setShowNewFolder] = useState(false);
+  // LGPD (X2-17): classificação da pasta e selo na barra.
+  const [privacyFolder, setPrivacyFolder] = useState<{ id: string; name: string } | null>(null);
+  const [currentPrivacy, setCurrentPrivacy] = useState<string>("normal");
+  useEffect(() => {
+    if (!currentFolderId) { setCurrentPrivacy("normal"); return; }
+    api.get(`/folders/${currentFolderId}/privacy`).then((r) => setCurrentPrivacy(r.data.effective ?? "normal")).catch(() => setCurrentPrivacy("normal"));
+  }, [currentFolderId]);
   const [confirmDeleteFolder, setConfirmDeleteFolder] = useState<Folder | null>(null);
   const [deletingFolder, setDeletingFolder] = useState(false);
   const [sharingFolder, setSharingFolder] = useState<Folder | null>(null);
+  const [sharingDoc, setSharingDoc] = useState<Document | null>(null);
+  const [showTreeDrawer, setShowTreeDrawer] = useState(false);
   const [copyingFolder, setCopyingFolder] = useState<Folder | null>(null);
-  // Menu de contexto (clique direito) — padrão Finder/Explorer: menu customizado
-  // como interação primária, o botão "..." continua existindo como alternativa
-  // pra quem não sabe do clique direito (§13.4 do ADENDO-09).
-  const [contextMenu, setContextMenu] = useState<
-    { x: number; y: number; kind: "document"; data: Document } | { x: number; y: number; kind: "folder"; data: Folder } | null
-  >(null);
-  const contextMenuRef = useRef<HTMLDivElement>(null);
+  // Menu de contexto (clique direito, toque longo ou botão "…") no primitivo
+  // Menu acessível (achados A4-31..A4-35): teclado, leitor de tela, atalhos.
+  type MenuTarget =
+    | { anchor: { x: number; y: number } | HTMLElement; kind: "document"; data: Document }
+    | { anchor: { x: number; y: number } | HTMLElement; kind: "folder"; data: Folder };
+  const [menu, setMenu] = useState<MenuTarget | null>(null);
   function openContextMenu(e: React.MouseEvent, kind: "document" | "folder", data: Document | Folder) {
     e.preventDefault();
     e.stopPropagation();
     setFocusedId(data.id);
-    const menuWidth = 200;
-    const menuHeight = 190;
-    const x = Math.min(e.clientX, window.innerWidth - menuWidth - 8);
-    const y = Math.min(e.clientY, window.innerHeight - menuHeight - 8);
-    setContextMenu({ x, y, kind, data } as typeof contextMenu);
+    if (kind === "document" && !selected.has(data.id)) setSelected(new Set([data.id]));
+    setMenu({ anchor: { x: e.clientX, y: e.clientY }, kind, data } as MenuTarget);
   }
-  useEffect(() => {
-    if (!contextMenu) return;
-    // Fecha só em mousedown FORA do menu — sem o containment check, qualquer
-    // clique num item (Renomear, Excluir, etc.) fechava o menu no mousedown,
-    // antes do click do próprio item disparar, engolindo a ação inteira.
-    function close(e: Event) {
-      if (contextMenuRef.current && e.target instanceof Node && contextMenuRef.current.contains(e.target)) return;
-      setContextMenu(null);
+  function openMenuAt(el: HTMLElement, kind: "document" | "folder", data: Document | Folder) {
+    setFocusedId(data.id);
+    if (kind === "document" && !selected.has(data.id)) setSelected(new Set([data.id]));
+    setMenu({ anchor: el, kind, data } as MenuTarget);
+  }
+  // "Mover para…" (documentos ou pasta) — achados A4-36 e X1-08.
+  const [picker, setPicker] = useState<{ kind: "documents"; ids: string[] } | { kind: "folder"; folder: Folder } | null>(null);
+  // Erro de carga nunca vira "Pasta vazia" (achado A4-01).
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // Paginação (achado A4-12): 200 por vez, o resto ao rolar.
+  const [total, setTotal] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [folderDeleteSummary, setFolderDeleteSummary] = useState<{ subfolders: number; documents: number } | null>(null);
+  const canWrite = current?.permission_level === "admin" || current?.permission_level === "operador" || current?.permission_level === "supremo";
+  const canAdmin = current?.permission_level === "admin" || current?.permission_level === "supremo";
+  function menuItems(t: MenuTarget): MenuItem[] {
+    if (t.kind === "document") {
+      const d = t.data;
+      const ids = selected.has(d.id) && selected.size > 1 ? [...selected] : [d.id];
+      const multi = ids.length > 1;
+      const list: MenuItem[] = [];
+      if (!multi) {
+        list.push({ label: "Abrir", icon: <Eye />, shortcut: "Espaço", onSelect: () => setPreviewDoc(d) });
+        list.push({ label: "Detalhes", icon: <Info />, onSelect: () => setDetailDoc(d) });
+      }
+      list.push({ label: multi ? `Baixar ${ids.length} em ZIP` : "Baixar", icon: <Download />, separatorBefore: !multi, onSelect: () => downloadDocuments(ids) });
+      if (!multi) {
+        list.push({ label: "Copiar link", icon: <Link2 />, onSelect: () => copyLink(d) });
+        list.push({ label: "Compartilhar…", icon: <Share2 />, disabled: !canWrite, onSelect: () => setSharingDoc(d) });
+      }
+      list.push({ label: multi ? "Ancorar todos" : d.favorited ? "Já está ancorado" : "Ancorar", icon: <Anchor />, disabled: !multi && !!d.favorited, onSelect: () => anchorDocuments(ids) });
+      if (canWrite) {
+        list.push({ label: "Mover para…", icon: <FolderInput />, separatorBefore: true, onSelect: () => setPicker({ kind: "documents", ids }) });
+        if (!multi) list.push({ label: "Renomear", icon: <Pencil />, shortcut: "F2", onSelect: () => startRename("document", d.id, d.name) });
+        list.push({ label: multi ? `Excluir ${ids.length}` : "Excluir", icon: <Trash2 />, shortcut: "Del", danger: true, separatorBefore: true, onSelect: () => deleteDocuments(ids) });
+      }
+      return list;
     }
-    function closeOnEscape(e: KeyboardEvent) { if (e.key === "Escape") setContextMenu(null); }
-    document.addEventListener("mousedown", close);
-    document.addEventListener("scroll", close, true);
-    document.addEventListener("keydown", closeOnEscape);
-    window.addEventListener("blur", close);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("scroll", close, true);
-      document.removeEventListener("keydown", closeOnEscape);
-      window.removeEventListener("blur-sm", close);
-    };
-  }, [contextMenu]);
+    const f = t.data;
+    const list: MenuItem[] = [{ label: "Abrir", icon: <FolderOpen />, shortcut: "Enter", onSelect: () => openFolder(f) }];
+    list.push({ label: "Compartilhar…", icon: <Share2 />, disabled: !canWrite, onSelect: () => setSharingFolder(f) });
+    if (canAdmin) {
+      list.push({ label: "Mover para…", icon: <FolderInput />, separatorBefore: true, onSelect: () => setPicker({ kind: "folder", folder: f }) });
+      list.push({ label: "Renomear", icon: <Pencil />, shortcut: "F2", onSelect: () => startRename("folder", f.id, f.name) });
+      list.push({ label: "Copiar estrutura para…", icon: <Copy />, onSelect: () => setCopyingFolder(f) });
+      list.push({ label: "Permissões desta pasta", icon: <Shield />, separatorBefore: true, onSelect: () => navigate(`/settings/users?folder=${f.id}`) });
+      list.push({ label: "Metadados desta pasta", icon: <Tags />, onSelect: () => navigate(`/settings/metadata?tab=tree&folder=${f.id}`) });
+      list.push({ label: "Retenção desta pasta", icon: <Archive />, onSelect: () => navigate(`/settings/retention?folder=${f.id}`) });
+      list.push({ label: "Privacidade (LGPD)…", icon: <ShieldAlert />, onSelect: () => setPrivacyFolder(f) });
+      list.push({ label: "Excluir pasta", icon: <Trash2 />, shortcut: "Del", danger: true, separatorBefore: true, onSelect: () => askDeleteFolder(f) });
+    }
+    return list;
+  }
+
+  // Carregar mais ao chegar ao fim da lista.
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver((entries) => { if (entries[0]?.isIntersecting) loadMore(); }, { rootMargin: "400px" });
+    obs.observe(el);
+    return () => obs.disconnect();
+  });
+
   // ADR-026: densidade de tabela — compacto reduz padding vertical das linhas
   const [density, setDensity] = useState<"comfortable" | "compact">(
     () => (localStorage.getItem("docke_table_density") as "comfortable" | "compact") || "comfortable"
@@ -1497,6 +1558,14 @@ export default function Documents() {
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
   }
+  function nudgeColWidth(col: keyof typeof DEFAULT_COL_WIDTHS, delta: number) {
+    setColWidths((prev) => {
+      const next = { ...prev, [col]: Math.min(800, Math.max(60, prev[col] + delta)) };
+      localStorage.setItem("docke_col_widths", JSON.stringify(next));
+      return next;
+    });
+  }
+
   function resetColWidth(col: keyof typeof DEFAULT_COL_WIDTHS) {
     setColWidths((prev) => {
       const next = { ...prev, [col]: DEFAULT_COL_WIDTHS[col] };
@@ -1558,134 +1627,169 @@ export default function Documents() {
     setRenaming({ kind, id, value: base });
   }
 
-  function confirmRename() {
+  async function runUndo(id?: string) {
+    const entry = takeUndo(id);
+    if (!entry) { toast({ type: "info", message: "Não há nada para desfazer." }); return; }
+    try {
+      await entry.undo();
+      toast({ type: "success", message: `Desfeito: ${entry.label}.` });
+    } catch (e: any) {
+      showError(friendlyError(e, `Não foi possível desfazer: ${entry.label}.`));
+    }
+    load();
+    setFolderTreeVersion((v) => v + 1);
+  }
+
+  /** Aviso com "Desfazer" ligado à mesma entrada do Ctrl+Z. */
+  function toastWithUndo(message: string, label: string, undo: () => Promise<void>) {
+    const entry = pushUndo(label, undo);
+    toast({ type: "success", message, action: { label: "Desfazer", onClick: () => runUndo(entry.id) } });
+  }
+
+  // Renomear grava na hora (antes esperava 5 s e se perdia ao recarregar — A4-45).
+  async function confirmRename() {
     if (!renaming) return;
     const { kind, id, value } = renaming;
-    const trimmed = value.trim();
+    const trimmed = value.trim().replace(/\s+/g, " ");
     if (!trimmed) { setRenaming(null); return; }
     if (FORBIDDEN_NAME_CHARS.test(trimmed)) {
-      showError('Caractere inválido: \\ / : * ? " < > |');
+      showError('O nome não pode ter \\ / : * ? " < > |.');
       return;
     }
-
-    const oldName = kind === "folder"
-      ? folders.find((f) => f.id === id)?.name
-      : documents.find((d) => d.id === id)?.name;
+    const oldName = kind === "folder" ? folders.find((f) => f.id === id)?.name : documents.find((d) => d.id === id)?.name;
     if (!oldName) { setRenaming(null); return; }
-
     const ext = kind === "document" ? splitExt(oldName)[1] : "";
     const newName = `${trimmed}${ext}`;
     if (newName === oldName) { setRenaming(null); return; }
-
     const siblings = kind === "folder"
       ? folders.filter((f) => f.id !== id).map((f) => f.name.toLowerCase())
       : documents.filter((d) => d.id !== id).map((d) => d.name.toLowerCase());
     if (siblings.includes(newName.toLowerCase())) {
-      showError("Já existe um item com este nome nesta pasta.");
+      showError(`Já existe ${kind === "folder" ? "uma pasta" : "um documento"} "${newName}" aqui.`);
       return;
     }
-
     setRenaming(null);
-
-    // Mesmo padrão de "Desfazer" com atraso usado em deleteDocuments: aplica
-    // a mudança na tela na hora, só chama a API depois da janela de desfazer.
-    if (kind === "folder") {
-      setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, name: newName } : f)));
-      setFolderTreeVersion((v) => v + 1);
-    } else {
-      setDocuments((prev) => prev.map((d) => (d.id === id ? { ...d, name: newName } : d)));
+    const apply = (name: string) => {
+      if (kind === "folder") setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, name } : f)));
+      else setDocuments((prev) => prev.map((d) => (d.id === id ? { ...d, name } : d)));
+    };
+    const save = (name: string) => (kind === "folder" ? api.patch(`/folders/${id}/rename`, { name }) : api.patch(`/documents/${id}`, { name }));
+    apply(newName);
+    try {
+      await save(newName);
+      if (kind === "folder") setFolderTreeVersion((v) => v + 1);
+      toastWithUndo(`Renomeado para "${newName}".`, `renomear "${oldName}"`, async () => { await save(oldName); });
+    } catch (e: any) {
+      apply(oldName);
+      showError(friendlyError(e, "Não foi possível renomear."));
     }
-
-    let undone = false;
-    const timer = setTimeout(async () => {
-      if (undone) return;
-      try {
-        if (kind === "folder") await api.patch(`/folders/${id}/rename`, { name: newName });
-        else await api.patch(`/documents/${id}`, { name: newName });
-      } catch (e: any) {
-        showError(e?.response?.data?.detail ?? "Erro ao renomear.");
-        load();
-      }
-    }, 5000);
-
-    toast({
-      type: "success",
-      message: `Renomeado para "${newName}".`,
-      duration: 5000,
-      action: {
-        label: "Desfazer",
-        onClick: () => {
-          undone = true;
-          clearTimeout(timer);
-          if (kind === "folder") { setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, name: oldName } : f))); setFolderTreeVersion((v) => v + 1); }
-          else setDocuments((prev) => prev.map((d) => (d.id === id ? { ...d, name: oldName } : d)));
-        },
-      },
-    });
   }
 
-  // Typeahead — digitar letras pula pro primeiro item cujo nome começa com elas,
+    // Typeahead — digitar letras pula pro primeiro item cujo nome começa com elas,
   // exatamente como Finder/Explorer em qualquer lista. Buffer acumula por 800ms
   // (janela padrão do gesto) e então reseta, permitindo digitar várias letras
   // em sequência pra refinar o alvo (ex: "ho" pula pra "Holerite" em vez de "Home").
   const typeaheadBufferRef = useRef("");
   const typeaheadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Atalhos globais: Space abre preview do item focado, F2 inicia renomeação inline —
-  // desativados quando o usuário está digitando em outro campo ou há modal aberto.
+  // Teclado da lista e da grade (achados A4-13, A4-22, A4-25, A4-61):
+  // setas e Home/End movem o foco (Shift estende a seleção), Enter abre,
+  // Espaço pré-visualiza, F2 renomeia, Delete/⌘⌫ exclui, Esc limpa a seleção,
+  // ⌘A seleciona o que está visível, ⌘Z desfaz e ⌘⇧N cria pasta.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement;
-      const typing = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
-      const modalOpen = !!(detailDoc || previewDoc || showUpload || showNewFolder || confirmDeleteFolder || sharingFolder || copyingFolder);
+      const typing = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable;
+      const modalOpen = !!(previewDoc || showUpload || showNewFolder || confirmDeleteFolder || sharingFolder || copyingFolder || picker || menu || showBulkMetadata)
+        || !!document.querySelector('[role="dialog"][aria-modal="true"]');
       if (typing || modalOpen) return;
+      if (target.closest('aside, [role="tree"], header, nav, [data-dock]')) return;
 
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+      const mod = e.metaKey || e.ctrlKey;
+      if (isUndoShortcut(e)) { e.preventDefault(); runUndo(); return; }
+      if (mod && e.shiftKey && e.key.toLowerCase() === "n") { e.preventDefault(); if (currentFolderId !== undefined && canWrite) setShowNewFolder(true); return; }
+      if (mod && e.key.toLowerCase() === "a") {
         e.preventDefault();
-        setSelected(new Set(documents.map((d) => d.id)));
+        setSelected(new Set(visibleDocuments.map((d) => d.id)));
         return;
       }
+      if (e.key === "Escape" && selected.size) { setSelected(new Set()); return; }
 
-      // Typeahead: uma única letra/dígito sem modificador, fora dos atalhos acima.
-      if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      const order = items.map((it) => it.data.id);
+      const idx = focusedId ? order.indexOf(focusedId) : -1;
+      const moveTo = (next: number) => {
+        if (!order.length) return;
+        const clamped = Math.max(0, Math.min(order.length - 1, next));
+        const id = order[clamped];
+        e.preventDefault();
+        setFocusedId(id);
+        const isDoc = items[clamped].kind === "document";
+        if (e.shiftKey && isDoc) {
+          const anchor = idx >= 0 ? idx : clamped;
+          const [a, b] = anchor < clamped ? [anchor, clamped] : [clamped, anchor];
+          setSelected(new Set(items.slice(a, b + 1).filter((it) => it.kind === "document").map((it) => it.data.id)));
+        } else if (!mod) {
+          setSelected(isDoc ? new Set([id]) : new Set());
+        }
+        // O painel de detalhes acompanha o item em foco (como a pré-visualização do Finder).
+        if (isDoc && detailDoc && isDesktop) {
+          const d = documents.find((x) => x.id === id);
+          if (d) setDetailDoc(d);
+        }
+        const el = rowRefs.current.get(id);
+        el?.focus({ preventScroll: true });
+        el?.scrollIntoView({ block: "nearest" });
+      };
+      const cols = viewMode === "grid" ? Math.max(1, Math.round((scrollBodyRef.current?.clientWidth ?? 600) / 118)) : 1;
+      if (e.key === "ArrowDown") return moveTo(idx < 0 ? 0 : idx + cols);
+      if (e.key === "ArrowUp") return moveTo(idx < 0 ? 0 : idx - cols);
+      if (viewMode === "grid" && e.key === "ArrowRight") return moveTo(idx + 1);
+      if (viewMode === "grid" && e.key === "ArrowLeft") return moveTo(idx - 1);
+      if (e.key === "Home") return moveTo(0);
+      if (e.key === "End") return moveTo(order.length - 1);
+
+      // Typeahead: uma única letra/dígito sem modificador.
+      if (e.key.length === 1 && e.key !== " " && !mod && !e.altKey) {
         typeaheadBufferRef.current += e.key.toLowerCase();
         if (typeaheadTimerRef.current) clearTimeout(typeaheadTimerRef.current);
         typeaheadTimerRef.current = setTimeout(() => { typeaheadBufferRef.current = ""; }, 800);
-
         const query = typeaheadBufferRef.current;
-        const sortedFoldersLocal = [...folders].sort((a, b) => a.name.localeCompare(b.name));
-        const sortedDocsLocal = [...documents].sort((a, b) => a.name.localeCompare(b.name));
-        const folderMatch = sortedFoldersLocal.find((f) => f.name.toLowerCase().startsWith(query));
-        const docMatch = sortedDocsLocal.find((d) => d.name.toLowerCase().startsWith(query));
-        const match = folderMatch ?? docMatch;
-        if (match) {
-          e.preventDefault();
-          setFocusedId(match.id);
-          if ("size_bytes" in match) {
-            setSelected(new Set([match.id]));
-            rowRefs.current.get(match.id)?.scrollIntoView({ block: "nearest" });
-          }
-        }
+        const hit = items.findIndex((it) => it.data.name.toLowerCase().startsWith(query));
+        if (hit >= 0) moveTo(hit);
         return;
       }
 
       if (!focusedId) return;
-
-      if (e.code === "Space") {
-        const doc = documents.find((d) => d.id === focusedId);
-        if (doc) { e.preventDefault(); setPreviewDoc(doc); }
-      } else if (e.key === "F2") {
-        const doc = documents.find((d) => d.id === focusedId);
-        const folder = folders.find((f) => f.id === focusedId);
-        if (doc) { e.preventDefault(); startRename("document", doc.id, doc.name); }
-        else if (folder) { e.preventDefault(); startRename("folder", folder.id, folder.name); }
+      const doc = documents.find((d) => d.id === focusedId);
+      const folder = folders.find((f) => f.id === focusedId);
+      // Menu de ações pelo teclado: tecla Menu ou Shift+F10 (padrão do sistema).
+      if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+        const el = rowRefs.current.get(focusedId);
+        if (el && doc) { e.preventDefault(); openMenuAt(el, "document", doc); }
+        else if (el && folder) { e.preventDefault(); openMenuAt(el, "folder", folder); }
+        return;
+      }
+      if (e.code === "Space" && doc) { e.preventDefault(); setPreviewDoc(doc); }
+      else if (e.key === "Enter") {
+        e.preventDefault();
+        if (folder) openFolder(folder);
+        else if (doc) setPreviewDoc(doc);
+      } else if (e.key === "F2" && canWrite) {
+        e.preventDefault();
+        if (doc) startRename("document", doc.id, doc.name);
+        else if (folder && canAdmin) startRename("folder", folder.id, folder.name);
+      } else if ((e.key === "Delete" || (mod && e.key === "Backspace")) && canWrite) {
+        e.preventDefault();
+        if (selected.size) deleteDocuments([...selected]);
+        else if (doc) deleteDocuments([doc.id]);
+        else if (folder && canAdmin) askDeleteFolder(folder);
       }
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [focusedId, documents, folders, detailDoc, previewDoc, showUpload, showNewFolder, confirmDeleteFolder, sharingFolder, copyingFolder]);
+  });
 
-  // Seleção por arraste (rubber-band) — só ativa no modo de seleção, iniciada em área
+    // Seleção por arraste (rubber-band) — só ativa no modo de seleção, iniciada em área
   // vazia da lista (não sobre linhas/botões) pra não conflitar com cliques normais.
   const scrollBodyRef = useRef<HTMLDivElement>(null);
   // HTMLElement (não HTMLTableRowElement) porque a view em grade usa <div>, não <tr>
@@ -1738,7 +1842,7 @@ export default function Documents() {
         const rowBottom = rowTop + er.height;
         const rowLeft = er.left - r.left + container!.scrollLeft;
         const rowRight = rowLeft + er.width;
-        if (rowBottom >= top && rowTop <= bottom && rowRight >= left && rowLeft <= right) hitIds.push(id);
+        if (rowBottom >= top && rowTop <= bottom && rowRight >= left && rowLeft <= right && documents.some((d) => d.id === id)) hitIds.push(id);
       });
       if (hitIds.length) {
         setSelected((prev) => {
@@ -1806,30 +1910,59 @@ export default function Documents() {
     if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
   }, []);
 
-  const load = useCallback(() => {
+  const PAGE = 200;
+  // Com mais de uma página, o filtro e a ordenação vão para o servidor.
+  const [serverQuery, setServerQuery] = useState("");
+  const load = useCallback(async () => {
     if (!current) return;
     setLoading(true);
+    setLoadError(null);
     setSelected(new Set());
-    setFocusedId(null);
 
     const foldersParams: Record<string, string> = { company_id: current.id };
     if (currentFolderId) foldersParams.parent_id = currentFolderId;
-
-    const foldersFetch = api.get<Folder[]>("/folders", { params: foldersParams })
-      .catch(() => ({ data: [] as Folder[] }));
-
-    const docsFetch = currentFolderId
-      ? api.get<Document[]>("/documents", { params: { company_id: current.id, folder_id: currentFolderId } })
-          .catch(() => ({ data: [] as Document[] }))
-      : Promise.resolve({ data: [] as Document[] });
-
-    Promise.all([foldersFetch, docsFetch]).then(([fRes, dRes]) => {
+    try {
+      const [fRes, dRes] = await Promise.all([
+        api.get<Folder[]>("/folders", { params: foldersParams }),
+        currentFolderId
+          ? api.get<Document[]>("/documents", {
+              params: { company_id: current.id, folder_id: currentFolderId, limit: PAGE, offset: 0, sort: sort.key, dir: sort.dir, q: serverQuery || undefined },
+            })
+          : Promise.resolve({ data: [] as Document[], headers: {} as Record<string, string> }),
+      ]);
+      const docs = Array.isArray(dRes.data) ? dRes.data : [];
       setFolders(Array.isArray(fRes.data) ? fRes.data : []);
-      setDocuments(Array.isArray(dRes.data) ? dRes.data : []);
-    }).finally(() => setLoading(false));
-  }, [current?.id, currentFolderId]);
+      setDocuments(docs);
+      setTotal(Number((dRes.headers as Record<string, string>)?.["x-total-count"] ?? docs.length) || docs.length);
+    } catch (e: any) {
+      setFolders([]);
+      setDocuments([]);
+      setTotal(0);
+      setLoadError(friendlyError(e, "Não foi possível abrir esta pasta agora."));
+    } finally {
+      setLoading(false);
+    }
+  }, [current?.id, currentFolderId, sort.key, sort.dir, serverQuery]);
 
-  useEffect(() => { load(); }, [load]);
+  async function loadMore() {
+    if (!current || !currentFolderId || loadingMore || documents.length >= total) return;
+    setLoadingMore(true);
+    try {
+      const r = await api.get<Document[]>("/documents", {
+        params: { company_id: current.id, folder_id: currentFolderId, limit: PAGE, offset: documents.length, sort: sort.key, dir: sort.dir, q: serverQuery || undefined },
+      });
+      setDocuments((prev) => {
+        const ids = new Set(prev.map((d) => d.id));
+        return [...prev, ...r.data.filter((d) => !ids.has(d.id))];
+      });
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível carregar mais documentos."));
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+    useEffect(() => { load(); }, [load]);
 
   // Metadados personalizados (ADENDO-08 M-H): colunas extras na tabela, resolvidas
   // pra pasta atual (herança já aplicada pelo backend). Raiz não tem pasta real —
@@ -1846,8 +1979,7 @@ export default function Documents() {
   const [fieldValues, setFieldValues] = useState<Record<string, Record<string, string>>>({});
   useEffect(() => {
     if (!resolvedFields.length || !documents.length) { setFieldValues({}); return; }
-    const ids = documents.map((d) => d.id).join(",");
-    api.get<DocFieldValueRow[]>("/documents/field-values", { params: { document_ids: ids } })
+    api.post<DocFieldValueRow[]>("/documents/field-values/query", { document_ids: documents.slice(0, 1000).map((d) => d.id) })
       .then((r) => {
         const map: Record<string, Record<string, string>> = {};
         for (const row of Array.isArray(r.data) ? r.data : []) {
@@ -1891,7 +2023,7 @@ export default function Documents() {
         setCurrentFolderId(linkedFolderId);
       })
       .finally(() => {
-        setSearchParams({}, { replace: true });
+        setSearchParams({ pasta: linkedFolderId }, { replace: true });
       });
     // searchParams muda de identidade a cada navegação (mesmo para a mesma rota já montada,
     // como ao clicar num resultado do Command Palette estando já em /documents) — precisa
@@ -1903,6 +2035,45 @@ export default function Documents() {
     const doc = documents.find((d) => d.id === pendingDocId);
     if (doc) setDetailDoc(doc);
   }, [documents, loading, pendingDocId]);
+
+  // Ações vindas do ⌘K (?acao=enviar | nova-pasta).
+  const acaoParam = searchParams.get("acao");
+  useEffect(() => {
+    if (!acaoParam || !current) return;
+    if (acaoParam === "enviar" && canWrite) setShowUpload(true);
+    if (acaoParam === "nova-pasta" && canWrite) setShowNewFolder(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("acao");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [acaoParam, current?.id]);
+
+  // A pasta aberta fica no endereço (?pasta=): recarregar, voltar e copiar o
+  // link levam à mesma pasta (achado A4-02).
+  const pastaParam = searchParams.get("pasta");
+  useEffect(() => {
+    if (!current || searchParams.get("folder_id")) return;
+    if (pastaParam && pastaParam !== currentFolderId) jumpToFolder(pastaParam);
+    else if (!pastaParam && currentFolderId) setSearchParams({ pasta: currentFolderId }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id, pastaParam]);
+  useEffect(() => {
+    if (searchParams.get("folder_id")) return;
+    if ((currentFolderId ?? null) !== (pastaParam ?? null)) {
+      setSearchParams(currentFolderId ? { pasta: currentFolderId } : {}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentFolderId]);
+
+  // Filtro no servidor quando a pasta tem mais documentos do que os carregados.
+  useEffect(() => {
+    const q = filterQuery.trim();
+    if (total <= PAGE && !serverQuery) return;
+    const t = window.setTimeout(() => setServerQuery(q), 250);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterQuery]);
+  useEffect(() => { setServerQuery(""); }, [currentFolderId]);
 
   // Persist navigation state in session memory (folder + breadcrumbs only)
   useEffect(() => {
@@ -1982,101 +2153,169 @@ export default function Documents() {
   }
 
   function selectAll() {
-    const allIds = documents.map((d) => d.id);
+    // Só o que está visível (filtro aplicado) — antes o ⌘A pegava os ocultos (A4-25).
+    const allIds = visibleDocuments.map((d) => d.id);
     setSelected(selected.size === allIds.length ? new Set() : new Set(allIds));
   }
 
-  function deleteDocuments(ids: string[]) {
+  // Excluir grava na hora e empilha a restauração (achados A4-26, A4-61).
+  async function deleteDocuments(ids: string[]) {
     if (!ids.length) return;
-    const count = ids.length;
-    const label = `${count} documento${count > 1 ? "s" : ""} movido${count > 1 ? "s" : ""} para a lixeira.`;
-
-    // Optimistic: hide items immediately
+    const backup = documents.filter((d) => ids.includes(d.id));
     setDocuments((prev) => prev.filter((d) => !ids.includes(d.id)));
+    setTotal((t) => Math.max(0, t - ids.length));
     setSelected(new Set());
-
-    let undone = false;
-    const timer = setTimeout(async () => {
-      if (undone) return;
-      try {
-        await api.post("/documents/bulk-delete", { document_ids: ids });
-      } catch (e: any) {
-        showError(e?.response?.data?.detail ?? "Erro ao excluir documentos.");
-        load(); // restore on failure
+    if (detailDoc && ids.includes(detailDoc.id)) setDetailDoc(null);
+    const deleted: string[] = [];
+    const blocked: { name: string }[] = [];
+    try {
+      for (const part of chunks(ids, 1000)) {
+        const r = await api.post("/documents/bulk-delete", { document_ids: part });
+        deleted.push(...(r.data.document_ids ?? []));
+        blocked.push(...(r.data.blocked ?? []));
       }
-    }, 5000);
-
-    toast({
-      type: "success",
-      message: label,
-      duration: 5000,
-      action: {
-        label: "Desfazer",
-        onClick: () => {
-          undone = true;
-          clearTimeout(timer);
-          load();
-        },
-      },
-    });
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível excluir."));
+    }
+    const kept = backup.filter((d) => !deleted.includes(d.id));
+    if (kept.length) {
+      setDocuments((prev) => [...prev, ...kept]);
+      setTotal((t) => t + kept.length);
+    }
+    if (blocked.length) {
+      showError(`${plural(blocked.length, "documento ficou", "documentos ficaram")} na pasta por legal hold ou retenção obrigatória: ${blocked.slice(0, 3).map((b) => b.name).join(", ")}${blocked.length > 3 ? "…" : ""}.`);
+    }
+    if (deleted.length) {
+      toastWithUndo(
+        `${plural(deleted.length, "documento foi", "documentos foram")} para a lixeira.`,
+        `exclusão de ${plural(deleted.length, "documento", "documentos")}`,
+        async () => { for (const part of chunks(deleted, 1000)) await api.post("/documents/bulk-restore", { document_ids: part }); },
+      );
+    }
   }
 
   function deleteSelected() {
     deleteDocuments([...selected]);
   }
 
-  function moveDocuments(ids: string[], targetFolderId: string, targetFolderName: string) {
-    if (!ids.length) return;
-    const count = ids.length;
-    const label = `${count} documento${count > 1 ? "s" : ""} movido${count > 1 ? "s" : ""} para "${targetFolderName}".`;
-
-    // Mesmo padrão de "Desfazer" com atraso: some da pasta atual na hora,
-    // só chama a API depois da janela de desfazer.
+  async function moveDocuments(ids: string[], targetFolderId: string, targetFolderName: string) {
+    if (!ids.length || targetFolderId === currentFolderId) return;
+    const source = currentFolderId;
+    const backup = documents.filter((d) => ids.includes(d.id));
     setDocuments((prev) => prev.filter((d) => !ids.includes(d.id)));
+    setTotal((t) => Math.max(0, t - ids.length));
     setSelected(new Set());
+    if (detailDoc && ids.includes(detailDoc.id)) setDetailDoc(null);
+    try {
+      for (const part of chunks(ids, 1000)) await api.post("/documents/bulk-move", { document_ids: part, target_folder_id: targetFolderId });
+      toastWithUndo(
+        `${plural(ids.length, "documento movido", "documentos movidos")} para "${targetFolderName}".`,
+        `mover ${plural(ids.length, "documento", "documentos")}`,
+        async () => { if (source) for (const part of chunks(ids, 1000)) await api.post("/documents/bulk-move", { document_ids: part, target_folder_id: source }); },
+      );
+    } catch (e: any) {
+      setDocuments((prev) => [...prev, ...backup]);
+      setTotal((t) => t + backup.length);
+      showError(friendlyError(e, "Não foi possível mover."));
+    }
+  }
 
-    let undone = false;
-    const timer = setTimeout(async () => {
-      if (undone) return;
-      try {
-        await api.post("/documents/bulk-move", { document_ids: ids, target_folder_id: targetFolderId });
-      } catch (e: any) {
-        showError(e?.response?.data?.detail ?? "Erro ao mover documentos.");
-        load();
-      }
-    }, 5000);
+  async function moveFolder(folder: Folder, target: PickedFolder) {
+    const oldParent = folder.parent_id;
+    try {
+      await api.patch(`/folders/${folder.id}/move`, { parent_id: target.id });
+      setFolders((prev) => prev.filter((f) => f.id !== folder.id));
+      setFolderTreeVersion((v) => v + 1);
+      toastWithUndo(`Pasta "${folder.name}" movida para "${target.name}".`, `mover a pasta "${folder.name}"`, async () => {
+        await api.patch(`/folders/${folder.id}/move`, { parent_id: oldParent });
+      });
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível mover a pasta."));
+    }
+  }
 
-    toast({
-      type: "success",
-      message: label,
-      duration: 5000,
-      action: {
-        label: "Desfazer",
-        onClick: () => {
-          undone = true;
-          clearTimeout(timer);
-          load();
-        },
-      },
+  // Pasta movida arrastando na árvore: recarrega e oferece Desfazer.
+  function onTreeMove(folderId: string, _newParent: string | null, oldParent: string | null, name: string) {
+    if (breadcrumbs.some((b) => b.id === folderId)) jumpToFolder(currentFolderId ?? folderId);
+    else load();
+    toastWithUndo(`Pasta "${name}" movida.`, `mover a pasta "${name}"`, async () => {
+      await api.patch(`/folders/${folderId}/move`, { parent_id: oldParent });
     });
+  }
+
+  // Confirmação de excluir pasta diz o volume (achado A4-43).
+  function askDeleteFolder(folder: Folder) {
+    setFolderDeleteSummary(null);
+    setConfirmDeleteFolder(folder);
+    api.get(`/folders/${folder.id}/summary`).then((r) => setFolderDeleteSummary(r.data)).catch(() => {});
   }
 
   async function deleteFolder(folder: Folder) {
     setDeletingFolder(true);
     try {
       await api.delete(`/folders/${folder.id}`);
-      success(`Pasta "${folder.name}" excluída.`);
       setConfirmDeleteFolder(null);
-      load();
+      setFolders((prev) => prev.filter((f) => f.id !== folder.id));
       setFolderTreeVersion((v) => v + 1);
+      toastWithUndo(`Pasta "${folder.name}" foi para a lixeira.`, `excluir a pasta "${folder.name}"`, async () => {
+        await api.post(`/trash/${folder.id}/restore`, null, { params: { item_type: "folder" } });
+      });
     } catch (e: any) {
-      showError(e?.response?.data?.detail ?? "Erro ao excluir pasta.");
+      showError(friendlyError(e, "Não foi possível excluir a pasta."));
     } finally {
       setDeletingFolder(false);
     }
   }
 
-  const sortedFolders = [...folders].sort((a, b) => a.name.localeCompare(b.name));
+  async function downloadDocuments(ids: string[]) {
+    if (ids.length === 1) {
+      try {
+        const r = await api.get(`/documents/${ids[0]}/download-url`);
+        const a = document.createElement("a");
+        a.href = r.data.download_url;
+        a.download = r.data.name ?? "";
+        a.click();
+      } catch (e: any) {
+        showError(friendlyError(e, "Não foi possível baixar."));
+      }
+      return;
+    }
+    if (ids.length > 200) { showError("Baixe até 200 documentos por vez. Para tudo, use Ajustes → Organização → Exportar tudo."); return; }
+    const t = toast({ type: "info", message: `Preparando o ZIP com ${plural(ids.length, "documento", "documentos")}…`, duration: 60000 });
+    try {
+      const r = await api.post("/documents/bulk-download", { document_ids: ids }, { responseType: "blob" });
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `docke-${(breadcrumbs[breadcrumbs.length - 1]?.name ?? "documentos").replace(/[\\/:*?"<>|]/g, "_")}.zip`;
+      a.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível montar o ZIP."));
+    } finally {
+      dismissToast(t);
+    }
+  }
+
+  async function anchorDocuments(ids: string[]) {
+    let ok = 0;
+    for (const id of ids) {
+      try { await api.post("/favorites", { document_id: id }); ok++; } catch (e: any) { if (e?.response?.status === 409) ok++; }
+    }
+    setDocuments((prev) => prev.map((d) => (ids.includes(d.id) ? { ...d, favorited: true } : d)));
+    loadSidebarFavorites();
+    success(`${plural(ok, "documento ancorado", "documentos ancorados")}.`);
+  }
+
+  function copyLink(doc: Document) {
+    const url = `${window.location.origin}/documents?folder_id=${doc.folder_id ?? currentFolderId}&doc=${doc.id}`;
+    navigator.clipboard?.writeText(url).then(
+      () => success("Link copiado. Quem tiver acesso à pasta abre direto no documento."),
+      () => showError("Não foi possível copiar o link."),
+    );
+  }
+
+    const sortedFolders = [...folders].sort((a, b) => a.name.localeCompare(b.name));
   const sortedDocuments = [...documents].sort((a, b) => {
     let cmp = 0;
     if (sort.key === "name") cmp = a.name.localeCompare(b.name);
@@ -2089,7 +2328,21 @@ export default function Documents() {
   // na ordenação salva, só restringe o que é exibido/alcançável por clique.
   const filterQ = filterQuery.trim().toLowerCase();
   const visibleFolders = filterQ ? sortedFolders.filter((f) => f.name.toLowerCase().includes(filterQ)) : sortedFolders;
-  const visibleDocuments = filterQ ? sortedDocuments.filter((d) => d.name.toLowerCase().includes(filterQ)) : sortedDocuments;
+  // Campos obrigatórios vazios por documento (X2-20): aviso na linha e filtro rápido.
+  const missingRequired = useMemo(() => {
+    const req = resolvedFields.filter((f) => f.required);
+    const map = new Map<string, string[]>();
+    if (!req.length) return map;
+    for (const d of sortedDocuments) {
+      const vals = fieldValues[d.id] ?? {};
+      const faltam = req.filter((f) => !(vals[f.custom_field_id] ?? "").trim()).map((f) => f.label);
+      if (faltam.length) map.set(d.id, faltam);
+    }
+    return map;
+  }, [resolvedFields, fieldValues, sortedDocuments]);
+  const [onlyMissing, setOnlyMissing] = useState(false);
+  const visibleDocuments = (filterQ ? sortedDocuments.filter((d) => d.name.toLowerCase().includes(filterQ)) : sortedDocuments)
+    .filter((d) => !onlyMissing || missingRequired.has(d.id));
 
   // Pastas sempre no topo (convenção de gerenciador de arquivos); só os documentos respeitam a ordenação escolhida
   const items: Item[] = [
@@ -2106,6 +2359,15 @@ export default function Documents() {
     // "click" sintético que o navegador dispara logo depois do touchend não
     // deve sobrescrever com seleção de item único.
     if (longPressFiredRef.current) { longPressFiredRef.current = false; return; }
+    // Abaixo de 1024 px (sem painel lateral), um toque/clique abre o documento
+    // e a seleção vira modo explícito: "Selecionar vários" ou toque longo
+    // (J1-03). Ctrl/Shift continuam selecionando.
+    if (!isDesktop && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+      if (selectionMode) { toggleSelect(id); setFocusedId(id); return; }
+      const doc = documents.find((d) => d.id === id);
+      if (doc) { setFocusedId(id); setPreviewDoc(doc); }
+      return;
+    }
     const ids = visibleDocuments.map((d) => d.id);
     if (e.shiftKey && focusedId && ids.includes(focusedId)) {
       const i1 = ids.indexOf(focusedId);
@@ -2217,7 +2479,7 @@ export default function Documents() {
                     className="w-full flex items-center gap-1.5 h-8 pl-3 pr-2 text-mac-body rounded-[6px] transition-colors duration-fast text-left text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)"
                   >
                     {fav.item_type === "folder" ? (
-                      <Folder className="w-4 h-4 text-teal-500 shrink-0" />
+                      <Folder className="w-4 h-4 text-(--text-accent) shrink-0" />
                     ) : (
                       (() => { const s = getFileStyle(fav.item_name); const Icon = s.icon; return <Icon className={`w-4 h-4 shrink-0 ${s.iconColor} ${s.fillColor}`} />; })()
                     )}
@@ -2244,7 +2506,7 @@ export default function Documents() {
                 onClick={navigateHome}
                 className={`w-full flex items-center gap-1.5 h-8 pl-3 pr-2 text-mac-body rounded-[6px] transition-colors duration-fast text-left ${
                   currentFolderId === null
-                    ? "bg-teal-500/10 text-teal-500 font-medium"
+                    ? "bg-teal-500/10 text-(--text-accent) font-medium"
                     : "text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)"
                 }`}
               >
@@ -2253,7 +2515,7 @@ export default function Documents() {
               </button>
               {current && (
                 <FolderTree
-                  key={folderTreeVersion}
+                  version={folderTreeVersion}
                   companyId={current.id}
                   activeFolderId={currentFolderId}
                   onSelect={(f) => jumpToFolder(f.id)}
@@ -2261,15 +2523,7 @@ export default function Documents() {
                     moveDocuments(documentIds, folderId, folderName);
                     setDragDocIds(null);
                   }}
-                  onMove={(movedFolderId) => {
-                    // Pasta movida pela sidebar pode ser a que está aberta (ou uma
-                    // ancestral do breadcrumb atual) — nesse caso o caminho mostrado
-                    // ficaria inválido, então volta pra raiz por segurança. Fora
-                    // isso, só recarrega a listagem principal (a pasta pode ter
-                    // saído ou entrado como filha da pasta atualmente aberta).
-                    if (breadcrumbs.some((b) => b.id === movedFolderId)) navigateHome();
-                    else load();
-                  }}
+                  onMove={onTreeMove}
                 />
               )}
             </>
@@ -2311,15 +2565,28 @@ export default function Documents() {
               atual na toolbar (nunca uma trilha clicável: "Use a path control
               in the window body, not the window frame", HIG). A trilha
               navegável completa mora na barra de caminho no rodapé, abaixo. */}
-          <div className="hidden sm:flex items-center flex-1 min-w-0">
-            <span className="text-mac-body font-semibold text-(--text-primary) truncate">
+          <div className="hidden sm:flex items-center gap-2 flex-1 min-w-0">
+            {/* Tablet (768–1023 px): a árvore abre num painel (achados A4-04, A4-11). */}
+            <button
+              onClick={() => setShowTreeDrawer(true)}
+              className="lg:hidden flex items-center gap-1.5 h-8 pointer-coarse:h-11 px-3 rounded-full border border-(--border-control) text-mac-body text-(--text-primary) hover:bg-(--bg-hover) shrink-0"
+            >
+              <Folder className="w-3.5 h-3.5 text-(--text-accent)" aria-hidden /> Pastas
+            </button>
+            <h1 className="text-mac-body font-semibold text-(--text-primary) truncate">
               {breadcrumbs[breadcrumbs.length - 1].name}
-            </span>
+            </h1>
+            {currentPrivacy !== "normal" && (
+              <span title={currentPrivacy === "sensivel" ? "Dado sensível (LGPD): link público bloqueado" : "Dado pessoal (LGPD)"}
+                className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-mac-caption2 font-medium ${currentPrivacy === "sensivel" ? "bg-red-500/12 text-(--text-danger)" : "bg-amber-500/12 text-(--text-warning)"}`}>
+                <ShieldAlert className="w-3 h-3" aria-hidden />{PRIVACY_LABEL[currentPrivacy]}
+              </span>
+            )}
           </div>
 
           {/* Breadcrumbs — versão truncada (mobile): Início, "…" (seletor com as pastas ocultas, em ordem) e a pasta atual */}
           <nav className="flex sm:hidden items-center gap-1 flex-1 min-w-0">
-            <button onClick={() => navigateBreadcrumb(0)} className="shrink-0 text-(--text-secondary) hover:text-teal-500 transition-colors duration-fast">
+            <button onClick={() => navigateBreadcrumb(0)} className="shrink-0 text-(--text-secondary) hover:text-(--text-accent) transition-colors duration-fast">
               <Home className="w-4 h-4" />
             </button>
             {breadcrumbs.length > 2 && (
@@ -2328,7 +2595,7 @@ export default function Documents() {
                 <div className="relative" ref={crumbMenuRef}>
                   <button
                     onClick={() => setCrumbMenuOpen((v) => !v)}
-                    className="shrink-0 text-mac-body text-(--text-secondary) hover:text-teal-500 transition-colors duration-fast"
+                    className="shrink-0 text-mac-body text-(--text-secondary) hover:text-(--text-accent) transition-colors duration-fast"
                   >
                     …
                   </button>
@@ -2338,9 +2605,9 @@ export default function Documents() {
                         <button
                           key={crumb.id}
                           onClick={() => { navigateBreadcrumb(i + 1); setCrumbMenuOpen(false); }}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-left text-(--text-primary) hover:bg-teal-500 hover:text-white [&:hover_svg]:text-white transition-colors duration-fast"
+                          className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-left text-(--text-primary) hover:bg-teal-600 hover:text-white [&:hover_svg]:text-white transition-colors duration-fast"
                         >
-                          <FolderOpen className="w-3.5 h-3.5 text-teal-500 shrink-0" />
+                          <FolderOpen className="w-3.5 h-3.5 text-(--text-accent) shrink-0" />
                           <span className="truncate">{crumb.name}</span>
                         </button>
                       ))}
@@ -2379,8 +2646,10 @@ export default function Documents() {
               <button
                 onClick={() => setSelectionMode((v) => !v)}
                 title={selectionMode ? "Sair do modo de seleção" : "Selecionar vários"}
-                className={`h-7 w-7 flex items-center justify-center rounded-full transition-colors duration-fast ${
-                  selectionMode ? "bg-(--bg-card) text-teal-500 shadow-xs" : "text-(--text-secondary) hover:text-(--text-primary)"
+                aria-label="Selecionar vários"
+                aria-pressed={selectionMode}
+                className={`h-7 w-7 pointer-coarse:h-11 pointer-coarse:w-11 flex items-center justify-center rounded-full transition-colors duration-fast ${
+                  selectionMode ? "bg-(--bg-card) text-(--text-accent) shadow-xs" : "text-(--text-secondary) hover:text-(--text-primary)"
                 }`}
               >
                 <ListChecks className="w-4 h-4" />
@@ -2388,22 +2657,28 @@ export default function Documents() {
               <button
                 onClick={toggleDensity}
                 title={density === "comfortable" ? "Densidade compacta" : "Densidade confortável"}
-                className="h-7 w-7 flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-primary) transition-colors duration-fast"
+                aria-label="Linhas compactas"
+                aria-pressed={density === "compact"}
+                className="h-7 w-7 pointer-coarse:h-11 pointer-coarse:w-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-primary) transition-colors duration-fast"
               >
                 {density === "comfortable" ? <Rows3 className="w-4 h-4" /> : <Rows4 className="w-4 h-4" />}
               </button>
               <button
                 onClick={() => setView(viewMode === "list" ? "grid" : "list")}
                 title={viewMode === "list" ? "Ver em grade" : "Ver em lista"}
-                className="h-7 w-7 flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-primary) transition-colors duration-fast"
+                aria-label="Ver em grade"
+                aria-pressed={viewMode === "grid"}
+                className="h-7 w-7 pointer-coarse:h-11 pointer-coarse:w-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-primary) transition-colors duration-fast"
               >
                 {viewMode === "list" ? <LayoutGrid className="w-4 h-4" /> : <List className="w-4 h-4" />}
               </button>
             </div>
-            <Button variant="secondary" size="sm" className="hidden sm:flex" onClick={() => setShowNewFolder(true)}>
-              <FolderPlus className="w-3.5 h-3.5" />
-              Nova pasta
-            </Button>
+            <span className="hidden sm:block shrink-0">
+              <Button variant="secondary" size="sm" onClick={() => setShowNewFolder(true)} disabled={!canWrite} title="Nova pasta (Ctrl+Shift+N)">
+                <FolderPlus className="w-3.5 h-3.5" aria-hidden="true" />
+                Nova pasta
+              </Button>
+            </span>
 
             {/* Mobile: Nova pasta / seleção / densidade colapsam num menu "..." pra sobrar espaço pro breadcrumb */}
             <div className="relative sm:hidden" ref={toolbarMenuRef}>
@@ -2419,28 +2694,28 @@ export default function Documents() {
                 <div className="popover-tail-right absolute top-full right-0 mt-1 w-52 glass-panel glass-blur-strong rounded-(--radius-popover) shadow-dropdown py-1 z-50">
                   <button
                     onClick={() => { setToolbarMenuOpen(false); setSelectionMode((v) => !v); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white transition-colors duration-fast"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-600 hover:text-white transition-colors duration-fast"
                   >
                     <ListChecks className="w-4 h-4" />
                     {selectionMode ? "Sair da seleção" : "Selecionar vários"}
                   </button>
                   <button
                     onClick={() => { setToolbarMenuOpen(false); setShowNewFolder(true); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white transition-colors duration-fast"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-600 hover:text-white transition-colors duration-fast"
                   >
                     <FolderPlus className="w-4 h-4" />
                     Nova pasta
                   </button>
                   <button
                     onClick={() => { setToolbarMenuOpen(false); toggleDensity(); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white transition-colors duration-fast"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-600 hover:text-white transition-colors duration-fast"
                   >
                     {density === "comfortable" ? <Rows3 className="w-4 h-4" /> : <Rows4 className="w-4 h-4" />}
                     {density === "comfortable" ? "Densidade compacta" : "Densidade confortável"}
                   </button>
                   <button
                     onClick={() => { setToolbarMenuOpen(false); setView(viewMode === "list" ? "grid" : "list"); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white transition-colors duration-fast"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-600 hover:text-white transition-colors duration-fast"
                   >
                     {viewMode === "list" ? <LayoutGrid className="w-4 h-4" /> : <List className="w-4 h-4" />}
                     {viewMode === "list" ? "Ver em grade" : "Ver em lista"}
@@ -2449,9 +2724,9 @@ export default function Documents() {
               )}
             </div>
 
-            <Button size="sm" onClick={() => setShowUpload(true)}>
-              <Upload className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Upload</span>
+            <Button size="sm" onClick={() => setShowUpload(true)} disabled={!canWrite} aria-label="Enviar documentos">
+              <Upload className="w-3.5 h-3.5" aria-hidden />
+              <span className="hidden sm:inline">Enviar</span>
             </Button>
           </div>
         </div>
@@ -2461,7 +2736,7 @@ export default function Documents() {
             ficar atrás da barra inferior mobile nem do Dock flutuante desktop */}
         <div
           ref={scrollBodyRef}
-          className="flex-1 overflow-y-auto pb-20 md:pb-0 lg:pb-24 relative"
+          className="flex-1 overflow-y-auto pb-20 md:pb-24 relative"
           onScroll={handleTableScroll}
           onMouseDown={handleBodyMouseDown}
         >
@@ -2488,6 +2763,19 @@ export default function Documents() {
                 </table>
               )
             ) : null
+          ) : loadError ? (
+            <div className="flex items-center justify-center h-full px-6">
+              <div role="alert" className="reveal flex max-w-sm flex-col items-center text-center gap-2">
+                <div className="w-11 h-11 rounded-full bg-amber-500/12 flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-(--text-warning)" aria-hidden />
+                </div>
+                <p className="text-mac-callout font-semibold text-(--text-primary)">Não foi possível abrir esta pasta.</p>
+                <p className="text-mac-body text-(--text-secondary)">{loadError} Os documentos continuam guardados.</p>
+                <Button variant="secondary" className="mt-1" onClick={load}>
+                  <RefreshCw className="w-3.5 h-3.5" aria-hidden /> Tentar de novo
+                </Button>
+              </div>
+            </div>
           ) : items.length === 0 ? (
             <div className="flex items-center justify-center h-full">
               {filterQ ? (
@@ -2498,20 +2786,30 @@ export default function Documents() {
                 />
               ) : (
                 <EmptyState
-                  title="Pasta vazia"
-                  description="Faça upload de documentos ou crie subpastas."
-                  icon={<FolderOpen className="w-6 h-6" />}
-                  action={
-                    <Button size="sm" onClick={() => setShowUpload(true)}>
-                      <Upload className="w-3.5 h-3.5" />
-                      Upload
-                    </Button>
+                  title={currentFolderId ? "Pasta vazia" : "Nenhuma pasta ainda"}
+                  description={
+                    currentFolderId
+                      ? canWrite ? "Arraste arquivos para cá, envie pelo botão ou crie subpastas." : "Ainda não há documentos aqui."
+                      : canWrite ? "Os documentos ficam dentro de pastas. Crie a primeira, por exemplo Fiscal ou RH." : "Você ainda não tem pastas nesta empresa."
                   }
+                  icon={<FolderOpen className="w-6 h-6" />}
+                  action={canWrite ? (
+                    <div className="flex flex-wrap justify-center gap-2">
+                      {currentFolderId && (
+                        <Button size="sm" onClick={() => setShowUpload(true)}>
+                          <Upload className="w-3.5 h-3.5" aria-hidden /> Enviar documentos
+                        </Button>
+                      )}
+                      <Button size="sm" variant={currentFolderId ? "secondary" : "primary"} onClick={() => setShowNewFolder(true)}>
+                        <FolderPlus className="w-3.5 h-3.5" aria-hidden /> {currentFolderId ? "Nova subpasta" : "Criar pasta"}
+                      </Button>
+                    </div>
+                  ) : undefined}
                 />
               )}
             </div>
           ) : viewMode === "grid" ? (
-            <div className="p-4 grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-1">
+            <div role="listbox" aria-multiselectable="true" aria-label={`Conteúdo de ${breadcrumbs[breadcrumbs.length - 1].name}`} className="p-4 grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-1">
               {items.map((item) => {
                 if (item.kind === "folder") {
                   const f = item.data;
@@ -2519,7 +2817,13 @@ export default function Documents() {
                   return (
                     <div
                       key={`folder-${f.id}`}
-                      className={`group relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-(--radius-control) cursor-pointer transition-colors duration-fast hover:bg-(--bg-hover) ${
+                      ref={(el) => { if (el) rowRefs.current.set(f.id, el); else rowRefs.current.delete(f.id); }}
+                      role="option"
+                      aria-selected={false}
+                      aria-label={`Pasta ${f.name}`}
+                      tabIndex={focusedId === f.id || (!focusedId && items[0]?.data.id === f.id) ? 0 : -1}
+                      onFocus={() => setFocusedId(f.id)}
+                      className={`group relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-(--radius-control) cursor-pointer transition-colors duration-fast hover:bg-(--bg-hover) outline-none focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${
                         isDropTarget ? "bg-teal-500/10 outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""
                       }`}
                       onClick={() => setFocusedId(f.id)}
@@ -2551,23 +2855,15 @@ export default function Documents() {
                         setDragOverFolderId(null);
                       }}
                     >
-                      <div className="absolute top-1 right-1 flex sm:hidden sm:group-hover:flex items-center gap-0.5 z-10">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setSharingFolder(f); }}
-                          className="p-1 rounded-full text-(--text-tertiary) hover:text-teal-500 hover:bg-(--bg-hover) transition-colors duration-fast"
-                          title="Compartilhar pasta"
-                        >
-                          <Share2 className="w-3 h-3" />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setConfirmDeleteFolder(f); }}
-                          className="p-1 rounded-full text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--bg-hover) transition-colors duration-fast"
-                          title="Excluir pasta"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
-                      <Folder className="w-10 h-10 text-teal-500 fill-teal-500/20 shrink-0" />
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openMenuAt(e.currentTarget, "folder", f); }}
+                        aria-label={`Ações da pasta ${f.name}`}
+                        aria-haspopup="menu"
+                        className="absolute top-1 right-1 flex sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 focus-visible:opacity-100 w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) transition-all duration-fast z-10"
+                      >
+                        <MoreHorizontal className="w-4 h-4" aria-hidden />
+                      </button>
+                      <Folder className="w-10 h-10 text-(--text-accent) fill-teal-500/20 shrink-0" />
                       {renaming?.kind === "folder" && renaming.id === f.id ? (
                         <input
                           ref={renameInputRef}
@@ -2599,11 +2895,16 @@ export default function Documents() {
                   <div
                     key={`doc-${d.id}`}
                     ref={(el) => { if (el) rowRefs.current.set(d.id, el); else rowRefs.current.delete(d.id); }}
-                    className={`group relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-(--radius-control) cursor-pointer transition-colors duration-fast ${
-                      isSelected ? "bg-teal-500" : "hover:bg-(--bg-hover)"
+                    role="option"
+                    aria-selected={isSelected}
+                    aria-label={d.name}
+                    tabIndex={focusedId === d.id || (!focusedId && items[0]?.data.id === d.id) ? 0 : -1}
+                    onFocus={() => setFocusedId(d.id)}
+                    className={`group relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-(--radius-control) cursor-pointer transition-colors duration-fast outline-none focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${
+                      isSelected ? "bg-teal-600" : "hover:bg-(--bg-hover)"
                     } ${isDragging ? "opacity-40" : ""}`}
                     onClick={(e) => selectDocClick(e, d.id)}
-                    onDoubleClick={() => setDetailDoc(d)}
+                    onDoubleClick={() => setPreviewDoc(d)}
                     onContextMenu={(e) => openContextMenu(e, "document", d)}
                     onTouchStart={(e) => handleTouchStart(e, d.id)}
                     onTouchMove={handleTouchMove}
@@ -2634,13 +2935,15 @@ export default function Documents() {
                       />
                     )}
                     <button
-                      onClick={(e) => { e.stopPropagation(); setDetailDoc(d); }}
-                      className="absolute top-1 right-1 flex sm:hidden sm:group-hover:flex p-1 rounded-full text-(--text-tertiary) hover:bg-(--bg-hover) transition-colors duration-fast z-10"
+                      onClick={(e) => { e.stopPropagation(); openMenuAt(e.currentTarget, "document", d); }}
+                      aria-label={`Ações de ${d.name}`}
+                      aria-haspopup="menu"
+                      className={`absolute top-1 right-1 flex sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 focus-visible:opacity-100 w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 items-center justify-center rounded-full transition-all duration-fast z-10 ${isSelected ? "text-white hover:bg-white/20" : "text-(--text-secondary) hover:bg-(--bg-hover)"}`}
                     >
-                      <MoreHorizontal className="w-3 h-3" />
+                      <MoreHorizontal className="w-4 h-4" aria-hidden />
                     </button>
-                    <div className={`w-10 h-10 rounded-[6px] flex items-center justify-center shrink-0 ${s.bgColor}`}>
-                      <Icon className={`w-5 h-5 ${s.iconColor} ${s.fillColor}`} />
+                    <div className={`w-10 h-10 rounded-[6px] flex items-center justify-center shrink-0 ${isSelected ? "bg-white/20" : s.bgColor}`}>
+                      <Icon className={`w-5 h-5 ${isSelected ? "text-white" : `${s.iconColor} ${s.fillColor}`}`} aria-hidden />
                     </div>
                     {isRenamingDoc ? (
                       <div className="flex items-center gap-0.5 w-full justify-center" onClick={(e) => e.stopPropagation()}>
@@ -2659,7 +2962,12 @@ export default function Documents() {
                         <span className="text-mac-caption text-(--text-tertiary) shrink-0">{splitExt(d.name)[1]}</span>
                       </div>
                     ) : (
-                      <span className={`text-mac-caption text-center leading-tight w-full line-clamp-2 ${isSelected ? "text-white" : "text-(--text-primary)"}`}>{d.name}</span>
+                      // Nome em até duas linhas sem perder a extensão (A4-21): a base corta
+                      // com reticências e a extensão fica sempre visível embaixo.
+                      <span className={`text-mac-caption text-center leading-tight w-full flex flex-col items-center ${isSelected ? "text-white" : "text-(--text-primary)"}`} title={d.name}>
+                        <span className="w-full line-clamp-2 break-words [hyphens:none]">{splitExt(d.name)[0]}</span>
+                        {splitExt(d.name)[1] && <span className={`shrink-0 ${isSelected ? "text-white/80" : "text-(--text-secondary)"}`}>{splitExt(d.name)[1]}</span>}
+                      </span>
                     )}
                   </div>
                 );
@@ -2669,13 +2977,19 @@ export default function Documents() {
             // overflow-x-auto: com colunas redimensionáveis (table-fixed) a soma das
             // larguras pode passar do viewport no mobile — rola em vez de cortar/quebrar.
             <div className="overflow-x-auto">
-            <table className={`w-full table-auto sm:table-fixed select-none ${density === "compact" ? "[&_td]:py-1!" : "[&_td]:py-1.5!"}`}>
+            <table
+              role="grid"
+              aria-label={`Conteúdo de ${breadcrumbs[breadcrumbs.length - 1].name}`}
+              aria-multiselectable="true"
+              aria-rowcount={folders.length + total + 1}
+              className={`w-full table-auto sm:table-fixed select-none ${density === "compact" ? "[&_td]:py-1!" : "[&_td]:py-1.5!"}`}
+            >
               <colgroup>
                 {selectionMode && <col style={{ width: 40 }} />}
                 <col style={{ width: colWidths.name }} />
                 <col className="hidden sm:table-column" style={{ width: colWidths.created }} />
                 <col className="hidden sm:table-column" style={{ width: colWidths.size }} />
-                <col className="hidden md:table-column" style={{ width: colWidths.kind }} />
+                <col className="hidden lg:table-column" style={{ width: colWidths.kind }} />
                 <col className="hidden sm:table-column" style={{ width: colWidths.ocr }} />
                 {resolvedFields.map((f) => (
                   <col key={f.custom_field_id} className="hidden sm:table-column" style={{ width: f.column_width ?? 130 }} />
@@ -2693,15 +3007,16 @@ export default function Documents() {
                   {selectionMode && (
                     <th className="w-10 px-4 py-2 text-left">
                       <Checkbox
-                        checked={selected.size === documents.length && documents.length > 0}
+                        checked={selected.size === visibleDocuments.length && visibleDocuments.length > 0}
                         onChange={selectAll}
+                        aria-label="Selecionar todos os documentos visíveis"
                       />
                     </th>
                   )}
                   <SortableHeader
                     label="Nome" sortKey="name" sort={sort} onSort={toggleSort}
                     onResizeStart={(e) => startColResize("name", e)}
-                    onResizeReset={() => resetColWidth("name")}
+                    onResizeReset={() => resetColWidth("name")} onResizeNudge={(d) => nudgeColWidth("name", d)} width={colWidths.name}
                   />
                   {/* Ordem das colunas (regra da pesquisa): nome/tipo/data primeiro — o que
                       identifica o arquivo — badges de status (OCR, e futuramente
@@ -2710,37 +3025,31 @@ export default function Documents() {
                     label="Criado em" sortKey="created_at" sort={sort} onSort={toggleSort}
                     className="hidden sm:table-cell"
                     onResizeStart={(e) => startColResize("created", e)}
-                    onResizeReset={() => resetColWidth("created")}
+                    onResizeReset={() => resetColWidth("created")} onResizeNudge={(d) => nudgeColWidth("created", d)} width={colWidths.created}
                   />
                   <SortableHeader
                     label="Tamanho" sortKey="size" sort={sort} onSort={toggleSort}
                     className="hidden sm:table-cell"
                     align="right"
                     onResizeStart={(e) => startColResize("size", e)}
-                    onResizeReset={() => resetColWidth("size")}
+                    onResizeReset={() => resetColWidth("size")} onResizeNudge={(d) => nudgeColWidth("size", d)} width={colWidths.size}
                   />
-                  <th className="relative px-3 py-2 text-mac-caption font-normal text-(--text-secondary) text-left hidden md:table-cell">
+                  <th className="relative px-3 py-2 text-mac-caption font-normal text-(--text-secondary) text-left hidden lg:table-cell">
                     Tipo
-                    <div
-                      onMouseDown={(e) => startColResize("kind", e)}
-                      onDoubleClick={() => resetColWidth("kind")}
-                      className="absolute top-0 right-0 h-full w-2 cursor-col-resize select-none hover:bg-teal-400/40 active:bg-teal-400/60"
-                    />
+                    <ColumnResizeHandle label="Tipo" width={colWidths.kind} onMouseDown={(e) => startColResize("kind", e)}
+                      onReset={() => resetColWidth("kind")} onNudge={(d) => nudgeColWidth("kind", d)} />
                   </th>
                   <th className="relative px-3 py-2 text-mac-caption font-normal text-(--text-secondary) text-left hidden sm:table-cell">
                     OCR
-                    <div
-                      onMouseDown={(e) => startColResize("ocr", e)}
-                      onDoubleClick={() => resetColWidth("ocr")}
-                      className="absolute top-0 right-0 h-full w-2 cursor-col-resize select-none hover:bg-teal-400/40 active:bg-teal-400/60"
-                    />
+                    <ColumnResizeHandle label="OCR" width={colWidths.ocr} onMouseDown={(e) => startColResize("ocr", e)}
+                      onReset={() => resetColWidth("ocr")} onNudge={(d) => nudgeColWidth("ocr", d)} />
                   </th>
                   {resolvedFields.map((f) => (
                     <th key={f.custom_field_id} className="px-3 py-2 text-mac-caption font-normal text-(--text-secondary) text-left truncate hidden sm:table-cell">
-                      {f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}
+                      {f.label}{f.required && <span className="text-(--text-danger) ml-0.5">*</span>}
                     </th>
                   ))}
-                  <th className="w-[76px]" />
+                  <th className="w-[76px]"><span className="sr-only">Ações</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -2753,7 +3062,11 @@ export default function Documents() {
                     return (
                       <Fragment key={`folder-${f.id}`}>
                       <tr
-                        className={`border-b border-(--border-default) odd:bg-black/4 dark:odd:bg-white/[0.035] hover:bg-(--bg-hover) transition-colors duration-fast group ${
+                        ref={(el) => { if (el) rowRefs.current.set(f.id, el); else rowRefs.current.delete(f.id); }}
+                        tabIndex={focusedId === f.id || (!focusedId && items[0]?.data.id === f.id) ? 0 : -1}
+                        aria-label={`Pasta ${f.name}`}
+                        onFocus={() => setFocusedId(f.id)}
+                        className={`border-b border-(--border-default) odd:bg-black/4 dark:odd:bg-white/[0.035] hover:bg-(--bg-hover) transition-colors duration-fast group outline-none focus-visible:bg-teal-500/12 focus-visible:shadow-[inset_3px_0_0_var(--focus-ring)] ${
                           isDropTarget ? "bg-teal-500/10 outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""
                         }`}
                         onClick={() => setFocusedId(f.id)}
@@ -2812,14 +3125,16 @@ export default function Documents() {
                                 onClick={(e) => toggleExpandFolder(e, f.id)}
                                 className="p-0.5 -ml-1 rounded text-(--text-tertiary) hover:text-(--text-primary) shrink-0"
                                 title={expanded ? "Recolher" : "Expandir"}
+                                aria-label={`${expanded ? "Recolher" : "Expandir"} ${f.name}`}
+                                aria-expanded={!!expanded}
                               >
                                 <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-fast ${expanded ? "rotate-90" : ""}`} />
                               </button>
                               <button
                                 onClick={() => openFolder(f)}
-                                className="flex items-center gap-2 text-mac-body text-(--text-primary) hover:text-teal-500 transition-colors duration-fast min-w-0"
+                                className="flex items-center gap-2 text-mac-body text-(--text-primary) hover:text-(--text-accent) transition-colors duration-fast min-w-0"
                               >
-                                <Folder className="w-4 h-4 text-teal-500 fill-teal-500/20 shrink-0" />
+                                <Folder className="w-4 h-4 text-(--text-accent) fill-teal-500/20 shrink-0" />
                                 <span className="truncate">{f.name}</span>
                               </button>
                             </div>
@@ -2827,25 +3142,19 @@ export default function Documents() {
                         </td>
                         <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden sm:table-cell">—</td>
                         <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) text-right hidden sm:table-cell">—</td>
-                        <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden md:table-cell">Pasta</td>
+                        <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden lg:table-cell">Pasta</td>
                         <td className="px-3 py-2 hidden sm:table-cell" />
                         {resolvedFields.map((rf) => (
                           <td key={rf.custom_field_id} className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden sm:table-cell">—</td>
                         ))}
-                        <td className="px-2 py-2 flex items-center gap-1">
+                        <td className="px-2 py-2 text-right">
                           <button
-                            onClick={(e) => { e.stopPropagation(); setSharingFolder(f); }}
-                            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-full text-(--text-tertiary) hover:text-teal-500 hover:bg-(--bg-hover) transition-all duration-fast"
-                            title="Compartilhar pasta"
+                            onClick={(e) => { e.stopPropagation(); openMenuAt(e.currentTarget, "folder", f); }}
+                            aria-label={`Ações da pasta ${f.name}`}
+                            aria-haspopup="menu"
+                            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 focus-visible:opacity-100 w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 inline-flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-hover) transition-all duration-fast"
                           >
-                            <Share2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setConfirmDeleteFolder(f); }}
-                            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-full text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--bg-hover) transition-all duration-fast"
-                            title="Excluir pasta"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <MoreHorizontal className="w-4 h-4" aria-hidden />
                           </button>
                         </td>
                       </tr>
@@ -2868,13 +3177,13 @@ export default function Documents() {
                           {selectionMode && <td className="px-4 py-2" />}
                           <td className="px-3 py-2 pl-10">
                             <div className="flex items-center gap-2 text-mac-body text-(--text-secondary)">
-                              <Folder className="w-3.5 h-3.5 text-teal-500/70 fill-teal-500/15 shrink-0" />
+                              <Folder className="w-3.5 h-3.5 text-(--text-accent)/70 fill-teal-500/15 shrink-0" />
                               <span className="truncate">{nf.name}</span>
                             </div>
                           </td>
                           <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden sm:table-cell">—</td>
                           <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) text-right hidden sm:table-cell">—</td>
-                          <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden md:table-cell">Pasta</td>
+                          <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden lg:table-cell">Pasta</td>
                           <td className="px-3 py-2 hidden sm:table-cell" />
                           {resolvedFields.map((rf) => <td key={rf.custom_field_id} className="hidden sm:table-cell" />)}
                           <td />
@@ -2898,7 +3207,7 @@ export default function Documents() {
                             </td>
                             <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden sm:table-cell">{fmtDate(nd.created_at)}</td>
                             <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) text-right hidden sm:table-cell">{fmtSize(nd.size_bytes)}</td>
-                            <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden md:table-cell">{kindLabel(nd.name)}</td>
+                            <td className="px-3 py-2 text-mac-caption text-(--text-tertiary) hidden lg:table-cell">{kindLabel(nd.name)}</td>
                             <td className="px-3 py-2 hidden sm:table-cell"><OcrIcon status={nd.ocr_status} /></td>
                             {resolvedFields.map((rf) => <td key={rf.custom_field_id} className="hidden sm:table-cell" />)}
                             <td />
@@ -2917,11 +3226,14 @@ export default function Documents() {
                     <tr
                       key={`doc-${d.id}`}
                       ref={(el) => { if (el) rowRefs.current.set(d.id, el); else rowRefs.current.delete(d.id); }}
-                      className={`border-b border-(--border-default) transition-colors duration-fast group cursor-pointer ${
-                        isSelected ? "bg-teal-500" : "odd:bg-black/4 dark:odd:bg-white/[0.035] hover:bg-(--bg-hover)"
+                      tabIndex={focusedId === d.id || (!focusedId && items[0]?.data.id === d.id) ? 0 : -1}
+                      aria-selected={isSelected}
+                      onFocus={() => setFocusedId(d.id)}
+                      className={`border-b border-(--border-default) transition-colors duration-fast group cursor-pointer outline-none focus-visible:shadow-[inset_3px_0_0_var(--focus-ring)] ${
+                        isSelected ? "bg-teal-600" : "odd:bg-black/4 dark:odd:bg-white/[0.035] hover:bg-(--bg-hover) focus-visible:bg-teal-500/12"
                       } ${isDragging ? "opacity-40" : ""}`}
                       onClick={(e) => selectDocClick(e, d.id)}
-                      onDoubleClick={() => setDetailDoc(d)}
+                      onDoubleClick={() => setPreviewDoc(d)}
                       onContextMenu={(e) => openContextMenu(e, "document", d)}
                       onTouchStart={(e) => handleTouchStart(e, d.id)}
                       onTouchMove={handleTouchMove}
@@ -2950,14 +3262,14 @@ export default function Documents() {
                     >
                       {selectionMode && (
                         <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
-                          <Checkbox checked={isSelected} onChange={() => toggleSelect(d.id)} />
+                          <Checkbox checked={isSelected} onChange={() => toggleSelect(d.id)} aria-label={`Selecionar ${d.name}`} />
                         </td>
                       )}
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-2">
                           {(() => { const s = getFileStyle(d.name); const Icon = s.icon; return (
-                            <div className={`w-6 h-6 rounded-badge flex items-center justify-center shrink-0 ${s.bgColor}`}>
-                              <Icon className={`w-3.5 h-3.5 ${s.iconColor} ${s.fillColor}`} />
+                            <div className={`w-6 h-6 rounded-badge flex items-center justify-center shrink-0 ${isSelected ? "bg-white/20" : s.bgColor}`}>
+                              <Icon className={`w-3.5 h-3.5 ${isSelected ? "text-white" : `${s.iconColor} ${s.fillColor}`}`} aria-hidden />
                             </div>
                           ); })()}
                           {isRenaming ? (
@@ -2977,18 +3289,32 @@ export default function Documents() {
                               <span className="text-mac-body text-(--text-tertiary) shrink-0">{splitExt(d.name)[1]}</span>
                             </div>
                           ) : (
-                            <TruncatedFileName
-                              name={d.name}
-                              className={`text-mac-body ${isSelected ? "text-white" : "text-(--text-primary)"}`}
-                              inverted={isSelected}
-                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <TruncatedFileName
+                                  name={d.name}
+                                  className={`text-mac-body ${isSelected ? "text-white" : "text-(--text-primary)"}`}
+                                  inverted={isSelected}
+                                />
+                                {missingRequired.has(d.id) && (
+                                  <span className={`shrink-0 inline-flex ${isSelected ? "text-white" : "text-(--text-warning)"}`} title={`Falta preencher: ${missingRequired.get(d.id)!.join(", ")}`}>
+                                    <AlertTriangle className="w-3.5 h-3.5" aria-hidden />
+                                    <span className="sr-only">Falta preencher: {missingRequired.get(d.id)!.join(", ")}</span>
+                                  </span>
+                                )}
+                              </div>
+                              {/* Celular: data, tamanho e situação do texto sob o nome (A4-17). */}
+                              <span className={`sm:hidden block text-mac-caption truncate ${isSelected ? "text-white/85" : "text-(--text-secondary)"}`}>
+                                {fmtDate(d.created_at)} · {fmtSize(d.size_bytes)}{d.ocr_status === "failed" ? " · texto não lido" : ""}
+                              </span>
+                            </div>
                           )}
                         </div>
                       </td>
-                      <td className={`px-3 py-2 text-mac-caption hidden sm:table-cell ${isSelected ? "text-white/80" : "text-(--text-tertiary)"}`}>{fmtDate(d.created_at)}</td>
-                      <td className={`px-3 py-2 text-mac-caption text-right hidden sm:table-cell ${isSelected ? "text-white/80" : "text-(--text-tertiary)"}`}>{fmtSize(d.size_bytes)}</td>
-                      <td className={`px-3 py-2 text-mac-caption hidden md:table-cell ${isSelected ? "text-white/80" : "text-(--text-tertiary)"}`}>{kindLabel(d.name)}</td>
-                      <td className="px-3 py-2 hidden sm:table-cell"><OcrIcon status={d.ocr_status} /></td>
+                      <td className={`px-3 py-2 text-mac-caption hidden sm:table-cell ${isSelected ? "text-white/90" : "text-(--text-secondary)"}`} title={d.uploaded_by_name ? `Enviado por ${d.uploaded_by_name}` : undefined}>{fmtDate(d.created_at)}</td>
+                      <td className={`px-3 py-2 text-mac-caption text-right tabular-nums hidden sm:table-cell ${isSelected ? "text-white/90" : "text-(--text-secondary)"}`}>{fmtSize(d.size_bytes)}</td>
+                      <td className={`px-3 py-2 text-mac-caption hidden lg:table-cell ${isSelected ? "text-white/90" : "text-(--text-secondary)"}`}>{kindLabel(d.name)}</td>
+                      <td className="px-3 py-2 hidden sm:table-cell"><OcrIcon status={d.ocr_status} inverted={isSelected} /></td>
                       {resolvedFields.map((rf) => {
                         const value = fieldValues[d.id]?.[rf.custom_field_id];
                         return (
@@ -2996,7 +3322,7 @@ export default function Documents() {
                             {value ? (
                               <span className={isSelected ? "text-white/90" : "text-(--text-secondary)"}>{value}</span>
                             ) : rf.required ? (
-                              <span className={isSelected ? "text-white" : "text-amber-600 dark:text-amber-400"} title="Campo obrigatório sem preenchimento">Pendente</span>
+                              <span className={isSelected ? "text-white" : "text-(--text-warning)"} title="Campo obrigatório sem preenchimento">Pendente</span>
                             ) : (
                               <span className={isSelected ? "text-white/60" : "text-(--text-placeholder)"}>—</span>
                             )}
@@ -3005,12 +3331,14 @@ export default function Documents() {
                       })}
                       <td className="px-2 py-2">
                         <button
-                          onClick={(e) => { e.stopPropagation(); setDetailDoc(d); }}
-                          className={`opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-full transition-all duration-fast ${
-                            isSelected ? "text-white hover:bg-white/20" : "text-(--text-tertiary) hover:bg-(--bg-hover)"
+                          onClick={(e) => { e.stopPropagation(); openMenuAt(e.currentTarget, "document", d); }}
+                          aria-label={`Ações de ${d.name}`}
+                          aria-haspopup="menu"
+                          className={`opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 focus-visible:opacity-100 w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 inline-flex items-center justify-center rounded-full transition-all duration-fast ${
+                            isSelected ? "text-white hover:bg-white/20" : "text-(--text-secondary) hover:bg-(--bg-hover)"
                           }`}
                         >
-                          <MoreHorizontal className="w-3.5 h-3.5" />
+                          <MoreHorizontal className="w-4 h-4" aria-hidden />
                         </button>
                       </td>
                     </tr>
@@ -3020,9 +3348,15 @@ export default function Documents() {
             </table>
             </div>
           )}
+          {!loading && !loadError && documents.length < total && (
+            <div ref={sentinelRef} className="flex items-center justify-center gap-3 py-4 text-mac-caption text-(--text-secondary)">
+              {loadingMore ? "Carregando mais documentos…" : `Mostrando ${documents.length.toLocaleString("pt-BR")} de ${total.toLocaleString("pt-BR")}`}
+              {!loadingMore && <Button size="sm" variant="secondary" onClick={loadMore}>Carregar mais</Button>}
+            </div>
+          )}
           {dragBox && (
             <div
-              className="absolute border border-teal-500 bg-teal-500/10 pointer-events-none z-20"
+              className="absolute border border-teal-500 bg-teal-500/10 pointer-events-none z-20 rounded-[4px]"
               style={{
                 left: Math.min(dragBox.x1, dragBox.x2),
                 top: Math.min(dragBox.y1, dragBox.y2),
@@ -3046,7 +3380,7 @@ export default function Documents() {
                 {idx > 0 && <ChevronRight className="w-3.5 h-3.5 text-(--text-tertiary)" />}
                 <button
                   onClick={() => navigateBreadcrumb(idx)}
-                  className={`text-mac-caption hover:text-teal-500 transition-colors duration-fast ${
+                  className={`text-mac-caption hover:text-(--text-accent) transition-colors duration-fast ${
                     idx === breadcrumbs.length - 1
                       ? "text-(--text-primary) font-medium"
                       : "text-(--text-secondary)"
@@ -3058,20 +3392,32 @@ export default function Documents() {
             ))}
           </nav>
           <span className="shrink-0">
-            {selected.size > 0 ? (
-              <span className="text-teal-500 font-medium">{selected.size} selecionado{selected.size !== 1 ? "s" : ""}</span>
-            ) : sortedFolders.length === 0 && sortedDocuments.length === 0 ? (
+            {loading ? (
+              "Carregando…"
+            ) : loadError ? (
+              "Não carregou"
+            ) : selected.size > 0 ? (
+              <span className="text-(--text-accent) font-medium">{selected.size} selecionado{selected.size !== 1 ? "s" : ""}</span>
+            ) : sortedFolders.length === 0 && total === 0 ? (
               "Pasta vazia"
             ) : (
               <>
                 {[
                   sortedFolders.length > 0 ? `${sortedFolders.length} pasta${sortedFolders.length !== 1 ? "s" : ""}` : null,
-                  sortedDocuments.length > 0 ? `${sortedDocuments.length} documento${sortedDocuments.length !== 1 ? "s" : ""}` : null,
+                  total > 0 ? `${total.toLocaleString("pt-BR")} documento${total !== 1 ? "s" : ""}` : null,
                 ].filter(Boolean).join(", ")}
                 {filterQ && ` · ${items.length} exibido${items.length !== 1 ? "s" : ""}`}
               </>
             )}
           </span>
+          {/* Pendentes de classificação (X2-20): filtra quem tem campo obrigatório vazio. */}
+          {(missingRequired.size > 0 || onlyMissing) && (
+            <button onClick={() => setOnlyMissing((v) => !v)} aria-pressed={onlyMissing}
+              className={`shrink-0 ml-2 inline-flex items-center gap-1 rounded-full px-2 min-h-6 pointer-coarse:min-h-9 ${onlyMissing ? "bg-amber-500/15 text-(--text-primary)" : "text-(--text-warning) hover:bg-(--bg-hover)"}`}>
+              <AlertTriangle className="w-3 h-3" aria-hidden />
+              {onlyMissing ? "Mostrar todos" : `${missingRequired.size} com campo obrigatório vazio`}
+            </button>
+          )}
         </div>
       </div>
 
@@ -3086,11 +3432,14 @@ export default function Documents() {
           doc={detailDoc}
           companyId={current.id}
           variant={isDesktop ? "panel" : "modal"}
+          path={`${current.name} › ${breadcrumbs.slice(1).map((b) => b.name).join(" › ") || "Início"}`}
+          canEdit={canWrite}
           onClose={() => setDetailDoc(null)}
           onPreview={() => setPreviewDoc(detailDoc)}
-          onFavorite={loadSidebarFavorites}
-          onDelete={() => { deleteDocuments([detailDoc.id]); setDetailDoc(null); }}
+          onFavorite={() => { loadSidebarFavorites(); setDocuments((prev) => prev.map((d) => (d.id === detailDoc.id ? { ...d, favorited: !d.favorited } : d))); }}
+          onMenu={(el) => openMenuAt(el, "document", detailDoc)}
           onChanged={load}
+          onFieldSaved={(docId, fieldId, value) => setFieldValues((prev) => ({ ...prev, [docId]: { ...(prev[docId] ?? {}), [fieldId]: value } }))}
         />
       )}
 
@@ -3098,6 +3447,7 @@ export default function Documents() {
       {showUpload && current && (
         <UploadModal
           folderId={currentFolderId}
+          folderName={breadcrumbs[breadcrumbs.length - 1].name}
           companyId={current.id}
           onClose={() => setShowUpload(false)}
           onDone={load}
@@ -3106,15 +3456,30 @@ export default function Documents() {
       {showNewFolder && current && (
         <CreateFolderModal
           parentId={currentFolderId}
+          parentName={breadcrumbs[breadcrumbs.length - 1].name}
+          siblings={folders.map((f) => f.name)}
           companyId={current.id}
           onClose={() => setShowNewFolder(false)}
-          onDone={() => { load(); setFolderTreeVersion((v) => v + 1); }}
+          onDone={(folder) => {
+            setFolders((prev) => [...prev, folder]);
+            setFolderTreeVersion((v) => v + 1);
+            window.setTimeout(() => { setFocusedId(folder.id); rowRefs.current.get(folder.id)?.focus(); }, 50);
+          }}
         />
       )}
       {confirmDeleteFolder && (
         <ConfirmModal
-          title={`Excluir pasta "${confirmDeleteFolder.name}"?`}
-          description="Todo o conteúdo desta pasta será movido para a lixeira. Esta ação pode ser desfeita a partir da lixeira."
+          title={`Excluir a pasta "${confirmDeleteFolder.name}"?`}
+          description={
+            folderDeleteSummary
+              ? folderDeleteSummary.subfolders + folderDeleteSummary.documents === 0
+                ? "A pasta está vazia. Ela vai para a lixeira e pode ser restaurada de lá."
+                : `Vão para a lixeira junto: ${[
+                    folderDeleteSummary.subfolders ? plural(folderDeleteSummary.subfolders, "subpasta", "subpastas") : null,
+                    folderDeleteSummary.documents ? plural(folderDeleteSummary.documents, "documento", "documentos") : null,
+                  ].filter(Boolean).join(" e ")}. Dá para desfazer logo em seguida ou restaurar tudo pela Lixeira.`
+              : "A pasta e tudo o que está nela vão para a lixeira. Dá para desfazer logo em seguida ou restaurar tudo pela Lixeira."
+          }
           confirmLabel="Excluir pasta"
           danger
           loading={deletingFolder}
@@ -3124,6 +3489,55 @@ export default function Documents() {
       )}
       {sharingFolder && (
         <ShareModal resourceType="folder" resourceId={sharingFolder.id} name={sharingFolder.name} onClose={() => setSharingFolder(null)} />
+      )}
+      {showTreeDrawer && current && (
+        <Dialog onClose={() => setShowTreeDrawer(false)} title="Pastas" size="sm" bodyClassName="px-2 py-2">
+          <button
+            onClick={() => { navigateHome(); setShowTreeDrawer(false); }}
+            className={`w-full flex items-center gap-1.5 h-9 pointer-coarse:h-11 pl-3 pr-2 text-mac-body rounded-[6px] text-left ${currentFolderId === null ? "bg-teal-500/12 text-(--text-accent) font-medium" : "text-(--text-primary) hover:bg-(--bg-hover)"}`}
+          >
+            <Home className="w-4 h-4 shrink-0" aria-hidden /> Início
+          </button>
+          <FolderTree
+            version={folderTreeVersion}
+            companyId={current.id}
+            activeFolderId={currentFolderId}
+            onSelect={(f) => { jumpToFolder(f.id); setShowTreeDrawer(false); }}
+            onDropDocuments={(folderId, documentIds, folderName) => moveDocuments(documentIds, folderId, folderName)}
+            onMove={onTreeMove}
+          />
+        </Dialog>
+      )}
+      {sharingDoc && (
+        <ShareModal resourceType="document" resourceId={sharingDoc.id} name={sharingDoc.name} onClose={() => setSharingDoc(null)} />
+      )}
+      {picker && current && (
+        picker.kind === "documents" ? (
+          <FolderPickerDialog
+            companyId={current.id}
+            title={`Mover ${plural(picker.ids.length, "documento", "documentos")} para…`}
+            confirmLabel="Mover aqui"
+            disabledIds={currentFolderId ? [currentFolderId] : []}
+            initialId={currentFolderId}
+            onPick={async (f) => { setPicker(null); if (f.id) await moveDocuments(picker.ids, f.id, f.name); }}
+            onClose={() => setPicker(null)}
+          />
+        ) : (
+          <FolderPickerDialog
+            companyId={current.id}
+            title={`Mover a pasta "${picker.folder.name}" para…`}
+            confirmLabel="Mover aqui"
+            allowRoot
+            excludeSubtreeOf={[picker.folder.id]}
+            disabledIds={picker.folder.parent_id ? [picker.folder.parent_id] : []}
+            onPick={async (f) => { const folder = picker.folder; setPicker(null); await moveFolder(folder, f); }}
+            onClose={() => setPicker(null)}
+          />
+        )
+      )}
+      {privacyFolder && (
+        <PrivacyDialog folderId={privacyFolder.id} folderName={privacyFolder.name} onClose={() => setPrivacyFolder(null)}
+          onSaved={() => { if (currentFolderId) api.get(`/folders/${currentFolderId}/privacy`).then((r) => setCurrentPrivacy(r.data.effective ?? "normal")).catch(() => {}); }} />
       )}
       {copyingFolder && current && (
         <CopyStructureModal
@@ -3137,131 +3551,66 @@ export default function Documents() {
       {previewDoc && (
         <PreviewModal
           doc={previewDoc}
+          docs={visibleDocuments.some((d) => d.id === previewDoc.id) ? visibleDocuments : undefined}
           onClose={() => setPreviewDoc(null)}
         />
       )}
 
-      {/* Menu de contexto (clique direito) — interação primária, o botão "..."
-          continua existindo como alternativa (§13.4 do ADENDO-09). */}
-      {contextMenu && (
-        <Portal>
-          <div
-            ref={contextMenuRef}
-            className="glass-panel glass-blur-strong fixed rounded-(--radius-popover) shadow-dropdown py-1 z-50 w-[200px]"
-            style={{ top: contextMenu.y, left: contextMenu.x }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {contextMenu.kind === "document" ? (
-              <>
-                <button
-                  onClick={() => { setPreviewDoc(contextMenu.data); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white [&_svg]:hover:text-white transition-colors duration-fast text-left"
-                >
-                  <Eye className="w-4 h-4 text-(--text-tertiary)" /> Abrir
-                </button>
-                <button
-                  onClick={() => { setDetailDoc(contextMenu.data); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white [&_svg]:hover:text-white transition-colors duration-fast text-left"
-                >
-                  <Info className="w-4 h-4 text-(--text-tertiary)" /> Ver detalhes
-                </button>
-                <button
-                  onClick={() => { startRename("document", contextMenu.data.id, contextMenu.data.name); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white [&_svg]:hover:text-white transition-colors duration-fast text-left"
-                >
-                  <Pencil className="w-4 h-4 text-(--text-tertiary)" /> Renomear
-                </button>
-                <div className="my-1 border-t border-(--border-default)" />
-                <button
-                  onClick={() => { deleteDocuments([contextMenu.data.id]); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors duration-fast text-left"
-                >
-                  <Trash2 className="w-4 h-4" /> Excluir
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => { openFolder(contextMenu.data); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white [&_svg]:hover:text-white transition-colors duration-fast text-left"
-                >
-                  <FolderOpen className="w-4 h-4 text-(--text-tertiary)" /> Abrir
-                </button>
-                <button
-                  onClick={() => { startRename("folder", contextMenu.data.id, contextMenu.data.name); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white [&_svg]:hover:text-white transition-colors duration-fast text-left"
-                >
-                  <Pencil className="w-4 h-4 text-(--text-tertiary)" /> Renomear
-                </button>
-                <button
-                  onClick={() => { setSharingFolder(contextMenu.data); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white [&_svg]:hover:text-white transition-colors duration-fast text-left"
-                >
-                  <Share2 className="w-4 h-4 text-(--text-tertiary)" /> Compartilhar
-                </button>
-                <button
-                  onClick={() => { setCopyingFolder(contextMenu.data); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white [&_svg]:hover:text-white transition-colors duration-fast text-left"
-                >
-                  <Copy className="w-4 h-4 text-(--text-tertiary)" /> Copiar estrutura para...
-                </button>
-                <div className="my-1 border-t border-(--border-default)" />
-                <button
-                  onClick={() => { navigate(`/settings/users?folder=${contextMenu.data.id}`); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white [&_svg]:hover:text-white transition-colors duration-fast text-left"
-                >
-                  <Shield className="w-4 h-4 text-(--text-tertiary)" /> Permissões desta pasta
-                </button>
-                <button
-                  onClick={() => { navigate(`/settings/metadata?tab=tree&folder=${contextMenu.data.id}`); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white [&_svg]:hover:text-white transition-colors duration-fast text-left"
-                >
-                  <Tags className="w-4 h-4 text-(--text-tertiary)" /> Metadados desta pasta
-                </button>
-                <button
-                  onClick={() => { navigate(`/settings/retention?folder=${contextMenu.data.id}`); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-500 hover:text-white [&_svg]:hover:text-white transition-colors duration-fast text-left"
-                >
-                  <Archive className="w-4 h-4 text-(--text-tertiary)" /> Retenção desta pasta
-                </button>
-                <div className="my-1 border-t border-(--border-default)" />
-                <button
-                  onClick={() => { setConfirmDeleteFolder(contextMenu.data); setContextMenu(null); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-mac-body text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors duration-fast text-left"
-                >
-                  <Trash2 className="w-4 h-4" /> Excluir
-                </button>
-              </>
-            )}
-          </div>
-        </Portal>
+      {menu && (
+        <Menu
+          label={menu.kind === "document" ? `Ações de ${menu.data.name}` : `Ações da pasta ${menu.data.name}`}
+          anchor={menu.anchor}
+          align="end"
+          items={menuItems(menu)}
+          onClose={() => setMenu(null)}
+        />
       )}
 
-      {/* Barra de ações em lote — flutuante, o caso mais puro de "vidro sobre conteúdo" */}
+      {/* Anúncio da seleção para leitor de tela (achado A4-28). */}
+      <div className="sr-only" aria-live="polite">{selected.size ? `${plural(selected.size, "documento selecionado", "documentos selecionados")}` : ""}</div>
+
+      {/* Barra de ações em lote — flutuante; escondida, fica inerte (fora do Tab). */}
       <div
-        className={`glass-panel glass-blur-pill fixed bottom-[76px] md:bottom-7 lg:bottom-[100px] left-1/2 flex items-center gap-1.5 rounded-[50px] pl-[18px] pr-1.5 py-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.55)] z-30 transition-[opacity,transform] duration-normal ${
-          selected.size > 0 ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        role="toolbar"
+        aria-label="Ações para os documentos selecionados"
+        inert={selected.size === 0}
+        className={`glass-panel glass-blur-pill fixed bottom-[calc(76px+env(safe-area-inset-bottom))] md:bottom-[100px] left-1/2 flex items-center gap-1 rounded-[50px] pl-4 pr-1.5 py-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.45)] z-30 max-w-[calc(100vw-24px)] overflow-x-auto transition-[opacity,transform] duration-normal ${
+          selected.size > 0 ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
         style={{ transform: selected.size > 0 ? "translateX(-50%)" : "translateX(-50%) translateY(12px)" }}
       >
-        <span className="text-mac-body text-(--text-primary) mr-1.5 pl-2.5 whitespace-nowrap">
-          <b className="text-(--teal-bright) font-semibold">{selected.size}</b> selecionado{selected.size !== 1 ? "s" : ""}
+        <span className="text-mac-body text-(--text-primary) mr-1 whitespace-nowrap">
+          <b className="text-(--text-accent) font-semibold tabular-nums">{selected.size}</b> selecionado{selected.size !== 1 ? "s" : ""}
         </span>
-        {resolvedFields.length > 0 && (
-          <button
-            onClick={() => setShowBulkMetadata(true)}
-            className="flex items-center gap-1.5 h-8 px-3.5 rounded-full text-mac-body text-(--text-primary) bg-white/[0.07] hover:bg-white/[0.14] transition-colors duration-fast"
-          >
-            <Pencil className="w-3.5 h-3.5" />
-            Editar metadados
+        {canWrite && (
+          <button onClick={() => setPicker({ kind: "documents", ids: [...selected] })}
+            className="flex items-center gap-1.5 h-8 pointer-coarse:h-11 px-3 rounded-full text-mac-body text-(--text-primary) whitespace-nowrap hover:bg-(--bg-hover)">
+            <FolderInput className="w-3.5 h-3.5" aria-hidden /> Mover
           </button>
         )}
-        <button
-          onClick={deleteSelected}
-          className="flex items-center gap-1.5 h-8 px-3.5 rounded-full text-mac-body text-red-400 bg-white/[0.07] hover:bg-red-500/16 transition-colors duration-fast"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-          Excluir
+        <button onClick={() => downloadDocuments([...selected])}
+          className="flex items-center gap-1.5 h-8 pointer-coarse:h-11 px-3 rounded-full text-mac-body text-(--text-primary) whitespace-nowrap hover:bg-(--bg-hover)">
+          <Download className="w-3.5 h-3.5" aria-hidden /> Baixar
+        </button>
+        <button onClick={() => anchorDocuments([...selected])}
+          className="hidden sm:flex items-center gap-1.5 h-8 pointer-coarse:h-11 px-3 rounded-full text-mac-body text-(--text-primary) whitespace-nowrap hover:bg-(--bg-hover)">
+          <Anchor className="w-3.5 h-3.5" aria-hidden /> Ancorar
+        </button>
+        {resolvedFields.length > 0 && canWrite && (
+          <button onClick={() => setShowBulkMetadata(true)}
+            className="flex items-center gap-1.5 h-8 pointer-coarse:h-11 px-3 rounded-full text-mac-body text-(--text-primary) whitespace-nowrap hover:bg-(--bg-hover)">
+            <Pencil className="w-3.5 h-3.5" aria-hidden /> Metadados
+          </button>
+        )}
+        {canWrite && (
+          <button onClick={deleteSelected}
+            className="flex items-center gap-1.5 h-8 pointer-coarse:h-11 px-3 rounded-full text-mac-body text-(--text-danger) whitespace-nowrap hover:bg-red-500/12">
+            <Trash2 className="w-3.5 h-3.5" aria-hidden /> Excluir
+          </button>
+        )}
+        <button onClick={() => setSelected(new Set())} aria-label="Limpar seleção (Esc)" title="Limpar seleção (Esc)"
+          className="flex items-center justify-center w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) shrink-0">
+          <X className="w-4 h-4" aria-hidden />
         </button>
       </div>
 
@@ -3272,7 +3621,11 @@ export default function Documents() {
           fieldValues={fieldValues}
           companyId={current.id}
           onClose={() => setShowBulkMetadata(false)}
-          onSaved={load}
+          onSaved={(applied) => setFieldValues((prev) => {
+            const next = { ...prev };
+            for (const id of selected) next[id] = { ...(next[id] ?? {}), ...applied };
+            return next;
+          })}
         />
       )}
     </div>

@@ -58,6 +58,9 @@ async def test_share_public_role_reaches_only_what_the_link_needs(admin_pool):
             )
             assert str(row["id"]) == share_id
             assert await conn.fetchval("SELECT name FROM public.documents WHERE id = $1", doc_id) == "Contrato.pdf"
+            # A1-11: o destinatário vê a empresa e quem enviou, só por esta função.
+            ctx = await conn.fetchrow("SELECT company_name, sender_name FROM public.share_public_context($1)", share_id)
+            assert (ctx["company_name"], ctx["sender_name"]) == ("Empresa Link Público", "Usuário Link")
             await conn.execute(
                 "INSERT INTO public.share_accesses (share_id, ip_hash, user_agent, success) VALUES ($1, 'ip', 'pytest', true)",
                 share_id,

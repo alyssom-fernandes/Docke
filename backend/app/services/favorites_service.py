@@ -30,10 +30,16 @@ class FavoritesService:
               -- pasta que contém o documento favoritado (NULL se o próprio
               -- favorito já é uma pasta) — necessário pro frontend montar o
               -- deep-link /documents?folder_id=...&doc=... ao clicar no item.
-              d.folder_id::text AS document_folder_id
+              d.folder_id::text AS document_folder_id,
+              (SELECT string_agg(anc.name, ' / ' ORDER BY nlevel(anc.path))
+                 FROM public.folders anc
+                 WHERE anc.company_id = COALESCE(d.company_id, f.company_id)
+                   AND anc.path @> COALESCE(df.path, f.path)
+                   AND (fav.document_id IS NOT NULL OR anc.id <> f.id)) AS location
             FROM public.favorites fav
             LEFT JOIN public.documents d ON d.id = fav.document_id AND d.deleted_at IS NULL
             LEFT JOIN public.folders   f ON f.id = fav.folder_id   AND f.deleted_at IS NULL
+            LEFT JOIN public.folders  df ON df.id = d.folder_id
             WHERE fav.user_id = auth.uid()
               AND (fav.document_id IS NULL OR d.id IS NOT NULL)
               AND (fav.folder_id   IS NULL OR f.id IS NOT NULL)

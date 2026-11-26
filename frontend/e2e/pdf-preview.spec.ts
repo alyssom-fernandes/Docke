@@ -14,25 +14,26 @@ import { loginAsDemo } from "./helpers";
 // HTTP em si, então checamos a resposta direto via page.request.
 test("Visualizar um PDF usa preview-url com Content-Disposition: inline", async ({ page }) => {
   await loginAsDemo(page);
-  await page.getByRole("link", { name: "Docs", exact: true }).click();
+  await page.getByRole("link", { name: "Documentos", exact: true }).click();
   await expect(page).toHaveURL(/\/documents/);
 
   // O seed (backend/app/seed/demo_data.py) distribui pelo menos um PDF em
   // cada uma das 4 pastas raiz (Fiscal/RH/Bancário/Contratos, sempre criadas
   // com esses nomes fixos) — RH sempre tem Holerite_*.pdf/Admissão_*.pdf dentro.
   // A pasta aparece duas vezes (árvore lateral e linha da tabela) — usa a árvore.
-  await page.locator("aside", { hasText: "Pastas" }).getByRole("button", { name: "RH", exact: true }).click();
+  await page.locator("aside", { hasText: "Pastas" }).getByRole("treeitem", { name: "RH", exact: true }).click();
 
   const pdfRow = page.locator("table tbody tr", { hasText: ".pdf" }).first();
   await expect(pdfRow).toBeVisible({ timeout: 10_000 });
   await pdfRow.click();
 
-  await expect(page.getByRole("heading", { name: "Detalhes" })).toBeVisible();
+  // Painel lateral de detalhes (landmark "Detalhes de <arquivo>").
+  await expect(page.getByRole("complementary", { name: /^Detalhes de / })).toBeVisible();
 
   // Desde a Fase 12.3 o PDF é desenhado com pdf.js num <canvas> (não há mais
   // <iframe>): o que importa é a URL que o preview pede ao backend.
   const previewResp = page.waitForResponse((r) => /\/documents\/[^/]+\/preview-url/.test(r.url()) && r.request().method() === "GET");
-  await page.getByRole("button", { name: "Visualizar" }).click();
+  await page.getByRole("complementary", { name: /^Detalhes de / }).getByRole("button", { name: "Abrir" }).click();
   const { preview_url: src } = await (await previewResp).json();
   expect(src).toBeTruthy();
 

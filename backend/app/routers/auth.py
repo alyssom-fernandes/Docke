@@ -7,7 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from app.config import settings
-from app.dependencies import get_current_user, get_db
+from app.dependencies import get_current_user, get_db, get_db_admin
 from app.services import rate_limit
 from app.services.auth_service import AuthService
 
@@ -29,9 +29,37 @@ class LoginRequest(BaseModel):
 
 class LoginResponse(BaseModel):
     access_token: str
+    # Renovação silenciosa (achado A1-01): o access_token vale 1 h; o
+    # refresh_token troca por um novo em POST /auth/refresh sem pedir senha.
+    refresh_token: str | None = None
     token_type: str = "bearer"
     expires_in: int
     user: dict[str, Any]
+
+
+_CONTA_DESATIVADA = "Esta conta foi desativada. Fale com o administrador da sua empresa."
+
+
+async def _account_is_active(user_id: str | None) -> bool:
+    """Conta desativada pelo admin (public.users.is_active) não entra nem renova."""
+    if not user_id:
+        return True
+    from app.dependencies import _require_pool
+
+    try:
+        active = await _require_pool().fetchval("SELECT is_active FROM public.users WHERE id = $1", user_id)
+    except Exception:
+        return True
+    return active is not False
+
+
+def _login_response(data: dict[str, Any]) -> "LoginResponse":
+    return LoginResponse(
+        access_token=data["access_token"],
+        refresh_token=data.get("refresh_token"),
+        expires_in=data.get("expires_in", 3600),
+        user=data.get("user", {}),
+    )
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -94,11 +122,128 @@ async def _do_login(body: LoginRequest, request: Request, *, email_key_override:
         )
 
     data = resp.json()
-    return LoginResponse(
-        access_token=data["access_token"],
-        expires_in=data.get("expires_in", 3600),
-        user=data.get("user", {}),
-    )
+    if not await _account_is_active((data.get("user") or {}).get("id")):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_CONTA_DESATIVADA)
+    return _login_response(data)
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+@router.post("/refresh", response_model=LoginResponse)
+async def refresh(body: RefreshRequest, request: Request) -> LoginResponse:
+    """
+    Troca o refresh_token por um par novo (o Supabase gira o refresh_token a
+    cada uso). Recusa conta desativada. 401 quando o refresh_token não vale
+    mais (revogado no "Sair" ou pelo admin): o cliente pede a senha de novo.
+    """
+    ip_key = f"refresh-ip:{rate_limit.client_ip_hash(request)}"
+    if rate_limit.is_locked_out(ip_key):
+        raise HTTPException(status_code=status.HTTP_423_LOCKED, detail="Muitas tentativas. Tente novamente em alguns minutos.")
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{settings.SUPABASE_URL}/auth/v1/token?grant_type=refresh_token",
+            headers={"apikey": settings.SUPABASE_ANON_KEY, "Content-Type": "application/json"},
+            json={"refresh_token": body.refresh_token},
+            timeout=10.0,
+        )
+    if resp.status_code != 200:
+        rate_limit.record_failed_attempt(ip_key, 30, 60, 5 * 60)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sua sessão terminou. Entre de novo.")
+    data = resp.json()
+    if not await _account_is_active((data.get("user") or {}).get("id")):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_CONTA_DESATIVADA)
+    return _login_response(data)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(credentials: HTTPAuthorizationCredentials = Depends(_bearer)) -> None:
+    """Encerra a sessão no Supabase Auth (o refresh_token deixa de valer). Melhor esforço."""
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                f"{settings.SUPABASE_URL}/auth/v1/logout?scope=local",
+                headers={"apikey": settings.SUPABASE_ANON_KEY, "Authorization": f"Bearer {credentials.credentials}"},
+                timeout=10.0,
+            )
+    except Exception:
+        pass
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+    redirect_to: str | None = None
+
+
+@router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED)
+async def forgot_password(body: ForgotPasswordRequest, request: Request) -> dict[str, str]:
+    """
+    "Esqueci a senha" (achado A1-04): o Supabase Auth manda um e-mail com o
+    link de redefinição. A resposta é sempre a mesma, exista ou não a conta,
+    para ninguém descobrir quais e-mails têm cadastro. Limite por IP e por
+    e-mail. A conta demo não troca senha.
+    """
+    email = body.email.strip().lower()
+    for key in (f"forgot-ip:{rate_limit.client_ip_hash(request)}", f"forgot-email:{email}"):
+        if rate_limit.is_locked_out(key):
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Muitos pedidos. Tente de novo em alguns minutos.")
+        rate_limit.record_failed_attempt(key, 5, 15 * 60, 15 * 60)
+    resposta = {"detail": "Se este e-mail tiver cadastro, enviamos um link para criar uma senha nova. Confira também a caixa de spam."}
+    if not email or email == settings.DEMO_EMAIL.lower():
+        return resposta
+    redirect = body.redirect_to if body.redirect_to and body.redirect_to.startswith(tuple(settings.cors_origins_list)) else None
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                f"{settings.SUPABASE_URL}/auth/v1/recover",
+                params={"redirect_to": redirect} if redirect else None,
+                headers={"apikey": settings.SUPABASE_ANON_KEY, "Content-Type": "application/json"},
+                json={"email": email},
+                timeout=10.0,
+            )
+    except Exception:
+        pass
+    return resposta
+
+
+class ResetPasswordRequest(BaseModel):
+    access_token: str  # o token de recuperação que vem no link do e-mail
+    new_password: str
+
+
+@router.post("/reset-password")
+async def reset_password(body: ResetPasswordRequest) -> dict[str, str]:
+    """Grava a senha nova usando o token de recuperação do link do e-mail."""
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A nova senha deve ter no mínimo 8 caracteres.")
+    async with httpx.AsyncClient() as client:
+        resp = await client.put(
+            f"{settings.SUPABASE_URL}/auth/v1/user",
+            headers={
+                "apikey": settings.SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {body.access_token}",
+                "Content-Type": "application/json",
+            },
+            json={"password": body.new_password},
+            timeout=10.0,
+        )
+    if resp.status_code == 401:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail='O link venceu ou já foi usado. Peça um novo em "Esqueci a senha".',
+        )
+    if resp.status_code != 200:
+        try:
+            msg = (resp.json().get("msg") or resp.json().get("error_description") or "").lower()
+        except ValueError:
+            msg = ""
+        detail = (
+            "A senha nova é igual à anterior. Escolha outra." if "different" in msg
+            else "Não foi possível gravar a senha nova. Tente de novo."
+        )
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
+    return {"status": "ok"}
 
 
 @router.post("/demo-login", response_model=LoginResponse)
@@ -177,6 +322,7 @@ async def change_password(
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
     conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
 ) -> dict[str, str]:
     """
     Troca a senha do usuário autenticado.
@@ -235,4 +381,7 @@ async def change_password(
         if update.status_code != 200:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Não foi possível atualizar a senha.")
 
+    # Senha provisória trocada: não pede mais no próximo acesso.
+    me = await conn.fetchval("SELECT auth.uid()::text")
+    await admin_conn.execute("UPDATE public.users SET must_change_password = false WHERE id = $1::uuid", me)
     return {"status": "ok"}

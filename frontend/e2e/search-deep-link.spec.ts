@@ -11,30 +11,30 @@ import { loginAsDemo } from "./helpers";
 test("Ctrl+K a partir da própria tela de Documentos navega para o documento certo", async ({ page }) => {
   await loginAsDemo(page);
 
-  await page.getByRole("link", { name: "Docs", exact: true }).click();
+  await page.getByRole("link", { name: "Documentos", exact: true }).click();
   await expect(page).toHaveURL(/\/documents/);
 
   // Abre o Command Palette (botão "Buscar documentos..." no TopBar, não o
   // ícone de busca mobile-only escondido em telas largas).
   await page.getByRole("button", { name: /Buscar documentos/ }).click();
 
-  const searchInput = page.getByPlaceholder("Buscar documentos, pastas ou ações…");
+  const searchInput = page.getByRole("combobox", { name: /Digite um comando/ });
   await expect(searchInput).toBeVisible();
   await searchInput.fill("NF");
 
-  const result = page.getByRole("button", { name: /\.xml Documento|\.pdf Documento/ }).first();
+  const result = page.getByRole("option").filter({ hasText: /\.(xml|pdf)/ }).first();
   await expect(result).toBeVisible({ timeout: 10_000 });
-  const resultText = await result.textContent();
+  const resultText = await result.locator("span").first().textContent();
   await result.click();
 
   // Depois do clique: a paleta fecha, a URL ganha folder_id/doc, e a tabela
   // deixa de mostrar a listagem de pastas da raiz para mostrar só o
   // documento certo — com o Detail Drawer aberto.
-  await expect(page.getByRole("heading", { name: "Detalhes" })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("complementary", { name: /^Detalhes de / })).toBeVisible({ timeout: 10_000 });
   if (resultText) {
-    const fileName = resultText.replace(/(Documento|Pasta)$/, "").trim();
+    const fileName = resultText.trim();
     // Painel de detalhes = o bloco que contém o título "Detalhes" (cabeçalho + corpo).
-    const details = page.getByRole("heading", { name: "Detalhes" }).locator("xpath=../..");
+    const details = page.getByRole("complementary", { name: /^Detalhes de / });
     await expect(details).toContainText(fileName);
   }
 });

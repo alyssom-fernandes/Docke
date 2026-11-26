@@ -1,0 +1,4 @@
+# Dependências só de teste: ficam fora da imagem de produção (X3-18).
+-r requirements.txt
+pytest==9.1.1
+pytest-asyncio==1.4.0

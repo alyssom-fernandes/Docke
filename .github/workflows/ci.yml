@@ -22,7 +22,12 @@ jobs:
           ruff check backend
 
       - name: Instalar dependências do backend
-        run: pip install -r backend/requirements.txt
+        run: pip install -r backend/requirements-dev.txt
+
+      # O mesmo Tesseract da imagem de produção: o teste de PDF escaneado
+      # (test_extracao_texto.py) só roda com ele.
+      - name: Instalar o Tesseract (OCR)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-por fonts-dejavu-core
 
       - uses: supabase/setup-cli@v3
         with:
@@ -71,3 +76,29 @@ jobs:
       - name: Build de produção (vite)
         working-directory: frontend
         run: npm run build
+
+  # Ensaio de backup e restauração (achado X2-05): os mesmos scripts do backup
+  # diário de produção, contra o Supabase local — semeia, copia, bagunça,
+  # restaura e confere contagens e a cadeia de hash da trilha.
+  backup-ensaio:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: latest
+
+      - name: Subir stack local do Supabase
+        run: supabase start -x studio,imgproxy,inbucket,edge-runtime,logflare,vector,realtime,storage-api
+
+      - name: Instalar o cliente do Postgres 17 (mesma versão da produção)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+      - name: Ensaiar backup e restauração
+        run: bash backend/scripts/backup/ensaio.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"

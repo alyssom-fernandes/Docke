@@ -22,18 +22,24 @@ class TrashService:
               d.file_type,
               d.size_bytes,
               d.deleted_at,
+              d.trash_expires_at,
               d.deleted_original_folder_id::text,
               f.name AS original_folder_name,
               f.deleted_at IS NOT NULL AS original_folder_deleted,
+              (SELECT string_agg(anc.name, ' / ' ORDER BY nlevel(anc.path))
+                 FROM public.folders anc WHERE anc.company_id = d.company_id AND anc.path @> orig.path) AS original_path,
+              (SELECT u.full_name FROM public.activity_log al JOIN public.users u ON u.id = al.user_id
+                WHERE al.item_id = d.id AND al.action = 'delete' ORDER BY al.created_at DESC LIMIT 1) AS deleted_by_name,
+              public.document_deletion_block_reason(d.id) AS bloqueio,
               'document' AS item_type
             FROM public.documents d
             LEFT JOIN public.folders f ON f.id = d.deleted_original_folder_id
+            JOIN public.folders orig ON orig.id = COALESCE(d.deleted_original_folder_id, d.folder_id)
             WHERE d.company_id = $1
               AND d.deleted_at IS NOT NULL
-              AND EXISTS (
-                SELECT 1 FROM public.user_company_access uca
-                WHERE uca.user_id = $2 AND uca.company_id = $1
-              )
+              -- Só o que a pessoa enxergaria na pasta de origem (achado A6-37):
+              -- quem tem acesso a uma pasta não vê o nome do que saiu das outras.
+              AND public.user_has_access($2::uuid, orig.path, $1) IS NOT NULL
             ORDER BY d.deleted_at DESC
             """,
             company_id, user_id,
@@ -48,7 +54,17 @@ class TrashService:
               f.name,
               f.company_id::text,
               f.deleted_at,
+              f.trash_expires_at,
               f.parent_id::text,
+              (SELECT string_agg(anc.name, ' / ' ORDER BY nlevel(anc.path))
+                 FROM public.folders anc WHERE anc.company_id = f.company_id AND anc.path @> f.path AND anc.id <> f.id) AS original_path,
+              (SELECT u.full_name FROM public.activity_log al JOIN public.users u ON u.id = al.user_id
+                WHERE al.item_id = f.id AND al.action = 'delete' ORDER BY al.created_at DESC LIMIT 1) AS deleted_by_name,
+              (
+                SELECT count(*) FROM public.documents d
+                JOIN public.folders df ON df.id = d.folder_id
+                WHERE df.path <@ f.path AND d.deleted_at IS NOT NULL AND d.deleted_at >= f.deleted_at
+              ) AS document_count,
               'folder' AS item_type
             FROM public.folders f
             WHERE f.company_id = $1
@@ -60,10 +76,7 @@ class TrashService:
                   WHERE parent.id = f.parent_id AND parent.deleted_at IS NOT NULL
                 )
               )
-              AND EXISTS (
-                SELECT 1 FROM public.user_company_access uca
-                WHERE uca.user_id = $2 AND uca.company_id = $1
-              )
+              AND public.user_has_access($2::uuid, f.path, $1) IS NOT NULL
             ORDER BY f.deleted_at DESC
             """,
             company_id, user_id,
@@ -112,7 +125,7 @@ class TrashService:
     @staticmethod
     async def get_deleted_folder(admin_conn: asyncpg.Connection, folder_id: UUID) -> asyncpg.Record | None:
         return await admin_conn.fetchrow(
-            "SELECT id, name, path, company_id, parent_id FROM public.folders WHERE id = $1 AND deleted_at IS NOT NULL",
+            "SELECT id, name, path, company_id, parent_id, deleted_at FROM public.folders WHERE id = $1 AND deleted_at IS NOT NULL",
             folder_id,
         )
 
@@ -123,17 +136,50 @@ class TrashService:
         ))
 
     @staticmethod
-    async def restore_folder_cascade(admin_conn: asyncpg.Connection, *, folder_id: UUID, new_parent_id, path: str) -> None:
-        await admin_conn.execute(
-            """
-            UPDATE public.folders
-            SET deleted_at = NULL,
-                parent_id = CASE WHEN id = $1 THEN $2 ELSE parent_id END
-            WHERE (id = $1 OR path <@ $3::ltree)
-              AND deleted_at IS NOT NULL
-            """,
-            folder_id, new_parent_id, path,
-        )
+    async def restore_folder_cascade(
+        admin_conn: asyncpg.Connection, *, folder_id: UUID, new_parent_id, path: str, deleted_at,
+    ) -> int:
+        """
+        Restaura a pasta e tudo o que foi para a lixeira JUNTO com ela: as
+        subpastas e os documentos com deleted_at igual ou posterior ao da
+        pasta (a exclusão em cascata grava o mesmo instante, ou um instante
+        logo depois). O que já estava na lixeira antes, excluído por conta
+        própria, continua lá. Antes, só as pastas voltavam e os documentos
+        ficavam na lixeira até a purga apagá-los (achado X2-04).
+        Devolve quantos documentos voltaram.
+        """
+        async with admin_conn.transaction():
+            await admin_conn.execute(
+                """
+                UPDATE public.folders
+                SET deleted_at = NULL,
+                    trash_expires_at = NULL,
+                    parent_id = CASE WHEN id = $1 THEN $2 ELSE parent_id END
+                WHERE deleted_at IS NOT NULL
+                  AND (id = $1 OR (path <@ $3::ltree AND deleted_at >= $4))
+                """,
+                folder_id, new_parent_id, path, deleted_at,
+            )
+            return await admin_conn.fetchval(
+                """
+                WITH restaurados AS (
+                  UPDATE public.documents d
+                  SET deleted_at = NULL,
+                      trash_expires_at = NULL,
+                      deleted_original_folder_id = NULL,
+                      updated_at = now()
+                  FROM public.folders f
+                  WHERE f.id = d.folder_id
+                    AND f.path <@ $1::ltree
+                    AND f.deleted_at IS NULL
+                    AND d.deleted_at IS NOT NULL
+                    AND d.deleted_at >= $2
+                  RETURNING d.id
+                )
+                SELECT count(*) FROM restaurados
+                """,
+                path, deleted_at,
+            )
 
     @staticmethod
     async def log_activity(

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import api from "@/lib/api";
+import api, { cancelWaitingRequests, refreshAccessToken, resumeAfterReauth, scheduleRefresh } from "@/lib/api";
+import { clearSession, getAccessToken, getRefreshToken, saveSession, SessionTokens } from "@/lib/session";
 
 export interface AuthUser {
   id: string;
@@ -7,96 +8,116 @@ export interface AuthUser {
   username: string;
   full_name: string;
   role: string;
+  /** Senha provisória dada por um admin: troca no primeiro acesso (A9-16). */
+  must_change_password?: boolean;
 }
 
 interface AuthState {
   user: AuthUser | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, remember?: boolean) => Promise<void>;
   loginDemo: () => Promise<void>;
   logout: () => void;
   updateProfile: (fullName: string) => Promise<void>;
+  passwordChanged: () => void;
 }
 
 const LOGIN_TIMEOUT_MS = 20_000;
 const DEMO_LOGIN_TIMEOUT_MS = 45_000;
 
+function toUser(data: any): AuthUser {
+  return {
+    id: data.user_id,
+    email: data.email,
+    username: data.username,
+    full_name: data.full_name,
+    role: data.role,
+    must_change_password: !!data.must_change_password,
+  };
+}
+
 export function useAuth(): AuthState {
   const [user, setUser] = useState<AuthUser | null>(() => {
     try {
       const stored = localStorage.getItem("docke_user");
-      return stored ? JSON.parse(stored) : null;
+      return stored && getAccessToken() ? JSON.parse(stored) : null;
     } catch {
       return null;
     }
   });
-  const [isLoading, setIsLoading] = useState(!localStorage.getItem("docke_token") ? false : true);
+  const [isLoading, setIsLoading] = useState(!!getAccessToken());
 
   useEffect(() => {
-    const token = localStorage.getItem("docke_token");
-    if (!token) { setIsLoading(false); return; }
-    api.get("/auth/me")
-      .then((res) => {
-        const u: AuthUser = {
-          id: res.data.user_id,
-          email: res.data.email,
-          username: res.data.username,
-          full_name: res.data.full_name,
-          role: res.data.role,
-        };
+    if (!getAccessToken()) { setIsLoading(false); return; }
+    (async () => {
+      // Token vencido na abertura (aba fechada por horas): renova antes de
+      // perguntar quem é — sem isso, quem voltava no dia seguinte caía no login.
+      if (getRefreshToken()) {
+        const exp = Number(localStorage.getItem("docke_token_expires") ?? sessionStorage.getItem("docke_token_expires"));
+        if (exp && exp - Date.now() < 60_000) await refreshAccessToken();
+      }
+      try {
+        const res = await api.get("/auth/me", { skipReauthWait: true } as any);
+        const u = toUser(res.data);
         setUser(u);
         localStorage.setItem("docke_user", JSON.stringify(u));
-      })
-      .catch(() => {
-        localStorage.removeItem("docke_token");
+        scheduleRefresh();
+      } catch {
+        clearSession();
         localStorage.removeItem("docke_user");
         setUser(null);
-      })
-      .finally(() => setIsLoading(false));
+      } finally {
+        setIsLoading(false);
+      }
+    })();
   }, []);
 
-  async function applySession(accessToken: string) {
-    localStorage.setItem("docke_token", accessToken);
+  async function applySession(tokens: SessionTokens, remember?: boolean, keepChoice = false) {
+    saveSession(tokens, remember, keepChoice);
     const me = await api.get("/auth/me");
-    const u: AuthUser = {
-      id: me.data.user_id,
-      email: me.data.email,
-      username: me.data.username,
-      full_name: me.data.full_name,
-      role: me.data.role,
-    };
+    const u = toUser(me.data);
     // Empresa selecionada pertence à identidade anterior — trocar de conta
     // (ex.: sair da conta real e entrar no modo demo) sem que o CompanyProvider
     // desmonte/remonte deixaria a empresa antiga selecionada presa na tela,
     // mesmo com o usuário/avatar já corretos. Limpa sempre que o id muda.
     let previousUserId: string | null = null;
     try { previousUserId = JSON.parse(localStorage.getItem("docke_user") ?? "null")?.id ?? null; } catch { /* ignore */ }
-    if (previousUserId !== u.id) localStorage.removeItem("docke_company");
+    if (previousUserId !== u.id) {
+      localStorage.removeItem("docke_company");
+      cancelWaitingRequests();  // pedidos da conta anterior não seguem com a nova
+    } else {
+      resumeAfterReauth();  // mesma pessoa: refaz o que esbarrou na sessão vencida
+    }
     setUser(u);
     localStorage.setItem("docke_user", JSON.stringify(u));
+    scheduleRefresh();
   }
 
   // Tempo limite só nas chamadas de login — um limite global no axios
   // cortaria operações legitimamente longas (confirmar upload de 200MB,
   // conversão DOCX→PDF). A demo tem folga maior: a API na Fly desliga
   // quando ociosa (auto_stop) e a primeira requisição espera a máquina ligar.
-  async function login(email: string, password: string) {
+  async function login(email: string, password: string, remember?: boolean) {
     const res = await api.post("/auth/login", { email, password }, { timeout: LOGIN_TIMEOUT_MS });
-    await applySession(res.data.access_token);
+    await applySession(res.data, remember);
   }
 
   // Modo demo: a senha nunca fica no frontend — o backend guarda como
   // segredo (Fly secret) e faz o login por trás via /auth/demo-login.
   async function loginDemo() {
     const res = await api.post("/auth/demo-login", undefined, { timeout: DEMO_LOGIN_TIMEOUT_MS });
-    await applySession(res.data.access_token);
+    await applySession(res.data, false, true);
   }
 
   function logout() {
-    localStorage.removeItem("docke_token");
-    localStorage.removeItem("docke_user");
-    setUser(null);
-    window.location.href = "/login";
+    // Revoga o token de renovação no servidor; a navegação não espera.
+    if (getAccessToken()) api.post("/auth/logout").catch(() => {});
+    window.setTimeout(() => {
+      clearSession();
+      localStorage.removeItem("docke_user");
+      setUser(null);
+      window.location.href = "/login";
+    }, 150);
   }
 
   // Fase 10.3: atualiza o nome no backend e reflete no estado global de
@@ -111,5 +132,14 @@ export function useAuth(): AuthState {
     });
   }
 
-  return { user, isLoading, login, loginDemo, logout, updateProfile };
+  function passwordChanged() {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, must_change_password: false };
+      localStorage.setItem("docke_user", JSON.stringify(next));
+      return next;
+    });
+  }
+
+  return { user, isLoading, login, loginDemo, logout, updateProfile, passwordChanged };
 }

@@ -107,6 +107,52 @@ class FoldersService:
         )
 
     @staticmethod
+    async def sibling_name_taken(
+        conn: asyncpg.Connection, *, company_id, parent_id, name: str, exclude_id=None,
+    ) -> bool:
+        """Já existe pasta (fora da lixeira) com este nome, ignorando maiúsculas, no mesmo nível?"""
+        return bool(await conn.fetchval(
+            """
+            SELECT EXISTS (
+              SELECT 1 FROM public.folders
+              WHERE company_id = $1::uuid
+                AND parent_id IS NOT DISTINCT FROM $2::uuid
+                AND lower(name) = lower($3)
+                AND deleted_at IS NULL
+                AND ($4::uuid IS NULL OR id <> $4::uuid)
+            )
+            """,
+            str(company_id), str(parent_id) if parent_id else None, name, str(exclude_id) if exclude_id else None,
+        ))
+
+    @staticmethod
+    async def log_activity(
+        conn: asyncpg.Connection, *, folder_id, company_id, action: str, name: str, metadata: str | None = None,
+    ) -> None:
+        await conn.execute(
+            """
+            INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, metadata)
+            VALUES (auth.uid(), $1::uuid, $2, 'folder', $3::uuid, $4, $5::jsonb)
+            """,
+            str(company_id), action, str(folder_id), name, metadata,
+        )
+
+    @staticmethod
+    async def summary(conn: asyncpg.Connection, folder_id: UUID) -> asyncpg.Record | None:
+        """Quantas subpastas e documentos (fora da lixeira) há abaixo da pasta — para a confirmação de excluir."""
+        return await conn.fetchrow(
+            """
+            SELECT f.name,
+              (SELECT count(*) FROM public.folders s WHERE s.path <@ f.path AND s.id <> f.id AND s.deleted_at IS NULL) AS subfolders,
+              (SELECT count(*) FROM public.documents d JOIN public.folders df ON df.id = d.folder_id
+                 WHERE df.path <@ f.path AND d.deleted_at IS NULL AND d.content_hash IS NOT NULL) AS documents
+            FROM public.folders f
+            WHERE f.id = $1 AND f.deleted_at IS NULL
+            """,
+            folder_id,
+        )
+
+    @staticmethod
     async def rename_folder(conn: asyncpg.Connection, folder_id: UUID, name: str) -> asyncpg.Record | None:
         return await conn.fetchrow(
             """
@@ -124,7 +170,7 @@ class FoldersService:
         request (get_db já abre uma transaction explícita por request), evitando
         corrida entre dois moves concorrentes da mesma pasta."""
         return await conn.fetchrow(
-            "SELECT path::text, company_id FROM public.folders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
+            "SELECT path::text, company_id, name, parent_id FROM public.folders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
             folder_id,
         )
 
@@ -199,7 +245,17 @@ class FoldersService:
         Soft delete via service role (bypassa RLS para evitar o bloqueio implícito
         de UPDATE que torna a linha invisível ao próprio SELECT do usuário).
         trash_expires_at (ADR-025/030): retention_days da empresa no momento da exclusão.
+
+        As duas atualizações vão juntas numa transação: se algum documento da
+        subárvore estiver sob legal hold ou retenção travada, o trigger da
+        migration 20261125000001 recusa e nada vai para a lixeira (antes a
+        pasta podia sair e os documentos ficarem).
         """
+        async with admin_conn.transaction():
+            await FoldersService._soft_delete_folder_cascade_tx(admin_conn, path)
+
+    @staticmethod
+    async def _soft_delete_folder_cascade_tx(admin_conn: asyncpg.Connection, path: str) -> None:
         await admin_conn.execute(
             """
             UPDATE public.folders f

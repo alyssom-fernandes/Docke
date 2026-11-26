@@ -1,42 +1,53 @@
 import { useEffect, useState, FormEvent } from "react";
-import { Lock } from "lucide-react";
+import { Link } from "react-router-dom";
 import { onSessionExpired } from "@/lib/sessionEvents";
 import { useAuthContext } from "@/lib/AuthContext";
 import Button from "@/components/ui/Button";
-import Portal from "@/components/ui/Portal";
+import Dialog from "@/components/ui/Dialog";
+import Input from "@/components/ui/Input";
+import Avatar from "@/components/ui/Avatar";
 
 // Conta do modo demo — sem senha conhecida pelo usuário, então o token
-// expirado é renovado automaticamente em vez de pedir senha (ver ADR do
-// modo demo: a conta é compartilhada/pública, não faz sentido travar aqui).
-// A senha nunca aparece aqui — o backend faz o login via /auth/demo-login,
-// guardando a senha só como variável de ambiente (Fly secret).
+// expirado é renovado automaticamente em vez de pedir senha. A senha nunca
+// aparece aqui — o backend faz o login via /auth/demo-login.
 const DEMO_EMAIL = "demo@docke.app";
 
+/** Diz o que aconteceu de verdade, em vez de "senha incorreta" para tudo (A1-29). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function loginErrorMessage(e: any): string {
+  const status = e?.response?.status;
+  const detail = e?.response?.data?.detail;
+  if (!e?.response) return "Sem conexão com o servidor. Confira a internet e tente de novo.";
+  if (status === 423 || status === 429) return typeof detail === "string" ? detail : "Muitas tentativas. Espere alguns minutos e tente de novo.";
+  if (status === 403) return typeof detail === "string" ? detail : "Esta conta foi desativada. Fale com o administrador.";
+  if (status === 401 || status === 400) return "Senha incorreta. Confira e tente de novo.";
+  return "Não foi possível entrar agora. Tente de novo em instantes.";
+}
+
+/**
+ * Sessão expirada (A1-28..A1-30): Dialog acessível com o nome e o e-mail da
+ * pessoa, campo do design system, erros que dizem o motivo, "Esqueci a senha"
+ * e confirmação antes de sair (o que não foi salvo se perderia).
+ */
 export default function SessionExpiredOverlay() {
   const { user, login, loginDemo, logout } = useAuthContext();
   const [visible, setVisible] = useState(false);
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [confirmExit, setConfirmExit] = useState(false);
 
   useEffect(() => {
     return onSessionExpired(() => {
-      // Only show if there's a known user to re-authenticate
-      if (!(localStorage.getItem("docke_token") || localStorage.getItem("docke_user"))) return;
-
+      if (!localStorage.getItem("docke_user")) return;
       if (user?.email === DEMO_EMAIL) {
-        loginDemo().catch(() => {
-          // se a renovação silenciosa falhar por algum motivo, cai no fluxo normal
-          setVisible(true);
-          setPassword("");
-          setError("");
-        });
+        loginDemo().catch(() => { setVisible(true); setPassword(""); setError(""); });
         return;
       }
-
       setVisible(true);
       setPassword("");
       setError("");
+      setConfirmExit(false);
     });
   }, [user, loginDemo]);
 
@@ -52,54 +63,45 @@ export default function SessionExpiredOverlay() {
       await login(user.email ?? user.username, password);
       setVisible(false);
       setPassword("");
-    } catch {
-      setError("Senha incorreta. Tente novamente.");
+    } catch (err) {
+      setError(loginErrorMessage(err));
     } finally {
       setLoading(false);
     }
   }
 
+  const nome = user.full_name || user.username;
   return (
-    <Portal>
-    <div className="fixed inset-0 z-200 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="modal-card glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal w-full max-w-[360px]">
-        {/* Header */}
-        <div className="flex flex-col items-center text-center px-8 pt-8 pb-6">
-          <div className="w-12 h-12 bg-amber-50 dark:bg-amber-900/20 rounded-card flex items-center justify-center mb-4">
-            <Lock className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+    <Dialog onClose={() => {}} showClose={false} title="Sua sessão expirou" size="sm"
+      description="Digite a senha para continuar de onde parou. O que você estava fazendo é concluído em seguida.">
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="flex items-center gap-3 rounded-(--radius-control) bg-(--bg-hover) px-3 py-2.5">
+          <Avatar name={nome} size="sm" />
+          <div className="min-w-0">
+            <p className="text-mac-body font-medium text-(--text-primary) truncate">{nome}</p>
+            {user.email && <p className="text-mac-caption text-(--text-secondary) truncate">{user.email}</p>}
           </div>
-          <h2 className="text-mac-callout font-semibold text-(--text-primary)">Sessão expirada</h2>
-          <p className="text-mac-body text-(--text-secondary) mt-1">
-            Digite sua senha para continuar como <span className="font-medium text-(--text-primary)">@{user.username}</span>.
-          </p>
         </div>
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="px-8 pb-6 space-y-3">
-          <input
-            type="password"
-            autoFocus
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Senha"
-            className="w-full h-10 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-          />
-          {error && (
-            <p className="text-mac-caption text-red-600 dark:text-red-400">{error}</p>
+        <Input label="Senha" type="password" autoFocus autoComplete="current-password" value={password}
+          onChange={(e) => { setPassword(e.target.value); setError(""); }} error={error || undefined} disabled={loading} />
+        <Button type="submit" loading={loading} disabled={!password} className="w-full">Continuar</Button>
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+          <Link to="/login" state={{ forgot: true }} onClick={() => logout()} className="min-h-9 pointer-coarse:min-h-11 inline-flex items-center text-mac-body text-(--text-accent) hover:underline">
+            Esqueci a senha
+          </Link>
+          {confirmExit ? (
+            <span className="reveal inline-flex items-center gap-2 text-mac-caption text-(--text-secondary)">
+              O que não foi salvo se perde.
+              <button type="button" onClick={logout} className="min-h-9 pointer-coarse:min-h-11 font-medium text-(--text-danger) hover:underline">Sair mesmo</button>
+            </span>
+          ) : (
+            <button type="button" onClick={() => setConfirmExit(true)}
+              className="min-h-9 pointer-coarse:min-h-11 text-mac-body text-(--text-secondary) hover:text-(--text-primary) rounded-[6px] focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)">
+              Sair da conta
+            </button>
           )}
-          <Button type="submit" loading={loading} disabled={!password} className="w-full">
-            Continuar
-          </Button>
-          <button
-            type="button"
-            onClick={logout}
-            className="w-full text-mac-body text-(--text-tertiary) hover:text-(--text-secondary) transition-colors duration-fast"
-          >
-            Sair da conta
-          </button>
-        </form>
-      </div>
-    </div>
-    </Portal>
+        </div>
+      </form>
+    </Dialog>
   );
 }

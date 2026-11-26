@@ -1,0 +1,151 @@
+name: Backup
+
+# Backup diário do Docke (achado X2-05 da avaliação de 25/11/2026), fora do
+# Supabase e fora do bucket de produção:
+#   - banco: dados do schema public e das contas (backend/scripts/backup/backup_db.sh),
+#     cifrados com AES-256 (gpg, senha em BACKUP_PASSPHRASE) antes de sair do runner;
+#   - documentos: cópia do bucket R2 de produção para o bucket de backup (rclone copy:
+#     nunca apaga no destino, então um arquivo excluído por engano continua lá).
+# Aos domingos, o último backup é restaurado num Supabase local e conferido tabela
+# por tabela e pela cadeia de hash da trilha (restauração testada).
+#
+# Só roda depois que o dono cadastrar os segredos do repositório (Settings → Secrets):
+#   BACKUP_DATABASE_URL   conexão direta do Postgres de produção (db.<ref>.supabase.co:5432)
+#   BACKUP_PASSPHRASE     senha longa da cifra (guardar também fora do GitHub)
+#   BACKUP_S3_ENDPOINT, BACKUP_S3_BUCKET, BACKUP_S3_ACCESS_KEY_ID, BACKUP_S3_SECRET_ACCESS_KEY
+#                         destino do backup (outro bucket, de preferência em outra conta)
+#   R2_ENDPOINT_URL, R2_BUCKET_NAME, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
+#                         origem dos documentos (leitura)
+# Sem eles, o job avisa e termina sem erro.
+on:
+  schedule:
+    - cron: "41 6 * * *"
+  workflow_dispatch:
+    inputs:
+      testar_restauracao:
+        description: "Restaurar e conferir o backup ao final"
+        type: boolean
+        default: true
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    env:
+      BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      RCLONE_CONFIG_DESTINO_TYPE: s3
+      RCLONE_CONFIG_DESTINO_PROVIDER: Other
+      RCLONE_CONFIG_DESTINO_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+      RCLONE_CONFIG_DESTINO_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_DESTINO_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+      DESTINO_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+      RCLONE_CONFIG_ORIGEM_TYPE: s3
+      RCLONE_CONFIG_ORIGEM_PROVIDER: Cloudflare
+      RCLONE_CONFIG_ORIGEM_ENDPOINT: ${{ secrets.R2_ENDPOINT_URL }}
+      RCLONE_CONFIG_ORIGEM_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_ORIGEM_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      ORIGEM_BUCKET: ${{ secrets.R2_BUCKET_NAME }}
+    outputs:
+      configurado: ${{ steps.check.outputs.configurado }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Conferir se o backup está configurado
+        id: check
+        run: |
+          if [ -z "$BACKUP_DATABASE_URL" ] || [ -z "$BACKUP_PASSPHRASE" ] || [ -z "$DESTINO_BUCKET" ]; then
+            echo "::warning::Backup ainda não configurado: faltam segredos do repositório (veja o cabeçalho de .github/workflows/backup.yml)."
+            echo "configurado=nao" >> "$GITHUB_OUTPUT"
+          else
+            echo "configurado=sim" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Instalar cliente do Postgres 17 e rclone
+        if: steps.check.outputs.configurado == 'sim'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common rclone
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+      - name: Copiar o banco, cifrar e enviar
+        if: steps.check.outputs.configurado == 'sim'
+        run: |
+          set -euo pipefail
+          bash backend/scripts/backup/backup_db.sh "$BACKUP_DATABASE_URL" saida
+          cd saida
+          for f in *; do
+            gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 --symmetric --cipher-algo AES256 \
+                -o "$f.gpg" "$f" 3<<<"$BACKUP_PASSPHRASE"
+          done
+          rclone copy --include "*.gpg" . "destino:$DESTINO_BUCKET/banco/"
+          # Guarda 35 dias de cópias diárias do banco.
+          rclone delete --min-age 35d "destino:$DESTINO_BUCKET/banco/"
+          ls -la
+
+      - name: Copiar os documentos (sem apagar nada no destino)
+        if: steps.check.outputs.configurado == 'sim' && env.ORIGEM_BUCKET != ''
+        run: rclone copy --transfers 8 --checksum "origem:$ORIGEM_BUCKET" "destino:$DESTINO_BUCKET/documentos/"
+
+  restauracao:
+    needs: backup
+    if: needs.backup.outputs.configurado == 'sim' && (github.event_name == 'schedule' || inputs.testar_restauracao)
+    runs-on: ubuntu-latest
+    env:
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      RCLONE_CONFIG_DESTINO_TYPE: s3
+      RCLONE_CONFIG_DESTINO_PROVIDER: Other
+      RCLONE_CONFIG_DESTINO_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+      RCLONE_CONFIG_DESTINO_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_DESTINO_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+      DESTINO_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+    steps:
+      - name: Só aos domingos (ou quando pedido à mão)
+        id: dia
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "$(date -u +%u)" = "7" ]; then
+            echo "rodar=sim" >> "$GITHUB_OUTPUT"
+          else
+            echo "rodar=nao" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.dia.outputs.rodar == 'sim'
+
+      - uses: supabase/setup-cli@v3
+        if: steps.dia.outputs.rodar == 'sim'
+        with:
+          version: latest
+
+      - name: Subir um Supabase local com as migrations
+        if: steps.dia.outputs.rodar == 'sim'
+        run: supabase start -x studio,imgproxy,inbucket,edge-runtime,logflare,vector,realtime,storage-api
+
+      - name: Instalar cliente do Postgres 17 e rclone
+        if: steps.dia.outputs.rodar == 'sim'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common rclone
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+      - name: Restaurar o último backup e conferir
+        if: steps.dia.outputs.rodar == 'sim'
+        run: |
+          set -euo pipefail
+          mkdir -p r && cd r
+          ULTIMO="$(rclone lsf "destino:$DESTINO_BUCKET/banco/" --include "*.sql.gz.gpg" | sort | tail -1)"
+          BASE="${ULTIMO%.sql.gz.gpg}"
+          rclone copy "destino:$DESTINO_BUCKET/banco/" . --include "$BASE.*"
+          for f in *.gpg; do
+            gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 -o "${f%.gpg}" -d "$f" 3<<<"$BACKUP_PASSPHRASE"
+          done
+          bash ../backend/scripts/backup/restore_db.sh "$BASE.sql.gz" \
+            "postgresql://postgres:postgres@127.0.0.1:54322/postgres" "$BASE.contagens.txt"
+          echo "Backup restaurado e conferido: $BASE"

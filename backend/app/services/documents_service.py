@@ -8,6 +8,8 @@ Convenção: todo método recebe a conexão (conn ou admin_conn) explicitamente
 como primeiro argumento — nenhuma conexão é aberta aqui (I4/I9).
 """
 import xml.etree.ElementTree as ET
+
+from app.services.file_signature import safe_xml_fromstring
 from typing import Any
 from uuid import UUID
 
@@ -74,16 +76,18 @@ class DocumentsService:
         admin_conn: asyncpg.Connection,
         *, document_id: UUID, folder_id: UUID, company_id: UUID, name: str,
         mime_type: str, file_type: str, size_bytes: int, storage_path: str, uploaded_by: str,
+        created_at=None,
     ) -> asyncpg.Record:
         return await admin_conn.fetchrow(
             """
             INSERT INTO public.documents
               (id, folder_id, company_id, name, mime_type, file_type,
-               size_bytes, storage_path, uploaded_by, ocr_status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending')
+               size_bytes, storage_path, uploaded_by, ocr_status, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', COALESCE($10, now()))
             RETURNING id::text, name, storage_path, created_at
             """,
             document_id, folder_id, company_id, name, mime_type, file_type, size_bytes, storage_path, uploaded_by,
+            created_at,
         )
 
     # -- confirm (fase 2) -----------------------------------------------------
@@ -95,7 +99,7 @@ class DocumentsService:
         # explícito como argumento de user_has_access() em vez de usado implicitamente.
         return await admin_conn.fetchrow(
             """
-            SELECT d.id, d.storage_path, d.company_id, d.content_hash,
+            SELECT d.id, d.name, d.storage_path, d.company_id, d.content_hash,
                    public.user_has_access(
                      $2::uuid,
                      (SELECT f.path FROM public.folders f WHERE f.id = d.folder_id),
@@ -168,11 +172,11 @@ class DocumentsService:
             version_id = await admin_conn.fetchval(
                 """
                 INSERT INTO public.document_versions
-                  (document_id, version_number, storage_key, size_bytes, mime_type, uploaded_by)
-                VALUES ($1, 1, $2, $3, $4, $5)
+                  (document_id, version_number, storage_key, size_bytes, mime_type, uploaded_by, sha256)
+                VALUES ($1, 1, $2, $3, $4, $5, $6)
                 RETURNING id
                 """,
-                document_id, row["storage_path"], row["size_bytes"], row["mime_type"], user_id,
+                document_id, row["storage_path"], row["size_bytes"], row["mime_type"], user_id, content_hash,
             )
             await admin_conn.execute(
                 "UPDATE public.documents SET current_version_id = $2 WHERE id = $1",
@@ -333,7 +337,7 @@ class DocumentsService:
         Retorna None se o XML não seguir o schema reconhecido (não é NFe).
         """
         try:
-            root = ET.fromstring(xml_bytes)
+            root = safe_xml_fromstring(xml_bytes)
         except ET.ParseError:
             return None
 
@@ -364,14 +368,45 @@ class DocumentsService:
     # -- listagem / detalhe / patch -----------------------------------------------
 
     @staticmethod
-    async def list_recent(conn: asyncpg.Connection, company_id: UUID, limit: int) -> list[asyncpg.Record]:
+    async def list_recent(
+        conn: asyncpg.Connection, company_id: UUID, limit: int, opened_by: str | None = None,
+    ) -> list[asyncpg.Record]:
+        """
+        Sem `opened_by`: os últimos enviados na empresa. Com `opened_by`: os
+        que essa pessoa abriu ou baixou por último (achado A3-33), a partir da
+        trilha de atividade — só documentos que ainda existem e que ela vê.
+        """
+        if opened_by:
+            return await conn.fetch(
+                """
+                SELECT d.id::text, d.name, d.folder_id::text, d.company_id::text,
+                       d.mime_type, d.file_type, d.size_bytes, d.ocr_status, d.created_at,
+                       f.name AS folder_name, a.last_at AS opened_at
+                FROM (
+                  SELECT item_id, max(created_at) AS last_at
+                  FROM public.activity_log
+                  WHERE user_id = $3::uuid AND company_id = $1 AND item_type = 'document'
+                    AND action IN ('view', 'download')
+                  GROUP BY item_id
+                  ORDER BY max(created_at) DESC
+                  LIMIT $2 * 3
+                ) a
+                JOIN public.documents d ON d.id = a.item_id AND d.deleted_at IS NULL
+                LEFT JOIN public.folders f ON f.id = d.folder_id
+                ORDER BY a.last_at DESC
+                LIMIT $2
+                """,
+                company_id, limit, opened_by,
+            )
         return await conn.fetch(
             """
             SELECT
               d.id::text, d.name, d.folder_id::text, d.company_id::text,
-              d.mime_type, d.file_type, d.size_bytes, d.ocr_status, d.created_at
+              d.mime_type, d.file_type, d.size_bytes, d.ocr_status, d.created_at,
+              f.name AS folder_name
             FROM public.documents d
-            WHERE d.company_id = $1 AND d.deleted_at IS NULL
+            LEFT JOIN public.folders f ON f.id = d.folder_id
+            WHERE d.company_id = $1 AND d.deleted_at IS NULL AND d.content_hash IS NOT NULL
             ORDER BY d.created_at DESC
             LIMIT $2
             """,
@@ -392,14 +427,33 @@ class DocumentsService:
         )
 
     @staticmethod
-    async def list_by_folder(conn: asyncpg.Connection, folder_id: UUID, company_id: UUID) -> list[asyncpg.Record]:
-        return await conn.fetch(
-            """
+    async def list_by_folder(
+        conn: asyncpg.Connection, folder_id: UUID, company_id: UUID, *,
+        limit: int | None = None, offset: int = 0, sort: str = "name", direction: str = "asc", q: str | None = None,
+    ) -> tuple[list[asyncpg.Record], int]:
+        """
+        Documentos da pasta, paginados (achado A4-12: pasta com 5.000 documentos
+        voltava inteira, com dois subselects por linha). Sem limit, devolve tudo
+        (compatível com quem já usava). Envios incompletos (sem hash) não entram.
+        """
+        order = {
+            "name": "lower(d.name)", "size": "d.size_bytes", "created_at": "d.created_at",
+            "updated_at": "d.updated_at", "kind": "d.file_type", "ocr": "d.ocr_status",
+        }.get(sort, "lower(d.name)")
+        direction = "DESC" if direction == "desc" else "ASC"
+        where = """
+            d.folder_id = $1 AND d.company_id = $2 AND d.deleted_at IS NULL AND d.content_hash IS NOT NULL
+            AND ($3::text IS NULL OR d.name ILIKE '%' || $3 || '%')
+        """
+        total = await conn.fetchval(f"SELECT count(*) FROM public.documents d WHERE {where}", folder_id, company_id, q)
+        rows = await conn.fetch(
+            f"""
             SELECT
               d.id::text, d.name, d.folder_id::text, d.company_id::text,
               d.mime_type, d.file_type, d.size_bytes, d.storage_path, d.content_hash,
               d.sector, d.competencia, d.tipo_fiscal, d.ocr_status,
               d.uploaded_by::text, d.created_at, d.updated_at,
+              u.full_name AS uploaded_by_name,
               EXISTS (
                 SELECT 1 FROM public.favorites f
                 WHERE f.document_id = d.id AND f.user_id = auth.uid()
@@ -411,13 +465,14 @@ class DocumentsService:
                   AND (s.expires_at IS NULL OR s.expires_at > now())
               ) AS active_share_count
             FROM public.documents d
-            WHERE d.folder_id = $1
-              AND d.company_id = $2
-              AND d.deleted_at IS NULL
-            ORDER BY d.name
+            LEFT JOIN public.users u ON u.id = d.uploaded_by
+            WHERE {where}
+            ORDER BY {order} {direction}, d.id
+            LIMIT $4 OFFSET $5
             """,
-            folder_id, company_id,
+            folder_id, company_id, q, limit, offset,
         )
+        return rows, total
 
     @staticmethod
     async def get_document_detail(conn: asyncpg.Connection, document_id: UUID) -> asyncpg.Record | None:
@@ -434,6 +489,19 @@ class DocumentsService:
             """,
             document_id,
         )
+
+    @staticmethod
+    async def name_taken_in_folder(conn: asyncpg.Connection, document_id: UUID, name: str) -> bool:
+        return bool(await conn.fetchval(
+            """
+            SELECT EXISTS (
+              SELECT 1 FROM public.documents o
+              JOIN public.documents d ON d.id = $1
+              WHERE o.folder_id = d.folder_id AND o.id <> d.id AND o.deleted_at IS NULL AND lower(o.name) = lower($2)
+            )
+            """,
+            document_id, name,
+        ))
 
     @staticmethod
     async def patch_metadata(

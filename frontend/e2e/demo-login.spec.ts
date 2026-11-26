@@ -4,12 +4,11 @@ import { loginAsDemo } from "./helpers";
 test("modo demo abre o dashboard com dados reais da empresa", async ({ page }) => {
   await loginAsDemo(page);
 
-  // StatCard renderiza <p>{value}</p><p>{label}</p> como irmãos (Dashboard.tsx).
-  // Pega o número que precede o rótulo "Documentos" e confirma que é > 0 —
-  // ou seja, a empresa carregada tem dados reais, não uma empresa vazia por engano.
-  const label = page.locator("p", { hasText: "Documentos" }).first();
-  const value = label.locator("xpath=preceding-sibling::p[1]");
-  await expect(value).toBeVisible();
-  const docCount = Number(await value.textContent());
+  // O contador de documentos do Início é um link cujo nome acessível começa
+  // pelo total ("14 documentos, 1 enviados hoje. Abrir Documentos"). Confirma
+  // que é > 0: a empresa carregada tem dados reais, não uma vazia por engano.
+  const card = page.getByRole("link", { name: /^[\d.]+ documentos?,.*Abrir Documentos$/ });
+  await expect(card).toBeVisible({ timeout: 15_000 });
+  const docCount = Number((await card.getAttribute("aria-label"))?.match(/^([\d.]+)/)?.[1].replace(/\./g, ""));
   expect(docCount).toBeGreaterThan(0);
 });
