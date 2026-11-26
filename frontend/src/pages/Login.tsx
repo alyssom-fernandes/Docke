@@ -1,3 +1,5 @@
+import { entrarComPasskey, passkeySuportada } from "@/lib/passkey";
+import { Fingerprint } from "lucide-react";
 import { useState, useEffect, useRef, FormEvent, CSSProperties, KeyboardEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, ArrowLeft, MailCheck } from "lucide-react";
@@ -43,7 +45,21 @@ function useReturnTo(): string {
 
 export default function Login() {
   usePageTitle("Entrar");
-  const { login, loginDemo, user } = useAuthContext();
+  const { login, loginDemo, user, loginWithSession } = useAuthContext();
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  async function entrarPasskey() {
+    setFormError("");
+    setPasskeyBusy(true);
+    try {
+      await loginWithSession(await entrarComPasskey(), remember);
+      navigate(returnTo, { replace: true });
+    } catch (err: any) {
+      if (err?.name === "NotAllowedError" || err?.message === "cancelado") return;  // a pessoa cancelou no aparelho
+      setFormError(err?.response?.data?.detail ?? "Não foi possível entrar com a passkey. Tente de novo ou use a senha.");
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }
   const navigate = useNavigate();
   const returnTo = useReturnTo();
 
@@ -234,6 +250,12 @@ export default function Login() {
       >
         Entrar
       </Button>
+      {passkeySuportada() && (
+        <Button type="button" variant="ghost" loading={passkeyBusy} disabled={loading || demoBusy} onClick={entrarPasskey}
+          className="w-full h-11! sm:h-10! text-[14px]!">
+          <Fingerprint className="w-4 h-4" aria-hidden /> Entrar com digital ou rosto
+        </Button>
+      )}
     </form>
   ) : view === "forgot" ? (
     <form onSubmit={handleForgot} className="flex flex-col gap-3 text-left login-reveal" noValidate>

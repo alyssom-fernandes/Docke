@@ -14,6 +14,7 @@ import { friendlyError } from "@/lib/errors";
 import { relativeDate } from "@/lib/date";
 import Dialog from "@/components/ui/Dialog";
 import { MfaEnroll } from "@/components/shared/MfaSetup";
+import PasskeysCard from "@/components/shared/PasskeysCard";
 
 interface IntegrityResult {
   total_events: number;
@@ -298,6 +299,7 @@ export default function Security() {
         descricao={lembra
           ? "Fica conectada neste computador mesmo depois de fechar o navegador. Em computador compartilhado, saia pelo menu da conta ao terminar."
           : "Termina quando a janela do navegador é fechada (bom para computador compartilhado)."} />
+      {!isDemo && <PasskeysCard />}
       <Cartao icon={KeyRound} cor="bg-red-500" titulo="Senha" descricao="Troque a senha da sua conta. Ela vale para todas as empresas que você acessa.">
         {isDemo ? (
           <p className="text-mac-body text-(--text-secondary) max-w-[520px]">

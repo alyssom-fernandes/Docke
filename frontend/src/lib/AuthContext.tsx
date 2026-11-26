@@ -11,6 +11,7 @@ interface AuthCtx {
   updateProfile: (fullName: string) => Promise<void>;
   passwordChanged: () => void;
   completeMfa: (tokens: SessionTokens) => Promise<void>;
+  loginWithSession: (tokens: SessionTokens, remember?: boolean) => Promise<void>;
 }
 
 const Ctx = createContext<AuthCtx | null>(null);
