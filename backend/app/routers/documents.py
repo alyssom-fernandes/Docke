@@ -1060,7 +1060,7 @@ async def get_preview_url(
     Retorna URL pré-assinada para abrir o documento inline no browser.
     - Expiração: 5 minutos.
     - Content-Disposition: inline (abre no browser, não faz download).
-    - Documentos > 10MB: retorna inline=false e orientação para download.
+    - Documentos acima do limite de envio: retorna inline=false e orientação para download.
     """
     doc = await DocumentsService.get_document_for_preview(conn, document_id)
     if doc is None:
@@ -1073,7 +1073,7 @@ async def get_preview_url(
             "expires_at": None,
             "size_bytes": doc["size_bytes"],
             "size_limit_bytes": _PREVIEW_SIZE_LIMIT,
-            "message": f"Arquivo com {doc['size_bytes'] // 1_048_576}MB excede o limite de 10MB para preview inline. Use o download.",
+            "message": f"Arquivo com {doc['size_bytes'] // 1_048_576} MB passa do limite de {_PREVIEW_SIZE_LIMIT // 1_048_576} MB para abrir aqui. Use Baixar.",
         }
 
     ext = doc["name"].rsplit(".", 1)[-1].lower() if "." in doc["name"] else ""
@@ -1226,7 +1226,31 @@ async def get_document(
     row = await DocumentsService.get_document_detail(conn, document_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
-    return dict(row)
+    # X3-16: o caminho interno do storage não sai da API, e o texto lido vem
+    # só como trecho (o texto inteiro tem rota própria, sob demanda).
+    d = dict(row)
+    d.pop("storage_path", None)
+    texto = d.pop("ocr_text", None) or ""
+    d["ocr_excerpt"] = texto[:600]
+    d["ocr_text_length"] = len(texto)
+    return d
+
+
+# ---------------------------------------------------------------------------
+# GET /documents/:id/text — texto lido do documento, sob demanda (A5-64)
+# ---------------------------------------------------------------------------
+
+@router.get("/{document_id}/text")
+async def get_document_text(
+    document_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    texto = await conn.fetchrow(
+        "SELECT ocr_text, ocr_status FROM public.documents WHERE id = $1 AND deleted_at IS NULL", document_id,
+    )
+    if texto is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+    return {"text": texto["ocr_text"] or "", "ocr_status": texto["ocr_status"]}
 
 
 # ---------------------------------------------------------------------------

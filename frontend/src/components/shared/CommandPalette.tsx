@@ -14,7 +14,7 @@ import { useCommandPalette } from "@/hooks/useCommandPalette";
 import { toggleTheme } from "@/lib/theme";
 
 interface QuickResult { id: string; name: string; type: "document" | "folder"; folder_id?: string | null }
-interface DocumentPreview { id: string; name: string; size_bytes: number; ocr_text: string | null; created_at: string }
+interface DocumentPreview { id: string; name: string; size_bytes: number; ocr_excerpt?: string | null; ocr_text?: string | null; created_at: string }
 
 interface Item {
   id: string;
@@ -220,7 +220,7 @@ export default function CommandPalette() {
                 <p className="text-mac-body font-semibold text-(--text-primary) break-words">{preview.name}</p>
                 <p className="text-mac-caption text-(--text-secondary)">{fmtSize(preview.size_bytes)} · enviado {relativeDate(preview.created_at)}</p>
                 <p className="text-mac-caption text-(--text-secondary) line-clamp-[12] whitespace-pre-line border-t border-(--border-default) pt-2">
-                  {preview.ocr_text?.trim() ? preview.ocr_text.slice(0, 600) : "Sem texto reconhecido neste documento."}
+                  {(preview.ocr_excerpt ?? preview.ocr_text ?? "").trim() ? (preview.ocr_excerpt ?? preview.ocr_text ?? "").slice(0, 600) : "Sem texto reconhecido neste documento."}
                 </p>
               </div>
             ) : (

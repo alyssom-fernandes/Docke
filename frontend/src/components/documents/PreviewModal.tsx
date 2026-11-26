@@ -282,7 +282,6 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose }: Preview
         // Antes a falha caía no XML cru sem aviso (A5-55).
         .catch(() => { if (!cancelled) setXmlFieldsFailed(true); });
     }
-    if (type === "image") api.get<{ ocr_text: string | null }>(`/documents/${doc.id}`).then(({ data }) => { if (!cancelled) setOcrText(data.ocr_text ?? ""); }).catch(() => {});
     return () => { cancelled = true; };
   }, [doc.id, type, isXml]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -309,11 +308,18 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose }: Preview
     }
   }, [active, matches.length, type]);
 
+  // Imagem: o texto lido só é buscado quando a lupa abre (A5-64).
+  const ensureImageText = useCallback(() => {
+    if (type !== "image" || ocrText !== null) return;
+    api.get<{ text: string }>(`/documents/${doc.id}/text`).then(({ data }) => setOcrText(data.text ?? "")).catch(() => setOcrText(""));
+  }, [type, ocrText, doc.id]);
+
   const openSearch = useCallback(() => {
     setSearchOpen(true);
     ensurePdfText();
+    ensureImageText();
     window.setTimeout(() => searchRef.current?.focus(), 30);
-  }, [ensurePdfText]);
+  }, [ensurePdfText, ensureImageText]);
 
   // Teclado: ← → trocam de documento (fora de campos e do PDF), Ctrl+F busca.
   useEffect(() => {
