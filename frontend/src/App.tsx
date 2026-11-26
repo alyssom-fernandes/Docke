@@ -1,3 +1,4 @@
+import ForcePasswordChange from "@/components/shared/ForcePasswordChange";
 import { lazy, Suspense, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuthContext } from "@/lib/AuthContext";
@@ -85,6 +86,7 @@ function ProtectedRoutes() {
   return (
     <CompanyProvider enabled={!!user}>
       <SessionExpiredOverlay />
+      {user.must_change_password && <ForcePasswordChange />}
       <OnboardingGate>
         <AppShell>
           <Suspense fallback={<PageFallback />}>

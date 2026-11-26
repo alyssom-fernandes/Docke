@@ -8,6 +8,8 @@ export interface AuthUser {
   username: string;
   full_name: string;
   role: string;
+  /** Senha provisória dada por um admin: troca no primeiro acesso (A9-16). */
+  must_change_password?: boolean;
 }
 
 interface AuthState {
@@ -17,6 +19,7 @@ interface AuthState {
   loginDemo: () => Promise<void>;
   logout: () => void;
   updateProfile: (fullName: string) => Promise<void>;
+  passwordChanged: () => void;
 }
 
 const LOGIN_TIMEOUT_MS = 20_000;
@@ -29,6 +32,7 @@ function toUser(data: any): AuthUser {
     username: data.username,
     full_name: data.full_name,
     role: data.role,
+    must_change_password: !!data.must_change_password,
   };
 }
 
@@ -128,5 +132,14 @@ export function useAuth(): AuthState {
     });
   }
 
-  return { user, isLoading, login, loginDemo, logout, updateProfile };
+  function passwordChanged() {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, must_change_password: false };
+      localStorage.setItem("docke_user", JSON.stringify(next));
+      return next;
+    });
+  }
+
+  return { user, isLoading, login, loginDemo, logout, updateProfile, passwordChanged };
 }
