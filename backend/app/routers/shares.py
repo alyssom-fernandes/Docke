@@ -155,6 +155,30 @@ async def list_shares(
     return [dict(r) for r in rows]
 
 
+@router.get("/shares/{share_id}/accesses")
+async def list_share_accesses(
+    share_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """
+    Quem abriu o link e quando (A6-17): data, sucesso (senha certa, dentro
+    da validade) e o navegador. O IP fica só como hash, nunca aparece. A RLS
+    limita aos links que a pessoa pode ver.
+    """
+    visible = await conn.fetchval("SELECT EXISTS (SELECT 1 FROM public.shares WHERE id = $1)", share_id)
+    if not visible:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link não encontrado.")
+    rows = await conn.fetch(
+        """
+        SELECT id::text, accessed_at, success, user_agent
+        FROM public.share_accesses WHERE share_id = $1
+        ORDER BY accessed_at DESC LIMIT 100
+        """,
+        share_id,
+    )
+    return [dict(r) for r in rows]
+
+
 # ---------------------------------------------------------------------------
 # DELETE /shares/:id — revoga
 # ---------------------------------------------------------------------------

@@ -22,9 +22,15 @@ class TrashService:
               d.file_type,
               d.size_bytes,
               d.deleted_at,
+              d.trash_expires_at,
               d.deleted_original_folder_id::text,
               f.name AS original_folder_name,
               f.deleted_at IS NOT NULL AS original_folder_deleted,
+              (SELECT string_agg(anc.name, ' / ' ORDER BY nlevel(anc.path))
+                 FROM public.folders anc WHERE anc.company_id = d.company_id AND anc.path @> orig.path) AS original_path,
+              (SELECT u.full_name FROM public.activity_log al JOIN public.users u ON u.id = al.user_id
+                WHERE al.item_id = d.id AND al.action = 'delete' ORDER BY al.created_at DESC LIMIT 1) AS deleted_by_name,
+              public.document_deletion_block_reason(d.id) AS bloqueio,
               'document' AS item_type
             FROM public.documents d
             LEFT JOIN public.folders f ON f.id = d.deleted_original_folder_id
@@ -48,7 +54,12 @@ class TrashService:
               f.name,
               f.company_id::text,
               f.deleted_at,
+              f.trash_expires_at,
               f.parent_id::text,
+              (SELECT string_agg(anc.name, ' / ' ORDER BY nlevel(anc.path))
+                 FROM public.folders anc WHERE anc.company_id = f.company_id AND anc.path @> f.path AND anc.id <> f.id) AS original_path,
+              (SELECT u.full_name FROM public.activity_log al JOIN public.users u ON u.id = al.user_id
+                WHERE al.item_id = f.id AND al.action = 'delete' ORDER BY al.created_at DESC LIMIT 1) AS deleted_by_name,
               (
                 SELECT count(*) FROM public.documents d
                 JOIN public.folders df ON df.id = d.folder_id
