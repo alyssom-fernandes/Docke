@@ -72,12 +72,10 @@ class SearchService:
       ) ft ON ft.document_id = d.id
       CROSS JOIN (SELECT websearch_to_tsquery('portuguese', unaccent($1)) AS tsq) sq
       CROSS JOIN LATERAL (
-        -- nome (A) > metadado customizado (B) > setor/fiscal (C) > texto lido (D)
-        SELECT
-          setweight(to_tsvector('portuguese', public.immutable_unaccent(d.name)), 'A') ||
-          setweight(to_tsvector('portuguese', public.immutable_unaccent(coalesce(ft.txt, ''))), 'B') ||
-          setweight(to_tsvector('portuguese', public.immutable_unaccent(coalesce(d.sector, '') || ' ' || coalesce(d.tipo_fiscal, ''))), 'C') ||
-          setweight(to_tsvector('portuguese', public.immutable_unaccent(coalesce(d.ocr_text, ''))), 'D') AS tsv
+        -- nome (A), setor/fiscal (C) e texto lido (D) já vêm calculados na
+        -- coluna gerada com índice (X3-05); só o metadado (B) é somado aqui.
+        SELECT d.search_tsv ||
+          setweight(to_tsvector('portuguese', public.immutable_unaccent(coalesce(ft.txt, ''))), 'B') AS tsv
       ) dtv
     """
 
