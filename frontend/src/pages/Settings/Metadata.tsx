@@ -540,7 +540,7 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
                     <div className="flex-1 min-w-40">
                       <p className="text-mac-body text-(--text-primary)">{f.label}</p>
                       <p className="text-mac-caption text-(--text-secondary)">
-                        {TYPE_LABEL[f.type]}{!isOwn && " · vem de uma pasta acima"}{(f as any).required ? " · obrigatório" : ""}{(f as any).default_value ? ` · padrão “${(f as any).default_value}”` : ""}
+                        {TYPE_LABEL[f.type]}{!isOwn && ` · vem de ${(f as any).source_folder_name ?? "uma pasta acima"}`}{(f as any).required ? " · obrigatório" : ""}{(f as any).default_value ? ` · padrão “${(f as any).default_value}”` : ""}
                       </p>
                     </div>
                     {isOwn && ownRule ? (
@@ -579,6 +579,20 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
             </ul>
           )}
 
+          {rules.filter((r) => r.mode === "exclude").length > 0 && (
+            <div className="mb-4 rounded-(--radius-control) border border-dashed border-(--border-control) p-3 space-y-1.5">
+              <p className="text-mac-caption font-medium text-(--text-secondary)">Não herdados nesta pasta</p>
+              <ul className="space-y-1">
+                {rules.filter((r) => r.mode === "exclude").map((r) => (
+                  <li key={r.id} className="flex items-center gap-2 text-mac-body text-(--text-primary)">
+                    <span className="flex-1">{r.label}</span>
+                    <Button variant="ghost" size="sm" onClick={() => setRemoving(r)}>Voltar a herdar</Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {availableToAdd.length > 0 && (
             <div className="flex items-center gap-2">
               <Dropdown
@@ -598,10 +612,10 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
 
       {removing && (
         <ConfirmModal
-          title={`Remover "${removing.label}" desta pasta?`}
+          title={removing.mode === "exclude" ? `Voltar a herdar "${removing.label}" aqui?` : `Remover "${removing.label}" desta pasta?`}
           description="A pasta volta a herdar a configuração do ancestral mais próximo (se houver alguma)."
-          confirmLabel="Remover"
-          danger
+          confirmLabel={removing.mode === "exclude" ? "Voltar a herdar" : "Remover"}
+          danger={removing.mode !== "exclude"}
           onConfirm={confirmRemove}
           onClose={() => setRemoving(null)}
         />
