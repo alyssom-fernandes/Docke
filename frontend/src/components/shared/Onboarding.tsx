@@ -19,12 +19,18 @@ export function markOnboardingComplete() {
   localStorage.setItem(ONBOARDING_KEY, "true");
 }
 
+// Mesma estrutura usada na demonstração (A1-23); dá para marcar várias.
 const FOLDER_TEMPLATES = [
-  { id: "fiscal", label: "Fiscal", folders: ["Notas Fiscais", "Impostos", "Declarações"] },
-  { id: "rh", label: "RH", folders: ["Contratos de trabalho", "Folha de pagamento", "Admissões"] },
-  { id: "juridico", label: "Jurídico", folders: ["Contratos", "Procurações", "Certidões"] },
-  { id: "none", label: "Começar sem pastas", folders: [] },
+  { id: "fiscal", label: "Fiscal", folders: ["Notas Fiscais", "Impostos", "Declarações", "SPED"] },
+  { id: "rh", label: "RH", folders: ["Admissões", "Folha de pagamento", "ASO e exames", "Desligamentos"] },
+  { id: "bancario", label: "Bancário", folders: ["Extratos", "Comprovantes", "Conciliações"] },
+  { id: "contratos", label: "Contratos", folders: ["Fornecedores", "Clientes", "Aluguel"] },
+  { id: "licencas", label: "Licenças e certidões", folders: ["Alvarás", "AVCB", "Certidões negativas", "Licença ambiental"] },
 ];
+
+const fmtCnpjInput = (v: string) => v.replace(/\D/g, "").slice(0, 14)
+  .replace(/^(\d{2})(\d)/, "$1.$2").replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+  .replace(/\.(\d{3})(\d)/, ".$1/$2").replace(/(\d{4})(\d)/, "$1-$2");
 
 /**
  * Primeiro acesso (A1-20, A1-21, A1-24): em Dialog acessível; a empresa é
@@ -40,7 +46,8 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
   const [step, setStep] = useState(0);
   const [companyName, setCompanyName] = useState("");
   const [savedName, setSavedName] = useState("");
-  const [templateId, setTemplateId] = useState("fiscal");
+  const [templateIds, setTemplateIds] = useState<string[]>(["fiscal", "rh", "bancario", "contratos"]);
+  const [cnpj, setCnpj] = useState("");
   const [loading, setLoading] = useState(false);
   const [companyId, setCompanyId] = useState<string | null>(null);
 
@@ -59,11 +66,13 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
     if (!name) return;
     setLoading(true);
     try {
+      const digits = cnpj.replace(/\D/g, "");
       if (!companyId) {
         const r = await api.post("/companies", { name });
         setCompanyId(r.data.id);
-      } else if (name !== savedName) {
-        await api.patch(`/companies/${companyId}`, { name });
+        if (digits) await api.patch(`/companies/${r.data.id}`, { cnpj: digits }).catch(() => showError("Empresa criada; o CNPJ não foi salvo (confira em Ajustes → Organização)."));
+      } else if (name !== savedName || digits) {
+        await api.patch(`/companies/${companyId}`, { name, ...(digits ? { cnpj: digits } : {}) });
       }
       setSavedName(name);
       reload();
@@ -76,12 +85,18 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
   }
 
   async function createFolders() {
-    const template = FOLDER_TEMPLATES.find((t) => t.id === templateId);
-    if (companyId && template && template.folders.length) {
+    const escolhidos = FOLDER_TEMPLATES.filter((t) => templateIds.includes(t.id));
+    if (companyId && escolhidos.length) {
       setLoading(true);
       let falhas = 0;
-      for (const name of template.folders) {
-        try { await api.post("/folders", { name, company_id: companyId, parent_id: null }); } catch { falhas++; }
+      // Pasta do grupo (Fiscal, RH…) com as subpastas dentro.
+      for (const t of escolhidos) {
+        try {
+          const r = await api.post("/folders", { name: t.label, company_id: companyId, parent_id: null });
+          for (const sub of t.folders) {
+            try { await api.post("/folders", { name: sub, company_id: companyId, parent_id: r.data.id }); } catch { falhas++; }
+          }
+        } catch { falhas++; }
       }
       setLoading(false);
       if (falhas) showError(`${falhas} ${falhas === 1 ? "pasta não foi criada" : "pastas não foram criadas"} (talvez já existam). Dá para criar depois em Documentos.`);
@@ -114,21 +129,29 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
       {step === 1 && (
         <form onSubmit={(e) => { e.preventDefault(); saveCompany(); }} className="space-y-2">
           <Input label="Nome da empresa" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Ex.: Posto Central Ltda." maxLength={120} autoFocus />
-          <p className="flex items-center gap-1.5 text-mac-caption text-(--text-secondary)"><Building2 className="w-3.5 h-3.5" aria-hidden="true" /> CNPJ, logo e perfil fiscal ficam em Ajustes → Organização.</p>
+          <Input label="CNPJ (opcional)" inputMode="numeric" value={cnpj} onChange={(e) => setCnpj(fmtCnpjInput(e.target.value))} placeholder="00.000.000/0000-00" />
+          <p className="flex items-center gap-1.5 text-mac-caption text-(--text-secondary)"><Building2 className="w-3.5 h-3.5" aria-hidden="true" /> Logo e perfil fiscal (regime, segmento) ficam em Ajustes → Organização.</p>
         </form>
       )}
       {step === 2 && (
-        <div role="radiogroup" aria-label="Modelo de pastas" className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {FOLDER_TEMPLATES.map((t) => (
-            <button key={t.id} type="button" role="radio" aria-checked={templateId === t.id} onClick={() => setTemplateId(t.id)}
-              className={`text-left rounded-(--radius-control) border p-3 min-h-16 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${templateId === t.id ? "border-teal-600 bg-teal-500/10" : "border-(--border-control) hover:bg-(--bg-hover)"}`}>
-              <span className="flex items-center gap-2 text-mac-body font-medium text-(--text-primary)">
-                {templateId === t.id ? <Check className="w-4 h-4 text-(--text-accent)" aria-hidden="true" /> : <FolderOpen className="w-4 h-4 text-(--text-secondary)" aria-hidden="true" />}{t.label}
-              </span>
-              {t.folders.length > 0 && <span className="block text-mac-caption text-(--text-secondary)">{t.folders.join(", ")}</span>}
-            </button>
-          ))}
-        </div>
+        <fieldset>
+          <legend className="mb-2 text-mac-caption text-(--text-secondary)">Marque as pastas que fazem sentido; cada uma vem com as subpastas. Nenhuma marcada começa vazio.</legend>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {FOLDER_TEMPLATES.map((t) => {
+              const on = templateIds.includes(t.id);
+              return (
+                <button key={t.id} type="button" role="checkbox" aria-checked={on}
+                  onClick={() => setTemplateIds((ids) => (on ? ids.filter((x) => x !== t.id) : [...ids, t.id]))}
+                  className={`text-left rounded-(--radius-control) border p-3 min-h-16 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${on ? "border-teal-600 bg-teal-500/10" : "border-(--border-control) hover:bg-(--bg-hover)"}`}>
+                  <span className="flex items-center gap-2 text-mac-body font-medium text-(--text-primary)">
+                    {on ? <Check className="w-4 h-4 text-(--text-accent)" aria-hidden="true" /> : <FolderOpen className="w-4 h-4 text-(--text-secondary)" aria-hidden="true" />}{t.label}
+                  </span>
+                  <span className="block text-mac-caption text-(--text-secondary)">{t.folders.join(", ")}</span>
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
       )}
       {step === 3 && (
         <ul className="space-y-2">
