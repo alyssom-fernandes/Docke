@@ -78,6 +78,7 @@ import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 import { prefetchPdfViewer } from "@/lib/prefetch";
 import { friendlyError } from "@/lib/errors";
 import IntegrityCheck from "@/components/documents/IntegrityCheck";
+import LinkAccesses from "@/components/documents/LinkAccesses";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1120,6 +1121,7 @@ function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit, onClos
       <DocumentObligations docId={doc.id} />
       <Disclosure icon={<Clock className="w-4 h-4" aria-hidden />} title="Atividade">
         <ActivityFeed companyId={companyId} itemId={doc.id} pageSize={20} groupByDay={false} emptyDescription="Nenhuma atividade registrada neste documento ainda." />
+        <LinkAccesses documentId={doc.id} />
       </Disclosure>
     </div>
   );

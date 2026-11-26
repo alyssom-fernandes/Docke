@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import XmlCode from "./XmlCode";
 import { X, Download, AlertCircle, Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Printer, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
 import { getFileStyle } from "@/lib/fileType";
 import api from "@/lib/api";
@@ -75,6 +76,9 @@ interface XmlFields {
 }
 
 const fmtCurrency = (v?: string | null) => (!v ? "—" : Number.isNaN(Number(v)) ? v : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
+/** Texto e campos da NF-e já baixados nesta sessão (A5-58). */
+const textCache = new Map<string, { text: string; truncated: boolean; fields?: XmlFields | null }>();
+
 const fmtCnpj = (v?: string | null) => (!v ? "—" : v.length === 14 ? v.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5") : v.length === 11 ? v.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : v);
 const fmtXmlDate = (v?: string | null) => { if (!v) return "—"; const d = new Date(v); return Number.isNaN(d.getTime()) ? v : d.toLocaleDateString("pt-BR"); };
 const fmtSize = (b: number) => (b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1).replace(".", ",")} KB` : `${(b / 1048576).toFixed(1).replace(".", ",")} MB`);
@@ -150,7 +154,7 @@ function Danfe({ fields, docName }: { fields: XmlFields; docName: string }) {
           <section className={box} aria-label="Emitente">
             <p className={cap}>Emitente</p>
             <p className="font-bold text-[12px]">{fields.emitente_nome ?? "—"}</p>
-            <p>CNPJ {fmtCnpj(fields.emitente_cnpj)}</p>
+            <p className="whitespace-nowrap">CNPJ {fmtCnpj(fields.emitente_cnpj)}</p>
           </section>
           <section className={`${box} text-center`} aria-label="Identificação do DANFE">
             <h3 className="font-bold text-[15px]">DANFE</h3>
@@ -210,6 +214,7 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose }: Preview
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [xmlFields, setXmlFields] = useState<XmlFields | null>(null);
+  const [xmlFieldsFailed, setXmlFieldsFailed] = useState(false);
   const [view, setView] = useState<"danfe" | "campos" | "xml">("danfe");
   const [watermarkLabel] = useState(getWatermarkLabel);
   const [ocrText, setOcrText] = useState<string | null>(null);
@@ -230,14 +235,21 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose }: Preview
   // Carrega o documento atual (e zera o estado do anterior).
   useEffect(() => {
     let cancelled = false;
-    setUrl(null); setTextContent(null); setTruncated(false); setError(null); setXmlFields(null); setView("danfe");
+    setUrl(null); setTextContent(null); setTruncated(false); setError(null); setXmlFields(null); setXmlFieldsFailed(false); setView("danfe");
     setOcrText(null); setPdfPages(null); setActive(0); setImgZoom(1); setImgRotation(0); setLoading(true);
     const fail = (e: any) => {
       if (cancelled) return;
       setError(e?.response?.data?.detail ?? (e?.response ? "Não foi possível abrir a pré-visualização." : "Sem conexão com o servidor. Confira a internet e tente de novo."));
     };
     if (type === "unsupported") { setLoading(false); return; }
-    if (type === "text") {
+    // Cache da sessão (A5-58): reabrir o mesmo arquivo não baixa de novo.
+    const cacheKey = `${doc.id}:${doc.size_bytes}`;
+    const hit = textCache.get(cacheKey);
+    if (type === "text" && hit) {
+      setTextContent(hit.text); setTruncated(hit.truncated); setLoading(false);
+      if (isXml && hit.fields !== undefined) { setXmlFields(hit.fields); if (!hit.fields) setXmlFieldsFailed(true); }
+      if (!isXml || hit.fields !== undefined) return () => { cancelled = true; };
+    } else if (type === "text") {
       api.get<{ download_url: string }>(`/documents/${doc.id}/download-url`)
         .then(async ({ data }) => {
           const resp = await fetch(data.download_url);
@@ -246,6 +258,7 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose }: Preview
           if (cancelled) return;
           setTextContent(txt.slice(0, 200_000));
           setTruncated(txt.length > 200_000);
+          textCache.set(cacheKey, { ...(textCache.get(cacheKey) ?? {}), text: txt.slice(0, 200_000), truncated: txt.length > 200_000 });
         })
         .catch(fail)
         .finally(() => { if (!cancelled) setLoading(false); });
@@ -259,10 +272,18 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose }: Preview
         .catch(fail)
         .finally(() => { if (!cancelled) setLoading(false); });
     }
-    if (isXml) api.get<XmlFields>(`/documents/${doc.id}/xml-fields`).then(({ data }) => { if (!cancelled) setXmlFields(data); }).catch(() => {});
+    if (isXml && !(hit && hit.fields !== undefined)) {
+      api.get<XmlFields>(`/documents/${doc.id}/xml-fields`)
+        .then(({ data }) => {
+          const c = textCache.get(cacheKey); if (c) c.fields = data;
+          if (!cancelled) { setXmlFields(data); if (!data?.recognized) setXmlFieldsFailed(true); }
+        })
+        // Antes a falha caía no XML cru sem aviso (A5-55).
+        .catch(() => { if (!cancelled) setXmlFieldsFailed(true); });
+    }
     if (type === "image") api.get<{ ocr_text: string | null }>(`/documents/${doc.id}`).then(({ data }) => { if (!cancelled) setOcrText(data.ocr_text ?? ""); }).catch(() => {});
     return () => { cancelled = true; };
-  }, [doc.id, type, isXml]);
+  }, [doc.id, type, isXml]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Texto por página do PDF (camada nativa) para a busca saltar à página certa.
   const ensurePdfText = useCallback(async () => {
@@ -463,10 +484,13 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose }: Preview
                 ))}
               </div>
             )}
+            {isXml && xmlFieldsFailed && (
+              <p role="status" className="px-5 pt-3 text-mac-caption text-(--text-secondary)">Este XML não foi reconhecido como NF-e (ou a leitura falhou agora): mostrando o arquivo como está.</p>
+            )}
             {isXml && xmlFields?.recognized && view === "danfe" ? (
-              <div className="p-4 sm:p-6"><Danfe fields={xmlFields} docName={doc.name} /></div>
+              <div key="danfe" className="reveal p-4 sm:p-6"><Danfe fields={xmlFields} docName={doc.name} /></div>
             ) : isXml && xmlFields?.recognized && view === "campos" ? (
-              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 p-6 max-w-[760px]">
+              <dl key="campos" className="reveal grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 p-6 max-w-[760px]">
                 {([
                   ["Número", xmlFields.numero], ["Série", xmlFields.serie], ["Data de emissão", fmtXmlDate(xmlFields.data_emissao)],
                   ["Valor total", fmtCurrency(xmlFields.valor_total)], ["Natureza da operação", xmlFields.natureza_operacao],
@@ -480,7 +504,11 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose }: Preview
             ) : (
               <>
                 {truncated && <p className="px-5 pt-3 text-mac-caption text-(--text-warning)">Mostrando os primeiros 200 mil caracteres. Baixe o arquivo para ver tudo.</p>}
-                <pre className="p-5 text-[12px] leading-relaxed font-mono text-(--text-primary) whitespace-pre-wrap break-words select-text">{highlighted ?? textContent}</pre>
+                {isXml && !highlighted ? (
+                  <div key="xml" className="reveal"><XmlCode text={textContent} /></div>
+                ) : (
+                  <pre className="p-5 text-[12px] leading-relaxed font-mono text-(--text-primary) whitespace-pre-wrap break-words select-text">{highlighted ?? textContent}</pre>
+                )}
               </>
             )}
           </div>

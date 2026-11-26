@@ -103,6 +103,9 @@ async def test_lixeira_ancorados_e_links_dizem_onde_quando_e_quem(api, admin, em
     assert lista[0]["created_by_name"] == "Pessoa Listas"
     acessos = (await api.get(API + f"/shares/{share_id}/accesses", headers=h)).json()
     assert [(x["success"], x["user_agent"]) for x in acessos] == [(True, "Firefox")]
+    # Linha do tempo do documento: acessos de todos os links dele (A5-25).
+    por_doc = (await api.get(API + "/shares/by-resource/accesses", params={"resource_type": "document", "resource_id": d}, headers=h)).json()
+    assert [(x["share_id"], x["user_agent"]) for x in por_doc] == [(share_id, "Firefox")]
 
     assert (await api.delete(API + f"/documents/{d}", headers=h)).status_code in (200, 204)
     itens = (await api.get(API + "/trash", params={"company_id": co}, headers=h)).json()

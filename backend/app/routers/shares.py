@@ -155,6 +155,32 @@ async def list_shares(
     return [dict(r) for r in rows]
 
 
+@router.get("/shares/by-resource/accesses")
+async def list_resource_accesses(
+    resource_type: str = Query(..., pattern="^(document|folder)$"),
+    resource_id: UUID = Query(...),
+    limit: int = Query(30, ge=1, le=200),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """
+    Acessos por link de um documento ou pasta, de todos os links dele, para a
+    linha do tempo do item (A5-25). A RLS limita aos links visíveis.
+    """
+    rows = await conn.fetch(
+        """
+        SELECT a.id::text, a.accessed_at, a.success, a.user_agent, s.id::text AS share_id,
+               s.revoked_at IS NOT NULL AS share_revoked
+        FROM public.share_accesses a
+        JOIN public.shares s ON s.id = a.share_id
+        WHERE s.resource_type = $1 AND s.resource_id = $2
+        ORDER BY a.accessed_at DESC
+        LIMIT $3
+        """,
+        resource_type, resource_id, limit,
+    )
+    return [dict(r) for r in rows]
+
+
 @router.get("/shares/{share_id}/accesses")
 async def list_share_accesses(
     share_id: UUID,
