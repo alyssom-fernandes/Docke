@@ -524,8 +524,9 @@ class FoldersService:
         if include_retention and olds:
             r3 = await admin_conn.execute(
                 """
-                INSERT INTO public.retention_policy_assignments (company_id, folder_path, policy_id, created_by)
-                SELECT r.company_id, m.new_path::ltree, r.policy_id, $4::uuid
+                INSERT INTO public.retention_policy_assignments
+                  (company_id, folder_path, policy_id, created_by, match_tipo_fiscal, match_field_id, match_field_value)
+                SELECT r.company_id, m.new_path::ltree, r.policy_id, $4::uuid, r.match_tipo_fiscal, r.match_field_id, r.match_field_value
                 FROM unnest($2::text[], $3::text[]) AS m(old_path, new_path)
                 JOIN public.retention_policy_assignments r ON r.company_id = $1::uuid AND r.folder_path = m.old_path::ltree
                 ON CONFLICT DO NOTHING

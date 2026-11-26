@@ -125,9 +125,11 @@ class RetentionService:
                    (SELECT string_agg(anc.name, ' / ' ORDER BY nlevel(anc.path))
                       FROM public.folders anc
                      WHERE anc.company_id = rpa.company_id AND anc.path @> rpa.folder_path) AS folder_label,
+                   (SELECT cf.label FROM public.custom_field cf WHERE cf.id = rpa.match_field_id) AS match_field_label,
                    (SELECT count(*) FROM public.documents d JOIN public.folders df ON df.id = d.folder_id
                      WHERE d.company_id = rpa.company_id AND d.deleted_at IS NULL AND d.content_hash IS NOT NULL
-                       AND (rpa.folder_path IS NULL OR df.path <@ rpa.folder_path)) AS document_count
+                       AND (rpa.folder_path IS NULL OR df.path <@ rpa.folder_path)
+                       AND public.retention_assignment_applies(rpa.match_tipo_fiscal, rpa.match_field_id, rpa.match_field_value, d.id, d.tipo_fiscal)) AS document_count
             FROM public.retention_policy_assignments rpa
             JOIN public.retention_policies rp ON rp.id = rpa.policy_id
             LEFT JOIN public.folders f ON f.company_id = rpa.company_id AND f.path = rpa.folder_path AND f.deleted_at IS NULL
@@ -144,7 +146,8 @@ class RetentionService:
             SELECT rpa.*, rp.name AS policy_name,
                    (SELECT string_agg(anc.name, ' / ' ORDER BY nlevel(anc.path))
                       FROM public.folders anc
-                     WHERE anc.company_id = rpa.company_id AND anc.path @> rpa.folder_path) AS folder_label
+                     WHERE anc.company_id = rpa.company_id AND anc.path @> rpa.folder_path) AS folder_label,
+                   (SELECT cf.label FROM public.custom_field cf WHERE cf.id = rpa.match_field_id) AS match_field_label
             FROM public.retention_policy_assignments rpa
             JOIN public.retention_policies rp ON rp.id = rpa.policy_id
             WHERE rpa.id = $1
@@ -155,14 +158,16 @@ class RetentionService:
     @staticmethod
     async def create_assignment(
         conn: asyncpg.Connection, *, company_id: UUID, folder_path: str | None, policy_id: UUID, created_by: str,
+        match_tipo_fiscal: str | None = None, match_field_id: UUID | None = None, match_field_value: str | None = None,
     ) -> asyncpg.Record:
         return await conn.fetchrow(
             """
-            INSERT INTO public.retention_policy_assignments (company_id, folder_path, policy_id, created_by)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO public.retention_policy_assignments
+              (company_id, folder_path, policy_id, created_by, match_tipo_fiscal, match_field_id, match_field_value)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
             """,
-            company_id, folder_path, policy_id, created_by,
+            company_id, folder_path, policy_id, created_by, match_tipo_fiscal, match_field_id, match_field_value,
         )
 
     @staticmethod
@@ -245,6 +250,7 @@ class RetentionService:
     @staticmethod
     async def simulate_assignment_impact(
         conn: asyncpg.Connection, *, company_id: UUID, policy_id: UUID, folder_path: str | None,
+        match_tipo_fiscal: str | None = None, match_field_id: UUID | None = None, match_field_value: str | None = None,
     ) -> dict[str, Any]:
         """
         Prévia antes de atribuir (A7-88): para cada documento do escopo
@@ -262,6 +268,7 @@ class RetentionService:
               JOIN public.folders f ON f.id = d.folder_id
               WHERE d.company_id = $1 AND d.deleted_at IS NULL AND d.content_hash IS NOT NULL
                 AND ($3::ltree IS NULL OR f.path <@ $3::ltree)
+                AND public.retention_assignment_applies($4, $5, $6, d.id, d.tipo_fiscal)
             ),
             np AS (SELECT * FROM public.retention_policies WHERE id = $2),
             calc AS (
@@ -294,7 +301,7 @@ class RetentionService:
             FROM calc
             ORDER BY document_name
             """,
-            company_id, policy_id, folder_path,
+            company_id, policy_id, folder_path, match_tipo_fiscal, match_field_id, match_field_value,
         )
         import datetime as _dt
 
@@ -354,6 +361,7 @@ class RetentionService:
                 JOIN public.retention_policies rp ON rp.id = rpa.policy_id
                 WHERE rpa.company_id = d.company_id AND rp.active AND rp.archived_at IS NULL
                   AND (rpa.folder_path IS NULL OR rpa.folder_path @> f.path)
+                  AND public.retention_assignment_applies(rpa.match_tipo_fiscal, rpa.match_field_id, rpa.match_field_value, d.id, d.tipo_fiscal)
               )
             ORDER BY d.created_at DESC
             LIMIT 51

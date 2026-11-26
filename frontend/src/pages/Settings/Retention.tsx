@@ -25,7 +25,7 @@ interface Policy {
   trigger_custom_field_id: string | null; trigger_field_label?: string | null; duration_months: number | null;
   start_rule: "data" | "ano_seguinte"; locked: boolean; assignment_count?: number; catalog_key: string | null;
 }
-interface Assignment { id: string; folder_path: string | null; folder_id: string | null; folder_label: string | null; policy_id: string; policy_name: string; document_count: number }
+interface Assignment { id: string; folder_path: string | null; folder_id: string | null; folder_label: string | null; policy_id: string; policy_name: string; document_count: number; match_tipo_fiscal?: string | null; match_field_id?: string | null; match_field_value?: string | null; match_field_label?: string | null }
 interface Hold {
   id: string; resource_type: "document" | "folder"; resource_id: string; resource_name: string | null; resource_path: string | null;
   folder_id: string | null; reason: string; process_number: string | null; review_date: string | null; created_at: string;
@@ -500,21 +500,44 @@ function WhereTab({ companyId, isAdmin, policies, folders, assignments, initialF
   const [simState, setSimState] = useState<"idle" | "loading" | "error">("idle");
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState<{ a: Assignment; docs: number | null } | null>(null);
+  // Filtros além da pasta (A7-89): tipo do documento e valor de metadado.
+  const [tipo, setTipo] = useState("");
+  const [campoId, setCampoId] = useState("");
+  const [campoValor, setCampoValor] = useState("");
+  const [campos, setCampos] = useState<{ id: string; label: string }[]>([]);
+  useEffect(() => {
+    api.get(`/custom-fields`, { params: { company_id: companyId } })
+      .then((r) => setCampos((Array.isArray(r.data) ? r.data : []).map((c: any) => ({ id: c.id, label: c.label }))))
+      .catch(() => setCampos([]));
+  }, [companyId]);
+  const filtroCampoIncompleto = !!campoId !== !!campoValor.trim();
+  const filtros = {
+    match_tipo_fiscal: tipo.trim() || undefined,
+    match_field_id: campoId && campoValor.trim() ? campoId : undefined,
+    match_field_value: campoId && campoValor.trim() ? campoValor.trim() : undefined,
+  };
 
   useEffect(() => {
     setSim(null);
-    if (!policyId) { setSimState("idle"); return; }
+    if (!policyId || filtroCampoIncompleto) { setSimState("idle"); return; }
     setSimState("loading");
-    api.get<Simulation>(`/companies/${companyId}/retention/assignments/simulate`, { params: { policy_id: policyId, folder_id: folderId || undefined } })
-      .then((r) => { setSim(r.data); setSimState("idle"); }).catch(() => setSimState("error"));
-  }, [companyId, folderId, policyId]);
+    const t = window.setTimeout(() => {
+      api.get<Simulation>(`/companies/${companyId}/retention/assignments/simulate`, { params: { policy_id: policyId, folder_id: folderId || undefined, ...filtros } })
+        .then((r) => { setSim(r.data); setSimState("idle"); }).catch(() => setSimState("error"));
+    }, 250);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId, folderId, policyId, tipo, campoId, campoValor]);
 
   const folderOpts = useMemo(() => [{ value: "", label: "Empresa toda" }, ...[...folders].sort((a, b) => a.path.localeCompare(b.path)).map((f) => ({ value: f.id, label: f.name, depth: f.path.split(".").length - 1 }))], [folders]);
   const fmt = (exp: string | null, ind: boolean | null, pol: string | null) => (!pol ? "sem prazo" : ind ? `${pol} · permanente` : `${pol} · até ${exp ? fmtDate(exp) : "—"}`);
 
   async function assign() {
     setBusy(true);
-    try { await api.post(`/companies/${companyId}/retention/assignments`, { company_id: companyId, folder_id: folderId || null, policy_id: policyId }); success("Prazo atribuído."); setPolicyId(""); onChanged(); }
+    try {
+      await api.post(`/companies/${companyId}/retention/assignments`, { company_id: companyId, folder_id: folderId || null, policy_id: policyId, ...filtros });
+      success("Prazo atribuído."); setPolicyId(""); setTipo(""); setCampoId(""); setCampoValor(""); onChanged();
+    }
     catch (e) { showError(friendly(e, "Não foi possível atribuir.")); } finally { setBusy(false); }
   }
 
@@ -531,7 +554,12 @@ function WhereTab({ companyId, isAdmin, policies, folders, assignments, initialF
                   <p className="text-mac-body text-(--text-primary) truncate">
                     {a.folder_id ? <Link to={`/documents?folder_id=${a.folder_id}`} className="hover:underline">{a.folder_label ?? "Pasta"}</Link> : "Empresa toda"}
                   </p>
-                  <p className="text-mac-caption text-(--text-secondary)">{a.policy_name} · {a.document_count} {a.document_count === 1 ? "documento" : "documentos"}</p>
+                  <p className="text-mac-caption text-(--text-secondary)">
+                    {a.policy_name}
+                    {a.match_tipo_fiscal ? ` · só tipo ${a.match_tipo_fiscal}` : ""}
+                    {a.match_field_id ? ` · só ${a.match_field_label ?? "campo"} = “${a.match_field_value}”` : ""}
+                    {` · ${a.document_count} ${a.document_count === 1 ? "documento" : "documentos"}`}
+                  </p>
                 </div>
                 {isAdmin && (
                   <Button variant="icon" size="sm" aria-label={`Remover ${a.policy_name} de ${a.folder_label ?? "empresa toda"}`}
@@ -552,6 +580,30 @@ function WhereTab({ companyId, isAdmin, policies, folders, assignments, initialF
             <div><label id="onde-f" className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Onde (vale também nas subpastas)</label><Dropdown ariaLabelledby="onde-f" value={folderId} onChange={setFolderId} options={folderOpts} /></div>
             <div><label id="onde-p" className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Prazo</label><Dropdown ariaLabelledby="onde-p" value={policyId} onChange={setPolicyId} placeholder="Escolha o prazo" options={policies.map((p) => ({ value: p.id, label: p.name }))} /></div>
           </div>
+          <details className="group rounded-(--radius-control) border border-(--border-default) px-3 py-2" open={!!(tipo || campoId)}>
+            <summary className="cursor-pointer text-mac-caption font-medium text-(--text-secondary) select-none">Só alguns documentos (por tipo ou metadado)</summary>
+            <p className="mt-1.5 text-mac-caption text-(--text-tertiary)">Pastas mudam; o tipo e os metadados acompanham o documento. Deixe em branco para valer para todos do lugar escolhido.</p>
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label htmlFor="onde-tipo" className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Tipo do documento</label>
+                <input id="onde-tipo" list="onde-tipos" value={tipo} onChange={(e) => setTipo(e.target.value)} placeholder="Ex.: NF-e" maxLength={60}
+                  className="w-full h-8 pointer-coarse:h-11 px-2.5 rounded-[6px] border border-(--border-control) bg-(--bg-card) text-mac-body text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-2 focus:ring-(--focus-ring)" />
+                <datalist id="onde-tipos"><option value="NF-e" /><option value="NFC-e" /><option value="NFS-e" /><option value="CT-e" /></datalist>
+              </div>
+              <div>
+                <label id="onde-campo" className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Campo</label>
+                <Dropdown ariaLabelledby="onde-campo" value={campoId} onChange={setCampoId} placeholder={campos.length ? "Nenhum" : "Sem campos cadastrados"}
+                  options={[{ value: "", label: "Nenhum" }, ...campos.map((c) => ({ value: c.id, label: c.label }))]} />
+              </div>
+              <div>
+                <label htmlFor="onde-valor" className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Valor do campo</label>
+                <input id="onde-valor" value={campoValor} onChange={(e) => setCampoValor(e.target.value)} disabled={!campoId} placeholder={campoId ? "Ex.: Holerite" : "Escolha o campo"} maxLength={200}
+                  aria-invalid={filtroCampoIncompleto || undefined}
+                  className="w-full h-8 pointer-coarse:h-11 px-2.5 rounded-[6px] border border-(--border-control) bg-(--bg-card) text-mac-body text-(--text-primary) placeholder:text-(--text-placeholder) disabled:opacity-60 focus:outline-hidden focus:ring-2 focus:ring-(--focus-ring)" />
+              </div>
+            </div>
+            {filtroCampoIncompleto && <p className="mt-1.5 text-mac-caption text-(--text-warning)">Informe o valor do campo (sem diferença de maiúsculas).</p>}
+          </details>
           <div aria-live="polite">
             {simState === "loading" && <p className="text-mac-caption text-(--text-secondary)">Calculando o efeito…</p>}
             {simState === "error" && <p className="text-mac-caption text-(--text-danger)">Não foi possível calcular o efeito. Tente escolher de novo.</p>}
@@ -583,7 +635,7 @@ function WhereTab({ companyId, isAdmin, policies, folders, assignments, initialF
               </div>
             )}
           </div>
-          <Button disabled={!policyId || busy || simState !== "idle"} loading={busy} onClick={assign}>Atribuir</Button>
+          <Button disabled={!policyId || busy || simState !== "idle" || filtroCampoIncompleto} loading={busy} onClick={assign}>Atribuir</Button>
         </section>
       )}
 
