@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Outlet, NavLink, Navigate, useLocation, useNavigate } from "react-router-dom";
-import { User, Building2, Users as UsersIcon, Lock, Sliders, Archive, Tags, ChevronRight, ChevronLeft, Search, LayoutGrid } from "lucide-react";
+import { User, Building2, Users as UsersIcon, Lock, Sliders, Archive, Tags, ChevronRight, ChevronLeft, Search, LayoutGrid, ShieldAlert } from "lucide-react";
 import { useAuthContext } from "@/lib/AuthContext";
 import { useCompany } from "@/lib/CompanyContext";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -25,6 +25,7 @@ const TABS = [
   { to: "/settings/users", icon: UsersIcon, label: "Pessoas e acessos", color: "bg-indigo-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["usuário", "membro", "grupo", "grupos", "permissão", "acesso", "operador", "visualizador", "admin", "explain access"] },
   { to: "/settings/metadata", icon: Tags, label: "Metadados", color: "bg-orange-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["campo", "campos", "cpf", "cnpj", "catálogo", "aplicação na árvore", "herança", "obrigatório"] },
   { to: "/settings/retention", icon: Archive, label: "Retenção e descarte", color: "bg-amber-600", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["lixeira", "política", "hold", "legal hold", "descarte", "certificado", "fila", "purga"] },
+  { to: "/settings/privacy", icon: ShieldAlert, label: "Privacidade (LGPD)", color: "bg-rose-600", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["lgpd", "titular", "cpf", "dado pessoal", "dado sensível", "saúde", "aso", "holerite", "privacidade", "encarregado", "dpo"] },
   { to: "/settings/preferences", icon: Sliders, label: "Preferências", color: "bg-purple-500", adminOnly: false, supremoOnly: false, group: "Aplicativo", keywords: ["tema", "dark mode", "modo escuro", "claro", "densidade", "aparência", "atalhos"] },
 ];
 

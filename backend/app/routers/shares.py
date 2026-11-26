@@ -108,6 +108,14 @@ async def create_share(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada.")
         company_id = folder["company_id"]
 
+    # LGPD (X2-17, B3.7.5): pasta com dado sensível não aceita link público.
+    pasta = doc["folder_id"] if body.resource_type == "document" else body.resource_id
+    if await conn.fetchval("SELECT public.folder_effective_sensitivity($1)", pasta) == "sensivel":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Esta pasta está marcada com dado sensível (LGPD): links públicos ficam bloqueados. Dê acesso à pessoa pela empresa.",
+        )
+
     if body.expires_in == "custom":
         if body.custom_expires_at is None:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Informe custom_expires_at.")

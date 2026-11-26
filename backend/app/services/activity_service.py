@@ -30,6 +30,8 @@ _ACTION_LABELS: dict[str, str] = {
     "update_metadata": "Metadado alterado",
     "version_delete": "Versão excluída",
     "integrity_check": "Integridade conferida",
+    "privacy_set": "Classificação LGPD alterada",
+    "lgpd_titular_search": "Pedido do titular consultado",
     "version_label": "Versão nomeada",
     "obligation_create": "Obrigação cadastrada",
     "obligation_update": "Obrigação alterada",

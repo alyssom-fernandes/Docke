@@ -25,6 +25,7 @@ from app.routers import (
     today,
     trash,
     versions,
+    privacy,
 )
 
 # Sem configuração, o Python descarta tudo abaixo de WARNING, e o que passa sai
@@ -128,6 +129,7 @@ app.include_router(notifications.router, prefix=PREFIX)
 app.include_router(obligations.router, prefix=PREFIX)
 app.include_router(retention_legal.router, prefix=PREFIX)
 app.include_router(today.router, prefix=PREFIX)
+app.include_router(privacy.router, prefix=PREFIX)
 
 
 @app.get("/health", tags=["health"])

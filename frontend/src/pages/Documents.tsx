@@ -8,6 +8,7 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
+  ShieldAlert,
   Upload,
   Trash2,
   Anchor,
@@ -76,6 +77,7 @@ import { maskValue, validateValue, PLACEHOLDER, INPUT_MODE, fieldOptions, isChoi
 import { SkeletonTableRow, SkeletonGridItem } from "@/components/shared/Skeleton";
 import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 import { prefetchPdfViewer } from "@/lib/prefetch";
+import PrivacyDialog, { PRIVACY_LABEL } from "@/components/documents/PrivacyDialog";
 import { friendlyError } from "@/lib/errors";
 import IntegrityCheck from "@/components/documents/IntegrityCheck";
 import LinkAccesses from "@/components/documents/LinkAccesses";
@@ -1406,6 +1408,13 @@ export default function Documents() {
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
   const [showUpload, setShowUpload] = useState(false);
   const [showNewFolder, setShowNewFolder] = useState(false);
+  // LGPD (X2-17): classificação da pasta e selo na barra.
+  const [privacyFolder, setPrivacyFolder] = useState<{ id: string; name: string } | null>(null);
+  const [currentPrivacy, setCurrentPrivacy] = useState<string>("normal");
+  useEffect(() => {
+    if (!currentFolderId) { setCurrentPrivacy("normal"); return; }
+    api.get(`/folders/${currentFolderId}/privacy`).then((r) => setCurrentPrivacy(r.data.effective ?? "normal")).catch(() => setCurrentPrivacy("normal"));
+  }, [currentFolderId]);
   const [confirmDeleteFolder, setConfirmDeleteFolder] = useState<Folder | null>(null);
   const [deletingFolder, setDeletingFolder] = useState(false);
   const [sharingFolder, setSharingFolder] = useState<Folder | null>(null);
@@ -1473,6 +1482,7 @@ export default function Documents() {
       list.push({ label: "Permissões desta pasta", icon: <Shield />, separatorBefore: true, onSelect: () => navigate(`/settings/users?folder=${f.id}`) });
       list.push({ label: "Metadados desta pasta", icon: <Tags />, onSelect: () => navigate(`/settings/metadata?tab=tree&folder=${f.id}`) });
       list.push({ label: "Retenção desta pasta", icon: <Archive />, onSelect: () => navigate(`/settings/retention?folder=${f.id}`) });
+      list.push({ label: "Privacidade (LGPD)…", icon: <ShieldAlert />, onSelect: () => setPrivacyFolder(f) });
       list.push({ label: "Excluir pasta", icon: <Trash2 />, shortcut: "Del", danger: true, separatorBefore: true, onSelect: () => askDeleteFolder(f) });
     }
     return list;
@@ -2552,6 +2562,12 @@ export default function Documents() {
             <h1 className="text-mac-body font-semibold text-(--text-primary) truncate">
               {breadcrumbs[breadcrumbs.length - 1].name}
             </h1>
+            {currentPrivacy !== "normal" && (
+              <span title={currentPrivacy === "sensivel" ? "Dado sensível (LGPD): link público bloqueado" : "Dado pessoal (LGPD)"}
+                className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-mac-caption2 font-medium ${currentPrivacy === "sensivel" ? "bg-red-500/12 text-(--text-danger)" : "bg-amber-500/12 text-(--text-warning)"}`}>
+                <ShieldAlert className="w-3 h-3" aria-hidden />{PRIVACY_LABEL[currentPrivacy]}
+              </span>
+            )}
           </div>
 
           {/* Breadcrumbs — versão truncada (mobile): Início, "…" (seletor com as pastas ocultas, em ordem) e a pasta atual */}
@@ -3483,6 +3499,10 @@ export default function Documents() {
             onClose={() => setPicker(null)}
           />
         )
+      )}
+      {privacyFolder && (
+        <PrivacyDialog folderId={privacyFolder.id} folderName={privacyFolder.name} onClose={() => setPrivacyFolder(null)}
+          onSaved={() => { if (currentFolderId) api.get(`/folders/${currentFolderId}/privacy`).then((r) => setCurrentPrivacy(r.data.effective ?? "normal")).catch(() => {}); }} />
       )}
       {copyingFolder && current && (
         <CopyStructureModal

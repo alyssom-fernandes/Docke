@@ -13,7 +13,7 @@ class SharesService:
     @staticmethod
     async def get_document_for_share(conn: asyncpg.Connection, document_id: UUID) -> asyncpg.Record | None:
         return await conn.fetchrow(
-            "SELECT id, company_id, current_version_id FROM public.documents WHERE id = $1 AND deleted_at IS NULL",
+            "SELECT id, company_id, folder_id, current_version_id FROM public.documents WHERE id = $1 AND deleted_at IS NULL",
             document_id,
         )
 

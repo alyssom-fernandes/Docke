@@ -50,6 +50,8 @@ export const ACTION_LABELS: Record<string, string> = {
   update_metadata: "atualizou um campo de",
   version_delete: "excluiu uma versão de",
   integrity_check: "conferiu a integridade de",
+  privacy_set: "mudou a classificação LGPD de",
+  lgpd_titular_search: "consultou um pedido do titular em",
   obligation_create: "cadastrou a obrigação",
   obligation_update: "alterou a obrigação",
   obligation_archive: "arquivou a obrigação",
