@@ -1,4 +1,4 @@
-import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
+import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { emitSessionExpired } from "@/lib/sessionEvents";
 import { accessExpiresAt, clearSession, getAccessToken, getRefreshToken, saveSession } from "@/lib/session";
 
@@ -85,11 +85,39 @@ export function cancelWaitingRequests() {
 
 type RetriableConfig = InternalAxiosRequestConfig & { _retried?: boolean; skipReauthWait?: boolean };
 
+// Partida a frio: ao religar a máquina na Fly, o proxy pode chegar antes de o
+// uvicorn abrir a porta. O erro volta sem cabeçalho de CORS, e o navegador o
+// entrega como "Network Error". Uma nova tentativa, depois de uma pausa,
+// costuma pegar a API já de pé. Só repete o que é seguro repetir: leituras e
+// os dois logins, que não mudam nada além de emitir um token.
+const COLD_START_RETRY_DELAY_MS = 3_000;
+const RETRYABLE_POSTS = new Set(["/auth/login", "/auth/demo-login"]);
+
+type RetryConfig = InternalAxiosRequestConfig & { _coldStartRetried?: boolean };
+
+function shouldRetryColdStart(err: AxiosError): boolean {
+  const config = err.config as RetryConfig | undefined;
+  if (!config || config._coldStartRetried) return false;
+  const method = (config.method ?? "get").toLowerCase();
+  const safe =
+    method === "get" || method === "head" || (method === "post" && RETRYABLE_POSTS.has(config.url ?? ""));
+  if (!safe) return false;
+  // Sem resposta nenhuma (conexão recusada) ou um 502/503 que o navegador conseguiu ler.
+  if (err.response) return err.response.status === 502 || err.response.status === 503;
+  return err.code === AxiosError.ERR_NETWORK;
+}
+
 let sessionExpiredFired = false;
 
 api.interceptors.response.use(
   (res) => res,
   async (err: AxiosError) => {
+    if (axios.isAxiosError(err) && shouldRetryColdStart(err)) {
+      const config = err.config as RetryConfig;
+      config._coldStartRetried = true;
+      await new Promise((resolve) => setTimeout(resolve, COLD_START_RETRY_DELAY_MS));
+      return api.request(config);
+    }
     const cfg = err.config as RetriableConfig | undefined;
     const isEntry = AUTH_ENTRY.some((p) => cfg?.url?.startsWith(p));
     if (err.response?.status !== 401 || !cfg || isEntry) return Promise.reject(err);

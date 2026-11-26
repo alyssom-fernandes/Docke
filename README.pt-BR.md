@@ -15,6 +15,8 @@
 
 ![Tela de entrada do Docke](.github/readme/login.png)
 
+**Estudo de caso:** [como foi construído e por quê, com links para o código](https://alyssom-fernandes.github.io/portfolio/projetos/docke/) no meu portfólio.
+
 ## Em 30 segundos
 
 - **Várias empresas num só lugar.** Cada empresa tem sua árvore de pastas; o acesso é concedido por empresa ou por pasta e garantido pela Row Level Security do Postgres, não só pela API.

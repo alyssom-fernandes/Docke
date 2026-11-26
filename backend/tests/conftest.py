@@ -8,13 +8,11 @@ Cada teste recebe conexões reais ao banco (asyncpg) e opera com usuários fict�
 cujos JWTs são forjados para simular diferentes papéis (viewer/editor/manager)
 dentro de empresas distintas — garantindo isolamento RLS real.
 """
-import asyncio
 import os
 import uuid
 from typing import AsyncGenerator
 
 import asyncpg
-import pytest
 import pytest_asyncio
 from dotenv import load_dotenv
 

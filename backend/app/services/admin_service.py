@@ -5,7 +5,6 @@ por company_id nunca as permitiria. Por isso quem chama (routers/admin.py)
 confere antes o alcance: sistema inteiro só para o Supremo, uma empresa só
 para o admin dela (achado A9-40).
 """
-from typing import Any
 from uuid import UUID
 
 import asyncpg

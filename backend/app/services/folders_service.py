@@ -3,7 +3,6 @@ FoldersService — CRUD de pastas, move com ltree, templates de pasta.
 NUNCA lida com permissões reais (isso é RLS) nem com documentos (isso é
 documents_service) — só orquestra as queries que folders.py precisa.
 """
-from typing import Any
 from uuid import UUID, uuid4
 
 import asyncpg

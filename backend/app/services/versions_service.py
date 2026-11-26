@@ -2,7 +2,6 @@
 VersionsService — histórico, upload, confirmação, restauração e exclusão de
 versões de documento (ADR-024/029/034).
 """
-from typing import Any
 from uuid import UUID
 
 import asyncpg

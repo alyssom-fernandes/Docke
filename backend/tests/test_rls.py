@@ -9,7 +9,6 @@ import uuid
 
 import asyncpg
 import pytest
-import pytest_asyncio
 
 
 async def _rls_conn(pool: asyncpg.Pool, user_id: str) -> asyncpg.Connection:

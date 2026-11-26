@@ -4,7 +4,6 @@ lixeira. Usa admin_conn: itens com deleted_at preenchido são invisíveis ao
 authenticated via RLS (documents_select/folders_select exigem deleted_at IS
 NULL), então listar/restaurar/excluir da lixeira sempre precisa bypassar.
 """
-from typing import Any
 from uuid import UUID
 
 import asyncpg

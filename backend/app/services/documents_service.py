@@ -13,7 +13,6 @@ from uuid import UUID
 
 import asyncpg
 
-from app.services import storage_service
 
 _MIME_MAP: dict[str, str] = {
     "pdf": "application/pdf",

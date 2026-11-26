@@ -16,6 +16,11 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Lint do backend (ruff)
+        run: |
+          pip install ruff
+          ruff check backend
+
       - name: Instalar dependências do backend
         run: pip install -r backend/requirements.txt
 

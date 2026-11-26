@@ -5,7 +5,6 @@ versão nova, acesso a link, bloqueio de senha). Todas usam a admin_conn
 (service_role) — notificações são um efeito colateral do sistema, não uma
 ação do usuário sujeita a RLS.
 """
-from typing import Any
 from uuid import UUID
 
 import asyncpg
