@@ -1,19 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Tags, Plus, X, Archive, FolderTree, Copy, Trash2 } from "lucide-react";
+import { Tags, Plus, Archive, FolderTree, Copy, Trash2 } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { useFocusTrap } from "@/hooks/useFocusTrap";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
 import Button from "@/components/ui/Button";
+import Checkbox from "@/components/ui/Checkbox";
 import Input from "@/components/ui/Input";
 import Dialog from "@/components/ui/Dialog";
 import EmptyState from "@/components/shared/EmptyState";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import Switch from "@/components/ui/Switch";
 import Dropdown from "@/components/ui/Dropdown";
-import Portal from "@/components/ui/Portal";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -80,8 +79,6 @@ function NewFieldModal({ companyId, existingFields, onClose, onCreated }: {
   companyId: string; existingFields: CustomField[]; onClose: () => void; onCreated: () => void;
 }) {
   const { success, error: showError } = useToast();
-  const containerRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(containerRef);
 
   const [label, setLabel] = useState("");
   const [type, setType] = useState<FieldType>("texto");
@@ -119,91 +116,58 @@ function NewFieldModal({ companyId, existingFields, onClose, onCreated }: {
     }
   }
 
+  const conditionOptions = existingFields.find((f) => f.id === conditionFieldId) as any;
+  const condOpts: string[] = conditionOptions?.type === "selecao" ? (conditionOptions?.format_config?.options ?? []) : [];
   return (
-    <Portal>
-    <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[420px]">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-(--border-default)">
-          <h2 className="text-mac-body font-semibold text-(--text-primary)">Novo campo</h2>
-          <button onClick={onClose} className="p-1 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover)">
-            <X className="w-4 h-4" />
-          </button>
+    <Dialog onClose={onClose} title="Novo campo" size="md" busy={saving}
+      description="Um campo que os documentos preenchem (ex.: CNPJ do fornecedor, competência, banco)."
+      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={saving} onClick={create} disabled={!label.trim()}>Criar campo</Button></>}>
+      <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); create(); }}>
+        <Input label="Nome do campo" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Ex.: Instituição financeira" maxLength={80} autoFocus />
+        <div>
+          <label id="nf-tipo" className="block text-mac-body font-medium text-(--text-secondary) mb-1">Tipo de resposta</label>
+          <Dropdown ariaLabelledby="nf-tipo" value={type} placeholder="Selecione…" onChange={(v) => setType(v as FieldType)}
+            options={(Object.keys(TYPE_LABEL) as FieldType[]).map((t) => ({ value: t, label: TYPE_LABEL[t] }))} />
+          <p className="mt-1 text-mac-caption text-(--text-secondary)">CPF, CNPJ, data e competência são conferidos ao preencher.</p>
         </div>
-        <div className="p-5 space-y-4">
-          <div>
-            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Nome do campo</label>
-            <input
-              type="text" autoFocus value={label} onChange={(e) => setLabel(e.target.value)}
-              placeholder="Ex.: Instituição financeira"
-              className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-            />
+        {type === "numero" && (
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-mac-body text-(--text-primary)">
+              <Checkbox checked={limitDecimals} onChange={(e) => setLimitDecimals(e.target.checked)} /> Limitar casas decimais
+            </label>
+            {limitDecimals ? (
+              <div className="w-28"><Input label="Casas" type="number" min={0} max={6} value={decimals} onChange={(e) => setDecimals(Number(e.target.value))} /></div>
+            ) : (
+              <p className="text-mac-caption text-(--text-secondary)">Sem limite: o número é guardado como digitado.</p>
+            )}
           </div>
+        )}
+        {type === "selecao" && (
           <div>
-            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Tipo de resposta</label>
-            <Dropdown
-              value={type}
-              placeholder="Selecione…"
-              onChange={(v) => setType(v as FieldType)}
-              options={(Object.keys(TYPE_LABEL) as FieldType[]).map((t) => ({ value: t, label: TYPE_LABEL[t] }))}
-            />
+            <Input label="Opções (separe por vírgula)" value={optionsText} onChange={(e) => setOptionsText(e.target.value)} placeholder="Ex.: Banco do Brasil, Itaú, Bradesco" />
+            {optionsText.trim() && (
+              <ul aria-label="Prévia das opções" className="mt-2 flex flex-wrap gap-1.5">
+                {optionsText.split(",").map((o) => o.trim()).filter(Boolean).map((o) => <li key={o} className="rounded-full bg-(--bg-hover) px-2.5 py-0.5 text-mac-caption text-(--text-primary)">{o}</li>)}
+              </ul>
+            )}
           </div>
-          {type === "numero" && (
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-mac-caption text-(--text-secondary)">
-                <input type="checkbox" checked={limitDecimals} onChange={(e) => setLimitDecimals(e.target.checked)} />
-                Limitar casas decimais
-              </label>
-              {limitDecimals ? (
-                <input
-                  type="number" min={0} max={6} value={decimals} onChange={(e) => setDecimals(Number(e.target.value))}
-                  className="w-24 h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-                />
-              ) : (
-                <p className="text-mac-caption2 text-(--text-tertiary)">Ilimitado — o número é guardado exatamente como digitado.</p>
-              )}
-            </div>
-          )}
-          {type === "selecao" && (
-            <div>
-              <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Opções (separadas por vírgula)</label>
-              <input
-                type="text" value={optionsText} onChange={(e) => setOptionsText(e.target.value)}
-                placeholder="Ex.: Banco do Brasil, Itaú, Bradesco"
-                className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-              />
-            </div>
-          )}
-          {existingFields.length > 0 && (
-            <div className="pt-2 border-t border-(--border-default) space-y-2">
-              <label className="block text-mac-caption font-medium text-(--text-secondary)">
-                Só mostrar quando (opcional)
-              </label>
-              <Dropdown
-                value={conditionFieldId}
-                placeholder="Sempre mostrar"
-                onChange={setConditionFieldId}
-                options={[
-                  { value: "", label: "Sempre mostrar" },
-                  ...existingFields.map((f) => ({ value: f.id, label: f.label })),
-                ]}
-              />
-              {conditionFieldId && (
-                <input
-                  type="text" value={conditionValue} onChange={(e) => setConditionValue(e.target.value)}
-                  placeholder="quando for igual a…"
-                  className="w-full h-9 px-3 text-mac-body bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
-                />
-              )}
-            </div>
-          )}
-        </div>
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default)">
-          <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
-          <Button size="sm" loading={saving} onClick={create} disabled={!label.trim()}>Criar campo</Button>
-        </div>
-      </div>
-    </div>
-    </Portal>
+        )}
+        {existingFields.length > 0 && (
+          <div className="pt-2 border-t border-(--border-default) space-y-2">
+            <label id="nf-cond" className="block text-mac-body font-medium text-(--text-secondary)">Só mostrar quando (opcional)</label>
+            <Dropdown ariaLabelledby="nf-cond" value={conditionFieldId} placeholder="Sempre mostrar" onChange={setConditionFieldId}
+              options={[{ value: "", label: "Sempre mostrar" }, ...existingFields.map((f) => ({ value: f.id, label: f.label }))]} />
+            {conditionFieldId && (condOpts.length > 0 ? (
+              <Dropdown ariaLabel="Valor que mostra o campo" value={conditionValue} placeholder="for igual a…" onChange={setConditionValue}
+                options={condOpts.map((o) => ({ value: o, label: o }))} />
+            ) : (
+              <Input aria-label="Valor que mostra o campo" value={conditionValue} onChange={(e) => setConditionValue(e.target.value)} placeholder="quando for igual a…" />
+            ))}
+          </div>
+        )}
+        <button type="submit" className="sr-only">Criar</button>
+      </form>
+    </Dialog>
   );
 }
 
@@ -213,8 +177,6 @@ function CopyFieldsModal({ companies, targetCompanyId, onClose, onCopied }: {
   companies: { id: string; name: string }[]; targetCompanyId: string; onClose: () => void; onCopied: () => void;
 }) {
   const { success, error: showError } = useToast();
-  const containerRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(containerRef);
   const [sourceId, setSourceId] = useState("");
   const [saving, setSaving] = useState(false);
   const options = companies.filter((c) => c.id !== targetCompanyId);
@@ -235,37 +197,12 @@ function CopyFieldsModal({ companies, targetCompanyId, onClose, onCopied }: {
   }
 
   return (
-    <Portal>
-    <div className="fixed inset-0 bg-(--overlay-scrim) flex items-center justify-center z-50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={containerRef} className="glass-dialog glass-blur-strong rounded-(--radius-dialog) shadow-modal modal-card w-full max-w-[400px]">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-(--border-default)">
-          <h2 className="text-mac-body font-semibold text-(--text-primary)">Copiar campos de outra empresa</h2>
-          <button onClick={onClose} className="p-1 rounded-[6px] text-(--text-secondary) hover:bg-(--bg-hover)">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="p-5 space-y-4">
-          <p className="text-mac-caption text-(--text-tertiary)">
-            Copia só o catálogo (nome, tipo, formato). Campos com o mesmo nome já existentes aqui não são duplicados.
-            A aplicação nas pastas não é copiada — as estruturas de pasta são diferentes entre empresas.
-          </p>
-          <div>
-            <label className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Empresa de origem</label>
-            <Dropdown
-              value={sourceId}
-              placeholder="Selecione…"
-              onChange={setSourceId}
-              options={options.map((c) => ({ value: c.id, label: c.name }))}
-            />
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-(--border-default)">
-          <Button variant="secondary" size="sm" onClick={onClose}>Cancelar</Button>
-          <Button size="sm" loading={saving} onClick={copy} disabled={!sourceId}>Copiar</Button>
-        </div>
-      </div>
-    </div>
-    </Portal>
+    <Dialog onClose={onClose} title="Copiar campos de outra empresa" size="sm" busy={saving}
+      description="Copia o catálogo (nome, tipo e opções). Campos com o mesmo nome não são duplicados; a aplicação nas pastas não vem junto."
+      footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={saving} onClick={copy} disabled={!sourceId}>Copiar</Button></>}>
+      <label id="cf-origem" className="block text-mac-body font-medium text-(--text-secondary) mb-1">Empresa de origem</label>
+      <Dropdown ariaLabelledby="cf-origem" value={sourceId} placeholder="Selecione…" onChange={setSourceId} options={options.map((c) => ({ value: c.id, label: c.name }))} />
+    </Dialog>
   );
 }
 
