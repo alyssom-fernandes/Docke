@@ -5,7 +5,8 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
-import ActivityFeed, { ACTION_LABELS } from "@/components/shared/ActivityFeed";
+import ActivityFeed, { ACTION_LABELS, InspecionarEvento, readableMetadata } from "@/components/shared/ActivityFeed";
+import { InspectorLayout, useInspectorTarget, useLargo } from "@/components/shared/ListInspector";
 import Dropdown from "@/components/ui/Dropdown";
 import Button from "@/components/ui/Button";
 import Menu from "@/components/ui/Menu";
@@ -58,6 +59,8 @@ function daysAgo(n: number) { const d = new Date(); d.setDate(d.getDate() - n); 
  * trilha verificável aqui (A6-23).
  */
 export default function Activity() {
+  const insp = useInspectorTarget();
+  const largo = useLargo();
   usePageTitle("Atividade");
   const { current } = useCompany();
   const { error: showError, success } = useToast();
@@ -141,7 +144,7 @@ export default function Activity() {
   const labelOf = (v: string) => ACTION_GROUPS.find((a) => a.value === v)?.label ?? ACTION_LABELS[v] ?? v;
 
   return (
-    <div className="space-y-6 max-w-[1100px] w-full mx-auto">
+    <div className={`space-y-6 ${largo ? "max-w-[1480px]" : "max-w-[1100px]"} w-full mx-auto`}>
       <PageHeader title="Atividade" subtitle="Quem fez o quê, quando">
         <ToolbarGroup label="Atividade">
           {isAdmin && (
@@ -201,8 +204,22 @@ export default function Activity() {
       )}
 
       {current && (
-        <ActivityFeed companyId={current.id} itemId={item || undefined} page={page} pageSize={PAGE_SIZE} onLoaded={setTotal} filters={filters}
-          emptyDescription={filtrado ? "Nada com estes filtros." : "As ações nos documentos aparecem aqui."} />
+        <InspectorLayout item={insp.item} vazio="Passe o ponteiro num registro para ver os detalhes dele aqui.">
+          <InspecionarEvento.Provider value={(ev) => insp.bind({
+            kind: ev.item_type === "document" ? "document" : ev.item_type === "folder" ? "folder" : "other",
+            id: ev.item_type === "document" || ev.item_type === "folder" ? ev.item_id : ev.id,
+            name: ev.item_name_snapshot || (ACTION_LABELS[ev.action] ?? ev.action),
+            icon: ev.item_type === "document" || ev.item_type === "folder" ? undefined : <ShieldCheck className="w-14 h-14 text-(--text-secondary)" aria-hidden="true" />,
+            extra: [
+              ["Quem", ev.user_name], ["O quê", ACTION_LABELS[ev.action] ?? ev.action],
+              ["Quando", new Date(ev.created_at).toLocaleString("pt-BR")],
+              ...readableMetadata(ev.metadata).map((m, i) => [i === 0 ? "Detalhes" : "", m] as [string, string]),
+            ],
+          })}>
+            <ActivityFeed companyId={current.id} itemId={item || undefined} page={page} pageSize={PAGE_SIZE} onLoaded={setTotal} filters={filters}
+              emptyDescription={filtrado ? "Nada com estes filtros." : "As ações nos documentos aparecem aqui."} />
+          </InspecionarEvento.Provider>
+        </InspectorLayout>
       )}
 
       {totalPages > 1 && (

@@ -10,6 +10,7 @@ import { pushUndo, takeUndo } from "@/lib/undo";
 import EmptyState from "@/components/shared/EmptyState";
 import Button from "@/components/ui/Button";
 import { PageHeader } from "@/components/layout/window";
+import { InspectorLayout, useInspectorTarget, useLargo } from "@/components/shared/ListInspector";
 
 interface Favorite {
   id: string;
@@ -30,6 +31,8 @@ type Tipo = "todos" | "folder" | "document";
  * Erro de carga é erro, não "nada ancorado".
  */
 export default function Favorites() {
+  const insp = useInspectorTarget();
+  const largo = useLargo();
   usePageTitle("Ancorados");
   const { current } = useCompany();
   const { toast, error: showError } = useToast();
@@ -78,7 +81,7 @@ export default function Favorites() {
   const counts = { todos: items?.length ?? 0, folder: items?.filter((f) => f.item_type === "folder").length ?? 0, document: items?.filter((f) => f.item_type === "document").length ?? 0 };
 
   return (
-    <div className="space-y-6 max-w-[1100px] w-full mx-auto">
+    <div className={`space-y-6 ${largo ? "max-w-[1480px]" : "max-w-[1100px]"} w-full mx-auto`}>
       <PageHeader title="Ancorados" subtitle={items ? `${items.length} ${items.length === 1 ? "item" : "itens"}` : undefined} />
       <p className="text-mac-footnote text-(--text-secondary) mb-3!">Os documentos e pastas que você usa todo dia, a um clique. Só você vê os seus.</p>
 
@@ -122,10 +125,10 @@ export default function Favorites() {
           {visible.length === 0 ? (
             <p className="text-mac-body text-(--text-secondary)">Nenhum ancorado com esse filtro.</p>
           ) : (
-            <ul className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
+            <InspectorLayout item={insp.item}><ul className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
               {visible.map((fav) => {
                 return (
-                  <li key={fav.id} className="group flex items-center border-b border-(--border-default) last:border-0">
+                  <li key={fav.id} className="group flex items-center border-b border-(--border-default) last:border-0" {...insp.bind({ kind: fav.item_type, id: (fav.document_id ?? fav.folder_id)!, name: fav.item_name, extra: [["Onde", fav.location ?? null], ["Ancorado em", new Date(fav.created_at).toLocaleDateString("pt-BR")]] })}>
                     <Link to={href(fav)} className="flex-1 min-w-0 flex items-center gap-3 px-4 sm:px-5 py-2.5 min-h-14 hover:bg-(--bg-hover) transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-(--focus-ring)">
                       <ItemIcon name={fav.item_name} folder={fav.item_type === "folder"} className="w-8 h-8 shrink-0" />
                       <span className="flex-1 min-w-0">
@@ -142,7 +145,7 @@ export default function Favorites() {
                   </li>
                 );
               })}
-            </ul>
+            </ul></InspectorLayout>
           )}
         </>
       )}
