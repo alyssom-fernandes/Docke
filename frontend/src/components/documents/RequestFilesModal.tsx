@@ -29,12 +29,17 @@ function linkDe(token: string) { return `${window.location.origin}/enviar/${toke
  * Pedir arquivos a terceiros (FA-A4-11, B3.5.8): cria um link de envio para a
  * pasta e mostra os pedidos dela com o que já chegou.
  */
-export default function RequestFilesModal({ companyId, folder, onClose }: { companyId: string; folder: { id: string; name: string }; onClose: () => void }) {
+export default function RequestFilesModal({ companyId, folder, obligation, onClose }: {
+  companyId: string; folder: { id: string; name: string };
+  /** A7-55, B3.5.8: o que chegar já comprova esta competência. */
+  obligation?: { id: string; label: string };
+  onClose: () => void;
+}) {
   const uid = useId();
   const { success, error: showError } = useToast();
   const [pedidos, setPedidos] = useState<Pedido[] | null>(null);
   const [criando, setCriando] = useState(false);
-  const [titulo, setTitulo] = useState(`Arquivos para ${folder.name}`);
+  const [titulo, setTitulo] = useState(obligation ? `Comprovante: ${obligation.label}`.slice(0, 120) : `Arquivos para ${folder.name}`);
   const [mensagem, setMensagem] = useState("");
   const [dias, setDias] = useState("7");
   const [usarSenha, setUsarSenha] = useState(false);
@@ -76,6 +81,7 @@ export default function RequestFilesModal({ companyId, folder, onClose }: { comp
       const r = await api.post("/upload-requests", {
         company_id: companyId, folder_id: folder.id, title: titulo.trim(), message: mensagem.trim() || null,
         expires_days: Number(dias), password: usarSenha ? senha : null, max_files: Number(maxArquivos) || 20,
+        obligation_instance_id: obligation?.id ?? null,
       });
       setNovo(r.data.token);
       setCriando(false);
@@ -103,6 +109,12 @@ export default function RequestFilesModal({ companyId, folder, onClose }: { comp
     <Dialog onClose={onClose} title="Pedir arquivos" size="md" busy={busy}
       description={<>Gere um link para alguém de fora (contador, fornecedor, funcionário) mandar arquivos direto para <strong>{folder.name}</strong>, sem precisar de conta.</>}>
       <div className="space-y-5">
+        {obligation && (
+          <p className="rounded-(--radius-control) bg-(--tint-accent) px-3 py-2 text-mac-caption text-(--text-primary)">
+            O que chegar por este link já comprova <strong className="font-medium">{obligation.label}</strong>
+            {" "}e vai para a conferência, se a obrigação pede. Você recebe o aviso quando chegar.
+          </p>
+        )}
         {novo && (
           <div role="status" className="rounded-(--radius-control) border border-(--border-default) bg-(--bg-hover) p-3 space-y-2">
             <p className="flex items-center gap-1.5 text-mac-body font-medium text-(--text-primary)"><Check className="w-4 h-4 text-(--text-success)" aria-hidden="true" /> Link criado{copiado === novo ? " e copiado" : ""}. Mande para quem vai enviar.</p>

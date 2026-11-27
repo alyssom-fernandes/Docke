@@ -9,6 +9,9 @@ import Button from "@/components/ui/Button";
 import Dropdown from "@/components/ui/Dropdown";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { type Instance, type Member, StatusChip, CRIT_LABEL, dueText, fmtDate, friendly } from "./shared";
+import { useFeature } from "@/lib/CompanyContext";
+import FolderPickerDialog from "@/components/documents/FolderPickerDialog";
+import RequestFilesModal from "@/components/documents/RequestFilesModal";
 
 interface LinkedDoc {
   id: string;
@@ -262,6 +265,7 @@ export default function InstanceDialog({
               )}
               {canOperate && !closed && data.effective_status !== "not_applicable" && (
                 <LinkDocument companyId={data.company_id} instanceId={data.id} requiresReview={data.requires_review !== false}
+                  label={`${data.template_name} · ${data.period_label ?? data.period}`}
                   onLinked={() => run(async () => undefined, "Documento enviado para a obrigação.", "")} />
               )}
             </section>
@@ -361,9 +365,11 @@ function DispenseDialog({ name, onClose, onConfirm }: { name: string; onClose: (
  * conferir se é a prova certa (A7-56), distingue "sem resultado" de erro
  * (A7-61) e pede a validade impressa no documento (A7-37).
  */
-function LinkDocument({ companyId, instanceId, requiresReview, onLinked }: {
-  companyId: string; instanceId: string; requiresReview: boolean; onLinked: () => void;
+function LinkDocument({ companyId, instanceId, requiresReview, label, onLinked }: {
+  companyId: string; instanceId: string; requiresReview: boolean; label: string; onLinked: () => void;
 }) {
+  const pedidosLigado = useFeature("pedidos");
+  const [pedindo, setPedindo] = useState<null | "pasta" | { id: string; name: string }>(null);
   const { error: showError } = useToast();
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[] | null>(null);
@@ -463,9 +469,26 @@ function LinkDocument({ companyId, instanceId, requiresReview, onLinked }: {
           </div>
         </div>
       )}
-      <Link to="/documents?acao=enviar" className="inline-flex items-center gap-1.5 text-mac-caption font-medium text-(--text-accent) hover:underline">
-        <Upload className="w-3.5 h-3.5" aria-hidden="true" /> O documento ainda não está no Docke? Envie primeiro em Documentos
-      </Link>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <Link to="/documents?acao=enviar" className="inline-flex items-center gap-1.5 text-mac-caption font-medium text-(--text-accent) hover:underline">
+          <Upload className="w-3.5 h-3.5" aria-hidden="true" /> O documento ainda não está no Docke? Envie primeiro em Documentos
+        </Link>
+        {/* Pedir ao terceiro (A7-55, B3.5.8): o contador ou o despachante manda
+            pelo link e o arquivo já entra como comprovante desta competência. */}
+        {pedidosLigado && (
+          <button type="button" onClick={() => setPedindo("pasta")} className="inline-flex items-center gap-1.5 min-h-6 pointer-coarse:min-h-11 text-mac-caption font-medium text-(--text-accent) hover:underline">
+            <Link2 className="w-3.5 h-3.5" aria-hidden="true" /> Pedir a quem tem o documento (contador, despachante)…
+          </button>
+        )}
+      </div>
+      {pedindo === "pasta" && (
+        <FolderPickerDialog companyId={companyId} title="Onde guardar o que chegar?" description="O arquivo enviado pelo link fica nesta pasta e já comprova a obrigação."
+          confirmLabel="Continuar" onClose={() => setPedindo(null)}
+          onPick={(f) => { if (f.id) setPedindo({ id: f.id, name: f.name }); }} />
+      )}
+      {pedindo && pedindo !== "pasta" && (
+        <RequestFilesModal companyId={companyId} folder={pedindo} obligation={{ id: instanceId, label }} onClose={() => setPedindo(null)} />
+      )}
     </div>
   );
 }

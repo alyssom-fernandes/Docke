@@ -110,8 +110,8 @@ function apagarSessao(fp: string) {
 }
 
 export function UploadModal({ folderId, folderName, companyId, onClose, onDone, initialFiles }: { folderId: string | null; folderName: string; companyId: string; onClose: () => void; onDone: () => void; initialFiles?: File[] }) {
-  const { success, warning } = useToast();
-  const { addTask, updateTask, registerRetry, registerCancel } = useTaskCenter();
+  const { success, warning, info } = useToast();
+  const { addTask, updateTask, registerRetry, registerCancel, registerPause } = useTaskCenter();
   const [pending, setPending] = useState<PendingFile[]>([]);
   const [rejected, setRejected] = useState<{ name: string; reason: string }[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -198,9 +198,11 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone, 
   // Fase 11.1: acima disso, upload em partes (multipart) em vez de um PUT
   // único — mesmo threshold do backend (documents.py::_MULTIPART_THRESHOLD).
   const MULTIPART_THRESHOLD = 20 * 1024 * 1024;
+  const PAUSADO = "__pausado__";
 
   async function uploadFileMultipart(
     file: File, targetFolderId: string, onProgress: (label: string, progress: number) => void, signal?: AbortSignal, novoEnvio = false,
+    pausa?: { pausado: boolean },
   ): Promise<string> {
     // Envio retomável (FA-A4-04): a sessão (documento, upload e partes já
     // confirmadas) fica guardada no aparelho; se a conexão cair, "Tentar de
@@ -236,7 +238,7 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone, 
           // Sessão vencida (a limpeza de envios incompletos já apagou): recomeça do zero.
           if (salva && [404, 409, 410].includes(e?.response?.status)) {
             apagarSessao(fp);
-            return uploadFileMultipart(file, targetFolderId, onProgress, signal, true);
+            return uploadFileMultipart(file, targetFolderId, onProgress, signal, true, pausa);
           }
           throw e;
         }
@@ -255,8 +257,9 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone, 
       apagarSessao(fp);
       return documentId;
     } catch (err) {
-      // Cancelado por quem enviou: descarta. Queda de conexão: guarda para retomar.
-      if (err instanceof Error && err.message === CANCELADO) {
+      // Cancelado por quem enviou: descarta. Pausado ou queda de conexão:
+      // guarda as partes para continuar depois (A4-58).
+      if (err instanceof Error && err.message === CANCELADO && !pausa?.pausado) {
         apagarSessao(fp);
         try { await api.post(`/documents/multipart/${documentId}/abort`, { upload_id: uploadId }); } catch { /* ignore */ }
       }
@@ -270,10 +273,15 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone, 
     updateTask(taskId, { status: "running", phase: "uploading", error: undefined, progress: 0, label: displayName });
     const controller = new AbortController();
     registerCancel(taskId, () => controller.abort());
+    const pausa = { pausado: false };
     try {
       let documentId: string;
       if (file.size >= MULTIPART_THRESHOLD) {
-        documentId = await uploadFileMultipart(file, targetFolderId, (label, p) => updateTask(taskId, { label, progress: p }), controller.signal);
+        // Só o envio em partes pode pausar: as partes confirmadas ficam guardadas.
+        updateTask(taskId, { paused: false });
+        registerPause(taskId, () => { pausa.pausado = true; controller.abort(); });
+        documentId = await uploadFileMultipart(file, targetFolderId, (label, p) => updateTask(taskId, { label, progress: p }), controller.signal, false, pausa);
+        registerPause(taskId, null);
       } else {
         const { data } = await api.post("/documents/upload-url", {
           folder_id: targetFolderId,
@@ -301,6 +309,13 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone, 
       return { ok: true, documentId, taskId, fileName: displayName };
     } catch (fileErr: any) {
       registerCancel(taskId, null);
+      registerPause(taskId, null);
+      if (pausa.pausado) {
+        const t = `Pausado. Continue quando quiser: o que já subiu fica guardado neste aparelho.`;
+        updateTask(taskId, { status: "failed", paused: true, error: t });
+        registerRetry(taskId, () => { attemptUploadOne(file, relativePath, targetFolderId, taskId, displayName); });
+        return { ok: false, reason: PAUSADO };
+      }
       const reason = fileErr?.response ? friendlyError(fileErr, "Não foi possível enviar.") : (fileErr?.message ?? "Não foi possível enviar.");
       updateTask(taskId, { status: "failed", error: reason });
       registerRetry(taskId, () => { attemptUploadOne(file, relativePath, targetFolderId, taskId, displayName); });
@@ -316,6 +331,7 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone, 
     const folderCache = new Map<string, string>([["", dest.id]]);
     const failures: { name: string; reason: string }[] = [];
     let okCount = 0;
+    let pausados = 0;
     // Três envios ao mesmo tempo (antes, um arquivo e uma parte por vez — A4-55).
     const queue = [...pending];
     async function worker() {
@@ -334,6 +350,7 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone, 
           result = { ok: false, reason };
         }
         if (result.ok) okCount++;
+        else if (result.reason === PAUSADO) pausados++;
         else failures.push({ name: displayName, reason: result.reason });
         setProgress((p) => ({ ...p, done: p.done + 1, failed: failures.length }));
       }
@@ -341,6 +358,7 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone, 
     try {
       await Promise.all([worker(), worker(), worker()]);
       if (okCount > 0) success(`${plural(okCount, "arquivo enviado", "arquivos enviados")} para "${dest.name}".`);
+      if (pausados > 0) info(`${plural(pausados, "envio pausado", "envios pausados")}: continue pela Central de tarefas.`);
       if (failures.length > 0) {
         warning(`${plural(failures.length, "arquivo não foi enviado", "arquivos não foram enviados")}. Na Central de tarefas dá para ver o motivo e tentar de novo.`);
       }

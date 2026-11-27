@@ -110,3 +110,34 @@ async def test_pedido_com_senha(api, admin, cenario):  # noqa: F811
     r = await _enviar(api, admin, token, "holerite.pdf", PDF + b"h", senha="segredo123")
     assert r.status_code == 200, r.text
     assert (await api.get(API + "/r/token-que-nao-existe/info")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_pedido_da_obrigacao_vincula_o_arquivo(api, admin, cenario):  # noqa: F811
+    """A7-55, B3.5.8: o arquivo que chega pelo pedido já comprova a competência e vai para conferência."""
+    co, pasta = cenario["co"], cenario["pasta"]
+    modelo = await admin.fetchval(
+        "INSERT INTO public.obligation_templates (company_id, name, frequency) VALUES ($1, 'Certidão negativa', 'unica') RETURNING id", co,
+    )
+    inst = await admin.fetchval(
+        "INSERT INTO public.obligation_instances (template_id, company_id, period, due_date) VALUES ($1, $2, 'Vigente', current_date + 10) RETURNING id",
+        modelo, co,
+    )
+    try:
+        r = await api.post(API + "/upload-requests", headers=_token(cenario["oper"]), json={
+            "company_id": co, "folder_id": pasta, "title": "Certidão", "obligation_instance_id": str(inst)})
+        assert r.status_code == 201, r.text
+        assert r.json()["obligation_instance_id"] == str(inst)
+        # Competência de outra empresa não entra.
+        r2 = await api.post(API + "/upload-requests", headers=_token(cenario["oper"]), json={
+            "company_id": co, "folder_id": pasta, "title": "Errado", "obligation_instance_id": str(uuid.uuid4())})
+        assert r2.status_code == 404
+
+        r = await _enviar(api, admin, r.json()["token"], "Certidao.pdf", PDF + b"certidao")
+        assert r.status_code == 200, r.text
+        vinculos = await admin.fetchval("SELECT count(*) FROM public.obligation_documents WHERE obligation_instance_id = $1", inst)
+        assert vinculos == 1
+        assert await admin.fetchval("SELECT status FROM public.obligation_instances WHERE id = $1", inst) == "reviewing"
+    finally:
+        await admin.execute("DELETE FROM public.obligation_documents WHERE obligation_instance_id = $1", inst)
+        await admin.execute("DELETE FROM public.obligation_templates WHERE id = $1", modelo)
