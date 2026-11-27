@@ -188,10 +188,10 @@ export default function SettingsLayout() {
 
       <div className="flex-1 min-w-0 overflow-y-auto px-8 pt-4 pb-10">
         {/* O conteúdo não estica numa janela larga, como nos Ajustes do Sistema. */}
-        <div key={location.pathname} className="page-enter mx-auto max-w-[680px] space-y-6">
+        <div key={location.pathname} className="page-enter mx-auto max-w-[680px] xl:max-w-[820px] 2xl:max-w-[960px] space-y-6">
           <Outlet />
         </div>
-        <div className="mx-auto max-w-[680px]"><Footer /></div>
+        <div className="mx-auto max-w-[680px] xl:max-w-[820px] 2xl:max-w-[960px]"><Footer /></div>
       </div>
     </div>
   );
