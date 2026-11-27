@@ -211,3 +211,30 @@ async def test_busca_filtra_por_guarda(api, admin, empresa):  # noqa: F811
     finally:
         await admin.execute("UPDATE public.legal_holds SET released_at = now() WHERE id = $1", hold)
         await admin.execute("DELETE FROM public.legal_holds WHERE id = $1", hold)
+
+
+@pytest.mark.asyncio
+async def test_busca_por_competencia_e_filtros_de_texto_e_metadado(api, admin, empresa):  # noqa: F811
+    """B2.2.1 (competência escrita de vários jeitos) e FA-A6-01 (texto lido e metadado)."""
+    h, co = _token(empresa["user"]), empresa["co"]
+    a = await _doc(admin, empresa, empresa["raiz"], "Guia FGTS.pdf", "Competência 03/2026 recolhimento")
+    b = await _doc(admin, empresa, empresa["raiz"], "DAS.pdf", "Período de apuração: MARÇO DE 2026")
+    c = await _doc(admin, empresa, empresa["raiz"], "Outra.pdf", "Competência 04/2026", ocr="failed")
+    for termo in ("03/2026", "mar/2026", "março de 2026", "2026-03"):
+        r = await api.get(API + "/search", params={"q": termo, "company_id": co}, headers=h)
+        assert r.status_code == 200, (termo, r.text)
+        ids = {x["id"] for x in r.json()["results"]}
+        assert {a, b} <= ids and c not in ids, termo
+
+    r = await api.get(API + "/search", params={"company_id": co, "ocr": "falhou"}, headers=h)
+    assert c in [x["id"] for x in r.json()["results"]] and a not in [x["id"] for x in r.json()["results"]]
+
+    campo = await admin.fetchval(
+        "INSERT INTO public.custom_field (company_id, label, field_key, type) VALUES ($1, 'Banco', 'banco_busca', 'texto') RETURNING id", uuid.UUID(co))
+    await admin.execute(
+        "INSERT INTO public.document_field_value (document_id, company_id, custom_field_id, value_text) VALUES ($1, $2, $3, 'Itaú Unibanco')",
+        uuid.UUID(a), uuid.UUID(co), campo)
+    r = await api.get(API + "/search", params={"company_id": co, "campo": str(campo), "valor": "itau"}, headers=h)
+    assert [x["id"] for x in r.json()["results"]] == [a]
+    await admin.execute("DELETE FROM public.document_field_value WHERE custom_field_id = $1", campo)
+    await admin.execute("DELETE FROM public.custom_field WHERE id = $1", campo)

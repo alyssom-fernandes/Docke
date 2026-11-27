@@ -37,6 +37,8 @@ interface SearchResponse {
   sem_texto?: number;
   /** Sem resultado exato: são documentos com palavras parecidas (erro de digitação ou de OCR). */
   aproximado?: boolean;
+  /** B2.1.9: a palavra dos resultados aproximados mais parecida com o termo. */
+  sugestao?: string | null;
 }
 interface FolderOption { id: string; name: string; path: string }
 
@@ -106,6 +108,13 @@ export default function Search() {
   const tipo = params.get("tipo") ?? "";
   const setor = params.get("setor") ?? "";
   const guarda = params.get("guarda") ?? "";
+  // FA-A6-01: situação da leitura do texto e um campo de metadado (com valor).
+  const ocr = params.get("ocr") ?? "";
+  const campo = params.get("campo") ?? "";
+  const valor = params.get("valor") ?? "";
+  const [valorTexto, setValorTexto] = useState(valor);
+  useEffect(() => { setValorTexto(valor); }, [valor]);
+  const [campos, setCampos] = useState<{ id: string; label: string }[]>([]);
   const pagina = Math.max(1, Number(params.get("pagina") ?? 1) || 1);
 
   const [text, setText] = useState(q);
@@ -180,6 +189,7 @@ export default function Search() {
   useEffect(() => {
     if (!current) return;
     api.get<FolderOption[]>("/folders", { params: { company_id: current.id, flat: true } }).then((r) => setFolders(r.data ?? [])).catch(() => setFolders([]));
+    api.get<{ id: string; label: string }[]>("/custom-fields", { params: { company_id: current.id } }).then((r) => setCampos(r.data ?? [])).catch(() => setCampos([]));
   }, [current?.id]);
 
   // Digitar atualiza a URL com debounce de 250 ms.
@@ -198,7 +208,7 @@ export default function Search() {
 
   useEffect(() => {
     // Sem termo, só busca quando há filtro (visões prontas, B4.1.4).
-    if (!current || (!q && !(pasta || periodo || tipo || setor || guarda))) { setData(null); setState("idle"); return; }
+    if (!current || (!q && !(pasta || periodo || tipo || setor || guarda || ocr || campo))) { setData(null); setState("idle"); return; }
     const id = ++reqId.current;
     setState("loading");
     api.get<SearchResponse>("/search", {
@@ -207,6 +217,7 @@ export default function Search() {
         folder_id: pasta || undefined, subfolders: pasta ? sub : undefined,
         date_from: dateFrom || undefined, date_to: dateTo || undefined,
         file_type: tipo || undefined, sector: setor || undefined, guarda: guarda || undefined,
+        ocr: ocr || undefined, campo: campo || undefined, valor: campo && valor ? valor : undefined,
       },
     })
       .then((r) => {
@@ -216,12 +227,12 @@ export default function Search() {
         localStorage.setItem(RECENT_KEY, JSON.stringify(next)); setRecent(next);
       })
       .catch(() => { if (id === reqId.current) setState("error"); });
-  }, [current?.id, q, pasta, sub, dateFrom, dateTo, ordem, tipo, setor, guarda, pagina, retry]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [current?.id, q, pasta, sub, dateFrom, dateTo, ordem, tipo, setor, guarda, ocr, campo, valor, pagina, retry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const folderOpts = useMemo(() => [{ value: "", label: "Todas as pastas" }, ...[...folders].sort((a, b) => a.path.localeCompare(b.path)).map((f) => ({ value: f.id, label: f.name, depth: f.path.split(".").length - 1 }))], [folders]);
   const total = data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const filtros = !!(pasta || periodo || tipo || setor || guarda);
+  const filtros = !!(pasta || periodo || tipo || setor || guarda || ocr || campo);
   const results = data?.results ?? [];
   // Também nos comentários e anotações (B2.6.7), só dos documentos que a pessoa enxerga.
   const [notas, setNotas] = useState<{ comment_id: string; document_id: string; document_name: string; folder_id: string; folder_path_label: string | null; body: string; page: number | null; anotacao: boolean; author: string }[]>([]);
@@ -347,7 +358,24 @@ export default function Search() {
               )}
             </div>
           )}
-          {filtros && <Button variant="ghost" size="sm" onClick={() => setP({ pasta: null, sub: null, periodo: null, de: null, ate: null, tipo: null, setor: null, guarda: null })}>Limpar filtros</Button>}
+                    <div>
+            <label id={`${uid}-ocr`} className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Texto lido</label>
+            <Dropdown ariaLabelledby={`${uid}-ocr`} value={ocr} onChange={(v) => setP({ ocr: v || null })}
+              options={[{ value: "", label: "Qualquer" }, { value: "lido", label: "Já lido" }, { value: "fila", label: "Ainda lendo" }, { value: "falhou", label: "Não foi possível ler" }]} />
+          </div>
+          {campos.length > 0 && (
+            <div className="space-y-1.5">
+              <label id={`${uid}-campo`} className="block text-mac-caption font-medium text-(--text-secondary)">Metadado</label>
+              <Dropdown ariaLabelledby={`${uid}-campo`} value={campo} onChange={(v) => setP({ campo: v || null, valor: null })}
+                options={[{ value: "", label: "Qualquer campo" }, ...campos.map((c) => ({ value: c.id, label: c.label }))]} />
+              {campo && (
+                <input value={valorTexto} onChange={(e) => setValorTexto(e.target.value)} aria-label="Valor do metadado" placeholder="Contém… (vazio = preenchido)"
+                  onBlur={() => setP({ valor: valorTexto.trim() || null })} onKeyDown={(e) => { if (e.key === "Enter") setP({ valor: valorTexto.trim() || null }); }}
+                  className="mac-field w-full h-8 pointer-coarse:h-11 px-2.5 text-mac-body text-(--text-primary)" />
+              )}
+            </div>
+          )}
+          {filtros && <Button variant="ghost" size="sm" onClick={() => setP({ pasta: null, sub: null, periodo: null, de: null, ate: null, tipo: null, setor: null, guarda: null, ocr: null, campo: null, valor: null })}>Limpar filtros</Button>}
           {/* Visões prontas por pergunta (B4.1.4, FA-A3-05): um clique, sem digitar nada. */}
           <div>
             <p className="text-mac-caption font-medium text-(--text-secondary) mb-1">Visões prontas</p>
@@ -438,6 +466,10 @@ export default function Search() {
                 {data.aproximado ? (
                   <p role="status" className="text-mac-body text-(--text-secondary)">
                     Nada exato para “{q}”. {total === 1 ? "Este documento tem" : `Estes ${total} documentos têm`} palavras parecidas (pode ser erro de digitação ou de leitura do texto).
+                    {data.sugestao && (
+                      <> Você quis dizer{" "}
+                        <button type="button" onClick={() => { setText(data.sugestao!); setP({ q: data.sugestao! }); }} className="font-medium text-(--text-accent) hover:underline">“{data.sugestao}”</button>?</>
+                    )}
                   </p>
                 ) : (
                 <p className="text-mac-body text-(--text-secondary)">

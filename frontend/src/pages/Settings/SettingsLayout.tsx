@@ -75,6 +75,30 @@ export default function SettingsLayout() {
   const [sidebarQuery, setSidebarQuery] = useState("");
 
   const [recent, setRecent] = useState<string[]>(readRecent);
+  // Âncora da busca (B4.2.2): ao abrir pela busca, rola até a seção que tem o
+  // termo (título, rótulo ou legenda) e pisca de leve para mostrar onde está.
+  useEffect(() => {
+    const termo = new URLSearchParams(location.search).get("realce")?.trim().toLowerCase();
+    if (!termo) return;
+    const dobra = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const alvo = dobra(termo);
+    let tentativas = 0;
+    const timer = window.setInterval(() => {
+      tentativas++;
+      const main = document.getElementById("conteudo") ?? document.querySelector("main");
+      const el = [...(main?.querySelectorAll<HTMLElement>("h2, h3, legend, label, dt, summary, [id^=pol-]") ?? [])]
+        .find((e) => dobra(e.textContent ?? "").includes(alvo));
+      if (el || tentativas > 20) {
+        window.clearInterval(timer);
+        if (!el) return;
+        const bloco = (el.closest("section, fieldset, details, li, div.glass-panel") as HTMLElement | null) ?? el;
+        bloco.scrollIntoView({ block: "center", behavior: "smooth" });
+        bloco.classList.add("spring-target");
+        window.setTimeout(() => bloco.classList.remove("spring-target"), 1300);
+      }
+    }, 150);
+    return () => window.clearInterval(timer);
+  }, [location.pathname, location.search]);
   useEffect(() => {
     if (atIndex) return;
     localStorage.setItem(LAST_PANE_KEY, location.pathname);
@@ -200,7 +224,7 @@ export default function SettingsLayout() {
                 {filtered.filter((t) => t.group === group).map((tab) => (
                   <NavLink
                     key={tab.to}
-                    to={tab.to}
+                    to={q ? `${tab.to}?realce=${encodeURIComponent(q)}` : tab.to}
                     onMouseEnter={() => prefetchRoute(tab.to)}
                     onFocus={() => prefetchRoute(tab.to)}
                     className={({ isActive }) => `sidebar-item ${isActive ? "is-selected" : ""}`}

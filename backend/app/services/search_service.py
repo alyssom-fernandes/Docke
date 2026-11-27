@@ -1,4 +1,5 @@
 """Full-text search com FTS 'portuguese' + ts_headline — implementado em M3.1."""
+import difflib
 import re
 from typing import Any
 from uuid import UUID
@@ -45,6 +46,34 @@ class SearchService:
             return None
         return r"\D{0,2}".join(digits)
 
+    _MESES = ("jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez")
+
+    @staticmethod
+    def competencia_pattern(raw: str) -> str | None:
+        """
+        Competência escrita de vários jeitos (B2.2.1): "03/2026", "3-2026",
+        "mar/2026", "março de 2026" e "2026-03" acham o mesmo documento, no
+        texto, no nome e na competência gravada. Devolve uma expressão regular
+        do PostgreSQL (sem caixa) ou None se o termo não é uma competência.
+        """
+        t = raw.strip().lower()
+        mes = ano = None
+        m = re.fullmatch(r"(0?[1-9]|1[0-2])\s*[/\-.]\s*(\d{4})", t)
+        if m:
+            mes, ano = int(m.group(1)), m.group(2)
+        m = m or re.fullmatch(r"(\d{4})\s*[/\-.]\s*(0[1-9]|1[0-2])", t)
+        if m and mes is None:
+            ano, mes = m.group(1), int(m.group(2))
+        if mes is None:
+            m = re.fullmatch(r"([a-zç]{3})[a-zç]*\.?\s*(?:de\s+|[/\-.]\s*)?(\d{4})", t)
+            if m and m.group(1) in SearchService._MESES:
+                mes, ano = SearchService._MESES.index(m.group(1)) + 1, m.group(2)
+        if mes is None or not ano or not 2000 <= int(ano) <= 2100:
+            return None
+        abrev = SearchService._MESES[mes - 1]
+        return (rf"(?i)(\m0?{mes}\s*[/\-.]\s*{ano}\M|\m{abrev}[a-zç]*\.?\s*(de\s+|[/\-.]\s*)?{ano}\M"
+                rf"|\m{ano}\s*[/\-.]\s*{mes:02d}\M)")
+
     _WHERE = """
       d.company_id = $2
       AND d.deleted_at IS NULL AND d.content_hash IS NOT NULL
@@ -54,9 +83,14 @@ class SearchService:
         OR d.name ILIKE '%' || $3 || '%'
         OR d.ocr_text ILIKE '%' || $3 || '%'
         OR ft.txt ILIKE '%' || $3 || '%'
-        OR ($4::text IS NOT NULL AND (d.name ~ $4 OR d.ocr_text ~ $4 OR ft.txt ~ $4
+        OR ($4::text IS NOT NULL AND (d.name ~ $4 OR d.ocr_text ~ $4 OR ft.txt ~ $4 OR coalesce(d.competencia::text, '') ~ $4
               -- Chave de acesso da NF-e lida no envio, com ou sem espaços (B2.5.5).
-              OR EXISTS (SELECT 1 FROM public.document_nfe n WHERE n.document_id = d.id AND n.chave ~ $4)))
+              OR EXISTS (SELECT 1 FROM public.document_nfe n WHERE n.document_id = d.id
+                         AND (n.chave ~ $4 OR coalesce(n.emitente_cnpj, '') ~ $4 OR coalesce(n.destinatario_doc, '') ~ $4))))
+        -- Campos da NF-e lida na entrada (B2.5.4): emitente, destinatário e número.
+        OR EXISTS (SELECT 1 FROM public.document_nfe n WHERE n.document_id = d.id AND length($3) >= 3
+                   AND public.immutable_unaccent(lower(coalesce(n.emitente_nome, '') || ' ' || coalesce(n.destinatario_nome, '') || ' ' || coalesce(n.numero::text, '')))
+                       LIKE '%' || public.immutable_unaccent(lower($3)) || '%')
       )
       AND ($5::ltree IS NULL OR f.path <@ $5::ltree)
       AND ($6::date IS NULL OR d.created_at >= $6::date)
@@ -110,6 +144,9 @@ class SearchService:
         folder_path: str | None = None,
         exact_folder_id: UUID | None = None,
         guarda: str | None = None,
+        ocr: str | None = None,
+        campo: UUID | None = None,
+        valor: str | None = None,
     ) -> dict[str, Any]:
         """
         Busca com filtros de pasta (com subpastas), período e tipo, ordenação
@@ -118,7 +155,7 @@ class SearchService:
         """
         offset = (page - 1) * page_size
         raw_term = q.strip()
-        digits = SearchService.digits_pattern(raw_term)
+        digits = SearchService.digits_pattern(raw_term) or SearchService.competencia_pattern(raw_term)
         order = SearchService._ORDER.get(sort, SearchService._ORDER["relevancia"])
         rows = await conn.fetch(
             f"""
@@ -155,11 +192,18 @@ class SearchService:
                    OR ($13 = 'bloqueio' AND public.document_is_under_hold(d.id))
                    OR ($13 = 'sem_prazo' AND NOT EXISTS (SELECT 1 FROM public.document_retention_info(d.id) ri WHERE ri.policy_id IS NOT NULL))
                    OR ($13 = 'vencido' AND EXISTS (SELECT 1 FROM public.document_retention_info(d.id) ri WHERE ri.expires_at < CURRENT_DATE)))
+              AND ($14::text IS NULL OR ($14 = 'lido' AND d.ocr_status = 'done') OR ($14 = 'fila' AND d.ocr_status IN ('pending', 'processing'))
+                   OR ($14 = 'falhou' AND d.ocr_status = 'failed'))
+              AND ($15::uuid IS NULL OR EXISTS (
+                    SELECT 1 FROM public.document_field_value v
+                    WHERE v.document_id = d.id AND v.custom_field_id = $15::uuid
+                      AND ($16::text IS NULL OR public.immutable_unaccent(lower(coalesce(v.value_text, v.value_number::text, v.value_date::text, '')))
+                           LIKE '%' || public.immutable_unaccent(lower($16::text)) || '%')))
             ORDER BY {order}
             LIMIT $11 OFFSET $12
             """,
             normalized, company_id, raw_term, digits, folder_path, date_from, date_to, exact_folder_id,
-            sector, file_type, page_size, offset, guarda,
+            sector, file_type, page_size, offset, guarda, ocr, campo, valor,
         )
         total = rows[0]["total_count"] if rows else 0
 
@@ -167,6 +211,7 @@ class SearchService:
         # resultado exato, procura palavras parecidas por trigramas ("contrarto"
         # acha "contrato"). Palavra curta pede semelhança maior.
         aproximado = False
+        sugestao: str | None = None
         letras = re.sub(r"[^\w]", "", raw_term, flags=re.UNICODE)
         if not rows and page == 1 and digits is None and len(letras) >= 4 and not letras.isdigit():
             limiar = 0.75 if len(letras) <= 5 else 0.6 if len(letras) <= 7 else 0.5
@@ -194,13 +239,25 @@ class SearchService:
                        OR ($10 = 'bloqueio' AND public.document_is_under_hold(d.id))
                        OR ($10 = 'sem_prazo' AND NOT EXISTS (SELECT 1 FROM public.document_retention_info(d.id) ri WHERE ri.policy_id IS NOT NULL))
                        OR ($10 = 'vencido' AND EXISTS (SELECT 1 FROM public.document_retention_info(d.id) ri WHERE ri.expires_at < CURRENT_DATE)))
+                  AND ($11::text IS NULL OR ($11 = 'lido' AND d.ocr_status = 'done') OR ($11 = 'fila' AND d.ocr_status IN ('pending', 'processing'))
+                       OR ($11 = 'falhou' AND d.ocr_status = 'failed'))
+                  AND ($12::uuid IS NULL OR EXISTS (
+                        SELECT 1 FROM public.document_field_value v
+                        WHERE v.document_id = d.id AND v.custom_field_id = $12::uuid
+                          AND ($13::text IS NULL OR public.immutable_unaccent(lower(coalesce(v.value_text, v.value_number::text, v.value_date::text, '')))
+                               LIKE '%' || public.immutable_unaccent(lower($13::text)) || '%')))
                 ORDER BY rank DESC, d.created_at DESC
                 LIMIT $9
                 """,
                 raw_term, company_id, folder_path, date_from, date_to, exact_folder_id, sector, file_type, page_size, guarda,
+                ocr, campo, valor,
             )
             aproximado = bool(rows)
             total = len(rows)
+            if rows:
+                palavras = {w for r in rows for w in re.findall(r"[^\W\d_]{4,}", r["name"] or "", flags=re.UNICODE)}
+                perto = difflib.get_close_matches(raw_term.lower(), {w.lower() for w in palavras}, n=1, cutoff=0.6)
+                sugestao = perto[0] if perto and perto[0] != raw_term.lower() else None
 
         # Facetas: contagem por setor/tipo entre os que batem, ignorando o
         # filtro da própria dimensão.
@@ -238,6 +295,7 @@ class SearchService:
         return {
             "results": [{k: v for k, v in dict(r).items() if k != "total_count"} for r in rows],
             "aproximado": aproximado,
+            "sugestao": sugestao,
             "total": total,
             "page": page,
             "page_size": page_size,
