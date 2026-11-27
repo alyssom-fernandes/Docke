@@ -177,3 +177,36 @@ async def test_tabela_de_temporalidade_pronta(api, empresa):  # noqa: F811
     assert r.json() == {"created": 2, "skipped": 0}
     r = await api.post(API + f"/companies/{co}/retention/catalog", json={"keys": ["fiscal_5_anos"]}, headers=h)
     assert r.json() == {"created": 0, "skipped": 1}
+
+
+@pytest.mark.asyncio
+async def test_aprovacao_dupla_do_descarte(api, admin, empresa):  # noqa: F811
+    """B3.4.5: com a regra ligada, a mesma pessoa não aprova duas vezes; a segunda, de outra, libera."""
+    h, co = _token(empresa["user"]), empresa["co"]
+    outro = str(uuid.uuid4())
+    await admin.execute("INSERT INTO auth.users (id, email) VALUES ($1, $2)", outro, f"{outro[:8]}@test.local")
+    await admin.execute("INSERT INTO public.users (id, username, full_name, role) VALUES ($1, $2, 'Segunda Admin', 'usuario')", outro, f"sa_{outro[:6]}")
+    await admin.execute("INSERT INTO public.user_company_access (user_id, company_id, permission_level) VALUES ($1, $2, 'admin')", outro, co)
+    try:
+        d = await _doc(admin, empresa, empresa["raiz"], "Recibo 2018.pdf", datetime.datetime(2018, 1, 5, tzinfo=datetime.timezone.utc))
+        p = await _policy(api, h, co, name="Recibos dupla", duration_months=24)
+        qid = str(await admin.fetchval(
+            "INSERT INTO public.retention_review_queue (company_id, document_id, policy_id, policy_name_snapshot, computed_expires_at)"
+            " VALUES ($1, $2, $3, 'Recibos dupla', '2020-01-05') RETURNING id",
+            uuid.UUID(co), uuid.UUID(d), uuid.UUID(p["id"]),
+        ))
+        assert (await api.put(API + f"/companies/{co}/retention/double-approval", json={"enabled": True}, headers=h)).status_code == 200
+        url = API + f"/retention/queue/{qid}/decision"
+        r = await api.post(url, params={"company_id": co}, json={"status": "approved"}, headers=h)
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "pending" and r.json()["aguardando_segunda"] is True
+        assert (await api.post(url, params={"company_id": co}, json={"status": "approved"}, headers=h)).status_code == 409
+        r = await api.post(url, params={"company_id": co}, json={"status": "approved"}, headers=_token(outro))
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "approved" and "1ª aprovação: Admin Retenção" in r.json()["review_notes"]
+    finally:
+        await admin.execute("DELETE FROM public.retention_review_queue WHERE company_id = $1", uuid.UUID(co))
+        await admin.execute("DELETE FROM public.activity_log WHERE user_id = $1", uuid.UUID(outro))
+        await admin.execute("DELETE FROM public.user_company_access WHERE user_id = $1", uuid.UUID(outro))
+        await admin.execute("DELETE FROM public.users WHERE id = $1", uuid.UUID(outro))
+        await admin.execute("DELETE FROM auth.users WHERE id = $1", uuid.UUID(outro))

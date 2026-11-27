@@ -99,6 +99,8 @@ export const ACTION_LABELS: Record<string, string> = {
   share_create: "criou um link público para",
   share_revoke: "desativou o link público de",
   share_reactivate: "reativou o link público de",
+  retention_queue_first_approval: "deu a 1ª aprovação para descartar",
+  retention_double_approval: "mudou a aprovação dupla do descarte em",
   share_access: "teve aberto por um visitante o link público de",
   share_access_denied: "teve uma tentativa recusada no link público de",
   audit_verify: "verificou a integridade da",

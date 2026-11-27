@@ -608,6 +608,35 @@ async def explain_document_retention(
 
 
 # ---------------------------------------------------------------------------
+# Aprovação dupla do descarte (B3.4.5)
+# ---------------------------------------------------------------------------
+
+class DoubleApproval(BaseModel):
+    enabled: bool
+
+
+@router.get("/companies/{company_id}/retention/double-approval")
+async def get_double_approval(company_id: UUID, conn: asyncpg.Connection = Depends(get_db)) -> dict[str, bool]:
+    return {"enabled": bool(await conn.fetchval("SELECT retention_double_approval FROM public.companies WHERE id = $1", company_id))}
+
+
+@router.put("/companies/{company_id}/retention/double-approval")
+async def put_double_approval(
+    company_id: UUID,
+    body: DoubleApproval,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, bool]:
+    role = await get_app_role(conn, claims)
+    await _require_admin(conn, claims["sub"], company_id, role)
+    await admin_conn.execute("UPDATE public.companies SET retention_double_approval = $2 WHERE id = $1", company_id, body.enabled)
+    await RetentionService.log(conn, user_id=claims["sub"], company_id=company_id, action="retention_double_approval",
+                               item_id=company_id, name="Aprovação dupla do descarte", metadata={"ligada": body.enabled})
+    return {"enabled": body.enabled}
+
+
+# ---------------------------------------------------------------------------
 # Fila de revisão
 # ---------------------------------------------------------------------------
 
@@ -649,7 +678,7 @@ async def decide_queue_item(
     )
     if row is None or row["company_id"] != company_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item da fila não encontrado.")
-    await _log_decision(conn, claims["sub"], company_id, row, body.status, body.notes, deferred_until)
+    await _log_decision(conn, claims["sub"], company_id, row, "first_approval" if row.get("aguardando_segunda") else body.status, body.notes, deferred_until)
     return dict(row)
 
 
@@ -683,7 +712,7 @@ async def decide_queue_batch(
             )
             if row is None or row["company_id"] != company_id:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Um dos itens não está na fila desta empresa. Nada foi alterado.")
-            await _log_decision(conn, claims["sub"], company_id, row, body.status, body.notes, body.deferred_until)
+            await _log_decision(conn, claims["sub"], company_id, row, "first_approval" if row.get("aguardando_segunda") else body.status, body.notes, body.deferred_until)
             feitos += 1
     return {"updated": feitos}
 

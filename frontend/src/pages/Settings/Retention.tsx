@@ -36,6 +36,8 @@ interface QueueItem {
   id: string; document_id: string; document_name: string; folder_id: string | null; folder_name: string | null;
   policy_name_snapshot: string; computed_expires_at: string; status: string; review_notes: string | null;
   deferred_until: string | null; reviewed_by_name: string | null;
+  /** Aprovação dupla (B3.4.5): a primeira já foi dada e falta a segunda. */
+  first_approved_by?: string | null; first_approved_by_name?: string | null;
 }
 interface Certificate {
   id: string; document_name_snapshot: string; document_sha256: string | null; folder_path_snapshot: string | null;
@@ -93,6 +95,8 @@ export default function Retention() {
     if (!cid) return;
     api.get<Summary>(`/companies/${cid}/retention/summary`).then((r) => setSummary(r.data)).catch(() => {});
     if (partes.includes("politicas")) api.get<Policy[]>(`/companies/${cid}/retention/policies`).then((r) => setPolicies(r.data ?? [])).catch(() => {});
+    // O prazo por evento pode ter criado o campo de data agora.
+    if (partes.includes("politicas")) api.get<Field[]>("/custom-fields", { params: { company_id: cid } }).then((r) => setFields((r.data ?? []).filter((x) => x.type === "data" || x.type === "competencia"))).catch(() => {});
     if (partes.includes("atribuicoes")) api.get<Assignment[]>(`/companies/${cid}/retention/assignments`).then((r) => setAssignments(r.data ?? [])).catch(() => {});
     if (partes.includes("bloqueios")) api.get<Hold[]>(`/companies/${cid}/retention/holds`, { params: { active_only: false } }).then((r) => setHolds(r.data ?? [])).catch(() => {});
     if (partes.includes("fila")) {
@@ -200,12 +204,21 @@ function QueueTab({ companyId, isAdmin, queue, approved, onChanged }: { companyI
   const [purging, setPurging] = useState<QueueItem | null>(null);
   const [busy, setBusy] = useState(false);
   const allOn = queue.length > 0 && sel.size === queue.length;
+  const [dupla, setDupla] = useState<boolean | null>(null);
+  useEffect(() => { api.get(`/companies/${companyId}/retention/double-approval`).then((r) => setDupla(!!r.data.enabled)).catch(() => setDupla(null)); }, [companyId]);
+  async function mudarDupla(v: boolean) {
+    setDupla(v);
+    try { await api.put(`/companies/${companyId}/retention/double-approval`, { enabled: v }); success(v ? "Descarte agora pede a aprovação de duas pessoas." : "Descarte volta a pedir uma aprovação."); }
+    catch (e) { setDupla(!v); showError(friendly(e, "Não foi possível mudar.")); }
+  }
 
   async function decide(status: string, notes: string, until: string) {
     setBusy(true);
     try {
       const r = await api.post(`/companies/${companyId}/retention/queue/decision-batch`, { ids: [...sel], status, notes: notes.trim() || null, deferred_until: until || null });
-      success(`${r.data.updated} ${r.data.updated === 1 ? "decisão registrada" : "decisões registradas"}.`);
+      success(status === "approved" && dupla
+        ? `${r.data.updated} ${r.data.updated === 1 ? "aprovação registrada" : "aprovações registradas"}. Com a aprovação dupla, o descarte é liberado quando outra pessoa aprovar também.`
+        : `${r.data.updated} ${r.data.updated === 1 ? "decisão registrada" : "decisões registradas"}.`);
       setSel(new Set()); setDecision(null); onChanged();
     } catch (e) { showError(friendly(e, "Nada foi alterado.")); } finally { setBusy(false); }
   }
@@ -227,6 +240,14 @@ function QueueTab({ companyId, isAdmin, queue, approved, onChanged }: { companyI
         <p className="text-mac-caption text-(--text-secondary)">
           Aprovar não apaga nada: só libera o documento para a exclusão definitiva, que é um segundo passo logo abaixo. Manter tira da fila; adiar devolve à fila na data escolhida.
         </p>
+        {isAdmin && dupla !== null && (
+          <label className="flex items-start gap-3 text-mac-body text-(--text-primary)">
+            <Checkbox checked={dupla} onChange={(e) => mudarDupla(e.target.checked)} className="mt-0.5" />
+            <span>Pedir a aprovação de duas pessoas
+              <span className="block text-mac-caption text-(--text-secondary)">Cada descarte precisa ser aprovado por duas pessoas diferentes antes de liberar a exclusão.</span>
+            </span>
+          </label>
+        )}
         {queue.length === 0 ? (
           <p className="glass-panel glass-blur-card rounded-(--radius-panel) px-5 py-4 text-mac-body text-(--text-secondary)">Nenhum documento com prazo vencido esperando decisão.</p>
         ) : (
@@ -248,6 +269,7 @@ function QueueTab({ companyId, isAdmin, queue, approved, onChanged }: { companyI
                   <div className="flex-1 min-w-0">
                     <Link to={`/documents?folder_id=${q.folder_id ?? ""}&doc=${q.document_id}`} className="block truncate text-mac-body text-(--text-accent) hover:underline">{q.document_name}</Link>
                     <p className="text-mac-caption text-(--text-secondary) truncate">{q.folder_name ?? "Sem pasta"} · {q.policy_name_snapshot} · venceu em {fmtDate(q.computed_expires_at)}</p>
+                    {q.first_approved_by && <p className="text-mac-caption font-medium text-(--text-warning)">Falta a 2ª aprovação (1ª por {q.first_approved_by_name ?? "outra pessoa"})</p>}
                   </div>
                 </li>
               ))}
@@ -391,6 +413,17 @@ function PoliciesTab({ companyId, isAdmin, policies, fields, onChanged }: { comp
   );
 }
 
+/**
+ * Eventos de negócio (B3.4.1, FA-A7-09): o prazo conta da data em que algo
+ * aconteceu, guardada num campo de data com nome fixo.
+ */
+const EVENTOS = [
+  { key: "ev:desligamento", label: "desligamento do funcionário", campo: "Data de desligamento" },
+  { key: "ev:fim_contrato", label: "fim do contrato", campo: "Data de término do contrato" },
+  { key: "ev:fim_processo", label: "encerramento do processo", campo: "Data de encerramento do processo" },
+  { key: "ev:baixa_bem", label: "baixa do bem (venda ou descarte)", campo: "Data de baixa do bem" },
+];
+
 function PolicyDialog({ companyId, policy, fields, onClose, onSaved }: { companyId: string; policy?: Policy; fields: Field[]; onClose: () => void; onSaved: () => void }) {
   const { success, error: showError } = useToast();
   const uid = useId();
@@ -411,14 +444,28 @@ function PolicyDialog({ companyId, policy, fields, onClose, onSaved }: { company
 
   async function save() {
     setSaving(true);
+    let gatilho = trigger;
+    try {
+      // Evento de negócio (B3.4.1, FA-A7-09): usa o campo de data do evento e,
+      // se a empresa ainda não tem, cria o campo na hora.
+      const ev = EVENTOS.find((e) => e.key === trigger);
+      if (ev) {
+        const existente = fields.find((f) => f.label.trim().toLowerCase() === ev.campo.toLowerCase());
+        gatilho = existente ? existente.id
+          : (await api.post<{ id: string }>("/custom-fields", { company_id: companyId, label: ev.campo, type: "data", format_config: {} })).data.id;
+      }
+    } catch (e) { showError(friendly(e, "Não foi possível criar o campo do evento.")); setSaving(false); return; }
     const body = {
       name: name.trim(), legal_basis: legal.trim() || null, notes: notes.trim() || null, start_rule: startRule,
-      trigger_type: trigger ? "custom_field" : "upload_date", trigger_custom_field_id: trigger || null, locked,
+      trigger_type: gatilho ? "custom_field" : "upload_date", trigger_custom_field_id: gatilho || null, locked,
     };
     try {
       if (policy) await api.patch(`/retention/policies/${policy.id}`, { ...body, ...(permanent ? { indeterminate: true } : { duration_months: months }) });
       else await api.post(`/companies/${companyId}/retention/policies`, { ...body, company_id: companyId, duration_months: months });
-      success(policy ? "Prazo atualizado." : "Prazo cadastrado. Agora diga onde ele vale.");
+      const ev = EVENTOS.find((e) => e.key === trigger);
+      success(ev
+        ? `${policy ? "Prazo atualizado" : "Prazo cadastrado"}. Aplique o campo “${ev.campo}” nas pastas onde o evento acontece (Ajustes → Metadados) para a contagem começar.`
+        : policy ? "Prazo atualizado." : "Prazo cadastrado. Agora diga onde ele vale.");
       onSaved();
     } catch (e) { showError(friendly(e, "Não foi possível salvar.")); } finally { setSaving(false); }
   }
@@ -445,8 +492,19 @@ function PolicyDialog({ companyId, policy, fields, onClose, onSaved }: { company
         <div>
           <label id={`${uid}-trg`} className="block text-mac-body font-medium text-(--text-secondary) mb-1">Contar a partir de</label>
           <Dropdown ariaLabelledby={`${uid}-trg`} value={trigger} onChange={setTrigger} disabled={policy?.locked}
-            options={[{ value: "", label: "Data de envio do documento" }, ...fields.map((f) => ({ value: f.id, label: `Campo “${f.label}”` }))]} />
-          <p className="mt-1 text-mac-caption text-(--text-secondary)">Para RH e contratos, use um campo de data (desligamento, fim do contrato). Documentos importados do Arquivar mantêm a data original de envio.</p>
+            options={[
+              { value: "", label: "Data de envio do documento" },
+              ...EVENTOS.filter((e) => !fields.some((f) => f.label.trim().toLowerCase() === e.campo.toLowerCase())).map((e) => ({ value: e.key, label: `Evento: ${e.label}` })),
+              ...fields.map((f) => {
+                const ev = EVENTOS.find((e) => e.campo.toLowerCase() === f.label.trim().toLowerCase());
+                return { value: f.id, label: ev ? `Evento: ${ev.label}` : `Campo “${f.label}”` };
+              }),
+            ]} />
+          <p className="mt-1 text-mac-caption text-(--text-secondary)">
+            {EVENTOS.some((e) => e.key === trigger)
+              ? `O prazo começa na data do evento, guardada no campo “${EVENTOS.find((e) => e.key === trigger)!.campo}”, que será criado agora.`
+              : "Para RH e contratos, conte de um evento (desligamento, fim do contrato). Documentos importados do Arquivar mantêm a data original de envio."}
+          </p>
         </div>
         <label className="flex items-start gap-3 text-mac-body text-(--text-primary)">
           <Checkbox checked={startRule === "ano_seguinte"} disabled={policy?.locked} onChange={(e) => setStartRule(e.target.checked ? "ano_seguinte" : "data")} className="mt-0.5" />
