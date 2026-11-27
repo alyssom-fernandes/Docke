@@ -445,8 +445,12 @@ async def mfa_status(
 
     cadastrado, exigido = await mfa_service.estado(admin_conn, claims["sub"])
     fatores = [f for f in await _fatores(admin_conn, claims["sub"]) if f["status"] == "verified"]
+    restantes = await admin_conn.fetchval(
+        "SELECT count(*) FROM public.mfa_recovery_codes WHERE user_id = $1 AND used_at IS NULL", claims["sub"],
+    )
     return {
         "ativada": cadastrado,
+        "codigos_restantes": restantes,
         "exigida": exigido and not mfa_service.is_demo(claims),
         "pendente": mfa_service.pendencia(claims, cadastrado, exigido),
         "sessao_verificada": claims.get("aal") == "aal2",
@@ -578,6 +582,99 @@ async def mfa_remove(
     nome = await admin_conn.fetchval("SELECT full_name FROM public.users WHERE id = $1", claims["sub"]) or "Uma pessoa"
     for co in await admin_conn.fetch("SELECT DISTINCT company_id FROM public.user_company_access WHERE user_id = $1", claims["sub"]):
         await security_alert_admins(admin_conn, co["company_id"], f"{nome} desligou a verificação em duas etapas da própria conta.",
+                                    except_user=claims["sub"])
+    return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Códigos de recuperação (FA-A8-01): 10 códigos de uso único, mostrados uma vez.
+# Com um deles e a senha, quem perdeu o celular apaga o app autenticador da
+# própria conta e cadastra de novo; os administradores ficam sabendo.
+# ---------------------------------------------------------------------------
+
+_ALFABETO_CODIGO = "abcdefghjkmnpqrstuvwxyz23456789"  # sem 0/o, 1/l/i
+
+
+def _hash_codigo(user_id: str, codigo: str) -> str:
+    import hashlib
+    import hmac as _hmac
+
+    chave = hashlib.sha256(("docke-mfa-recuperacao|" + settings.JWT_SECRET).encode()).digest()
+    limpo = "".join(ch for ch in codigo.lower() if ch.isalnum())
+    return _hmac.new(chave, f"{user_id}|{limpo}".encode(), hashlib.sha256).hexdigest()
+
+
+@router.post("/mfa/recovery-codes")
+async def mfa_recovery_codes(
+    claims: dict[str, Any] = Depends(get_current_user),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+) -> dict[str, Any]:
+    """Gera 10 códigos novos (os anteriores deixam de valer). Precisa da sessão verificada."""
+    import secrets
+
+    from app.services import mfa_service
+
+    if mfa_service.is_demo(claims):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="A conta de demonstração não usa verificação em duas etapas.")
+    if claims.get("aal") != "aal2":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Digite o código do app autenticador antes de gerar os códigos.",
+                            headers={"X-Docke-Code": "mfa_verificar"})
+    codigos = ["-".join("".join(secrets.choice(_ALFABETO_CODIGO) for _ in range(5)) for _ in range(2)) for _ in range(10)]
+    async with admin_conn.transaction():
+        await admin_conn.execute("DELETE FROM public.mfa_recovery_codes WHERE user_id = $1", claims["sub"])
+        await admin_conn.executemany(
+            "INSERT INTO public.mfa_recovery_codes (user_id, code_hash) VALUES ($1, $2)",
+            [(claims["sub"], _hash_codigo(claims["sub"], c)) for c in codigos],
+        )
+    return {"codigos": codigos}
+
+
+class MfaRecoverRequest(BaseModel):
+    code: str
+
+
+@router.post("/mfa/recover")
+async def mfa_recover(
+    body: MfaRecoverRequest,
+    claims: dict[str, Any] = Depends(get_current_user),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+) -> dict[str, str]:
+    """Celular perdido: um código de recuperação apaga o app autenticador da conta."""
+    chave = f"mfa:{claims['sub']}"
+    locked = rate_limit.is_locked_out(chave)
+    if locked:
+        raise HTTPException(status_code=status.HTTP_423_LOCKED,
+                            detail=f"Muitos códigos errados. Tente de novo em {int(locked // 60) + 1} minuto(s).")
+    usado = await admin_conn.fetchval(
+        """
+        UPDATE public.mfa_recovery_codes SET used_at = now()
+        WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL
+        RETURNING id
+        """,
+        claims["sub"], _hash_codigo(claims["sub"], body.code),
+    )
+    if usado is None:
+        rate_limit.record_failed_attempt(chave, _MFA_ATTEMPTS, _MFA_WINDOW_SECS, _MFA_LOCKOUT_SECS)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Código de recuperação incorreto ou já usado.")
+    fatores = await _fatores(admin_conn, claims["sub"])
+    async with httpx.AsyncClient() as client:
+        for f in fatores:
+            resp = await client.delete(
+                f"{settings.SUPABASE_URL}/auth/v1/admin/users/{claims['sub']}/factors/{f['id']}",
+                headers={"apikey": settings.SUPABASE_SERVICE_ROLE_KEY, "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}"},
+                timeout=10.0,
+            )
+            if resp.status_code not in (200, 204, 404):
+                # Devolve o código: a pessoa tenta de novo sem perder um dos dela.
+                await admin_conn.execute("UPDATE public.mfa_recovery_codes SET used_at = NULL WHERE id = $1", usado)
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Não foi possível concluir agora. Tente de novo.")
+    # Os códigos que sobraram eram do app antigo: deixam de valer.
+    await admin_conn.execute("DELETE FROM public.mfa_recovery_codes WHERE user_id = $1 AND used_at IS NULL", claims["sub"])
+    from app.services.notification_service import security_alert_admins
+    nome = await admin_conn.fetchval("SELECT full_name FROM public.users WHERE id = $1", claims["sub"]) or "Uma pessoa"
+    for co in await admin_conn.fetch("SELECT DISTINCT company_id FROM public.user_company_access WHERE user_id = $1", claims["sub"]):
+        await security_alert_admins(admin_conn, co["company_id"],
+                                    f"{nome} usou um código de recuperação: o app autenticador da conta foi apagado e precisa ser cadastrado de novo.",
                                     except_user=claims["sub"])
     return {"status": "ok"}
 

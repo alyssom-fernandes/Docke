@@ -13,7 +13,7 @@ import { rememberChoice } from "@/lib/session";
 import { friendlyError } from "@/lib/errors";
 import { relativeDate } from "@/lib/date";
 import Dialog from "@/components/ui/Dialog";
-import { MfaEnroll } from "@/components/shared/MfaSetup";
+import { MfaEnroll, RecoveryCodesList } from "@/components/shared/MfaSetup";
 import PasskeysCard from "@/components/shared/PasskeysCard";
 
 interface IntegrityResult {
@@ -120,7 +120,7 @@ function SessionsSection() {
   );
 }
 
-interface MfaInfo { ativada: boolean; exigida: boolean; demo: boolean; fatores: { id: string; nome: string; criado_em: string }[] }
+interface MfaInfo { ativada: boolean; exigida: boolean; demo: boolean; sessao_verificada?: boolean; codigos_restantes?: number; fatores: { id: string; nome: string; criado_em: string }[] }
 
 // Verificação em duas etapas (decisão do dono, 26/11/2026).
 function MfaSection() {
@@ -131,6 +131,21 @@ function MfaSection() {
   const [cadastrando, setCadastrando] = useState(false);
   const [desligando, setDesligando] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [codigos, setCodigos] = useState<string[] | null>(null);
+  const [gerando, setGerando] = useState(false);
+
+  async function gerarCodigos() {
+    setGerando(true);
+    try {
+      const r = await api.post<{ codigos: string[] }>("/auth/mfa/recovery-codes");
+      setCodigos(r.data.codigos);
+      load();
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível gerar os códigos agora."));
+    } finally {
+      setGerando(false);
+    }
+  }
 
   function load() {
     setFalhou(false);
@@ -172,6 +187,12 @@ function MfaSection() {
             {info.exigida && <span className="text-mac-caption text-(--text-secondary)">A sua empresa exige para o seu papel.</span>}
           </p>
           {!info.exigida && <Button size="sm" variant="secondary" onClick={() => setDesligando(true)}>Desligar</Button>}
+          <div className="basis-full flex flex-wrap items-center justify-between gap-3 border-t border-(--border-default) pt-3">
+            <p className="text-mac-caption text-(--text-secondary)">
+              Códigos de recuperação: {info.codigos_restantes ? `${info.codigos_restantes} sem usar.` : "nenhum gerado."} Servem para entrar se você perder o celular.
+            </p>
+            <Button size="sm" variant="secondary" loading={gerando} onClick={gerarCodigos}>{info.codigos_restantes ? "Gerar novos" : "Gerar códigos"}</Button>
+          </div>
         </div>
       ) : (
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -184,6 +205,12 @@ function MfaSection() {
           <div className="@container">
             <MfaEnroll onDone={async (t) => { await completeMfa(t); setCadastrando(false); success("Verificação em duas etapas ativada."); load(); }} />
           </div>
+        </Dialog>
+      )}
+      {codigos && (
+        <Dialog onClose={() => setCodigos(null)} title="Códigos de recuperação" size="sm"
+          footer={<Button onClick={() => setCodigos(null)}>Já guardei</Button>}>
+          <RecoveryCodesList codigos={codigos} />
         </Dialog>
       )}
       {desligando && (
