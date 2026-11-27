@@ -68,7 +68,7 @@ async def test_modelos_prontos_criam_obrigacoes_e_nao_duplicam(api, grupo):  # n
     h = _token(grupo["gestora"])
     r = await api.get(API + f"/companies/{grupo['co1']}/obligations/catalog", headers=h)
     assert r.status_code == 200, r.text
-    assert {s["id"] for s in r.json()["segmentos"]} == {"geral", "posto", "restaurante", "hotel"}
+    assert {s["id"] for s in r.json()["segmentos"]} == {"perfil", "geral", "posto", "restaurante", "hotel"}
 
     r = await api.post(API + f"/companies/{grupo['co1']}/obligations/catalog",
                        json={"keys": ["fgts_digital", "cnd_federal", "posto_anp"]}, headers=h)
@@ -220,3 +220,31 @@ async def test_responsavel_minhas_e_visao_do_grupo(api, grupo):  # noqa: F811
     assert r.status_code == 200, r.text
     hist = (await api.get(API + f"/obligations/instances/{inst['id']}/history", headers=hg)).json()
     assert any(h["action"] == "obligation_dispense" and h["metadata"]["motivo"] == "Unidade fechada" for h in hist)
+
+@pytest.mark.asyncio
+async def test_catalogo_recomenda_pelo_perfil_fiscal(api, grupo):  # noqa: F811
+    h = _token(grupo["gestora"])
+    co = grupo["co2"]
+    r = await api.get(API + f"/companies/{co}/obligations/catalog", headers=h)
+    assert set(r.json()["perfil_incompleto"]) == {"regime_tributario", "faixa_funcionarios", "tipo_juridico", "cnae_principal"}
+
+    r = await api.put(API + f"/companies/{co}/fiscal-profile", headers=h, json={
+        "regime_tributario": "lucro_presumido", "faixa_funcionarios": "11_a_50", "uf": "BA",
+        "tipo_juridico": "ltda", "cnae_principal": "4731-8/00",
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()["cnae_principal"] == "4731800"
+
+    r = await api.put(API + f"/companies/{co}/fiscal-profile", headers=h, json={"cnae_principal": "47318"})
+    assert r.status_code == 422
+
+    itens = {i["key"]: i for i in (await api.get(API + f"/companies/{co}/obligations/catalog", headers=h)).json()["itens"]}
+    assert itens["posto_anp"]["situacao"] == "recomendado" and "perfil" in itens["posto_anp"]["segmentos"]
+    assert itens["efd_icms_ipi"]["situacao"] == "recomendado"
+    assert itens["das_simples"]["situacao"] == "nao_se_aplica" and "perfil" not in itens["das_simples"]["segmentos"]
+    assert itens["hotel_cadastur"]["situacao"] == "nao_se_aplica"
+    assert "Lucro Presumido" in itens["ecf"]["motivos"]
+
+    # Os campos da avaliação não vão para o modelo criado.
+    r = await api.post(API + f"/companies/{co}/obligations/catalog", json={"keys": ["efd_contribuicoes"]}, headers=h)
+    assert r.status_code == 201, r.text

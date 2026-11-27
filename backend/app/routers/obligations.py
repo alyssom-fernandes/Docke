@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.dependencies import get_app_role, get_current_user, get_db, get_db_admin
 from app.services.companies_service import CompaniesService
 from app.services.fiscal_profile_service import VALID_FAIXAS, VALID_REGIMES, VALID_TIPOS_JURIDICOS, FiscalProfileService
-from app.services.obligation_catalog import BY_KEY, CATALOG, SEGMENTOS
+from app.services.obligation_catalog import BY_KEY, CATALOG, SEGMENTOS, avaliar
 from app.services.obligations_service import ObligationsService, period_label
 
 router = APIRouter(tags=["obligations"])
@@ -344,9 +344,21 @@ async def get_catalog(
     conn: asyncpg.Connection = Depends(get_db),
 ) -> dict[str, Any]:
     existing = await ObligationsService.existing_catalog_keys(conn, company_id)
+    perfil_row = await FiscalProfileService.get(conn, company_id)
+    perfil = dict(perfil_row) if perfil_row else {}
+    itens = []
+    for item in CATALOG:
+        av = avaliar(item["key"], perfil)
+        segmentos = list(item["segmentos"])
+        # "Para esta empresa": o que o perfil recomenda e o que depende de dado que falta.
+        if av["situacao"] != "nao_se_aplica":
+            segmentos.append("perfil")
+        itens.append({**item, "segmentos": segmentos, "ja_existe": item["key"] in existing, **av})
+    campos = ("regime_tributario", "faixa_funcionarios", "tipo_juridico", "cnae_principal")
     return {
         "segmentos": SEGMENTOS,
-        "itens": [{**item, "ja_existe": item["key"] in existing} for item in CATALOG],
+        "itens": itens,
+        "perfil_incompleto": [c for c in campos if not perfil.get(c)],
     }
 
 
@@ -373,7 +385,7 @@ async def apply_catalog(
             skipped.append(key)
             continue
         item = BY_KEY[key]
-        fields = {k: v for k, v in item.items() if k not in ("key", "segmentos")}
+        fields = {k: v for k, v in item.items() if k not in ("key", "segmentos", "situacao", "motivos")}
         fields["catalog_key"] = key
         if owner:
             fields["default_owner_id"] = owner
@@ -782,6 +794,19 @@ class FiscalProfileUpdate(BaseModel):
     faixa_funcionarios: str | None = None
     uf: str | None = None
     tipo_juridico: str | None = None
+    cnae_principal: str | None = None
+
+    @field_validator("cnae_principal")
+    @classmethod
+    def _valid_cnae(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        digitos = "".join(ch for ch in v if ch.isdigit())
+        if not digitos:
+            return None
+        if len(digitos) != 7:
+            raise ValueError("O CNAE tem 7 dígitos (ex.: 4731-8/00).")
+        return digitos
 
     @field_validator("regime_tributario")
     @classmethod
@@ -821,7 +846,7 @@ async def get_fiscal_profile(
 ) -> dict[str, Any]:
     row = await FiscalProfileService.get(conn, company_id)
     if row is None:
-        return {"company_id": str(company_id), "regime_tributario": None, "faixa_funcionarios": None, "uf": None, "tipo_juridico": None, "updated_at": None}
+        return {"company_id": str(company_id), "regime_tributario": None, "faixa_funcionarios": None, "uf": None, "tipo_juridico": None, "cnae_principal": None, "updated_at": None}
     return dict(row)
 
 
@@ -838,6 +863,7 @@ async def update_fiscal_profile(
     row = await FiscalProfileService.upsert(
         conn, company_id, regime_tributario=body.regime_tributario, faixa_funcionarios=body.faixa_funcionarios,
         uf=body.uf, tipo_juridico=body.tipo_juridico, updated_by=claims["sub"],
+        cnae_principal=body.cnae_principal,
     )
     return dict(row)
 

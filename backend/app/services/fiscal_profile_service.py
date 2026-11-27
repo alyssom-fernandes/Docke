@@ -26,18 +26,20 @@ class FiscalProfileService:
         conn: asyncpg.Connection, company_id: UUID, *,
         regime_tributario: str | None, faixa_funcionarios: str | None,
         uf: str | None, tipo_juridico: str | None, updated_by: str,
+        cnae_principal: str | None = None,
     ) -> asyncpg.Record:
         return await conn.fetchrow(
             """
-            INSERT INTO public.company_fiscal_profile (company_id, regime_tributario, faixa_funcionarios, uf, tipo_juridico, updated_by)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO public.company_fiscal_profile (company_id, regime_tributario, faixa_funcionarios, uf, tipo_juridico, updated_by, cnae_principal)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT (company_id) DO UPDATE SET
               regime_tributario = EXCLUDED.regime_tributario,
               faixa_funcionarios = EXCLUDED.faixa_funcionarios,
               uf = EXCLUDED.uf,
               tipo_juridico = EXCLUDED.tipo_juridico,
+              cnae_principal = EXCLUDED.cnae_principal,
               updated_by = EXCLUDED.updated_by
             RETURNING *
             """,
-            company_id, regime_tributario, faixa_funcionarios, uf, tipo_juridico, updated_by,
+            company_id, regime_tributario, faixa_funcionarios, uf, tipo_juridico, updated_by, cnae_principal,
         )
