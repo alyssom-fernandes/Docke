@@ -83,6 +83,16 @@ export default function CommandPalette() {
 
   function go(path: string) { close(); navigate(path); }
 
+  // Recentes (FA-A2-01): os últimos itens abertos pelo ⌘K aparecem no topo
+  // com o campo vazio, por empresa.
+  const recentesKey = `docke_cmdk_recentes_${current?.id ?? ""}`;
+  function lerRecentes(): QuickResult[] {
+    try { const v = JSON.parse(localStorage.getItem(recentesKey) ?? "[]"); return Array.isArray(v) ? v.slice(0, 5) : []; } catch { return []; }
+  }
+  function lembrar(r: QuickResult) {
+    try { localStorage.setItem(recentesKey, JSON.stringify([r, ...lerRecentes().filter((x) => x.id !== r.id)].slice(0, 5))); } catch { /* sem espaço */ }
+  }
+
   function linkDe(r: QuickResult) {
     return r.type === "folder" ? `/documents?folder_id=${r.id}` : `/documents?folder_id=${r.folder_id ?? ""}&doc=${r.id}`;
   }
@@ -94,7 +104,7 @@ export default function CommandPalette() {
       const r = acoesDe;
       const g = r.type === "folder" ? `Pasta: ${r.name}` : r.name;
       const acoes: Item[] = [
-        { id: "x-abrir", group: g, label: r.type === "folder" ? "Abrir a pasta" : "Abrir", icon: FolderOpen, run: () => go(linkDe(r)) },
+        { id: "x-abrir", group: g, label: r.type === "folder" ? "Abrir a pasta" : "Abrir", icon: FolderOpen, run: () => { lembrar(r); go(linkDe(r)); } },
         ...(r.type === "document" ? [{ id: "x-baixar", group: g, label: "Baixar", icon: Download, keywords: "download", run: () => {
           api.get(`/documents/${r.id}/download-url`).then((x) => { const a = document.createElement("a"); a.href = x.data.download_url; a.download = r.name; a.click(); close(); })
             .catch(() => setAviso("Não foi possível baixar agora."));
@@ -137,16 +147,18 @@ export default function CommandPalette() {
     }
     const q = fold(query.trim());
     const filtered = q ? base.filter((i) => fold(`${i.label} ${i.keywords ?? ""}`).includes(q)) : base.filter((i) => i.group !== "Trocar de empresa" || (companies?.length ?? 0) <= 6);
-    const found: Item[] = results.map((r) => {
+    const comoItem = (r: QuickResult, group: string, prefixo: string): Item => {
       const st = r.type === "document" ? getFileStyle(r.name) : null;
       return {
-        id: `r-${r.id}`, group: "Documentos e pastas", label: r.name, doc: r,
+        id: `${prefixo}-${r.id}`, group, label: r.name, doc: r,
         icon: st ? st.icon : Folder, iconClass: st ? `${st.iconColor} ${st.fillColor}` : "text-(--text-accent)",
         hint: r.type === "folder" ? "Pasta" : "Documento",
-        run: () => go(r.type === "folder" ? `/documents?folder_id=${r.id}` : `/documents?folder_id=${r.folder_id ?? ""}&doc=${r.id}`),
+        run: () => { lembrar(r); go(r.type === "folder" ? `/documents?folder_id=${r.id}` : `/documents?folder_id=${r.folder_id ?? ""}&doc=${r.id}`); },
       };
-    });
-    const all = [...found, ...filtered];
+    };
+    const found: Item[] = results.map((r) => comoItem(r, "Documentos e pastas", "r"));
+    const recentes: Item[] = q ? [] : lerRecentes().map((r) => comoItem(r, "Recentes", "rc"));
+    const all = [...recentes, ...found, ...filtered];
     if (q.length >= 2) all.push({ id: "busca-total", group: "Busca", label: `Buscar "${query.trim()}" em todo o conteúdo`, icon: Search, run: () => go(`/search?q=${encodeURIComponent(query.trim())}`) });
     return all;
   }, [query, results, companies, current?.id, acoesDe, recursos.links, recursos.obrigacoes]); // eslint-disable-line react-hooks/exhaustive-deps

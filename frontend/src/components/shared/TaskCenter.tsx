@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useCallback, type ElementType } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, Upload, FileSearch, Archive, Download, Copy, X, CheckCircle2, AlertCircle, Loader2, RotateCcw, RefreshCw, ChevronRight, Pause, Play } from "lucide-react";
+import { Bell, Upload, FileSearch, Archive, Download, Copy, X, CheckCircle2, AlertCircle, Loader2, RotateCcw, RefreshCw, ChevronRight, Pause, Play, Clock } from "lucide-react";
 import { useTaskCenter, type Task, type TaskKind } from "@/lib/TaskContext";
 import { useCompany } from "@/lib/CompanyContext";
 import api from "@/lib/api";
@@ -142,9 +142,12 @@ export default function TaskCenter() {
   const failed = tasks.filter((t) => t.status === "failed").length;
   const hasDone = tasks.some((t) => t.status !== "running");
 
+  // B4.4.1: caixa de entrada ou arquivados; adiar e arquivar por aviso.
+  const [arquivados, setArquivados] = useState(false);
+  const [adiando, setAdiando] = useState<string | null>(null);
   const loadNotifications = useCallback(() => {
     setLoading(true);
-    api.get("/notifications", { params: { limit: 30 } })
+    api.get("/notifications", { params: { limit: 30, archived: arquivados || undefined } })
       .then((r) => {
         setNotifications(Array.isArray(r.data?.results) ? r.data.results : []);
         setUnreadCount(r.data?.unread_count ?? 0);
@@ -152,7 +155,24 @@ export default function TaskCenter() {
       })
       .catch(() => setLoadFailed(true))
       .finally(() => setLoading(false));
-  }, []);
+  }, [arquivados]);
+
+  async function adiar(n: Notification, quando: "hora" | "amanha" | "semana") {
+    const d = new Date();
+    if (quando === "hora") d.setHours(d.getHours() + 1);
+    else if (quando === "amanha") { d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); }
+    else { d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); d.setHours(9, 0, 0, 0); }
+    setAdiando(null);
+    setNotifications((prev) => prev.filter((x) => x.id !== n.id));
+    try { await api.post(`/notifications/${n.id}/snooze`, { until: d.toISOString() }); } catch { /* volta na próxima carga */ }
+    loadNotifications();
+  }
+
+  async function arquivar(n: Notification) {
+    setNotifications((prev) => prev.filter((x) => x.id !== n.id));
+    try { await api.post(`/notifications/${n.id}/archive`, null, { params: arquivados ? { restore: true } : undefined }); } catch { /* volta na próxima carga */ }
+    loadNotifications();
+  }
 
   useEffect(() => {
     loadNotifications();
@@ -279,9 +299,13 @@ export default function TaskCenter() {
             <section aria-labelledby="ct-caixa">
               <div className="sticky top-0 z-[1] glass-dialog flex items-center justify-between px-4 py-2.5 border-y border-(--border-default) -mt-px">
                 <h2 id="ct-caixa" className="text-mac-caption font-semibold text-(--text-primary)">
-                  Caixa de entrada{unreadCount > 0 && <span className="font-normal text-(--text-secondary)"> · {unreadCount} não {unreadCount === 1 ? "lido" : "lidos"}</span>}
+                  <span role="tablist" aria-label="Avisos" className="inline-flex gap-2">
+                    <button role="tab" aria-selected={!arquivados} onClick={() => setArquivados(false)} className={!arquivados ? "" : "font-normal text-(--text-secondary) hover:text-(--text-primary)"}>Caixa de entrada</button>
+                    <button role="tab" aria-selected={arquivados} onClick={() => setArquivados(true)} className={arquivados ? "" : "font-normal text-(--text-secondary) hover:text-(--text-primary)"}>Arquivados</button>
+                  </span>
+                  {!arquivados && unreadCount > 0 && <span className="font-normal text-(--text-secondary)"> · {unreadCount} não {unreadCount === 1 ? "lido" : "lidos"}</span>}
                 </h2>
-                {unreadCount > 0 && (
+                {!arquivados && unreadCount > 0 && (
                   <button onClick={markAllRead} className="text-mac-caption text-(--text-accent) hover:underline min-h-6 pointer-coarse:min-h-11">
                     Marcar todos como lidos
                   </button>
@@ -302,7 +326,7 @@ export default function TaskCenter() {
                 !loadFailed && (
                   <div className="flex flex-col items-center py-8 px-6 text-center">
                     <Bell className="w-6 h-6 text-(--text-tertiary) mb-2" aria-hidden="true" />
-                    <p className="text-mac-body text-(--text-primary)">Nenhum aviso</p>
+                    <p className="text-mac-body text-(--text-primary)">{arquivados ? "Nada arquivado" : "Nenhum aviso"}</p>
                     <p className="text-mac-caption text-(--text-secondary) mt-0.5">Envios, versões novas em itens que você acompanha, links acessados e prazos aparecem aqui.</p>
                   </div>
                 )
@@ -312,7 +336,27 @@ export default function TaskCenter() {
                     const target = notificationTarget(n);
                     const unread = !n.read_at;
                     return (
-                      <li key={n.id}>
+                      <li key={n.id} className="group relative">
+                        <span className="absolute right-2 top-2 z-[1] flex gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-fast">
+                          {!arquivados && (
+                            <button type="button" onClick={() => setAdiando(adiando === n.id ? null : n.id)} aria-expanded={adiando === n.id}
+                              aria-label="Adiar aviso" title="Adiar"
+                              className="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-full glass-dialog text-(--text-secondary) hover:text-(--text-primary)">
+                              <Clock className="w-3.5 h-3.5" aria-hidden="true" />
+                            </button>
+                          )}
+                          <button type="button" onClick={() => arquivar(n)} aria-label={arquivados ? "Voltar para a caixa de entrada" : "Arquivar aviso"} title={arquivados ? "Voltar para a caixa" : "Arquivar"}
+                            className="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-full glass-dialog text-(--text-secondary) hover:text-(--text-primary)">
+                            <Archive className="w-3.5 h-3.5" aria-hidden="true" />
+                          </button>
+                        </span>
+                        {adiando === n.id && (
+                          <div className="reveal flex flex-wrap gap-1.5 px-4 pt-2" role="group" aria-label="Adiar até">
+                            {([["hora", "1 hora"], ["amanha", "Amanhã, 9h"], ["semana", "Segunda, 9h"]] as const).map(([v, l]) => (
+                              <button key={v} type="button" onClick={() => adiar(n, v)} className="h-7 px-2.5 rounded-full border border-(--border-control) text-mac-caption text-(--text-primary) hover:bg-(--bg-hover)">{l}</button>
+                            ))}
+                          </div>
+                        )}
                         <button
                           type="button"
                           onClick={() => openNotification(n)}

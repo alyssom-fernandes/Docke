@@ -1,4 +1,5 @@
 """ADR-023/028 — Notificações: listar, marcar como lida(s) e escolher quais receber (A8-12)."""
+from datetime import datetime, timezone
 from typing import Any
 
 import asyncpg
@@ -22,9 +23,10 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 async def list_notifications(
     unread_only: bool = Query(False),
     limit: int = Query(20, ge=1, le=100),
+    archived: bool = Query(False, description="B4.4.1: só os arquivados."),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> dict[str, Any]:
-    rows = await notification_service.list_notifications(conn, unread_only=unread_only, limit=limit)
+    rows = await notification_service.list_notifications(conn, unread_only=unread_only, limit=limit, archived=archived)
     unread_count = await notification_service.count_unread(conn)
     return {"results": [dict(r) for r in rows], "unread_count": unread_count}
 
@@ -55,6 +57,42 @@ async def set_preferences(
     muted = sorted(set(body.muted))
     await admin_conn.execute("UPDATE public.users SET notification_mute = $2 WHERE id = $1", claims["sub"], muted)
     return {"muted": muted, "mutable": list(SILENCIAVEIS)}
+
+
+class Snooze(BaseModel):
+    until: datetime
+
+
+@router.post("/{notification_id}/snooze")
+async def snooze(notification_id: str, body: Snooze, conn: asyncpg.Connection = Depends(get_db)) -> dict[str, str]:
+    """B4.4.1: some da caixa até a data e volta como não lido."""
+    alvo = body.until if body.until.tzinfo else body.until.replace(tzinfo=timezone.utc)
+    if alvo <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Escolha um momento no futuro.")
+    feito = await conn.fetchval(
+        "UPDATE public.notifications SET snoozed_until = $2, read_at = NULL, archived_at = NULL WHERE id = $1::uuid AND user_id = auth.uid() RETURNING id",
+        notification_id, alvo,
+    )
+    if feito is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aviso não encontrado.")
+    return {"status": "ok"}
+
+
+@router.post("/{notification_id}/archive")
+async def archive(notification_id: str, restore: bool = Query(False), conn: asyncpg.Connection = Depends(get_db)) -> dict[str, str]:
+    """B4.4.1: arquivar tira da caixa sem apagar; restore=true devolve."""
+    feito = await conn.fetchval(
+        """
+        UPDATE public.notifications
+        SET archived_at = CASE WHEN $2 THEN NULL ELSE now() END,
+            read_at = coalesce(read_at, now()), snoozed_until = NULL
+        WHERE id = $1::uuid AND user_id = auth.uid() RETURNING id
+        """,
+        notification_id, restore,
+    )
+    if feito is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aviso não encontrado.")
+    return {"status": "ok"}
 
 
 @router.post("/{notification_id}/read")
