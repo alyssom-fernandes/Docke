@@ -54,6 +54,15 @@ export default function VersionsPolicyCard({ companyId }: { companyId: string })
           onChange={(v) => { if (v !== atual) { if (v) setPendente(v); else salvar(v); } }} />
       </div>
       {!pol.can_edit && <p className="text-mac-caption text-(--text-secondary)">Só o administrador geral muda este prazo.</p>}
+      {/* Política escrita do que é versionado (B1.4.6). */}
+      <details className="text-mac-caption text-(--text-secondary)">
+        <summary className="cursor-pointer font-medium text-(--text-accent)">O que vira versão e o que não vira</summary>
+        <ul className="mt-2 space-y-1 list-disc pl-5">
+          <li><strong className="font-medium text-(--text-primary)">Vira versão nova:</strong> enviar um arquivo por cima do documento, organizar as páginas do PDF (girar, reordenar, tirar) e restaurar uma versão antiga como atual. Cada versão guarda o arquivo, quem enviou, quando e a impressão digital (SHA-256).</li>
+          <li><strong className="font-medium text-(--text-primary)">Não vira versão:</strong> renomear, mover de pasta, editar metadados, mudar acessos e criar links. Essas mudanças ficam na trilha de auditoria (Atividade), com quem fez e quando.</li>
+          <li><strong className="font-medium text-(--text-primary)">Quantas ficam:</strong> até 10 por documento (o painel avisa antes de chegar lá) e, com o prazo acima, as substituídas há mais tempo saem pela manutenção. A atual nunca sai; com bloqueio judicial ou retenção travada, nenhuma sai.</li>
+        </ul>
+      </details>
       {pendente && (
         <ConfirmModal title="Apagar versões antigas depois do prazo?" confirmLabel="Confirmar" danger loading={saving}
           description={`Versões substituídas há mais de ${OPCOES.find((o) => o.value === pendente)?.label} serão apagadas de vez pela manutenção (até 200 por vez), e cada exclusão fica na trilha. Não dá para desfazer.`}

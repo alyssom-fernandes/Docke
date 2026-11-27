@@ -389,6 +389,49 @@ async def revoke_share(
         await _log_link(conn, uid, s["company_id"], "share_revoke", s["resource_type"], s["resource_id"], {})
 
 
+@router.post("/shares/{share_id}/reactivate")
+async def reactivate_share(
+    share_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    B3.2.2: desativar é reversível. O link volta com o mesmo endereço, senha e
+    validade, desde que ainda não tenha vencido e que a empresa e a pasta
+    continuem permitindo link público (recurso ligado, política de senha e
+    pasta sem dado sensível).
+    """
+    s = await conn.fetchrow(
+        """
+        SELECT s.id, s.company_id, s.resource_type, s.resource_id, s.revoked_at, s.expires_at, s.expired_at,
+               s.password_hash IS NOT NULL AS tem_senha
+        FROM public.shares s WHERE s.id = $1
+        """,
+        share_id,
+    )
+    if s is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link não encontrado.")
+    if s["revoked_at"] is None:
+        return {"id": str(share_id), "status": "ativo"}
+    if s["expired_at"] is not None or (s["expires_at"] is not None and s["expires_at"] <= datetime.now(timezone.utc)):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Este link já venceu. Crie um link novo.")
+    await features_service.require(conn, s["company_id"], "links")
+    req_senha, _ = await _politica(conn, s["company_id"])
+    if req_senha and not s["tem_senha"]:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="A empresa passou a exigir senha em todo link. Crie um link novo com senha.")
+    pasta = (await conn.fetchval("SELECT folder_id FROM public.documents WHERE id = $1", s["resource_id"])
+             if s["resource_type"] == "document" else s["resource_id"])
+    if pasta is not None and await conn.fetchval("SELECT public.folder_effective_sensitivity($1)", pasta) == "sensivel":
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="Esta pasta está marcada com dado sensível (LGPD): links públicos ficam bloqueados.")
+    row = await conn.fetchrow("UPDATE public.shares SET revoked_at = NULL WHERE id = $1 AND revoked_at IS NOT NULL RETURNING id", share_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link não encontrado.")
+    uid = await conn.fetchval("SELECT auth.uid()::text")
+    await _log_link(conn, uid, s["company_id"], "share_reactivate", s["resource_type"], s["resource_id"], {})
+    return {"id": str(share_id), "status": "ativo"}
+
+
 # ---------------------------------------------------------------------------
 # Rotas públicas — sem autenticação
 # ---------------------------------------------------------------------------

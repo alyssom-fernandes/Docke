@@ -28,6 +28,8 @@ interface Props {
   annotating?: boolean;
   onPagePoint?: (page: number, x: number, y: number) => void;
   onPinClick?: (id: string) => void;
+  /** Lembrar a página (B2.4.8): chave do documento/versão; reabrir volta onde parou. */
+  rememberKey?: string;
 }
 
 type Fit = "largura" | "pagina";
@@ -39,7 +41,7 @@ type Fit = "largura" | "pagina";
  * girar, ajustar à largura ou à página, zoom e atalhos (PageUp/PageDown,
  * Home/End, Ctrl + e Ctrl -). Redesenha ao redimensionar a janela.
  */
-const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer({ url, query = "", focusPage = null, onLoaded, pins, annotating = false, onPagePoint, onPinClick }, ref) {
+const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer({ url, query = "", focusPage = null, onLoaded, pins, annotating = false, onPagePoint, onPinClick, rememberKey }, ref) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -102,6 +104,11 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer({ url, q
         setPdf(doc);
         setPage(1);
         onLoaded?.(doc.numPages);
+        // Volta à página em que a pessoa parou da última vez (B2.4.8).
+        const salva = rememberKey ? Number(localStorage.getItem(`docke_pdf_pagina:${rememberKey}`)) : 0;
+        if (salva > 1 && salva <= doc.numPages && !focusPage) {
+          window.setTimeout(() => scrollRef.current?.querySelector<HTMLElement>(`[data-page="${salva}"]`)?.scrollIntoView({ block: "start" }), 120);
+        }
       })
       .catch(() => { if (!cancelled) setError("Não foi possível abrir este PDF. Baixe o arquivo para conferir."); });
     return () => { cancelled = true; task.destroy(); };
@@ -163,7 +170,12 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer({ url, q
     el.querySelectorAll<HTMLElement>("[data-page]").forEach((p) => {
       if (p.offsetTop <= mid) current = Number(p.dataset.page);
     });
-    if (current !== page) { setPage(current); setPageInput(String(current)); }
+    if (current !== page) {
+      setPage(current); setPageInput(String(current));
+      if (rememberKey) {
+        try { if (current > 1) localStorage.setItem(`docke_pdf_pagina:${rememberKey}`, String(current)); else localStorage.removeItem(`docke_pdf_pagina:${rememberKey}`); } catch { /* sem espaço */ }
+      }
+    }
   }
 
   function onKeyDown(e: React.KeyboardEvent) {

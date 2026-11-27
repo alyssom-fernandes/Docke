@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { History, Upload, Download, RotateCcw, Trash2, ChevronDown, GitCompare, Loader2, Eye, MoreHorizontal, Tag, ChevronUp, X } from "lucide-react";
+import { History, Upload, Download, RotateCcw, Trash2, ChevronDown, GitCompare, Loader2, Eye, MoreHorizontal, Tag, ChevronUp, X, Lock, Printer } from "lucide-react";
 import api from "@/lib/api";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useToast } from "@/lib/toast";
@@ -137,6 +137,9 @@ function ResumoPartes({ documentId, a, b }: { documentId: string; a: string; b: 
   );
 }
 
+/** Resultado de cada par de versões, guardado na aba (B2.7.10). */
+const diffCache = new Map<string, DiffResult | { motivo: string }>();
+
 function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
   documentId: string; documentName: string; versionA: Version; versionB: Version; onClose: () => void;
 }) {
@@ -144,6 +147,7 @@ function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
   const [result, setResult] = useState<DiffResult | null>(null);
   const [unavailableReason, setUnavailableReason] = useState<string | null>(null);
   const [onlyChanges, setOnlyChanges] = useState(true);
+  const [tipoMudanca, setTipoMudanca] = useState<"todas" | "add" | "remove">("todas");
   const [cursor, setCursor] = useState(-1);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [older, newer] = versionA.version_number < versionB.version_number ? [versionA, versionB] : [versionB, versionA];
@@ -151,6 +155,14 @@ function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
   const [modo, setModo] = useState<"texto" | "sobrepor">(imagens ? "sobrepor" : "texto");
 
   useEffect(() => {
+    const chave = `${older.id}:${newer.id}`;
+    const cached = diffCache.get(chave);
+    if (cached) {
+      if ("motivo" in cached) setUnavailableReason(cached.motivo);
+      else { if (!cached.lines) setUnavailableReason("As duas versões são diferentes demais para comparar linha a linha. Abra cada uma no visualizador."); setResult(cached); }
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     let worker: Worker | null = null;
     let alive = true;
@@ -162,7 +174,9 @@ function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
       .then(([a, b]) => {
         if (!alive) return;
         if (!a.data.available || !b.data.available) {
-          setUnavailableReason(a.data.reason ?? b.data.reason ?? "Comparação não disponível.");
+          const motivo = a.data.reason ?? b.data.reason ?? "Comparação não disponível.";
+          diffCache.set(chave, { motivo });
+          setUnavailableReason(motivo);
           setLoading(false);
           return;
         }
@@ -170,6 +184,7 @@ function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
         worker.onmessage = (e: MessageEvent<DiffResult>) => {
           if (!alive) return;
           if (!e.data.lines) setUnavailableReason("As duas versões são diferentes demais para comparar linha a linha. Abra cada uma no visualizador.");
+          diffCache.set(chave, e.data);
           setResult(e.data);
           setLoading(false);
         };
@@ -184,16 +199,21 @@ function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
   // Índices das linhas mudadas e, no modo "só mudanças", o que fica visível (2 de contexto).
   const { visible, changeStarts } = useMemo(() => {
     if (!lines) return { visible: [] as (number | "gap")[], changeStarts: [] as number[] };
+    const conta = (t: string) => t !== "same" && (tipoMudanca === "todas" || t === tipoMudanca);
     const changeStarts: number[] = [];
-    lines.forEach((l, i) => { if (l.type !== "same" && (i === 0 || lines[i - 1].type === "same")) changeStarts.push(i); });
-    if (!onlyChanges) return { visible: lines.map((_, i) => i), changeStarts };
+    lines.forEach((l, i) => { if (conta(l.type) && (i === 0 || !conta(lines[i - 1].type))) changeStarts.push(i); });
+    if (!onlyChanges && tipoMudanca === "todas") return { visible: lines.map((_, i) => i), changeStarts };
     const keep = new Set<number>();
-    lines.forEach((l, i) => { if (l.type !== "same") for (let k = i - 2; k <= i + 2; k++) if (k >= 0 && k < lines.length) keep.add(k); });
+    lines.forEach((l, i) => {
+      if (!conta(l.type)) return;
+      const ctx = onlyChanges ? 2 : 0;
+      for (let k = i - ctx; k <= i + ctx; k++) if (k >= 0 && k < lines.length && (lines[k].type === "same" || conta(lines[k].type))) keep.add(k);
+    });
     const visible: (number | "gap")[] = [];
     let last = -1;
     [...keep].sort((x, y) => x - y).forEach((i) => { if (last >= 0 && i > last + 1) visible.push("gap"); visible.push(i); last = i; });
     return { visible, changeStarts };
-  }, [lines, onlyChanges]);
+  }, [lines, onlyChanges, tipoMudanca]);
 
   function goChange(delta: number) {
     if (!changeStarts.length) return;
@@ -213,6 +233,43 @@ function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
     URL.revokeObjectURL(a.href);
   }
 
+  /**
+   * PDF com marcações (B2.7.8): a comparação vai para a impressão do
+   * navegador com verde no que entrou e vermelho riscado no que saiu; "Salvar
+   * como PDF" na janela de impressão gera o arquivo.
+   */
+  function exportPdf() {
+    if (!lines) return;
+    const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const corpo = lines.map((l) => {
+      const cls = l.type === "add" ? "add" : l.type === "remove" ? "rem" : "";
+      const sinal = l.type === "add" ? "+" : l.type === "remove" ? "−" : " ";
+      return `<div class="l ${cls}"><span class="s">${sinal}</span>${esc(l.text) || "&nbsp;"}</div>`;
+    }).join("");
+    const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Comparação ${esc(documentName)}</title>
+<style>
+  body{font:12px/1.5 -apple-system,"Segoe UI",Inter,sans-serif;color:#1d1d1f;margin:24px}
+  h1{font-size:15px;margin:0 0 4px} p{margin:0 0 12px;color:#555}
+  .l{font-family:ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word;padding:0 6px}
+  .s{display:inline-block;width:14px;color:#888}
+  .add{background:#e3f7e8} .add .s{color:#1f7a3a}
+  .rem{background:#fde8e8;text-decoration:line-through} .rem .s{color:#b42318}
+  @page{margin:16mm}
+</style></head><body>
+<h1>${esc(documentName)}</h1>
+<p>Versão ${older.version_number} (${esc(versionMeta(older))}) → versão ${newer.version_number} (${esc(versionMeta(newer))}). ${esc(summary ?? "")}</p>
+${corpo}</body></html>`;
+    const quadro = document.createElement("iframe");
+    Object.assign(quadro.style, { position: "fixed", width: "0", height: "0", border: "0" });
+    document.body.appendChild(quadro);
+    const d = quadro.contentDocument;
+    if (!d) { quadro.remove(); return; }
+    d.open(); d.write(html); d.close();
+    window.setTimeout(() => {
+      try { quadro.contentWindow?.focus(); quadro.contentWindow?.print(); } finally { window.setTimeout(() => quadro.remove(), 60_000); }
+    }, 100);
+  }
+
   const summary = result && lines
     ? [
         result.changed ? `${result.changed} ${result.changed === 1 ? "linha alterada" : "linhas alteradas"}` : "",
@@ -228,6 +285,7 @@ function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
       bodyClassName="p-0! flex flex-col"
       footer={lines ? (
         <>
+          <Button variant="secondary" onClick={exportPdf}><Printer className="w-3.5 h-3.5" aria-hidden="true" /> Imprimir ou PDF</Button>
           <Button variant="secondary" onClick={exportText}><Download className="w-3.5 h-3.5" aria-hidden="true" /> Baixar comparação</Button>
           <Button onClick={onClose}>Fechar</Button>
         </>
@@ -241,6 +299,11 @@ function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
               <label className="inline-flex items-center gap-1.5 text-mac-caption text-(--text-secondary)">
                 <input type="checkbox" checked={onlyChanges} onChange={(e) => setOnlyChanges(e.target.checked)} className="accent-teal-600 w-4 h-4" /> Só as mudanças
               </label>
+              <div role="tablist" aria-label="Tipo de mudança" className="mac-segmented">
+                {([["todas", "Todas"], ["add", "Entrou"], ["remove", "Saiu"]] as const).map(([v, l]) => (
+                  <button key={v} role="tab" aria-selected={tipoMudanca === v} onClick={() => { setTipoMudanca(v); setCursor(-1); }} className="mac-segment">{l}</button>
+                ))}
+              </div>
               <span className="text-mac-caption text-(--text-secondary) tabular-nums" aria-live="polite">{cursor >= 0 ? `${cursor + 1} de ${changeStarts.length}` : `${changeStarts.length} ${changeStarts.length === 1 ? "trecho" : "trechos"}`}</span>
               <button onClick={() => goChange(-1)} aria-label="Mudança anterior" className="w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover)"><ChevronUp className="w-4 h-4" aria-hidden="true" /></button>
               <button onClick={() => goChange(1)} aria-label="Próxima mudança" className="w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover)"><ChevronDown className="w-4 h-4" aria-hidden="true" /></button>
@@ -298,6 +361,11 @@ function ViewVersionDialog({ documentId, documentName, version, onClose }: { doc
   }, [documentId, version.id, isPdf, isImage]);
   return (
     <Dialog onClose={onClose} size="full" className="bg-(--bg-card)!" title={`${documentName} · ${versionTitle(version)}`} description={versionMeta(version)} bodyClassName="p-0! overflow-hidden! flex flex-col">
+      {/* Versão antiga é só para ler (B2.7.9): o aviso fica à vista o tempo todo. */}
+      <p role="note" className="shrink-0 flex items-center gap-2 px-4 py-1.5 bg-(--tint-warning) text-mac-caption text-(--text-primary) border-b border-(--border-default)">
+        <Lock className="w-3.5 h-3.5 text-(--text-warning) shrink-0" aria-hidden="true" />
+        Você está vendo a versão {version.version_number}{version.label ? ` (${version.label})` : ""}, somente leitura. Para voltar a ela, use “Restaurar como atual…” no menu dela.
+      </p>
       <div className="flex-1 min-h-0 bg-(--bg-page)">
         {!isPdf && !isImage ? (
           <p className="p-8 text-center text-mac-body text-(--text-secondary)">Este formato não abre no visualizador. Baixe a versão pelo menu dela.</p>
@@ -307,7 +375,7 @@ function ViewVersionDialog({ documentId, documentName, version, onClose }: { doc
           <div className="h-full flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-(--text-secondary)" aria-label="Carregando" /></div>
         ) : isPdf ? (
           <Suspense fallback={<div className="h-full flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-(--text-secondary)" aria-label="Carregando" /></div>}>
-            <PdfViewer url={url} />
+            <PdfViewer url={url} rememberKey={`${documentId}:v${version.version_number}`} />
           </Suspense>
         ) : (
           <div className="h-full overflow-auto flex items-center justify-center p-4"><img src={url} alt={`${documentName}, ${versionTitle(version)}`} className="max-w-full max-h-full object-contain" /></div>

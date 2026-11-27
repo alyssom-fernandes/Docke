@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { readView, writeView } from "@/lib/viewCache";
 import { Link } from "react-router-dom";
-import { Link2, Lock, AlertTriangle, RefreshCw, Eye, Pencil, Ban, History } from "lucide-react";
+import { Link2, Lock, AlertTriangle, RefreshCw, Eye, Pencil, Ban, History, RotateCcw } from "lucide-react";
+import { useUndo } from "@/lib/undo";
+import { friendlyError } from "@/lib/errors";
 import { ItemIcon } from "@/lib/fileType";
 import { relativeDate, fullDate } from "@/lib/date";
 import { usePageTitle } from "@/hooks/usePageTitle";
@@ -63,6 +65,7 @@ function SharesPage() {
   const { current } = useCompany();
   const { user } = useAuthContext();
   const { success, error: showError } = useToast();
+  const { offer: offerUndo } = useUndo();
   const cacheKey = `links:${current?.id}`;
   const [shares, setShares] = useState<ShareLink[] | null>(() => readView<ShareLink[]>(cacheKey) ?? null);
   const [failed, setFailed] = useState(false);
@@ -81,12 +84,24 @@ function SharesPage() {
   }
   useEffect(() => { setShares(readView<ShareLink[]>(`links:${current?.id}`) ?? null); load(); }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  async function reactivate(sh: ShareLink) {
+    try {
+      await api.post(`/shares/${sh.id}/reactivate`);
+      success("Link reativado: o mesmo endereço volta a abrir.");
+      load();
+    } catch (e) {
+      showError(friendlyError(e, "Não foi possível reativar o link."));
+    }
+  }
+
   async function confirmRevoke() {
     if (!revoking) return;
     setBusy(true);
     try {
       await api.delete(`/shares/${revoking.id}`);
-      success("Link revogado: quem tiver o endereço não abre mais.");
+      const id = revoking.id;
+      // Revogar é reversível (B3.2.2): Desfazer no aviso ou Ctrl+Z reativa o mesmo link.
+      offerUndo("Link revogado: quem tiver o endereço não abre mais.", "revogar o link", async () => { await api.post(`/shares/${id}/reactivate`); load(); });
       setRevoking(null);
       load();
     } catch {
@@ -151,6 +166,9 @@ function SharesPage() {
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <Button variant="ghost" size="sm" onClick={() => setAccesses(s)} aria-label={`Ver acessos do link de ${s.resource_name ?? "item"}`}><History className="w-3.5 h-3.5" aria-hidden="true" /> Acessos</Button>
+                      {!st.ativo && s.revoked_at && (!s.expires_at || new Date(s.expires_at) > new Date()) && (
+                        <Button variant="ghost" size="sm" onClick={() => reactivate(s)} aria-label={`Reativar link de ${s.resource_name ?? "item"}`}><RotateCcw className="w-3.5 h-3.5" aria-hidden="true" /> Reativar</Button>
+                      )}
                       {st.ativo && (
                         <>
                           <Button variant="ghost" size="sm" onClick={() => setEditing(s)} aria-label={`Editar link de ${s.resource_name ?? "item"}`}><Pencil className="w-3.5 h-3.5" aria-hidden="true" /> Editar</Button>
