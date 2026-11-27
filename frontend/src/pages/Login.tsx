@@ -526,19 +526,19 @@ export default function Login() {
         {isDark ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}
       </button>
 
-      <main className="relative mx-auto flex min-h-dvh w-full max-w-[1100px] flex-col items-center px-5 pb-[calc(18px+env(safe-area-inset-bottom))] pt-[calc(44px+env(safe-area-inset-top))] sm:px-8 sm:pt-14">
+      <main className="lock-main relative mx-auto flex min-h-dvh w-full max-w-[1100px] flex-col items-center px-5 pb-[calc(18px+env(safe-area-inset-bottom))] pt-[calc(44px+env(safe-area-inset-top))] sm:px-8 sm:pt-14">
         {(LOGIN_MODE === "empresa" || !showTiles) && <h1 className="sr-only">Docke</h1>}
         <LockClock />
 
         {/* Na demonstração, dois widgets explicam o Docke enquanto se escolhe como entrar. */}
         {showTiles && (
-          <div className="contents md:order-1 md:mt-9 md:grid md:w-full md:max-w-[880px] md:grid-cols-2 md:items-stretch md:gap-4">
-            <AboutWidget className="order-1 mt-7 md:mt-0" />
-            <ChainWidget className="order-4 mt-10 md:order-1 md:mt-0" />
+          <div className="lock-widgets contents md:order-1 md:mt-9 md:grid md:w-full md:max-w-[880px] md:grid-cols-2 md:items-stretch md:gap-4">
+            <AboutWidget className="lock-widget-about order-1 mt-7 md:mt-0" />
+            <ChainWidget className="lock-widget-chain order-4 mt-10 md:order-1 md:mt-0" />
           </div>
         )}
 
-        <div aria-hidden className="order-2 min-h-10 flex-1" />
+        <div aria-hidden className="lock-spacer order-2 min-h-10 flex-1" />
 
         <section aria-labelledby="acesso-titulo" className={`login-enter login-enter-2 order-3 flex w-full flex-col items-center ${showTiles ? "max-w-[420px]" : "max-w-[300px]"}`}>
           {access}
