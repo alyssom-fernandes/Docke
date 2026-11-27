@@ -1188,6 +1188,11 @@ async def reset_member_mfa(
                 raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Não foi possível zerar agora. Tente de novo.")
     await CompaniesService.log_access(admin_conn, actor_id=claims["sub"], company_id=company_id, action="mfa_reset",
                                       target_id=member_id, target_name=nome)
+    from app.services.notification_service import security_alert_admins
+    await security_alert_admins(
+        admin_conn, company_id, f"A verificação em duas etapas de {nome} foi zerada pelo administrador geral.",
+        except_user=claims["sub"], also_user=str(member_id),
+    )
     return {"user_id": str(member_id), "removidos": len(fatores)}
 
 

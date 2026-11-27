@@ -573,6 +573,12 @@ async def mfa_remove(
                                    headers=_gotrue_user_headers(credentials.credentials), timeout=10.0)
     if resp.status_code not in (200, 204):
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Não foi possível desligar agora. Tente de novo.")
+    # B4.4.6: quem administra as empresas desta pessoa fica sabendo.
+    from app.services.notification_service import security_alert_admins
+    nome = await admin_conn.fetchval("SELECT full_name FROM public.users WHERE id = $1", claims["sub"]) or "Uma pessoa"
+    for co in await admin_conn.fetch("SELECT DISTINCT company_id FROM public.user_company_access WHERE user_id = $1", claims["sub"]):
+        await security_alert_admins(admin_conn, co["company_id"], f"{nome} desligou a verificação em duas etapas da própria conta.",
+                                    except_user=claims["sub"])
     return {"status": "ok"}
 
 

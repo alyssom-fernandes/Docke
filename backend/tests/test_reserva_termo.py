@@ -60,7 +60,7 @@ async def test_reserva_para_edicao(api, cenario):  # noqa: F811
 
 
 @pytest.mark.asyncio
-async def test_link_com_termo_pede_nome_e_aceite(api, cenario):  # noqa: F811
+async def test_link_com_termo_pede_nome_e_aceite(api, admin, cenario):  # noqa: F811
     r = await api.post(API + "/shares", json={"resource_type": "folder", "resource_id": cenario["pasta"], "expires_in": "7d",
                                               "terms_text": "Uso só para a auditoria de 2026."}, headers=_token(cenario["adm"]))
     assert r.status_code == 201, r.text
@@ -73,6 +73,12 @@ async def test_link_com_termo_pede_nome_e_aceite(api, cenario):  # noqa: F811
     assert r.status_code == 200, r.text
     acessos = await api.get(API + f"/shares/{share_id}/accesses", headers=_token(cenario["adm"]))
     assert any(a.get("visitor_name") == "Carla Auditora" for a in acessos.json())
+    # B3.2.8: a abertura também está na trilha, com o nome do visitante.
+    trilha = await admin.fetch(
+        "SELECT action, actor_type, metadata FROM public.activity_log WHERE item_id = $1 AND action = 'share_access'",
+        uuid.UUID(cenario["pasta"]),
+    )
+    assert trilha and trilha[0]["actor_type"] == "system" and "Carla Auditora" in str(trilha[0]["metadata"])
 
 
 @pytest.mark.asyncio
@@ -86,3 +92,18 @@ async def test_base_legal_e_finalidade(api, cenario):  # noqa: F811
     # Sem classificação, base e finalidade saem.
     r = await api.put(url, json={"sensitivity": "normal", "legal_basis": "Execução de contrato"}, headers=h)
     assert r.json()["legal_basis"] is None
+
+
+@pytest.mark.asyncio
+async def test_link_sem_senha_alerta_o_admin(api, admin, cenario):  # noqa: F811
+    """B4.4.6: link público sem senha ou sem prazo vira alerta de segurança para quem administra."""
+    r = await api.post(API + "/shares", json={"resource_type": "folder", "resource_id": cenario["pasta"], "expires_in": "never"},
+                       headers=_token(cenario["op1"]))
+    assert r.status_code == 201, r.text
+    alertas = await admin.fetch(
+        "SELECT user_id::text, message FROM public.notifications WHERE company_id = $1 AND type = 'security_alert'",
+        uuid.UUID(cenario["co"]),
+    )
+    assert [a["user_id"] for a in alertas] == [cenario["adm"]]
+    assert "sem senha" in alertas[0]["message"] and "sem prazo" in alertas[0]["message"]
+    await admin.execute("DELETE FROM public.notifications WHERE company_id = $1", uuid.UUID(cenario["co"]))

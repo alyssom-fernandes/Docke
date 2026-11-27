@@ -701,6 +701,9 @@ async def get_download_url(
     doc = await DocumentsService.get_document_for_download(conn, document_id)
     if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+    if doc["so_ver"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Esta pasta tem dado sensível (LGPD): com o papel de visualizador dá para abrir a prévia, mas não baixar.")
     await _log_access(conn, claims["sub"], document_id, "download")
 
     download_url, expires_at = storage_service.generate_download_url(
@@ -745,6 +748,11 @@ async def bulk_download(
     rows = await DocumentsService.fetch_documents_for_bulk_download(conn, [str(did) for did in body.document_ids])
     if not rows:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nenhum documento encontrado ou acessível.")
+    # B3.7.5: o que está em pasta sensível e a pessoa só visualiza fica fora do ZIP.
+    rows = [r for r in rows if not r["so_ver"]]
+    if not rows:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Estes documentos estão em pasta com dado sensível (LGPD): com o papel de visualizador não dá para baixar.")
 
     def montar_zip() -> str:
         """

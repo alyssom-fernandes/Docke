@@ -8,6 +8,7 @@ só alcança as colunas que essas rotas usam (migration 20261026000002).
 """
 import hashlib
 import json
+import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
@@ -25,6 +26,8 @@ from app.services import features_service
 
 
 _BRT = timezone(timedelta(hours=-3))  # datas mostradas ao destinatário no horário de Brasília
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["shares"])
 public_router = APIRouter(prefix="/s", tags=["shares-public"])
@@ -125,6 +128,7 @@ class ShareUpdate(BaseModel):
 async def create_share(
     body: ShareCreate,
     conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     user_id = claims["sub"]
@@ -198,6 +202,15 @@ async def create_share(
         "validade": expires_at.isoformat() if expires_at else None, "senha": password_hash is not None,
         "limite_aberturas": body.max_views, "permite_baixar": body.allow_download,
     })
+    if password_hash is None or expires_at is None:
+        # B4.4.6: link aberto a qualquer um (sem senha ou sem prazo) avisa quem administra.
+        from app.services.notification_service import security_alert_admins
+        quem = await admin_conn.fetchval("SELECT full_name FROM public.users WHERE id = $1", user_id) or "Alguém"
+        tabela = "documents" if body.resource_type == "document" else "folders"
+        item = await admin_conn.fetchval(f"SELECT name FROM public.{tabela} WHERE id = $1", body.resource_id) or "um item"
+        falta = " e ".join(x for x in ("sem senha" if password_hash is None else "", "sem prazo" if expires_at is None else "") if x)
+        await security_alert_admins(admin_conn, company_id, f'{quem} criou um link público {falta} para "{item}".',
+                                    except_user=user_id, resource_type=body.resource_type, resource_id=body.resource_id)
     return {
         "id": row["id"],
         "token": token,  # só aparece nesta resposta — não é recuperável depois (só o hash é persistido)
@@ -539,6 +552,14 @@ async def _log_access(conn: asyncpg.Connection, request: Request, share_id: str,
         conn, share_id=share_id, ip_hash=rate_limit.client_ip_hash(request),
         user_agent=request.headers.get("user-agent", "")[:500], success=success, visitor_name=visitor_name,
     )
+    # B3.2.8: a abertura (ou a tentativa recusada) também vai para a trilha
+    # encadeada da empresa, com o nome que o visitante informou. Melhor
+    # esforço: falhar aqui não pode impedir o visitante de abrir.
+    try:
+        async with conn.transaction():
+            await conn.execute("SELECT public.log_share_access_trail($1::uuid, $2, $3)", share_id, success, visitor_name)
+    except Exception:
+        logger.warning("share_access_trail_failed", extra={"share_id": str(share_id)})
     if success:
         await SharesService.register_successful_access(conn, share_id)
         await notify_share_accessed(conn, share_id)

@@ -196,8 +196,14 @@ class DocumentsService:
 
     @staticmethod
     async def get_document_for_download(conn: asyncpg.Connection, document_id: UUID) -> asyncpg.Record | None:
+        # B3.7.5: em pasta com dado sensível, quem só visualiza não baixa (so_ver).
         return await conn.fetchrow(
-            "SELECT id, name, storage_path, mime_type, size_bytes FROM public.documents WHERE id = $1 AND deleted_at IS NULL",
+            """
+            SELECT d.id, d.name, d.storage_path, d.mime_type, d.size_bytes,
+                   (public.folder_effective_sensitivity(d.folder_id) = 'sensivel'
+                    AND public.user_has_access(auth.uid(), (SELECT f.path FROM public.folders f WHERE f.id = d.folder_id), d.company_id) = 'visualizador') AS so_ver
+            FROM public.documents d WHERE d.id = $1 AND d.deleted_at IS NULL
+            """,
             document_id,
         )
 
@@ -205,10 +211,12 @@ class DocumentsService:
     async def fetch_documents_for_bulk_download(conn: asyncpg.Connection, ids: list[str]) -> list[asyncpg.Record]:
         return await conn.fetch(
             """
-            SELECT id::text, name, storage_path, mime_type, size_bytes
-            FROM public.documents
-            WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
-            ORDER BY name
+            SELECT d.id::text, d.name, d.storage_path, d.mime_type, d.size_bytes,
+                   (public.folder_effective_sensitivity(d.folder_id) = 'sensivel'
+                    AND public.user_has_access(auth.uid(), (SELECT f.path FROM public.folders f WHERE f.id = d.folder_id), d.company_id) = 'visualizador') AS so_ver
+            FROM public.documents d
+            WHERE d.id = ANY($1::uuid[]) AND d.deleted_at IS NULL
+            ORDER BY d.name
             """,
             ids,
         )

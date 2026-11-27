@@ -177,3 +177,37 @@ async def notify_share_blocked(conn: asyncpg.Connection, share_id: UUID) -> None
         share["created_by"], share["company_id"], share["resource_type"], share["resource_id"],
         f'Seu link para "{name}" foi bloqueado por excesso de tentativas de senha. Gere um novo link se necessário.',
     )
+
+
+async def security_alert_admins(
+    admin_conn: asyncpg.Connection,
+    company_id: UUID | str,
+    message: str,
+    *,
+    except_user: str | None = None,
+    also_user: str | None = None,
+    resource_type: str | None = None,
+    resource_id: UUID | str | None = None,
+) -> None:
+    """
+    B4.4.6: alerta de segurança para quem administra a empresa toda (e, se
+    pedido, para a própria pessoa afetada). Tipo próprio, que não se silencia.
+    Melhor esforço: o alerta não pode desfazer a ação que o gerou.
+    """
+    try:
+        await admin_conn.execute(
+            """
+            INSERT INTO public.notifications (user_id, company_id, type, resource_type, resource_id, message)
+            SELECT DISTINCT x.user_id, $1::uuid, 'security_alert', $4, $5::uuid, $2
+            FROM (
+              SELECT uca.user_id FROM public.user_company_access uca
+              WHERE uca.company_id = $1::uuid AND uca.folder_path IS NULL AND uca.permission_level = 'admin'
+              UNION
+              SELECT $6::uuid WHERE $6::uuid IS NOT NULL
+            ) x
+            WHERE x.user_id IS DISTINCT FROM $3::uuid
+            """,
+            str(company_id), message, except_user, resource_type, str(resource_id) if resource_id else None, also_user,
+        )
+    except Exception:  # noqa: BLE001
+        pass

@@ -5,6 +5,10 @@ import { relativeDate } from "@/lib/date";
 import Dialog from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
 import Dropdown from "@/components/ui/Dropdown";
+import Checkbox from "@/components/ui/Checkbox";
+import ConfirmModal from "@/components/ui/ConfirmModal";
+import { useToast } from "@/lib/toast";
+import { useAuthContext } from "@/lib/AuthContext";
 
 interface Pessoa {
   user_id: string; full_name: string; username: string; role: string; is_active: boolean; email: string | null;
@@ -27,10 +31,36 @@ export default function GroupPeopleDialog({ onClose }: { onClose: () => void }) 
   const [pessoas, setPessoas] = useState<Pessoa[] | null | "erro">(null);
   const [q, setQ] = useState("");
   const [filtro, setFiltro] = useState("");
+  // Ações em lote no grupo todo (FA-A9-04): encerrar sessões e desativar contas.
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [acao, setAcao] = useState<null | "sessoes" | "desativar">(null);
+  const [busy, setBusy] = useState(false);
+  const { success, error: showError } = useToast();
+  const { user } = useAuthContext();
 
-  useEffect(() => {
-    api.get<Pessoa[]>("/admin/people").then((r) => setPessoas(r.data)).catch(() => setPessoas("erro"));
-  }, []);
+  function carregar() { api.get<Pessoa[]>("/admin/people").then((r) => setPessoas(r.data)).catch(() => setPessoas("erro")); }
+  useEffect(carregar, []);
+
+  async function executar() {
+    if (!acao || !Array.isArray(pessoas)) return;
+    // A conta é uma só no grupo: a rota de qualquer empresa da pessoa vale.
+    const alvo = pessoas.filter((p) => sel.has(p.user_id) && p.user_id !== user?.id && p.companies.length && (acao === "sessoes" || p.is_active));
+    setBusy(true);
+    const falhas: string[] = [];
+    for (const p of alvo) {
+      const co = p.companies[0].company_id;
+      try {
+        await api.post(`/companies/${co}/members/${p.user_id}/${acao === "sessoes" ? "end-sessions" : "deactivate"}`);
+      } catch { falhas.push(p.full_name); }
+    }
+    setBusy(false);
+    setAcao(null);
+    setSel(new Set());
+    carregar();
+    const ok = alvo.length - falhas.length;
+    if (!falhas.length) success(acao === "sessoes" ? `Sessões encerradas (${ok}).` : `${ok} ${ok === 1 ? "conta desativada" : "contas desativadas"}.`);
+    else showError(`${ok} de ${alvo.length} feitas. Não deu em: ${falhas.slice(0, 3).join(", ")}${falhas.length > 3 ? ` e mais ${falhas.length - 3}` : ""}.`);
+  }
 
   const lista = useMemo(() => {
     if (!Array.isArray(pessoas)) return [];
@@ -77,11 +107,25 @@ export default function GroupPeopleDialog({ onClose }: { onClose: () => void }) 
           : pessoas === "erro" ? <p role="alert" className="text-mac-body text-(--text-danger)">Não foi possível carregar agora.</p>
           : (
             <>
-              <p className="text-mac-caption text-(--text-secondary)" aria-live="polite">{lista.length} de {pessoas.length} {pessoas.length === 1 ? "pessoa" : "pessoas"}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="inline-flex items-center gap-2 text-mac-caption text-(--text-secondary)">
+                  <Checkbox checked={lista.length > 0 && lista.every((p) => sel.has(p.user_id))} indeterminate={lista.some((p) => sel.has(p.user_id))}
+                    onChange={(e) => setSel(e.target.checked ? new Set(lista.map((p) => p.user_id)) : new Set())} />
+                  <span aria-live="polite">{sel.size ? `${sel.size} ${sel.size === 1 ? "selecionada" : "selecionadas"}` : `${lista.length} de ${pessoas.length} ${pessoas.length === 1 ? "pessoa" : "pessoas"}`}</span>
+                </label>
+                {sel.size > 0 && (
+                  <span className="reveal flex gap-2 ml-auto">
+                    <Button size="sm" variant="secondary" onClick={() => setAcao("sessoes")}>Encerrar sessões</Button>
+                    <Button size="sm" variant="secondary" onClick={() => setAcao("desativar")}>Desativar</Button>
+                  </span>
+                )}
+              </div>
               <ul className="divide-y divide-(--border-default) rounded-(--radius-control) border border-(--border-default) max-h-[55vh] overflow-y-auto">
                 {lista.map((p) => (
-                  <li key={p.user_id} className="px-3 py-2.5 space-y-1">
+                  <li key={p.user_id} className={`px-3 py-2.5 space-y-1 ${sel.has(p.user_id) ? "bg-(--tint-accent)" : ""}`}>
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <Checkbox checked={sel.has(p.user_id)} aria-label={`Selecionar ${p.full_name}`}
+                        onChange={(e) => setSel((x) => { const n = new Set(x); if (e.target.checked) n.add(p.user_id); else n.delete(p.user_id); return n; })} />
                       <span className="text-mac-body font-medium text-(--text-primary)">{p.full_name}</span>
                       {!p.is_active && <span className="text-mac-caption font-medium text-(--text-danger)">desativada</span>}
                       {p.mfa_enabled
@@ -99,6 +143,13 @@ export default function GroupPeopleDialog({ onClose }: { onClose: () => void }) 
             </>
           )}
       </div>
+      {acao && (
+        <ConfirmModal
+          title={acao === "sessoes" ? `Encerrar as sessões de ${sel.size} ${sel.size === 1 ? "pessoa" : "pessoas"}?` : `Desativar ${sel.size} ${sel.size === 1 ? "conta" : "contas"}?`}
+          description={acao === "sessoes" ? "Cada pessoa precisa entrar de novo na próxima ação. Nada é apagado." : "As contas deixam de entrar em todas as empresas. Nada é apagado e dá para reativar uma a uma. A sua própria conta fica de fora."}
+          confirmLabel={acao === "sessoes" ? "Encerrar sessões" : "Desativar"} danger={acao === "desativar"} loading={busy}
+          onClose={() => setAcao(null)} onConfirm={executar} />
+      )}
     </Dialog>
   );
 }
