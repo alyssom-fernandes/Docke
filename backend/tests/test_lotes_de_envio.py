@@ -37,7 +37,7 @@ async def test_lote_concluido_vira_aviso_e_relatorio(api, admin, empresa):  # no
 
 @pytest.mark.asyncio
 async def test_juntar_so_quem_enviou(api, admin, empresa):  # noqa: F811
-    h, co = _token(empresa["user"]), empresa["co"]
+    h = _token(empresa["user"])
     agora = datetime.datetime.now(datetime.timezone.utc)
     antigo = await _doc(admin, empresa, empresa["fiscal"], "Nota.xml", agora - datetime.timedelta(days=3))
     novo = await _doc(admin, empresa, empresa["fiscal"], "Nota (2).xml", agora - datetime.timedelta(days=2))
