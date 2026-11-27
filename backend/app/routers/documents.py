@@ -1308,6 +1308,9 @@ async def get_xml_fields(
     fields = DocumentsService.extract_nfe_fields(data)
     if fields is None:
         return {"recognized": False, "reason": "XML não segue o schema de NFe/NFCe reconhecido."}
+    # B2.5.6: a assinatura digital do emitente confere com o conteúdo?
+    from app.services.nfe_signature import verify_nfe_signature
+    fields["assinatura"] = await asyncio.to_thread(verify_nfe_signature, data)
     return fields
 
 

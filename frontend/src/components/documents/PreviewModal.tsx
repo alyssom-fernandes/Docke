@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import XmlCode from "./XmlCode";
-import { X, Download, AlertCircle, Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Printer, RotateCw, ZoomIn, ZoomOut, Layers, MessageSquare, Info } from "lucide-react";
+import { X, Download, AlertCircle, Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Printer, RotateCw, ZoomIn, ZoomOut, Layers, MessageSquare, Info, ShieldCheck, ShieldAlert } from "lucide-react";
 import { getFileStyle } from "@/lib/fileType";
 import api from "@/lib/api";
 import Dialog, { DialogCloseButton } from "@/components/ui/Dialog";
@@ -96,6 +96,20 @@ interface XmlFields {
   protocolo?: string | null;
   protocolo_data?: string | null;
   informacoes_complementares?: string | null;
+  // B2.5.6: a assinatura do emitente confere com o conteúdo?
+  assinatura?: { status: "valida" | "invalida" | "ausente" | "nao_conferida"; motivo: string; titular?: string; valido_ate?: string };
+}
+
+/** Selo da assinatura digital do XML (B2.5.6). */
+function SeloAssinatura({ a }: { a: NonNullable<XmlFields["assinatura"]> }) {
+  const tom = a.status === "valida" ? "bg-(--tint-success) text-(--text-primary)" : a.status === "invalida" ? "bg-(--tint-danger) text-(--text-primary)" : "bg-(--bg-hover) text-(--text-secondary)";
+  const titulo = a.status === "valida" ? "Assinatura digital confere" : a.status === "invalida" ? "Assinatura digital não confere" : a.status === "ausente" ? "Sem assinatura digital" : "Assinatura não conferida";
+  return (
+    <div role="status" className={`flex items-start gap-2 rounded-(--radius-control) px-3 py-2 text-mac-caption ${tom}`}>
+      {a.status === "valida" ? <ShieldCheck className="w-4 h-4 text-(--text-success) shrink-0 mt-0.5" aria-hidden="true" /> : <ShieldAlert className={`w-4 h-4 shrink-0 mt-0.5 ${a.status === "invalida" ? "text-(--text-danger)" : ""}`} aria-hidden="true" />}
+      <span><strong className="font-semibold">{titulo}.</strong> {a.motivo}{a.titular ? ` Certificado de ${a.titular}${a.valido_ate ? `, válido até ${new Date(`${a.valido_ate}T12:00:00`).toLocaleDateString("pt-BR")}` : ""}.` : ""}</span>
+    </div>
+  );
 }
 
 const MOD_FRETE: Record<string, string> = { "0": "0 - Por conta do emitente", "1": "1 - Por conta do destinatário", "2": "2 - Por conta de terceiros", "3": "3 - Próprio, do remetente", "4": "4 - Próprio, do destinatário", "9": "9 - Sem frete" };
@@ -657,7 +671,7 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
               <p role="status" className="px-5 pt-3 text-mac-caption text-(--text-secondary)">Este XML não foi reconhecido como NF-e (ou a leitura falhou agora): mostrando o arquivo como está.</p>
             )}
             {isXml && xmlFields?.recognized && view === "danfe" ? (
-              <div key="danfe" className="reveal p-4 sm:p-6"><Danfe fields={xmlFields} docName={doc.name} /></div>
+              <div key="danfe" className="reveal p-4 sm:p-6 space-y-3">{xmlFields.assinatura && <div className="max-w-[760px] mx-auto"><SeloAssinatura a={xmlFields.assinatura} /></div>}<Danfe fields={xmlFields} docName={doc.name} /></div>
             ) : isXml && xmlFields?.recognized && view === "campos" ? (
               <dl key="campos" className="reveal grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 p-6 max-w-[760px]">
                 {([
@@ -669,6 +683,7 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
                 ] as [string, string | null | undefined][]).map(([k, v]) => (
                   <div key={k}><dt className="text-mac-caption text-(--text-secondary)">{k}</dt><dd className="text-mac-body text-(--text-primary) mt-0.5 break-words select-text">{v || "—"}</dd></div>
                 ))}
+                {xmlFields.assinatura && <div className="sm:col-span-2"><SeloAssinatura a={xmlFields.assinatura} /></div>}
               </dl>
             ) : (
               <>
