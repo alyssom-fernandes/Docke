@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import GroupPeopleDialog from "@/components/shared/GroupPeopleDialog";
+import AccessReviews from "@/components/settings/AccessReviews";
 import { AccessRequestsPanel } from "@/components/shared/AccessRequests";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
@@ -80,7 +81,7 @@ export default function Users() {
   const [open, setOpen] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [grupoTodo, setGrupoTodo] = useState(false);
-  const [aba, setAba] = useState<"pessoas" | "grupos">("pessoas");
+  const [aba, setAba] = useState<"pessoas" | "grupos" | "revisoes">(() => (params.get("aba") === "revisoes" ? "revisoes" : params.get("aba") === "grupos" ? "grupos" : "pessoas"));
 
   // Depois de cada ação só a lista de pessoas volta do servidor, no lugar e
   // sem esqueleto (A9-25); as pastas vêm uma vez por empresa.
@@ -153,7 +154,7 @@ export default function Users() {
       <AccessRequestsPanel companyId={current.id} onChanged={load} />
 
       <div role="tablist" aria-label="Pessoas ou grupos" className="mac-segmented">
-        {([["pessoas", "Pessoas"], ["grupos", "Grupos"]] as const).map(([v, l]) => (
+        {([["pessoas", "Pessoas"], ["grupos", "Grupos"], ["revisoes", "Revisões"]] as const).map(([v, l]) => (
           <button key={v} role="tab" aria-selected={aba === v} onClick={() => setAba(v)}
             className="mac-segment">{l}</button>
         ))}
@@ -171,6 +172,10 @@ export default function Users() {
         <div className="space-y-2" aria-label="Carregando">{[0, 1, 2, 3].map((i) => <div key={i} className="h-16 rounded-(--radius-control) bg-(--bg-hover) animate-pulse" />)}</div>
       ) : aba === "grupos" ? (
         <GroupsTab companyId={current.id} people={people ?? []} folders={folders} onChanged={load} />
+      ) : aba === "revisoes" ? (
+        <AccessReviews companyId={current.id}
+          admins={(people ?? []).filter((p) => p.is_active && p.grants.some((g) => g.role === "admin" && !g.folder_id)).map((p) => ({ user_id: p.user_id, full_name: p.full_name }))}
+          onOpenPerson={(uid) => { setAba("pessoas"); setOpen(uid); }} />
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2">

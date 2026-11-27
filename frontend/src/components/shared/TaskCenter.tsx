@@ -36,6 +36,7 @@ function notificationTarget(n: Notification): string | null {
   if (n.resource_type === "document" && n.folder_id) return `/documents?folder_id=${n.folder_id}&doc=${n.resource_id}`;
   if (n.resource_type === "obligation_instance") return "/obligations";
   if (n.resource_type === "lgpd_request") return `/settings/privacy?pedido=${n.resource_id}`;
+  if (n.resource_type === "access_review") return "/settings/users?aba=revisoes";
   return null;
 }
 
