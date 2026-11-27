@@ -4,6 +4,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Search, X } from "lucide-react";
+import Tooltip from "@/components/ui/Tooltip";
 
 /**
  * Janela no estilo do macOS 27 (kit oficial, docs/avaliacao-2026-11/ESPEC-MACOS-27.md).
@@ -189,12 +190,11 @@ export const ToolbarButton = forwardRef<HTMLButtonElement, ToolbarButtonProps>(f
         ? "bg-(--control-fill-selected) text-(--text-primary)"
         : "text-(--text-primary) hover:bg-(--control-fill)"
       : "glass-capsule text-(--text-primary) hover:brightness-[0.97] dark:hover:brightness-125";
-  return (
+  const button = (
     <button
       ref={ref}
       type="button"
       aria-label={showLabel ? undefined : label}
-      title={showLabel ? undefined : label}
       aria-pressed={inGroup && selected ? true : props["aria-pressed"]}
       className={`relative inline-flex shrink-0 items-center justify-center rounded-full ${size} ${shape} text-[13px] font-medium transition-[background-color,filter,transform] duration-fast active:scale-[0.96] disabled:opacity-(--opacity-disabled) disabled:pointer-events-none focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) [&_svg]:size-[15px] [&_svg]:shrink-0 ${look} ${className}`}
       {...props}
@@ -203,6 +203,9 @@ export const ToolbarButton = forwardRef<HTMLButtonElement, ToolbarButtonProps>(f
       {showLabel && <span className="whitespace-nowrap">{label}</span>}
     </button>
   );
+  // Sem rótulo visível, a dica sai embaixo, no estilo do macOS (a nativa do
+  // navegador teria a cara do sistema de quem usa, como a do Windows).
+  return showLabel ? button : <Tooltip label={label} side="bottom">{button}</Tooltip>;
 });
 
 /** Campo de busca em pílula de vidro (36 px), com X para limpar. */

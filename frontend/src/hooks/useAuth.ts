@@ -142,7 +142,7 @@ export function useAuth(): AuthState {
   }
 
   // Fase 10.3: atualiza o nome no backend e reflete no estado global de
-  // uma vez (avatar da TopBar, menu de usuário etc. reagem sozinhos).
+  // uma vez (avatar e menu da conta na barra lateral reagem sozinhos).
   async function updateProfile(fullName: string) {
     const res = await api.patch("/auth/me", { full_name: fullName });
     setUser((prev) => {

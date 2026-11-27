@@ -8,23 +8,29 @@ interface TooltipProps {
 }
 
 /**
- * Bolha com "cauda" apontando para o elemento (padrão macOS/iOS).
+ * Etiqueta de ajuda no formato do macOS (retângulo pequeno, sem seta).
  *
  * A2-36: a posição é calculada na tela — vira para o outro lado quando falta
  * espaço e desliza para não passar das bordas — e a bolha sai num portal, sem
  * ser cortada por áreas com rolagem. No toque, segurar o dedo mostra o rótulo
  * por 1,5 s. Esc fecha (WCAG 1.4.13).
  */
+// Como no macOS: a primeira dica espera um pouco; enquanto o ponteiro passa
+// de um botão para o vizinho logo em seguida, a próxima aparece na hora (A2-37).
+const FIRST_DELAY_MS = 450;
+const WARM_WINDOW_MS = 600;
+let lastClosedAt = 0;
+
 export default function Tooltip({ label, children, side = "top" }: TooltipProps) {
   const anchorRef = useRef<HTMLSpanElement>(null);
   const tipRef = useRef<HTMLSpanElement>(null);
   const timer = useRef<number | undefined>(undefined);
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ left: number; top: number; side: "top" | "bottom"; tail: number } | null>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
 
   function clear() { if (timer.current) window.clearTimeout(timer.current); timer.current = undefined; }
   function show(delay: number) { clear(); timer.current = window.setTimeout(() => setOpen(true), delay); }
-  function hide() { clear(); setOpen(false); setPos(null); }
+  function hide() { clear(); if (open) lastClosedAt = Date.now(); setOpen(false); setPos(null); }
 
   useLayoutEffect(() => {
     if (!open || !anchorRef.current || !tipRef.current) return;
@@ -37,7 +43,7 @@ export default function Tooltip({ label, children, side = "top" }: TooltipProps)
     const centro = a.left + a.width / 2;
     const left = Math.min(Math.max(8, centro - t.width / 2), window.innerWidth - t.width - 8);
     const top = lado === "top" ? a.top - t.height - gap : a.bottom + gap;
-    setPos({ left, top, side: lado, tail: Math.min(Math.max(8, centro - left), t.width - 8) });
+    setPos({ left, top });
   }, [open, side, label]);
 
   useEffect(() => {
@@ -57,7 +63,7 @@ export default function Tooltip({ label, children, side = "top" }: TooltipProps)
     <span
       ref={anchorRef}
       className="relative inline-flex"
-      onMouseEnter={() => show(300)}
+      onMouseEnter={() => show(Date.now() - lastClosedAt < WARM_WINDOW_MS ? 0 : FIRST_DELAY_MS)}
       onMouseLeave={hide}
       onFocus={(e) => { if ((e.target as HTMLElement).matches?.(":focus-visible")) show(0); }}
       onBlur={hide}
@@ -73,19 +79,10 @@ export default function Tooltip({ label, children, side = "top" }: TooltipProps)
           style={pos ? { left: pos.left, top: pos.top } : { left: -9999, top: -9999 }}
           className={`pointer-events-none fixed z-[90] whitespace-nowrap ${pos ? "menu-in" : ""}`}
         >
-          <span className="block rounded-[6px] glass-dialog px-2 py-[3px] text-[11px] leading-[14px] text-(--text-primary) shadow-[0_0_0_0.5px_rgba(0,0,0,0.12),0_4px_12px_rgba(0,0,0,0.14)]">
+          {/* Como a etiqueta de ajuda do macOS: retângulo pequeno, sem seta. */}
+          <span className="block rounded-[5px] mac-sheet px-[7px] py-[3px] text-[11px] leading-[14px] text-(--text-primary)">
             {label}
           </span>
-          {pos && (
-            <span
-              className={`absolute w-0 h-0 border-4 -translate-x-1/2 ${
-                pos.side === "top"
-                  ? "top-full mt-[-3px] border-t-(--bg-elevated) border-x-transparent border-b-transparent"
-                  : "bottom-full mb-[-3px] border-b-(--bg-elevated) border-x-transparent border-t-transparent"
-              }`}
-              style={{ left: pos.tail }}
-            />
-          )}
         </span>,
         document.body,
       )}
