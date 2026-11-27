@@ -223,6 +223,7 @@ class SearchService:
                   d.ocr_status, d.folder_id::text, d.company_id::text, d.created_at, f.name AS folder_name,
                   greatest(word_similarity($1, d.name), word_similarity($1, coalesce(d.ocr_text, ''))) AS rank,
                   NULL::text AS snippet,
+                  left(coalesce(d.ocr_text, ''), 4000) AS _texto,
                   (SELECT string_agg(anc.name, ' / ' ORDER BY nlevel(anc.path))
                      FROM public.folders anc WHERE anc.company_id = d.company_id AND anc.path @> f.path) AS folder_path_label
                 FROM public.documents d
@@ -255,7 +256,7 @@ class SearchService:
             aproximado = bool(rows)
             total = len(rows)
             if rows:
-                palavras = {w for r in rows for w in re.findall(r"[^\W\d_]{4,}", r["name"] or "", flags=re.UNICODE)}
+                palavras = {w for r in rows for w in re.findall(r"[^\W\d_]{4,}", f'{r["name"] or ""} {r["_texto"] or ""}', flags=re.UNICODE)}
                 perto = difflib.get_close_matches(raw_term.lower(), {w.lower() for w in palavras}, n=1, cutoff=0.6)
                 sugestao = perto[0] if perto and perto[0] != raw_term.lower() else None
 
@@ -293,7 +294,7 @@ class SearchService:
         )
 
         return {
-            "results": [{k: v for k, v in dict(r).items() if k != "total_count"} for r in rows],
+            "results": [{k: v for k, v in dict(r).items() if k not in ("total_count", "_texto")} for r in rows],
             "aproximado": aproximado,
             "sugestao": sugestao,
             "total": total,
