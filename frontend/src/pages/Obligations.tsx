@@ -380,14 +380,25 @@ function LoadError({ what, onRetry }: { what: string; onRetry: () => void }) {
  */
 function Compliance({ instances, filtro, onFilter }: { instances: Instance[]; filtro: string; onFilter: (f: string) => void }) {
   const relevant = instances.filter((i) => !["dispensado", "cancelado", "not_applicable"].includes(i.effective_status));
-  const approved = relevant.filter((i) => i.effective_status === "approved").length;
-  const pct = relevant.length ? Math.round((approved / relevant.length) * 100) : null;
+  const approvedList = relevant.filter((i) => i.effective_status === "approved");
+  const approved = approvedList.length;
+  // Percentual pelo peso de cada obrigação (A7-28, B3.5.6): um imposto de peso 5
+  // conta cinco vezes mais que um contrato de peso 1.
+  const peso = (i: Instance) => Math.max(1, i.weight ?? 1);
+  const pesoTotal = relevant.reduce((s, i) => s + peso(i), 0);
+  const pesoOk = approvedList.reduce((s, i) => s + peso(i), 0);
+  const comPeso = relevant.some((i) => peso(i) !== 1);
+  const pct = pesoTotal ? Math.round((pesoOk / pesoTotal) * 100) : null;
+  const faltaMaisPesada = relevant.filter((i) => i.effective_status !== "approved").sort((a, b) => peso(b) - peso(a))[0];
   const count = (s: string) => instances.filter((i) => i.effective_status === s).length;
   const semDono = instances.filter((i) => !i.owner_id && OPEN_STATUSES.includes(i.effective_status)).length;
   const criticas = instances.filter((i) => i.criticality === "critica" && OPEN_STATUSES.includes(i.effective_status)).length;
 
   const cards = [
-    { f: "abertas", label: "Em dia", value: pct === null ? "—" : `${pct}%`, hint: pct === null ? "nada para contar ainda" : `${approved} de ${relevant.length} cumpridas`, tone: "text-(--text-primary)" },
+    { f: "abertas", label: "Em dia", value: pct === null ? "—" : `${pct}%`,
+      hint: pct === null ? "nada para contar ainda"
+        : `${approved} de ${relevant.length} cumpridas${comPeso ? ", contando o peso de cada uma" : ""}${faltaMaisPesada && comPeso && peso(faltaMaisPesada) > 1 ? `. A que mais pesa: ${faltaMaisPesada.template_name}` : ""}`,
+      tone: "text-(--text-primary)" },
     { f: "overdue", label: "Atrasadas", value: count("overdue"), tone: count("overdue") ? "text-(--text-danger)" : "text-(--text-primary)" },
     { f: "expired", label: "Documento vencido", value: count("expired"), tone: count("expired") ? "text-(--text-danger)" : "text-(--text-primary)" },
     { f: "at_risk", label: "Vencem em breve", value: count("at_risk"), tone: count("at_risk") ? "text-(--text-warning)" : "text-(--text-primary)" },
@@ -396,13 +407,13 @@ function Compliance({ instances, filtro, onFilter }: { instances: Instance[]; fi
   ];
 
   return (
-    <section aria-label="Central de conformidade" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+    <section aria-label="Central de conformidade" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
       {cards.map((c, idx) => {
         const on = filtro === c.f && !(idx === 0 && filtro !== "abertas");
         return (
           <button key={c.label} aria-pressed={on} onClick={() => onFilter(c.f)}
-            className={`glass-panel glass-blur-card rounded-(--radius-panel) p-3 sm:p-4 text-left min-h-[84px] transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${on ? "ring-2 ring-teal-600" : "hover:bg-(--bg-hover)"} ${idx === 0 ? "col-span-2 sm:col-span-1" : ""}`}>
-            <span className={`block text-mac-title2 font-semibold tabular-nums ${c.tone}`}>{c.value}</span>
+            className={`glass-panel glass-blur-card rounded-(--radius-panel) p-3 sm:p-4 text-left min-h-[84px] transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${on ? "ring-2 ring-teal-600" : "hover:bg-(--bg-hover)"} ${idx === 0 ? "col-span-2 sm:col-span-1 lg:col-span-2 bg-(--tint-accent)" : ""}`}>
+            <span className={`block ${idx === 0 ? "text-mac-large" : "text-mac-title2"} font-semibold tabular-nums ${c.tone}`}>{c.value}</span>
             <span className="block text-mac-caption text-(--text-secondary)">{c.label}</span>
             {c.hint && <span className="block text-mac-caption2 text-(--text-secondary)">{c.hint}</span>}
           </button>

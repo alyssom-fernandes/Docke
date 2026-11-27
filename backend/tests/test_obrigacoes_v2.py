@@ -248,3 +248,38 @@ async def test_catalogo_recomenda_pelo_perfil_fiscal(api, grupo):  # noqa: F811
     # Os campos da avaliação não vão para o modelo criado.
     r = await api.post(API + f"/companies/{co}/obligations/catalog", json={"keys": ["efd_contribuicoes"]}, headers=h)
     assert r.status_code == 201, r.text
+
+
+@pytest.mark.asyncio
+async def test_regra_por_atividade_vale_so_para_postos(api, grupo):  # noqa: F811
+    """A7-38: condição pelo começo do CNAE, nos dois sentidos ("não vale" e "vale só")."""
+    h = _token(grupo["gestora"])
+    co = grupo["co1"]
+    r = await api.put(API + f"/companies/{co}/fiscal-profile", headers=h, json={"cnae_principal": "5510-8/01"})
+    assert r.status_code == 200, r.text
+    hoje = datetime.date.today().isoformat()
+
+    async def status(regra):
+        t = await api.post(API + f"/companies/{co}/obligations/templates", headers=h, json={
+            "company_id": co, "name": f"Regra {uuid.uuid4().hex[:6]}", "frequency": "unica", "weight": 5,
+            "rules_json": {"not_applicable_when": regra},
+        })
+        assert t.status_code == 201, t.text
+        assert t.json()["weight"] == 5
+        inst = await api.post(API + f"/companies/{co}/obligations/instances", headers=h,
+                              json={"template_id": t.json()["id"], "period": "Vigente", "due_date": hoje})
+        assert inst.status_code == 201, inst.text
+        return inst.json()["effective_status"]
+
+    # Hotel (5510): a obrigação "só de posto" some; a "não vale para hotel" também.
+    assert await status({"field": "atividade", "in": ["4731"], "only": True}) == "not_applicable"
+    assert await status({"field": "atividade", "in": ["5510"]}) == "not_applicable"
+    # E as que valem para hotel continuam.
+    assert await status({"field": "atividade", "in": ["5510"], "only": True}) != "not_applicable"
+    assert await status({"field": "atividade", "in": ["4731"]}) != "not_applicable"
+
+    r = await api.post(API + f"/companies/{co}/obligations/templates", headers=h, json={
+        "company_id": co, "name": "Regra errada", "frequency": "unica",
+        "rules_json": {"not_applicable_when": {"field": "atividade", "in": ["posto"]}},
+    })
+    assert r.status_code == 422

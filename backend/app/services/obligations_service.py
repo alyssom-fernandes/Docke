@@ -66,21 +66,35 @@ VALIDITY_LATERAL_SQL = """
   ) exp ON true
 """
 
+# Regra condicional (A7-38): "não vale quando o campo está na lista" ou, com
+# "only": true, "vale só quando está na lista". O campo "atividade" compara o
+# começo do CNAE principal (ex.: "4731" para posto, "5611" para restaurante).
+# Perfil sem o campo preenchido: a obrigação vale (o lado conservador).
 NOT_APPLICABLE_LATERAL_SQL = """
   LEFT JOIN public.company_fiscal_profile fp ON fp.company_id = oi.company_id
   LEFT JOIN LATERAL (
+    SELECT
+      ot.rules_json->'not_applicable_when' AS r,
+      CASE ot.rules_json->'not_applicable_when'->>'field'
+        WHEN 'regime_tributario' THEN fp.regime_tributario
+        WHEN 'faixa_funcionarios' THEN fp.faixa_funcionarios
+        WHEN 'uf' THEN fp.uf
+        WHEN 'tipo_juridico' THEN fp.tipo_juridico
+        WHEN 'atividade' THEN fp.cnae_principal
+        ELSE NULL
+      END AS v
+  ) naw ON true
+  LEFT JOIN LATERAL (
     SELECT (
-      ot.rules_json ? 'not_applicable_when'
+      naw.r IS NOT NULL
       AND fp.company_id IS NOT NULL
+      AND naw.v IS NOT NULL
       AND (
-        CASE ot.rules_json->'not_applicable_when'->>'field'
-          WHEN 'regime_tributario' THEN fp.regime_tributario
-          WHEN 'faixa_funcionarios' THEN fp.faixa_funcionarios
-          WHEN 'uf' THEN fp.uf
-          WHEN 'tipo_juridico' THEN fp.tipo_juridico
-          ELSE NULL
-        END
-      ) IN (SELECT jsonb_array_elements_text(ot.rules_json->'not_applicable_when'->'in'))
+        EXISTS (
+          SELECT 1 FROM jsonb_array_elements_text(naw.r->'in') AS p(x)
+          WHERE CASE WHEN naw.r->>'field' = 'atividade' THEN naw.v LIKE p.x || '%' ELSE naw.v = p.x END
+        ) IS DISTINCT FROM coalesce((naw.r->>'only')::boolean, false)
+      )
     ) AS is_not_applicable
   ) na ON true
 """

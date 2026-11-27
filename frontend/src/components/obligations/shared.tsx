@@ -33,6 +33,8 @@ export interface Instance {
   company_id: string;
   company_name?: string;
   criticality: string;
+  /** Peso na conformidade (1 a 10), vem do modelo. */
+  weight?: number;
   department: string | null;
   frequency: string;
   legal_basis?: string | null;

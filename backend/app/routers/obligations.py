@@ -30,7 +30,7 @@ router = APIRouter(tags=["obligations"])
 FREQUENCIES = ("mensal", "anual", "unica", "evento")
 CRITICALITIES = ("baixa", "media", "alta", "critica")
 MANUAL_STATUSES = ("reviewing", "approved", "dispensado", "cancelado", "pending")
-CONDITIONAL_FIELDS = ("regime_tributario", "faixa_funcionarios", "uf", "tipo_juridico")
+CONDITIONAL_FIELDS = ("regime_tributario", "faixa_funcionarios", "uf", "tipo_juridico", "atividade")
 _OPEN_EFFECTIVE = ("pending", "at_risk", "overdue", "reviewing", "blocked", "expired")
 async def _require_admin(conn: asyncpg.Connection, user_id: str, company_id: UUID, role: str) -> None:
     if role == "supremo":
@@ -79,6 +79,12 @@ def _validate_rules_json(v: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"field deve ser um de: {', '.join(CONDITIONAL_FIELDS)}")
     if not isinstance(naw["in"], list) or len(naw["in"]) == 0:
         raise ValueError("'in' deve ser uma lista não vazia de valores")
+    if "only" in naw and not isinstance(naw["only"], bool):
+        raise ValueError("'only' deve ser verdadeiro ou falso")
+    if naw["field"] == "atividade":
+        for x in naw["in"]:
+            if not isinstance(x, str) or not re.fullmatch(r"\d{2,7}", x):
+                raise ValueError("Atividade: informe o começo do CNAE, de 2 a 7 dígitos (ex.: 4731 para posto).")
     return v
 
 

@@ -7,6 +7,7 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
+import { pushUndo } from "@/lib/undo";
 import EmptyState from "@/components/shared/EmptyState";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import Button from "@/components/ui/Button";
@@ -62,6 +63,10 @@ export default function Trash() {
       .catch(() => setFailed(true));
   }
   useEffect(load, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    window.addEventListener("docke:desfeito", load);
+    return () => window.removeEventListener("docke:desfeito", load);
+  });
 
   const key = (i: TrashItem) => `${i.item_type}:${i.id}`;
 
@@ -72,9 +77,14 @@ export default function Trash() {
       setItems((prev) => prev?.filter((i) => key(i) !== key(item)) ?? null);
       const folderId = r.data?.restored_to_folder_id ?? (item.item_type === "folder" ? item.id : null);
       const extra = item.item_type === "folder" && r.data?.restored_documents ? ` com ${r.data.restored_documents} documentos` : "";
+      // Desfazer devolve à lixeira (Ctrl+Z); o aviso mantém "Abrir" como ação.
+      pushUndo(`restaurar “${item.name}”`, async () => {
+        if (item.item_type === "folder") await api.delete(`/folders/${item.id}`);
+        else await api.post("/documents/bulk-delete", { document_ids: [item.id] });
+      });
       toast({
         type: "success",
-        message: `“${item.name}” voltou${extra}${item.original_path ? ` para ${item.original_path}` : ""}.`,
+        message: `“${item.name}” voltou${extra}${item.original_path ? ` para ${item.original_path}` : ""}. Ctrl+Z desfaz.`,
         action: folderId ? { label: "Abrir", onClick: () => navigate(item.item_type === "folder" ? `/documents?folder_id=${item.id}` : `/documents?folder_id=${folderId}&doc=${item.id}`) } : undefined,
       });
     } catch (e: any) {
