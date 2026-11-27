@@ -227,7 +227,7 @@ export default function Users() {
                     </span>
                     <button onClick={() => setOpen(p.user_id)}
                       className="flex-1 min-w-0 text-left flex items-center gap-3 px-3 sm:px-4 py-3 min-h-16 hover:bg-(--bg-hover) transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-(--focus-ring)">
-                      <Avatar name={p.full_name} size="md" />
+                      <Avatar name={p.full_name} src={(p as { avatar_url?: string | null }).avatar_url ?? undefined} size="md" />
                       <span className="flex-1 min-w-0">
                         <span className="block text-mac-body text-(--text-primary) truncate">
                           {p.full_name}{p.user_id === user?.id && <span className="text-(--text-secondary)"> (você)</span>}

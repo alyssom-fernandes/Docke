@@ -9,6 +9,7 @@ interface AuthCtx {
   loginDemo: () => Promise<void>;
   logout: () => void;
   updateProfile: (fullName: string) => Promise<void>;
+  setAvatar: (url: string | null) => void;
   passwordChanged: () => void;
   completeMfa: (tokens: SessionTokens) => Promise<void>;
   loginWithSession: (tokens: SessionTokens, remember?: boolean) => Promise<void>;

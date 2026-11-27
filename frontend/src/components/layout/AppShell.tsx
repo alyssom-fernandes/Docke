@@ -1,5 +1,6 @@
 import { ReactNode, useCallback, useRef, useEffect, useState } from "react";
 import { useUndoShortcut } from "@/lib/undo";
+import { IndicadorPuxar, usePullToRefresh } from "@/hooks/useGestos";
 import { useNavigate, useLocation } from "react-router-dom";
 import { PanelLeft, Search } from "lucide-react";
 import Footer from "./Footer";
@@ -74,6 +75,11 @@ function Shell({ children }: AppShellProps) {
   const mainRef = useRef<HTMLElement>(null);
   const [scrolled, setScrolled] = useState(false);
   const fullBleed = isFullBleed(location.pathname);
+  // Puxar para atualizar no celular (B4.5.6): a tela que sabe recarregar os
+  // próprios dados atende "docke:atualizar"; as outras recarregam a página.
+  const puxarCelular = usePullToRefresh(mainRef, () => {
+    if (window.dispatchEvent(new CustomEvent("docke:atualizar", { cancelable: true }))) window.location.reload();
+  }, !desktop && !fullBleed && typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches);
 
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0 });
@@ -124,6 +130,7 @@ function Shell({ children }: AppShellProps) {
           tabIndex={-1}
           className={`h-full flex flex-col focus:outline-hidden ${fullBleed ? "overflow-hidden pt-[calc(60px+env(safe-area-inset-top))] pb-[calc(84px+env(safe-area-inset-bottom))]" : "overflow-y-auto px-4 pt-[calc(64px+env(safe-area-inset-top))] pb-[calc(104px+env(safe-area-inset-bottom))]"}`}
         >
+          <IndicadorPuxar {...puxarCelular} />
           {page}
           {location.pathname.startsWith("/settings") && <Footer />}
         </main>

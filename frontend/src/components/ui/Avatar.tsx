@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 interface AvatarProps {
   name: string;
   src?: string;
@@ -11,7 +13,10 @@ const initials = (name: string) =>
 // cinza com as iniciais em branco (sem foto).
 const MONOGRAM = "bg-[linear-gradient(180deg,#A3A3A8_0%,#7C7C82_100%)] text-white";
 
-export default function Avatar({ name, src, size = "md" }: AvatarProps) {
+export default function Avatar({ name, src: srcProp, size = "md" }: AvatarProps) {
+  // URL assinada vencida ou foto apagada: volta ao monograma sem ícone quebrado.
+  const [falhou, setFalhou] = useState<string | null>(null);
+  const src = srcProp && falhou !== srcProp ? srcProp : undefined;
   const sz = size === "xs" ? "w-[22px] h-[22px] text-[9px]" : size === "sm" ? "w-7 h-7 text-mac-caption" : size === "lg" ? "w-14 h-14 text-mac-title3" : "w-8 h-8 text-mac-body";
   return (
     <div
@@ -19,7 +24,7 @@ export default function Avatar({ name, src, size = "md" }: AvatarProps) {
       role="img"
       aria-label={name}
     >
-      {src ? <img src={src} alt="" className="w-full h-full object-cover" /> : <span aria-hidden="true">{initials(name)}</span>}
+      {src ? <img src={src} alt="" className="w-full h-full object-cover" onError={() => setFalhou(srcProp ?? null)} /> : <span aria-hidden="true">{initials(name)}</span>}
     </div>
   );
 }

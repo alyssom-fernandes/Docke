@@ -124,7 +124,7 @@ export default function SettingsLayout() {
         <div key={location.pathname} className="panel-in flex flex-col gap-5">
           <PageHeader title="Ajustes" />
           <NavLink to="/settings/profile" className="mac-group flex items-center gap-3.5 px-4 py-3 active:bg-(--control-fill)">
-            <Avatar name={user?.full_name ?? user?.username ?? "?"} size="lg" />
+            <Avatar name={user?.full_name ?? user?.username ?? "?"} src={user?.avatar_url ?? undefined} size="lg" />
             <div className="flex-1 min-w-0">
               <p className="text-[17px] font-semibold text-(--text-primary) truncate">{user?.full_name}</p>
               <p className="text-[13px] text-(--text-secondary) truncate">Perfil, senha e empresas</p>

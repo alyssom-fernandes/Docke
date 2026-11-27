@@ -35,7 +35,7 @@ export default function MobileTopBar() {
           aria-label={`Conta de ${nome}`}
           className="glass-capsule flex size-9 items-center justify-center rounded-full focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
         >
-          <Avatar name={nome} size="sm" />
+          <Avatar name={nome} src={user?.avatar_url ?? undefined} size="sm" />
         </button>
         {menu && ref.current && (
           <Menu

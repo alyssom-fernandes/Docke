@@ -292,7 +292,7 @@ export default function Sidebar() {
           title={user?.email ? `${nome} · ${user.email}` : nome}
           className={`sidebar-item w-full ${location.pathname.startsWith("/settings") ? "is-selected" : ""}`}
         >
-          <Avatar name={nome} size="xs" />
+          <Avatar name={nome} src={user?.avatar_url ?? undefined} size="xs" />
           <span className="min-w-0 flex-1 truncate text-left">{nome}</span>
           <Settings className="size-[15px] shrink-0 text-(--text-secondary)" aria-hidden />
         </button>

@@ -157,6 +157,9 @@ async def create_upload_url(
     # na resposta) — antes, o XML de NF-e falhava com 403 (achado X2-03).
     content_type = _MIME_MAP.get(ext, body.content_type)
     original = await _original_date_allowed(conn, claims, body.company_id, body.original_created_at)
+    # Cota de armazenamento da empresa (B4.2.8): sem cota, nada muda.
+    from app.routers.config_package import conferir_cota
+    await conferir_cota(admin_conn, body.company_id, body.size_bytes)
     row = await DocumentsService.insert_pending_document(
         admin_conn,
         document_id=document_id, folder_id=body.folder_id, company_id=body.company_id,
@@ -536,6 +539,9 @@ async def create_multipart_upload(
     user_id = claims["sub"]
     content_type = _MIME_MAP.get(ext, body.content_type)
     original = await _original_date_allowed(conn, claims, body.company_id, body.original_created_at)
+    # Cota de armazenamento da empresa (B4.2.8): sem cota, nada muda.
+    from app.routers.config_package import conferir_cota
+    await conferir_cota(admin_conn, body.company_id, body.size_bytes)
 
     await DocumentsService.insert_pending_document(
         admin_conn,

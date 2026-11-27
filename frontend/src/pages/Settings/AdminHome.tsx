@@ -6,6 +6,8 @@ import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { readView, writeView } from "@/lib/viewCache";
 import SecurityHealth from "@/components/settings/SecurityHealth";
+import UsageAndPackage from "@/components/settings/UsageAndPackage";
+import { useAuthContext } from "@/lib/AuthContext";
 
 type Count = number | null | "erro";
 
@@ -20,6 +22,7 @@ interface Attention { key: string; text: string; to: string }
 export default function AdminHome() {
   usePageTitle("Administração");
   const { current, companies } = useCompany();
+  const { user } = useAuthContext();
   // A visita anterior aparece na hora e é atualizada por baixo (A9-04).
   type Snap = { people: Count; fields: Count; policies: Count; attention: Attention[] | null };
   const snap = readView<Snap>(`admin:${current?.id}`);
@@ -86,6 +89,7 @@ export default function AdminHome() {
       </section>
 
       {current && <SecurityHealth companyId={current.id} />}
+      {current && <UsageAndPackage companyId={current.id} supremo={user?.role === "supremo"} />}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         {cards.map((card) => (

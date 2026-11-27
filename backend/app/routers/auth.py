@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 from uuid import UUID
 
@@ -9,7 +10,7 @@ from pydantic import BaseModel
 
 from app.config import settings
 from app.dependencies import get_current_user, get_db, get_db_admin
-from app.services import rate_limit
+from app.services import rate_limit, storage_service
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -299,7 +300,93 @@ async def get_me(
         pendente = mfa_service.pendencia(claims, cadastrado, exigido)
     except Exception:
         pendente = None
-    return dict(row) | {"mfa_pendente": pendente}
+    return dict(row) | {"mfa_pendente": pendente, "avatar_url": await _avatar_url(admin_conn, claims["sub"])}
+
+
+# ---------------------------------------------------------------------------
+# Foto no avatar (A2-41): a pessoa envia a própria foto direto para o
+# armazenamento (URL assinada) e depois grava a chave. Só imagem PNG, JPEG ou
+# WebP, até 2 MB. A leitura é uma URL assinada de 1 h.
+# ---------------------------------------------------------------------------
+
+_AVATAR_TIPOS = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}
+
+
+def avatar_url_da_chave(chave: str | None) -> str | None:
+    if not chave:
+        return None
+    ext = chave.rsplit(".", 1)[-1]
+    tipo = {v: k for k, v in _AVATAR_TIPOS.items()}.get(ext, "image/jpeg")
+    try:
+        url, _ = storage_service.generate_preview_url(key=chave, content_type=tipo, expires_in=3600)
+        return url
+    except Exception:  # noqa: BLE001 — sem foto, o monograma aparece
+        return None
+
+
+async def _avatar_url(admin_conn: asyncpg.Connection, user_id: str) -> str | None:
+    return avatar_url_da_chave(await admin_conn.fetchval("SELECT avatar_key FROM public.users WHERE id = $1", user_id))
+
+
+class AvatarUploadRequest(BaseModel):
+    content_type: str
+    size_bytes: int
+
+
+@router.post("/avatar/upload-url")
+async def avatar_upload_url(body: AvatarUploadRequest, claims: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+    import secrets
+
+    from app.services import mfa_service
+
+    if mfa_service.is_demo(claims):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="A conta de demonstração não troca a foto.")
+    ext = _AVATAR_TIPOS.get(body.content_type)
+    if ext is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Use uma imagem PNG, JPEG ou WebP.")
+    if not 0 < body.size_bytes <= 2 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="A foto pode ter até 2 MB.")
+    chave = f"avatars/{claims['sub']}-{secrets.token_hex(6)}.{ext}"
+    url, expira = storage_service.generate_upload_url(key=chave, content_type=body.content_type)
+    return {"upload_url": url, "avatar_key": chave, "expires_at": expira.isoformat()}
+
+
+class AvatarSet(BaseModel):
+    avatar_key: str | None = None
+
+
+@router.put("/avatar")
+async def avatar_set(
+    body: AvatarSet,
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Grava (ou tira, com null) a foto da própria conta."""
+    from app.services.file_signature import content_matches_extension
+
+    chave = body.avatar_key
+    if chave is not None:
+        if not chave.startswith(f"avatars/{claims['sub']}-") or "/" in chave[len("avatars/"):]:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Foto inválida.")
+        meta = await asyncio.to_thread(storage_service.head_object, chave)
+        if meta is None:
+            raise HTTPException(status_code=status.HTTP_424_FAILED_DEPENDENCY, detail="Envie a foto antes de gravar.")
+        if (meta.get("ContentLength") or 0) > 2 * 1024 * 1024:
+            await asyncio.to_thread(storage_service.delete_object, chave)
+            raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="A foto pode ter até 2 MB.")
+        cabeca = await asyncio.to_thread(storage_service.read_head, chave) or b""
+        webp = chave.endswith(".webp") and cabeca[:4] == b"RIFF" and cabeca[8:12] == b"WEBP"
+        if not webp and not content_matches_extension(chave, cabeca):
+            await asyncio.to_thread(storage_service.delete_object, chave)
+            raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="O arquivo não é uma imagem válida.")
+    anterior = await admin_conn.fetchval("SELECT avatar_key FROM public.users WHERE id = $1", claims["sub"])
+    await admin_conn.execute("UPDATE public.users SET avatar_key = $2 WHERE id = $1", claims["sub"], chave)
+    if anterior and anterior != chave:
+        try:
+            await asyncio.to_thread(storage_service.delete_object, anterior)
+        except Exception:  # noqa: BLE001 — melhor esforço
+            pass
+    return {"avatar_url": avatar_url_da_chave(chave)}
 
 
 # ---------------------------------------------------------------------------

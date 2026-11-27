@@ -282,6 +282,8 @@ function ColumnResizeHandle({ label, width, onMouseDown, onReset, onNudge }: {
 const NAV_KEY = "documents";
 
 
+import { IndicadorPuxar, usePullToRefresh, useSwipeRow } from "@/hooks/useGestos";
+
 // Lista virtualizada: a partir de quantos itens, e quantas linhas a mais acima e abaixo da área visível.
 const VIRT_MIN = 300;
 const VIRT_FOLGA = 15;
@@ -1756,6 +1758,17 @@ export default function Documents() {
     setTimeout(focar, 0);
   }
 
+  // Gestos do celular (B1.2.8, B4.5.6): puxar a lista para atualizar e
+  // deslizar a linha para a esquerda para abrir as ações dela.
+  const toque = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+  const puxar = usePullToRefresh(scrollBodyRef, () => load(), toque);
+  const deslizar = useSwipeRow((el) => {
+    const id = el.dataset.swipeId;
+    const it = items.find((x) => x.data.id === id);
+    if (it) openMenuAt(el, it.kind, it.data);
+  });
+  const gestoLinha = (id: string) => (toque ? { ...deslizar, "data-swipe-id": id } : {});
+
   // Seleção única para pastas e documentos (ids não colidem).
   const docIdSet = new Set(documents.map((d) => d.id));
   const selDocIds = [...selected].filter((id) => docIdSet.has(id));
@@ -1823,6 +1836,7 @@ export default function Documents() {
   const longPressFiredRef = useRef(false);
   const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
   function handleTouchStart(e: React.TouchEvent, id: string) {
+    if (toque) deslizar.onTouchStart(e as React.TouchEvent<HTMLElement>);
     const touch = e.touches[0];
     touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
     longPressFiredRef.current = false;
@@ -1834,6 +1848,7 @@ export default function Documents() {
     }, 500);
   }
   function handleTouchMove(e: React.TouchEvent) {
+    if (toque) deslizar.onTouchMove(e as React.TouchEvent<HTMLElement>);
     if (!touchStartPosRef.current || !longPressTimerRef.current) return;
     const touch = e.touches[0];
     const dx = Math.abs(touch.clientX - touchStartPosRef.current.x);
@@ -1843,7 +1858,8 @@ export default function Documents() {
       longPressTimerRef.current = null;
     }
   }
-  function handleTouchEnd() {
+  function handleTouchEnd(e?: React.TouchEvent) {
+    if (toque && e) deslizar.onTouchEnd(e as React.TouchEvent<HTMLElement>);
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
@@ -1981,6 +1997,7 @@ export default function Documents() {
           className="flex-1 overflow-y-auto pb-6 relative"
           onMouseDown={handleBodyMouseDown}
         >
+          <IndicadorPuxar {...puxar} />
           {/* Triagem (B1.1.8): só aparece quando a pasta aberta é a "Entrada" da empresa. */}
           {current && currentFolderId && !loading && <InboxPanel companyId={current.id} folderId={currentFolderId} onMoved={load} />}
           {loading ? (
@@ -2309,6 +2326,7 @@ export default function Documents() {
                       <Fragment key={`folder-${f.id}`}>
                       <tr
                         ref={(el) => { if (el) rowRefs.current.set(f.id, el); else rowRefs.current.delete(f.id); }}
+                        {...gestoLinha(f.id)}
                         tabIndex={focusedId === f.id || (!focusedId && items[0]?.data.id === f.id) ? 0 : -1}
                         aria-label={`Pasta ${f.name}`}
                         aria-selected={isFolderSel}
@@ -2505,6 +2523,7 @@ export default function Documents() {
                     )}
                     <tr
                       data-linha
+                      {...gestoLinha(d.id)}
                       ref={(el) => { if (el) rowRefs.current.set(d.id, el); else rowRefs.current.delete(d.id); }}
                       tabIndex={focusedId === d.id || (!focusedId && items[0]?.data.id === d.id) ? 0 : -1}
                       aria-selected={isSelected}

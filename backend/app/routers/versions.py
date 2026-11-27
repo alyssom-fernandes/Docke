@@ -114,6 +114,9 @@ async def create_version_upload_url(
 
     ext = doc["name"].rsplit(".", 1)[-1].lower() if "." in doc["name"] else "bin"
 
+    # Cota de armazenamento da empresa (B4.2.8).
+    from app.routers.config_package import conferir_cota
+    await conferir_cota(admin_conn, await admin_conn.fetchval("SELECT company_id FROM public.documents WHERE id = $1", document_id), body.size_bytes)
     version_count = await VersionsService.count_versions(admin_conn, document_id)
     if version_count >= _MAX_VERSIONS:
         raise HTTPException(
