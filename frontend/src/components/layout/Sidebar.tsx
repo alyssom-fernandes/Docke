@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ElementType, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type ElementType, type ReactNode, type SetStateAction } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   House, FolderClosed, Search, CalendarClock, Activity, Link2, Trash2, Settings, ChevronRight,
@@ -89,7 +89,70 @@ function Section({ id, title, collapsed, onToggle, children, action }: {
   );
 }
 
+// Largura da barra lateral: arrastável pela borda, como no Finder (A4-11).
+const WIDTH_KEY = "docke_largura_barra_lateral";
+const WIDTH_DEFAULT = 240;
+const WIDTH_MIN = 200;
+const WIDTH_MAX = 380;
+const clampWidth = (w: number) => Math.round(Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, w)));
+
+function useSidebarWidth() {
+  const [width, setWidth] = useState(() => {
+    const saved = Number(localStorage.getItem(WIDTH_KEY));
+    return Number.isFinite(saved) && saved > 0 ? clampWidth(saved) : WIDTH_DEFAULT;
+  });
+  useEffect(() => { localStorage.setItem(WIDTH_KEY, String(width)); }, [width]);
+  return [width, setWidth] as const;
+}
+
+/** Borda da barra lateral: arrastar muda a largura; duplo clique volta ao padrão; setas pelo teclado. */
+function ResizeEdge({ width, onChange }: { width: number; onChange: Dispatch<SetStateAction<number>> }) {
+  const start = useRef<{ x: number; w: number } | null>(null);
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Largura da barra lateral"
+      aria-valuemin={WIDTH_MIN}
+      aria-valuemax={WIDTH_MAX}
+      aria-valuenow={width}
+      tabIndex={0}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        start.current = { x: e.clientX, w: width };
+        document.body.style.cursor = "col-resize";
+      }}
+      onPointerMove={(e) => {
+        if (!start.current) return;
+        onChange(clampWidth(start.current.w + e.clientX - start.current.x));
+      }}
+      onPointerUp={(e) => {
+        start.current = null;
+        document.body.style.cursor = "";
+        (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+      }}
+      onDoubleClick={() => onChange(WIDTH_DEFAULT)}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+          e.preventDefault();
+          const step = e.key === "ArrowRight" ? 16 : -16;
+          onChange((w) => clampWidth(w + step));
+        } else if (e.key === "Home" || e.key === "End") {
+          e.preventDefault();
+          onChange(e.key === "Home" ? WIDTH_MIN : WIDTH_MAX);
+        }
+      }}
+      className="group absolute inset-y-0 -right-[3px] z-10 hidden w-[6px] cursor-col-resize touch-none lg:block focus-visible:outline-hidden"
+    >
+      <span aria-hidden className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors group-hover:bg-(--separator) group-focus-visible:w-[3px] group-focus-visible:bg-(--focus-ring)" />
+    </div>
+  );
+}
+
 export default function Sidebar() {
+  const [width, setWidth] = useSidebarWidth();
   const { current } = useCompany();
   const { user, logout } = useAuthContext();
   const { setSidebarOpen } = useWindow();
@@ -153,7 +216,8 @@ export default function Sidebar() {
   const obligations = badges["/obligations"];
 
   return (
-    <aside aria-label="Barra lateral" className="sidebar flex h-full w-[240px] shrink-0 flex-col">
+    <aside aria-label="Barra lateral" className="sidebar relative flex h-full shrink-0 flex-col" style={{ width }}>
+      <ResizeEdge width={width} onChange={setWidth} />
       {/* Cabeçalho (52 px, como o da janela): marca, empresa e o botão de recolher. */}
       <div className="flex h-[52px] shrink-0 items-center gap-2 pl-4 pr-2">
         <span className="brand-mark size-[18px] shrink-0" role="img" aria-label="Docke" />
