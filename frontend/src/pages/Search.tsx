@@ -230,7 +230,7 @@ export default function Search() {
   }, [current?.id, q, pagina]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="space-y-5 max-w-[1280px] w-full mx-auto">
+    <div className="space-y-6 max-w-[1280px] w-full mx-auto">
       <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Busca</h1>
 
       <form role="search" onSubmit={(e) => { e.preventDefault(); setP({ q: text.trim() || null }); }} className="relative">
@@ -249,7 +249,7 @@ export default function Search() {
         )}
       </form>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] xl:grid-cols-[240px_1fr_320px] gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] xl:grid-cols-[240px_1fr_320px] gap-6">
         {/* Filtros (A6-03) */}
         <aside aria-label="Filtros" className="space-y-4">
           <div>

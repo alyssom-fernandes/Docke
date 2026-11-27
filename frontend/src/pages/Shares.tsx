@@ -95,7 +95,7 @@ export default function Shares() {
   const ativos = (shares ?? []).filter((s) => situacao(s).ativo).length;
 
   return (
-    <div className="space-y-5 max-w-[1100px] w-full mx-auto">
+    <div className="space-y-6 max-w-[1100px] w-full mx-auto">
       <div>
         <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Links</h1>
         <p className="text-mac-caption text-(--text-secondary) mt-0.5">Links que levam documentos e pastas para fora do Docke. Admins veem os de toda a empresa.</p>

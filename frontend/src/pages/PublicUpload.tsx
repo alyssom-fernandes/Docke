@@ -143,7 +143,7 @@ export default function PublicUpload() {
               <div className="h-5 w-2/3 rounded bg-(--bg-hover) animate-pulse" /><div className="h-24 rounded-(--radius-control) bg-(--bg-hover) animate-pulse" />
             </div>
           ) : (
-            <div className="reveal space-y-5">
+            <div className="reveal space-y-6">
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-(--border-default) pb-4 text-mac-caption text-(--text-secondary)">
                 <span className="inline-flex items-center gap-1.5"><Building2 className="w-3.5 h-3.5" aria-hidden="true" />{info.company_name}</span>
                 <span className="inline-flex items-center gap-1.5"><FolderOpen className="w-3.5 h-3.5" aria-hidden="true" />Vai para a pasta {info.folder_name}</span>

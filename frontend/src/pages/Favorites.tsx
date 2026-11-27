@@ -77,7 +77,7 @@ export default function Favorites() {
   const counts = { todos: items?.length ?? 0, folder: items?.filter((f) => f.item_type === "folder").length ?? 0, document: items?.filter((f) => f.item_type === "document").length ?? 0 };
 
   return (
-    <div className="space-y-5 max-w-[1100px] w-full mx-auto">
+    <div className="space-y-6 max-w-[1100px] w-full mx-auto">
       <div>
         <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Ancorados</h1>
         <p className="text-mac-caption text-(--text-secondary) mt-0.5">Os documentos e pastas que você usa todo dia, a um clique. Só você vê os seus.</p>

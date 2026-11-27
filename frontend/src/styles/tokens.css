@@ -178,9 +178,12 @@ html, body {
   --teal-bright: #0E9B86;
   --badge-teal-text: #086B61;
 
-  /* Sombras de sobreposição — diálogos flutuam ACIMA de tudo, então precisam
-     da sombra mais forte do sistema (mais forte que os painéis de fundo). */
+  /* Três níveis de sombra, todos com a luz vindo de cima (estética P4):
+     cartão (--glass-shadow), flutuante (--shadow-dropdown: menus, painéis
+     sobre o conteúdo, barra de ações) e diálogo (--shadow-dialog). A página
+     de papel do visualizador usa --shadow-paper, a mesma luz, mais curta. */
   --shadow-dialog: 0 24px 64px rgba(0,0,0,0.28), 0 8px 24px rgba(0,0,0,0.16);
+  --shadow-paper: 0 2px 6px rgba(0,0,0,0.08), 0 10px 28px -10px rgba(0,0,0,0.22);
   --shadow-dropdown: 0 12px 32px rgba(0,0,0,0.18), 0 4px 12px rgba(0,0,0,0.10);
 
   /* Corner radii */
@@ -262,6 +265,7 @@ html, body {
   --badge-teal-text: var(--teal-bright);
 
   --shadow-dialog: 0 24px 64px rgba(0,0,0,0.70), 0 8px 24px rgba(0,0,0,0.45);
+  --shadow-paper: 0 2px 6px rgba(0,0,0,0.35), 0 12px 32px -10px rgba(0,0,0,0.6);
   --shadow-dropdown: 0 12px 32px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.35);
 }
 
@@ -410,6 +414,25 @@ html, body {
 .empty-orbit { transform-origin: 64px 64px; animation: empty-orbit 60s linear infinite; }
 @media (prefers-reduced-motion: reduce) {
   .cascade > *, .empty-float, .empty-orbit { animation: none; }
+}
+
+/* Gráficos do Início (estética P3): colunas sobem da base, barras crescem da
+   esquerda e os rótulos aparecem depois, em sequência curta. */
+@keyframes docke-grow-y { from { transform: scaleY(0); } to { transform: none; } }
+@keyframes docke-grow-x { from { transform: scaleX(0); } to { transform: none; } }
+@keyframes docke-fade { from { opacity: 0; } to { opacity: 1; } }
+.chart-grow-y { transform-box: fill-box; transform-origin: 50% 100%; animation: docke-grow-y 560ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.chart-grow-x { transform-origin: 0 50%; animation: docke-grow-x 640ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.chart-fade { animation: docke-fade 300ms ease-out both; }
+/* Obrigação cumprida (estética P2): o check se desenha e o selo dá um leve pulo. */
+@keyframes docke-draw { to { stroke-dashoffset: 0; } }
+@keyframes docke-pop { 0% { transform: scale(1); } 45% { transform: scale(1.08); } 100% { transform: scale(1); } }
+.check-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: docke-draw 320ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+.check-draw-tarde { animation-delay: 220ms; }
+.check-pop { animation: docke-pop 420ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .chart-grow-y, .chart-grow-x, .chart-fade, .check-pop { animation: none; }
+  .check-draw { animation: none; stroke-dashoffset: 0; }
 }
 
 /* ─── Vidro só na navegação (B4.7.1, B4.7.2) ───

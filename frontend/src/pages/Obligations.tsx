@@ -178,7 +178,7 @@ export default function Obligations() {
   }
 
   return (
-    <div className="space-y-5 sm:space-y-6 max-w-[1440px] w-full mx-auto">
+    <div className="space-y-6 sm:space-y-6 max-w-[1440px] w-full mx-auto">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Obrigações</h1>
@@ -468,7 +468,7 @@ function Calendar({ templates, instances, canOperate, onOpen, onCreate }: {
   const outras = templates.filter((t) => t.frequency !== "mensal" && t.active);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div className="flex items-center gap-2">
         <Button variant="secondary" size="sm" onClick={() => setYear((y) => y - 1)} aria-label="Ano anterior">‹</Button>
         <span className="text-mac-body font-semibold text-(--text-primary) tabular-nums w-14 text-center" aria-live="polite">{year}</span>

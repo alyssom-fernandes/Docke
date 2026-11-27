@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CalendarClock, CheckCircle2, ClipboardCheck, Clock, Lock, MinusCircle, XCircle, Ban, type LucideIcon } from "lucide-react";
 
 export interface Template {
@@ -78,12 +79,31 @@ export const STATUS: Record<string, { label: string; icon: LucideIcon; tone: str
   not_applicable: { label: "Não se aplica", icon: MinusCircle, tone: "text-(--text-secondary)", chip: "bg-(--bg-hover) text-(--text-secondary)" },
 };
 
+/** Check que se desenha (estética P2): o círculo fecha e o traço entra logo depois. */
+function CheckDesenhado() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth={2.2}
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" pathLength={1} className="check-draw" />
+      <path d="m8.5 12.5 2.5 2.5 4.5-5" pathLength={1} className="check-draw check-draw-tarde" />
+    </svg>
+  );
+}
+
 export function StatusChip({ status, className = "" }: { status: string; className?: string }) {
   const s = STATUS[status] ?? STATUS.pending;
   const Icon = s.icon;
+  // Só anima quando a obrigação acabou de ser cumprida nesta tela, não a cada
+  // vez que a lista aparece.
+  const anterior = useRef(status);
+  const [acabouDeCumprir, setAcabou] = useState(false);
+  useEffect(() => {
+    if (status === "approved" && anterior.current !== "approved") setAcabou(true);
+    anterior.current = status;
+  }, [status]);
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-mac-caption font-medium whitespace-nowrap ${s.chip} ${className}`}>
-      <Icon className="w-3 h-3 shrink-0" aria-hidden="true" />
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-mac-caption font-medium whitespace-nowrap ${s.chip} ${acabouDeCumprir ? "check-pop" : ""} ${className}`}>
+      {acabouDeCumprir ? <CheckDesenhado /> : <Icon className="w-3 h-3 shrink-0" aria-hidden="true" />}
       {s.label}
     </span>
   );

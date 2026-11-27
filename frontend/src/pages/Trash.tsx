@@ -115,7 +115,7 @@ export default function Trash() {
   const allOn = list.length > 0 && sel.size === list.length;
 
   return (
-    <div className="space-y-5 max-w-[1100px] w-full mx-auto">
+    <div className="space-y-6 max-w-[1100px] w-full mx-auto">
       <div>
         <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Lixeira</h1>
         <p className="text-mac-caption text-(--text-secondary) mt-0.5">O que foi excluído fica aqui por um tempo e volta para o lugar de origem ao restaurar. Depois do prazo, sai sozinho.</p>

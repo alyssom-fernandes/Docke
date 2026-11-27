@@ -58,7 +58,7 @@ export default function CommentsPanel({ docId, comentarios, setComentarios, pont
   }
 
   return (
-    <aside aria-label="Comentários e anotações" className="absolute top-0 right-0 bottom-0 z-10 w-full sm:w-[320px] flex flex-col border-l border-(--border-default) bg-(--bg-card) shadow-xl">
+    <aside aria-label="Comentários e anotações" className="absolute top-0 right-0 bottom-0 z-10 w-full sm:w-[320px] flex flex-col border-l border-(--border-default) bg-(--bg-card) shadow-(--shadow-dropdown)">
       <div className="flex items-center gap-2 px-3 h-11 border-b border-(--border-default)">
         <MessageSquare className="w-4 h-4 text-(--text-accent)" aria-hidden />
         <h2 className="flex-1 text-mac-body font-semibold text-(--text-primary)">Comentários <span className="font-normal text-(--text-tertiary)">· {comentarios.length}</span></h2>

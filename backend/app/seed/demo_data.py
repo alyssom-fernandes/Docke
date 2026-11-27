@@ -54,6 +54,16 @@ COMPANIES = [
 
 FOLDERS = ["Fiscal", "RH", "Bancário", "Contratos"]
 
+# Perfil fiscal de cada empresa fictícia (regime, porte, UF, tipo, CNAE): faz a
+# aba "Para esta empresa" dos modelos prontos de obrigações mostrar o que vale
+# para cada uma, em vez de só "confira".
+FISCAL_PROFILES = [
+    # Mesmos segmentos das obrigações da demo (_DEMO_SEGMENTO): posto, hotel e restaurante.
+    ("lucro_presumido", "11_a_50", "SP", "ltda", "4731800"),    # comércio varejista de combustíveis
+    ("simples_nacional", "1_a_10", "SP", "sa", "5510801"),      # hotéis
+    ("lucro_real", "51_a_200", "SP", "ltda", "1091101"),        # fabricação de produtos de panificação
+]
+
 # (name_template, ext, folder_index)
 DOCUMENTS = [
     ("NF-e_Fornecedor_{n}.xml",     "xml",  0),
@@ -482,6 +492,14 @@ async def _build_demo_data(
             "INSERT INTO public.companies (id, name) VALUES ($1::uuid, $2)",
             company_id,
             company_name,
+        )
+        regime, faixa, uf, tipo, cnae = FISCAL_PROFILES[company_idx % len(FISCAL_PROFILES)]
+        await conn.execute(
+            """
+            INSERT INTO public.company_fiscal_profile (company_id, regime_tributario, faixa_funcionarios, uf, tipo_juridico, cnae_principal, updated_by)
+            VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::uuid)
+            """,
+            company_id, regime, faixa, uf, tipo, cnae, demo_user_id,
         )
 
         # ---------------------------------------------------------------
