@@ -43,7 +43,7 @@ import {
   FilePlus,
 } from "lucide-react";
 import api from "@/lib/api";
-import { useCompany } from "@/lib/CompanyContext";
+import { useCompany, useFeatures } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
 import { useNavigation } from "@/lib/NavigationContext";
 import Button from "@/components/ui/Button";
@@ -285,6 +285,7 @@ const NAV_KEY = "documents";
 export default function Documents() {
   usePageTitle("Documentos");
   const { current } = useCompany();
+  const recursos = useFeatures();
   const { toast, dismiss: dismissToast, success, error: showError } = useToast();
   const nav = useNavigation();
   // Fase 8.1: painel lateral persistente só cabe em telas largas (mesmo
@@ -446,7 +447,7 @@ export default function Documents() {
       list.push({ label: multi ? `Baixar ${ids.length} em ZIP` : "Baixar", icon: <Download />, separatorBefore: !multi, onSelect: () => downloadDocuments(ids) });
       if (!multi) {
         list.push({ label: "Copiar link", icon: <Link2 />, onSelect: () => copyLink(d) });
-        list.push({ label: "Compartilhar…", icon: <Share2 />, disabled: !canWrite, onSelect: () => setSharingDoc(d) });
+        if (recursos.links) list.push({ label: "Compartilhar…", icon: <Share2 />, disabled: !canWrite, onSelect: () => setSharingDoc(d) });
       }
       list.push({ label: multi ? "Ancorar todos" : d.favorited ? "Já está ancorado" : "Ancorar", icon: <Anchor />, disabled: !multi && !!d.favorited, onSelect: () => anchorDocuments(ids) });
       if (canWrite) {
@@ -459,9 +460,9 @@ export default function Documents() {
     }
     const f = t.data;
     const list: MenuItem[] = [{ label: "Abrir", icon: <FolderOpen />, shortcut: "Enter", onSelect: () => openFolder(f) }];
-    list.push({ label: "Compartilhar…", icon: <Share2 />, disabled: !canWrite, onSelect: () => setSharingFolder(f) });
+    if (recursos.links) list.push({ label: "Compartilhar…", icon: <Share2 />, disabled: !canWrite, onSelect: () => setSharingFolder(f) });
     // Link de envio para alguém de fora mandar arquivos para a pasta (FA-A4-11).
-    list.push({ label: "Pedir arquivos…", icon: <Inbox />, disabled: !canWrite, onSelect: () => setRequestingFolder(f) });
+    if (recursos.pedidos) list.push({ label: "Pedir arquivos…", icon: <Inbox />, disabled: !canWrite, onSelect: () => setRequestingFolder(f) });
     list.push({ label: "Novo a partir de modelo…", icon: <FilePlus />, disabled: !canWrite, onSelect: () => setNewFromTemplate(f) });
     if (canAdmin) {
       list.push({ label: "Mover para…", icon: <FolderInput />, separatorBefore: true, onSelect: () => setPicker({ kind: "folder", folder: f }) });
@@ -1784,7 +1785,7 @@ export default function Documents() {
             }
             titleAccessory={currentPrivacy !== "normal" ? (
               <span title={currentPrivacy === "sensivel" ? "Dado sensível (LGPD): link público bloqueado" : "Dado pessoal (LGPD)"}
-                className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-mac-caption2 font-semibold ${currentPrivacy === "sensivel" ? "bg-(--tint-danger) text-(--text-danger)" : "bg-(--tint-warning) text-(--text-warning)"}`}>
+                className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-mac-caption2 font-semibold ${currentPrivacy === "sensivel" ? "bg-(--tint-danger) text-(--chip-danger-text)" : "bg-(--tint-warning) text-(--chip-warning-text)"}`}>
                 <ShieldAlert className="w-3 h-3" aria-hidden />{PRIVACY_LABEL[currentPrivacy]}
               </span>
             ) : undefined}
@@ -2464,7 +2465,7 @@ export default function Documents() {
                                 {fmtDate(d.created_at)} · {fmtSize(d.size_bytes)}{d.ocr_status === "failed" ? " · texto não lido" : ""}
                               </span>
                               {/* Falha de leitura chama atenção e oferece a ação na própria linha (A4-19). */}
-                              {d.ocr_status === "failed" && canWrite && (
+                              {d.ocr_status === "failed" && canWrite && recursos.ocr && (
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); retryOcr(d); }}

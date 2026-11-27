@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.dependencies import get_current_user, get_db
 from app.services.obligations_service import period_label
+from app.services import features_service
 
 router = APIRouter(prefix="/today", tags=["today"])
 
@@ -37,7 +38,16 @@ SELECT
 
 async def _summary(conn: asyncpg.Connection, company_id: UUID) -> dict[str, int]:
     row = await conn.fetchrow(_SUMMARY_SQL, company_id)
-    return {k: int(v or 0) for k, v in dict(row).items()}
+    out = {k: int(v or 0) for k, v in dict(row).items()}
+    # Recurso desligado não gera aviso no Início nem na navegação.
+    recursos = await features_service.company_features(conn, company_id)
+    if not recursos["obrigacoes"]:
+        out.update(obrigacoes_vencidas=0, obrigacoes_semana=0, obrigacoes_conferir=0)
+    if not recursos["links"]:
+        out["links_vencendo"] = 0
+    if not recursos["ocr"]:
+        out["texto_com_falha"] = 0
+    return out
 
 
 @router.get("/company/{company_id}/resumo")
@@ -67,6 +77,7 @@ async def today_company(
     ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem acesso a esta empresa.")
     summary = await _summary(conn, company_id)
+    recursos = await features_service.company_features(conn, company_id)
     modelos = await conn.fetchval(
         "SELECT count(*) FROM public.obligation_templates WHERE company_id = $1 AND archived_at IS NULL", company_id,
     )
@@ -93,6 +104,10 @@ async def today_company(
         """,
         company_id,
     )]
+    if not recursos["obrigacoes"]:
+        obrigacoes, modelos = [], 0
+    if not recursos["ocr"]:
+        falhas = []
     return {"resumo": summary, "modelos_obrigacao": int(modelos or 0), "obrigacoes": obrigacoes, "texto_com_falha": falhas}
 
 

@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 
 from app.dependencies import get_app_role, get_current_user, get_db, get_db_admin
 from app.services.companies_service import CompaniesService
+from app.services import features_service
 
 router = APIRouter(tags=["employees"])
 
@@ -166,6 +167,7 @@ async def cadastrar(
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     await _exigir_admin(conn, claims, company_id)
+    await features_service.require(conn, company_id, "exames")
     if body.termination_date and body.termination_date < body.admission_date:
         raise HTTPException(status_code=422, detail="O desligamento não pode ser antes da admissão.")
     eid = await admin_conn.fetchval(
@@ -240,6 +242,7 @@ async def registrar_exame(
 ) -> dict[str, Any]:
     emp = await _colaborador(admin_conn, employee_id)
     await _exigir_admin(conn, claims, emp["company_id"])
+    await features_service.require(conn, emp["company_id"], "exames")
     if body.exam_date > date.today() + timedelta(days=1):
         raise HTTPException(status_code=422, detail="A data do exame não pode estar no futuro.")
     if body.document_id is not None and not await admin_conn.fetchval(

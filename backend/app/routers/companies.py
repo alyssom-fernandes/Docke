@@ -10,7 +10,7 @@ import httpx
 
 from app.config import settings
 from app.dependencies import get_app_role, get_current_user, get_db, get_db_admin
-from app.services import rate_limit, storage_service
+from app.services import features_service, rate_limit, storage_service
 from app.services.access_explain_service import AccessExplainService
 from app.services.companies_service import CompaniesService
 from app.services.groups_service import GroupsService
@@ -89,7 +89,13 @@ async def list_companies(
     RLS filtra automaticamente — retorna apenas as empresas do usuário.
     """
     rows = await CompaniesService.list_companies(conn)
-    return [dict(r) for r in rows]
+    out = []
+    for r in rows:
+        d = dict(r)
+        # Recursos já resolvidos (padrão + o que foi mudado): a tela se adapta sem outra chamada.
+        d["features"] = features_service.merge(d.pop("features", None), d.pop("lgpd_channel_enabled", None))
+        out.append(d)
+    return out
 
 
 # ---------------------------------------------------------------------------

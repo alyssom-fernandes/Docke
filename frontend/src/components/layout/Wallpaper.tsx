@@ -2,7 +2,7 @@
  * Papel de parede da tela de bloqueio e das páginas públicas: folhas de vidro
  * curvas, com a borda acesa, sobre o teal do Docke. É um desenho próprio, no
  * espírito dos papéis de parede do macOS 27. As cores vêm das variáveis de
- * `.lock-screen` (versão de dia e de noite, conforme o tema).
+ * `.wallpaper-screen` (versão de dia e de noite, conforme o tema).
  */
 export default function Wallpaper({ fixed = false, className = "" }: { fixed?: boolean; className?: string }) {
   const stop = (color: string, opacity: number | string) => ({ stopColor: `var(${color})`, stopOpacity: opacity });

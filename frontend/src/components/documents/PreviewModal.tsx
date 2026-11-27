@@ -8,6 +8,7 @@ import Code128 from "./Code128";
 import type { PdfViewerHandle } from "./PdfViewer";
 const PageOrganizer = lazy(() => import("@/components/documents/PageOrganizer"));
 import CommentsPanel, { type Comentario } from "./CommentsPanel";
+import { useFeature } from "@/lib/CompanyContext";
 
 // pdf.js (~400 KB) só é baixado quando alguém abre um PDF.
 const PdfViewer = lazy(() => import("./PdfViewer"));
@@ -297,7 +298,8 @@ function PaginaCarregando({ thumb }: { thumb?: string | null }) {
 
 export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = null, initialQuery = null, onChanged }: PreviewModalProps) {
   const [organizing, setOrganizing] = useState(false);
-  // Comentários e anotações (B2.4.6, B2.4.9).
+  // Comentários e anotações (B2.4.6, B2.4.9), quando o recurso está ligado.
+  const comentariosLigados = useFeature("comentarios");
   const [showComments, setShowComments] = useState(false);
   const [comentarios, setComentarios] = useState<Comentario[]>([]);
   const [ponto, setPonto] = useState<{ page: number; x: number; y: number } | null>(null);
@@ -489,10 +491,12 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
           <Search className="w-4 h-4" aria-hidden />
         </button>
       )}
-      <button className={iconBtn} onClick={() => setShowComments((v) => !v)} aria-pressed={showComments}
-        aria-label={`Comentários${comentarios.length ? ` (${comentarios.length})` : ""}`} title="Comentários e anotações">
-        <MessageSquare className="w-4 h-4" aria-hidden />
-      </button>
+      {comentariosLigados && (
+        <button className={iconBtn} onClick={() => setShowComments((v) => !v)} aria-pressed={showComments}
+          aria-label={`Comentários${comentarios.length ? ` (${comentarios.length})` : ""}`} title="Comentários e anotações">
+          <MessageSquare className="w-4 h-4" aria-hidden />
+        </button>
+      )}
       {type === "pdf" && url && (
         <button className={`${iconBtn} hidden sm:flex`} onClick={() => setOrganizing(true)} aria-label="Organizar páginas" title="Organizar páginas (girar, reordenar, tirar, extrair)">
           <Layers className="w-4 h-4" aria-hidden />

@@ -4,7 +4,7 @@ import { Search as SearchIcon, X, AlertTriangle, RefreshCw, Clock, ChevronLeft, 
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { getFileStyle } from "@/lib/fileType";
 import api from "@/lib/api";
-import { useCompany } from "@/lib/CompanyContext";
+import { useCompany, useFeature } from "@/lib/CompanyContext";
 import Dropdown from "@/components/ui/Dropdown";
 import Button from "@/components/ui/Button";
 import Checkbox from "@/components/ui/Checkbox";
@@ -223,12 +223,13 @@ export default function Search() {
   const results = data?.results ?? [];
   // Também nos comentários e anotações (B2.6.7), só dos documentos que a pessoa enxerga.
   const [notas, setNotas] = useState<{ comment_id: string; document_id: string; document_name: string; folder_id: string; folder_path_label: string | null; body: string; page: number | null; anotacao: boolean; author: string }[]>([]);
+  const comentariosLigados = useFeature("comentarios");
   useEffect(() => {
-    if (!current || !q || q.trim().length < 2 || pagina > 1) { setNotas([]); return; }
+    if (!current || !comentariosLigados || !q || q.trim().length < 2 || pagina > 1) { setNotas([]); return; }
     let vivo = true;
     api.get(`/companies/${current.id}/comments/search`, { params: { q } }).then((r) => { if (vivo) setNotas(r.data ?? []); }).catch(() => { if (vivo) setNotas([]); });
     return () => { vivo = false; };
-  }, [current?.id, q, pagina]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [current?.id, q, pagina, comentariosLigados]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="space-y-6 max-w-[1280px] w-full mx-auto">

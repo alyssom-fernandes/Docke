@@ -43,6 +43,7 @@ from app.routers import (
     push,
     passkeys,
     security_incidents,
+    features,
 )
 
 # Sem configuração, o Python descarta tudo abaixo de WARNING, e o que passa sai
@@ -208,6 +209,7 @@ app.include_router(version_compare.router, prefix=PREFIX)
 app.include_router(inbox.router, prefix=PREFIX)
 app.include_router(push.router, prefix=PREFIX)
 app.include_router(passkeys.router, prefix=PREFIX)
+app.include_router(features.router, prefix=PREFIX)
 
 
 class ErroDoNavegador(BaseModel):

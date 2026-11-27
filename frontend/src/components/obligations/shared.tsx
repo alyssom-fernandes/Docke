@@ -67,9 +67,9 @@ export interface Member { user_id: string; full_name: string; role: string; fold
 
 /** Estado com ícone e texto, nunca só a cor (A7-24, A7-33). */
 export const STATUS: Record<string, { label: string; icon: LucideIcon; tone: string; chip: string }> = {
-  overdue: { label: "Atrasada", icon: AlertTriangle, tone: "text-(--text-danger)", chip: "bg-(--tint-danger) text-(--text-danger)" },
-  at_risk: { label: "Vence em breve", icon: CalendarClock, tone: "text-(--text-warning)", chip: "bg-(--tint-warning) text-(--text-warning)" },
-  expired: { label: "Documento vencido", icon: XCircle, tone: "text-(--text-danger)", chip: "bg-(--tint-danger) text-(--text-danger)" },
+  overdue: { label: "Atrasada", icon: AlertTriangle, tone: "text-(--text-danger)", chip: "bg-(--tint-danger) text-(--chip-danger-text)" },
+  at_risk: { label: "Vence em breve", icon: CalendarClock, tone: "text-(--text-warning)", chip: "bg-(--tint-warning) text-(--chip-warning-text)" },
+  expired: { label: "Documento vencido", icon: XCircle, tone: "text-(--text-danger)", chip: "bg-(--tint-danger) text-(--chip-danger-text)" },
   reviewing: { label: "Esperando conferência", icon: ClipboardCheck, tone: "text-(--text-accent)", chip: "bg-(--tint-accent) text-(--text-accent)" },
   blocked: { label: "Aguardando outra", icon: Lock, tone: "text-(--text-secondary)", chip: "bg-(--bg-hover) text-(--text-secondary)" },
   pending: { label: "A fazer", icon: Clock, tone: "text-(--text-secondary)", chip: "bg-(--bg-hover) text-(--text-primary)" },

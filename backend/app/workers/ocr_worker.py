@@ -143,6 +143,9 @@ async def _process_one_job(provider) -> bool:
                 JOIN public.documents d ON d.id = j.document_id
                 WHERE j.status = 'pending'
                   AND (j.next_retry_at IS NULL OR j.next_retry_at <= now())
+                  -- Leitura de texto desligada na empresa: o arquivo espera na
+                  -- fila e é lido quando ligarem de novo.
+                  AND public.company_feature_enabled(d.company_id, 'ocr')
                 ORDER BY j.created_at
                 LIMIT 1
                 FOR UPDATE OF j SKIP LOCKED

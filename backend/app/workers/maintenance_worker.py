@@ -367,6 +367,7 @@ async def _notify_obligation_alerts(conn) -> None:
         {VALIDITY_LATERAL_SQL}
         {NOT_APPLICABLE_LATERAL_SQL}
         WHERE ot.archived_at IS NULL
+          AND public.company_feature_enabled(oi.company_id, 'obrigacoes')
         """
     )
     for row in rows:

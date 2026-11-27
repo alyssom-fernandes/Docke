@@ -23,6 +23,7 @@ from app.services.companies_service import CompaniesService
 from app.services.fiscal_profile_service import VALID_FAIXAS, VALID_REGIMES, VALID_TIPOS_JURIDICOS, FiscalProfileService
 from app.services.obligation_catalog import BY_KEY, CATALOG, SEGMENTOS, avaliar
 from app.services.obligations_service import ObligationsService, period_label
+from app.services import features_service
 
 router = APIRouter(tags=["obligations"])
 
@@ -256,6 +257,7 @@ async def create_template(
 ) -> dict[str, Any]:
     if body.company_id != company_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="company_id do corpo não bate com a URL.")
+    await features_service.require(conn, company_id, "obrigacoes")
     user_id = claims["sub"]
     role = await get_app_role(conn, claims)
     await _require_admin(conn, user_id, company_id, role)
@@ -369,6 +371,7 @@ async def apply_catalog(
     conn: asyncpg.Connection = Depends(get_db),
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
+    await features_service.require(conn, company_id, "obrigacoes")
     user_id = claims["sub"]
     role = await get_app_role(conn, claims)
     await _require_admin(conn, user_id, company_id, role)
@@ -413,6 +416,7 @@ async def generate_now(
     conn: asyncpg.Connection = Depends(get_db),
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, int]:
+    await features_service.require(conn, company_id, "obrigacoes")
     role = await get_app_role(conn, claims)
     await _require_operator(conn, claims["sub"], company_id, role)
     return {"generated": await ObligationsService.generate_due_instances(conn, company_id=company_id)}
@@ -469,6 +473,7 @@ async def create_instance(
     conn: asyncpg.Connection = Depends(get_db),
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
+    await features_service.require(conn, company_id, "obrigacoes")
     role = await get_app_role(conn, claims)
     await _require_operator(conn, claims["sub"], company_id, role)
 

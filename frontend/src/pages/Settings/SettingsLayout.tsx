@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Outlet, NavLink, Navigate, useLocation, useNavigate } from "react-router-dom";
-import { User, Building2, Users as UsersIcon, Lock, Sliders, Archive, Tags, ChevronRight, ChevronLeft, Search, LayoutGrid, ShieldAlert } from "lucide-react";
+import { User, Building2, Users as UsersIcon, Lock, Sliders, Archive, Tags, ChevronRight, ChevronLeft, Search, LayoutGrid, ShieldAlert, ToggleRight } from "lucide-react";
 import { useAuthContext } from "@/lib/AuthContext";
 import { useCompany } from "@/lib/CompanyContext";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -24,6 +24,7 @@ const TABS = [
   { to: "/settings/profile", icon: User, label: "Perfil", color: "bg-blue-500", adminOnly: false, supremoOnly: false, group: "Conta", keywords: ["nome", "avatar", "username", "e-mail", "email", "conta", "minhas empresas"] },
   { to: "/settings/security", icon: Lock, label: "Segurança", color: "bg-red-500", adminOnly: false, supremoOnly: false, group: "Conta", keywords: ["senha", "trocar senha", "password", "mfa", "duas etapas", "2fa", "autenticação", "segurança da conta"] },
   { to: "/settings/admin", icon: LayoutGrid, label: "Visão geral", color: "bg-(--accent)", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["administração", "resumo", "painel", "overview"] },
+  { to: "/settings/features", icon: ToggleRight, label: "Recursos", color: "bg-sky-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["recursos", "módulos", "ligar", "desligar", "links", "compartilhamento", "pedidos de arquivo", "obrigações", "exames", "aso", "comentários", "anotações", "leitura de texto", "ocr", "canal do titular", "senha do link", "validade do link"] },
   { to: "/settings/organization", icon: Building2, label: "Organização", color: "bg-slate-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["empresa", "cnpj", "desativar", "reativar", "perfil fiscal", "logo", "regime", "segmento", "exportar", "exportação", "backup", "ler de novo", "ocr"] },
   { to: "/settings/users", icon: UsersIcon, label: "Pessoas e acessos", color: "bg-indigo-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["usuário", "membro", "grupo", "grupos", "permissão", "acesso", "operador", "visualizador", "admin", "explain access"] },
   { to: "/settings/metadata", icon: Tags, label: "Metadados", color: "bg-orange-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["campo", "campos", "cpf", "cnpj", "catálogo", "aplicação na árvore", "herança", "obrigatório"] },

@@ -39,8 +39,11 @@ export function useIsDesktop(): boolean {
   useEffect(() => {
     const mq = window.matchMedia(DESKTOP_QUERY);
     const on = () => setDesktop(mq.matches);
+    // O "change" da media query não chega em todo ambiente (emulação de
+    // aparelho, alguns navegadores embutidos); o resize cobre esses casos.
     mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
+    window.addEventListener("resize", on);
+    return () => { mq.removeEventListener("change", on); window.removeEventListener("resize", on); };
   }, []);
   return desktop;
 }

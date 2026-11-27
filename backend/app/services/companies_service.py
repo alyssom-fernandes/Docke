@@ -56,9 +56,9 @@ class CompaniesService:
         no onboarding de "criar organização" mesmo já tendo acesso concedido."""
         return await conn.fetch(
             """
-            SELECT id, name, created_at, permission_level FROM (
+            SELECT id, name, created_at, permission_level, features, lgpd_channel_enabled FROM (
               SELECT DISTINCT ON (c.id)
-                c.id::text AS id, c.name, c.created_at, uca.permission_level
+                c.id::text AS id, c.name, c.created_at, uca.permission_level, c.features, c.lgpd_channel_enabled
               FROM public.companies c
               JOIN public.user_company_access uca
                 ON uca.company_id = c.id

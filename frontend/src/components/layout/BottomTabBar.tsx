@@ -4,6 +4,7 @@ import { MoreHorizontal, Sun, Moon, Upload, Search, House, FolderClosed, Calenda
 import { toggleTheme, useIsDark } from "@/lib/theme";
 import { useNavBadges } from "./navItems";
 import { usePresence } from "@/hooks/usePresence";
+import { useFeatures } from "@/lib/CompanyContext";
 
 /**
  * Barra de abas do iOS 26: cápsula de vidro flutuante com três abas e
@@ -33,7 +34,11 @@ export default function BottomTabBar() {
   const moreButtonRef = useRef<HTMLButtonElement>(null);
   const badges = useNavBadges();
   const presence = usePresence(moreOpen, 150);
-  const moreActive = MORE.some((l) => location.pathname.startsWith(l.match));
+  const recursos = useFeatures();
+  // Obrigações desligadas: Ancorados ocupa a terceira aba. Links some do "Mais" sem o recurso.
+  const tabs = recursos.obrigacoes ? TABS : [TABS[0], TABS[1], MORE[0]];
+  const more = MORE.filter((l) => (l.to !== "/shares" || recursos.links) && !tabs.includes(l));
+  const moreActive = more.some((l) => location.pathname.startsWith(l.match));
   const searchActive = location.pathname.startsWith("/search");
 
   useEffect(() => {
@@ -78,7 +83,7 @@ export default function BottomTabBar() {
             </button>
           </div>
           <div className="mac-group mt-2 overflow-hidden divide-y divide-(--separator-subtle)">
-            {MORE.map(({ to, icon: Icon, label, match }) => {
+            {more.map(({ to, icon: Icon, label, match }) => {
               const active = location.pathname.startsWith(match);
               const badge = badges[to];
               return (
@@ -110,7 +115,7 @@ export default function BottomTabBar() {
       <div className="fixed inset-x-0 bottom-0 z-30 flex items-end gap-2.5 px-3 pb-[calc(10px+env(safe-area-inset-bottom))]">
         <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[calc(96px+env(safe-area-inset-bottom))] bg-linear-to-t from-(--window-bg) via-(--window-bg)/80 to-transparent" />
         <nav aria-label="Navegação principal" className="glass-capsule relative flex h-[62px] min-w-0 flex-1 items-center px-1.5">
-          {TABS.map(({ to, icon: Icon, label, match }) => {
+          {tabs.map(({ to, icon: Icon, label, match }) => {
             const badge = badges[to];
             return (
               <NavLink key={to} to={to} className={({ isActive }) => tabClass(isActive && !moreOpen && location.pathname.startsWith(match))}>

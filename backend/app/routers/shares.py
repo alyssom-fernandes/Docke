@@ -21,6 +21,7 @@ from app.dependencies import get_current_user, get_db, get_db_admin, get_db_shar
 from app.services import rate_limit, storage_service
 from app.services.notification_service import notify_share_accessed, notify_share_blocked
 from app.services.shares_service import SharesService
+from app.services import features_service
 
 
 _BRT = timezone(timedelta(hours=-3))  # datas mostradas ao destinatário no horário de Brasília
@@ -171,6 +172,7 @@ async def create_share(
     else:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="expires_in inválido.")
 
+    await features_service.require(conn, company_id, "links")
     req_senha, max_dias = await _politica(conn, company_id)
     _validar_politica(req_senha, max_dias, bool(body.password), expires_at)
 
@@ -408,6 +410,8 @@ async def _resolve_share(conn: asyncpg.Connection, token: str) -> dict[str, Any]
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link não encontrado. Confira se o endereço foi copiado inteiro ou peça um novo a quem enviou.")
     if row["revoked_at"] is not None:
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Quem enviou desativou este link. Peça um novo, se ainda precisar do arquivo.")
+    if not await features_service.enabled(conn, row["company_id"], "links"):
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="A empresa desligou o compartilhamento por link. Peça o arquivo de outra forma a quem enviou.")
     if row["expired_at"] is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="O arquivo deste link não está mais disponível. Peça um novo link a quem enviou.")
     if row["expires_at"] is not None and row["expires_at"] < datetime.now(timezone.utc):
