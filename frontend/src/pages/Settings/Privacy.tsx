@@ -111,7 +111,7 @@ export default function Privacy() {
           <ul className="divide-y divide-(--border-default) rounded-(--radius-control) border border-(--border-default)">
             {folders.map((f) => (
               <li key={f.id} className="flex items-center gap-3 px-3 min-h-11">
-                <span className={`rounded-full px-2 py-0.5 text-mac-caption font-medium ${f.sensitivity === "sensivel" ? "bg-(--tint-danger) text-(--text-danger)" : "bg-(--tint-warning) text-(--text-warning)"}`}>{LABEL[f.sensitivity]}</span>
+                <span className={`rounded-full px-2 py-0.5 text-mac-caption font-medium ${f.sensitivity === "sensivel" ? "bg-(--tint-danger) text-(--chip-danger-text)" : "bg-(--tint-warning) text-(--chip-warning-text)"}`}>{LABEL[f.sensitivity]}</span>
                 <Link to={`/documents?folder_id=${f.id}`} className="flex-1 truncate text-mac-body text-(--text-primary) hover:underline">{f.name}</Link>
                 <span className="text-mac-caption text-(--text-secondary) tabular-nums">{f.documentos} {f.documentos === 1 ? "documento" : "documentos"}</span>
               </li>

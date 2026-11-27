@@ -149,7 +149,7 @@ export default function CatalogDialog({ companyId, companyName, members, onClose
                     {i.motivos?.length > 0 && i.motivos[0] !== "vale para todas as empresas" && (i.situacao !== "recomendado" || segmento === "perfil") ? (
                       <span className="my-0.5 inline-flex flex-wrap gap-1">
                         {i.motivos.map((m) => (
-                          <span key={m} className={`rounded-full px-2 py-px text-mac-caption ${i.situacao === "recomendado" ? "bg-(--tint-success) text-(--text-success)" : i.situacao === "falta_perfil" ? "bg-(--tint-warning) text-(--text-warning)" : "bg-(--bg-hover) text-(--text-secondary)"}`}>
+                          <span key={m} className={`rounded-full px-2 py-px text-mac-caption ${i.situacao === "recomendado" ? "bg-(--tint-success) text-(--text-success)" : i.situacao === "falta_perfil" ? "bg-(--tint-warning) text-(--chip-warning-text)" : "bg-(--bg-hover) text-(--text-secondary)"}`}>
                             {i.situacao === "falta_perfil" ? `Confira: ${m}` : i.situacao === "nao_se_aplica" ? `Provavelmente não: ${m}` : m}
                           </span>
                         ))}

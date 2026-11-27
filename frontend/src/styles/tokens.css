@@ -166,7 +166,10 @@ html, body {
   --chart-track: rgba(0,0,0,0.06);
   --afn-brand: #6b1f2a;
   --afn-brand-stroke: rgba(107,31,42,0.4);
-  --afn-muted: rgba(0,0,0,0.40);
+  --afn-muted: rgba(0,0,0,0.58);
+  /* Texto de selo sobre o fundo tingido: um tom mais escuro que o texto comum, para 4,5:1. */
+  --chip-danger-text: #B30012;
+  --chip-warning-text: #92400E;
 
   /* Wallpaper: cinza-bege quente com presença suficiente pra os cards brancos
      terem contra o que "flutuar" — Apple tem um degrau tonal claro entre a
@@ -294,7 +297,9 @@ html, body {
      pequeno. Tom mais claro da mesma família: ~5,8:1. */
   --afn-brand: #e07a88;
   --afn-brand-stroke: rgba(196,74,90,0.4);
-  --afn-muted: rgba(255,255,255,0.28);
+  --afn-muted: rgba(255,255,255,0.55);
+  --chip-danger-text: #FCA5A5;
+  --chip-warning-text: #FCD34D;
 
   /* Dark: cinza-carvão com highlights sutis de LUZ (não de cor).
      Apple no dark mode usa apenas variação de brilho, sem tinta saturada —
@@ -609,6 +614,8 @@ html, body {
 .mac-segment[aria-selected="true"], .mac-segment[aria-checked="true"], .mac-segment[aria-pressed="true"] {
   background: var(--segment-selected); box-shadow: var(--segment-shadow);
 }
+/* No escuro, o segmento escolhido clareia: o texto vai a branco puro para manter 4,5:1. */
+.dark .mac-segment[aria-selected="true"], .dark .mac-segment[aria-checked="true"], .dark .mac-segment[aria-pressed="true"] { color: #fff; }
 .mac-segment:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 1px; }
 .mac-segment > svg { width: 14px; height: 14px; }
 .mac-segmented.is-small .mac-segment { height: 20px; padding: 0 9px; font-size: 11px; line-height: 14px; }

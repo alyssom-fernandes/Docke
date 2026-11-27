@@ -1785,7 +1785,7 @@ export default function Documents() {
             }
             titleAccessory={currentPrivacy !== "normal" ? (
               <span title={currentPrivacy === "sensivel" ? "Dado sensível (LGPD): link público bloqueado" : "Dado pessoal (LGPD)"}
-                className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-mac-caption2 font-semibold ${currentPrivacy === "sensivel" ? "bg-(--tint-danger) text-(--text-danger)" : "bg-(--tint-warning) text-(--text-warning)"}`}>
+                className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-mac-caption2 font-semibold ${currentPrivacy === "sensivel" ? "bg-(--tint-danger) text-(--chip-danger-text)" : "bg-(--tint-warning) text-(--chip-warning-text)"}`}>
                 <ShieldAlert className="w-3 h-3" aria-hidden />{PRIVACY_LABEL[currentPrivacy]}
               </span>
             ) : undefined}
