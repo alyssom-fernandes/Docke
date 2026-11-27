@@ -39,6 +39,7 @@ const PublicShare = lazy(() => import("@/pages/PublicShare"));
 const TitularChannel = lazy(() => import("@/pages/TitularChannel"));
 const PublicUpload = lazy(() => import("@/pages/PublicUpload"));
 import NotFound from "@/pages/NotFound";
+import TitleTips from "@/components/ui/TitleTips";
 
 // Rotas do app que exigem sessão — sem sessão, essas levam ao login; qualquer
 // outro endereço mostra a página de inexistente em vez de redirecionar em silêncio.
@@ -52,8 +53,8 @@ function isAppRoute(pathname: string) {
 function PageFallback() {
   return (
     <div className="space-y-4 max-w-[1100px] w-full mx-auto" role="status" aria-label="Carregando">
-      <div className="h-7 w-48 rounded-[6px] bg-(--bg-hover) animate-pulse" />
-      <div className="h-4 w-72 max-w-full rounded-[6px] bg-(--bg-hover) animate-pulse" />
+      <div className="h-7 w-48 rounded-(--radius-control) bg-(--bg-hover) animate-pulse" />
+      <div className="h-4 w-72 max-w-full rounded-(--radius-control) bg-(--bg-hover) animate-pulse" />
       <div className="grid gap-3 sm:grid-cols-3">{[0, 1, 2].map((i) => <div key={i} className="h-24 rounded-(--radius-panel) bg-(--bg-hover) animate-pulse" />)}</div>
       <div className="h-64 rounded-(--radius-panel) bg-(--bg-hover) animate-pulse" />
     </div>
@@ -176,6 +177,7 @@ export default function App() {
           <Route path="/enviar/:token" element={<Suspense fallback={<PublicFallback />}><PublicUpload /></Suspense>} />
           <Route path="/*" element={<ProtectedRoutes />} />
         </Routes>
+        <TitleTips />
       </BrowserRouter>
     </ErrorBoundary>
   );

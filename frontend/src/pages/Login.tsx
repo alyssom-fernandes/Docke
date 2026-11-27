@@ -179,7 +179,7 @@ export default function Login() {
       ref={formErrorRef}
       tabIndex={-1}
       role="alert"
-      className="reveal flex items-start gap-2 rounded-[8px] bg-(--tint-danger) px-3 py-2 text-left text-[12px] leading-4 text-(--text-primary) focus:outline-hidden"
+      className="reveal flex items-start gap-2 rounded-(--radius-sm) bg-(--tint-danger) px-3 py-2 text-left text-[12px] leading-4 text-(--text-primary) focus:outline-hidden"
     >
       <AlertCircle className="mt-px size-3.5 shrink-0 text-(--text-danger)" aria-hidden />
       <span>{formError}</span>
@@ -189,7 +189,7 @@ export default function Login() {
   const header = (title: string, subtitle?: ReactNode) => (
     <div className="flex flex-col items-center text-center">
       {/* Ícone do app, como na folha de entrar do Mac. */}
-      <span aria-hidden className="flex size-12 sm:size-14 items-center justify-center rounded-[12px] sm:rounded-[14px] bg-linear-to-b from-[#17A897] to-[#0A6B61] shadow-[0_1px_2px_rgba(0,0,0,0.2),0_6px_16px_-6px_rgba(10,107,97,0.55),inset_0_1px_0_rgba(255,255,255,0.25)]">
+      <span aria-hidden className="flex size-12 sm:size-14 items-center justify-center rounded-(--radius-card) sm:rounded-[14px] bg-linear-to-b from-[#17A897] to-[#0A6B61] shadow-(--shadow-brand-tile)">
         <span className="brand-mark size-7 sm:size-8 bg-white!" />
       </span>
       <h1 id="acesso-titulo" tabIndex={-1} className="mt-2.5 sm:mt-3 text-[17px] font-semibold leading-[22px] text-(--text-primary) focus:outline-hidden">
@@ -216,7 +216,7 @@ export default function Login() {
               {demo === "slow" ? "O servidor estava em repouso e está ligando. Leva uns 10 segundos." : "3 empresas fictícias, sem cadastro."}
             </div>
             {demo === "error" && (
-              <p role="alert" className="reveal mt-2 rounded-[8px] bg-(--tint-danger) px-3 py-2 text-center text-[12px] leading-4 text-(--text-primary)">
+              <p role="alert" className="reveal mt-2 rounded-(--radius-sm) bg-(--tint-danger) px-3 py-2 text-center text-[12px] leading-4 text-(--text-primary)">
                 Não foi possível abrir a demonstração agora. Tente de novo em alguns minutos.
               </p>
             )}

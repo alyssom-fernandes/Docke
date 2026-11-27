@@ -14,10 +14,10 @@ const base =
   "inline-flex items-center justify-center font-medium rounded-full transition-[background-color,color,transform,filter] duration-fast select-none focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) disabled:opacity-(--opacity-disabled) disabled:pointer-events-none active:scale-[0.97] motion-reduce:active:scale-100 [&_svg]:shrink-0";
 
 const variants: Record<string, string> = {
-  primary: "bg-(--accent) text-white hover:bg-(--accent-hover) shadow-[0_0.5px_1px_rgba(0,0,0,0.12)]",
+  primary: "bg-(--accent) text-white hover:bg-(--accent-hover) shadow-(--shadow-hairline)",
   secondary: "bg-(--control-fill) text-(--text-primary) hover:bg-(--control-fill-hover)",
   ghost: "bg-transparent text-(--text-primary) hover:bg-(--control-fill)",
-  danger: "bg-(--text-danger) text-white hover:brightness-95 shadow-[0_0.5px_1px_rgba(0,0,0,0.12)]",
+  danger: "bg-(--text-danger) text-white hover:brightness-95 shadow-(--shadow-hairline)",
   icon: "bg-transparent text-(--text-secondary) hover:bg-(--control-fill) hover:text-(--text-primary)",
 };
 

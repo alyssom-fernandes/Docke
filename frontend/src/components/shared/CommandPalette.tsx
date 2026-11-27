@@ -246,7 +246,7 @@ export default function CommandPalette() {
                     aria-selected={idx === activeIdx}
                     onMouseMove={() => setActiveIdx(idx)}
                     onClick={() => it.run()}
-                    className={`flex items-center gap-2.5 h-8 pointer-coarse:h-11 px-2.5 rounded-[8px] cursor-default select-none ${idx === activeIdx ? "bg-(--selection-bg) text-(--selection-text)" : "text-(--text-primary)"}`}
+                    className={`flex items-center gap-2.5 h-8 pointer-coarse:h-11 px-2.5 rounded-(--radius-sm) cursor-default select-none ${idx === activeIdx ? "bg-(--selection-bg) text-(--selection-text)" : "text-(--text-primary)"}`}
                   >
                     <Icon className={`w-4 h-4 shrink-0 ${idx === activeIdx ? "text-white" : it.iconClass ?? "text-(--text-secondary)"}`} aria-hidden />
                     <span className="flex-1 truncate text-mac-body">{it.label}</span>

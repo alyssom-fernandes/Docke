@@ -59,7 +59,7 @@ export default function FirstSteps({ companyId, folders, documents, isAdmin }: {
                 <CheckCircle2 className="w-4 h-4 text-(--text-success) shrink-0" aria-hidden="true" />{p.texto}<span className="sr-only"> (feito)</span>
               </span>
             ) : (
-              <Link to={p.to} className="group flex items-center gap-2 min-h-9 pointer-coarse:min-h-11 rounded-[6px] text-mac-body text-(--text-primary) hover:text-(--text-accent)">
+              <Link to={p.to} className="group flex items-center gap-2 min-h-9 pointer-coarse:min-h-11 rounded-(--radius-control) text-mac-body text-(--text-primary) hover:text-(--text-accent)">
                 <Circle className="w-4 h-4 text-(--text-tertiary) shrink-0" aria-hidden="true" />{p.texto}
                 <ChevronRight className="w-3.5 h-3.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity duration-fast" aria-hidden="true" />
               </Link>

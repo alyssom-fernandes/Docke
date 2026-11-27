@@ -63,7 +63,7 @@ export default function CameraCapture({ onClose, onReady }: { onClose: () => voi
           <ol className="grid grid-cols-2 sm:grid-cols-3 gap-2" aria-label="Páginas">
             {paginas.map((p, i) => (
               <li key={p.id} className="rounded-(--radius-control) border border-(--border-default) p-1.5 space-y-1">
-                <div className="aspect-[3/4] overflow-hidden rounded-[6px] bg-(--bg-hover) flex items-center justify-center">
+                <div className="aspect-[3/4] overflow-hidden rounded-(--radius-control) bg-(--bg-hover) flex items-center justify-center">
                   <img src={p.url} alt={`Página ${i + 1}`} style={{ transform: `rotate(${p.giro}deg)` }} className={`max-w-full max-h-full object-contain transition-transform ${realcar ? "grayscale contrast-125" : ""}`} />
                 </div>
                 <div className="flex items-center justify-between">

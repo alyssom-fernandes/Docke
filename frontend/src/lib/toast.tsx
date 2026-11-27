@@ -85,7 +85,7 @@ function Toast({ t, onDone }: { t: ToastItem; onDone: () => void }) {
       onBlur={resume}
       className={`${leaving ? "toast-out" : "toast-in"} pointer-events-auto mac-sheet flex items-start gap-3 rounded-[18px] p-3`}
     >
-      <div className={`w-8 h-8 rounded-[8px] flex items-center justify-center shrink-0 ${iconBg[t.type]}`}>
+      <div className={`w-8 h-8 rounded-(--radius-sm) flex items-center justify-center shrink-0 ${iconBg[t.type]}`}>
         <Icon className={`w-4 h-4 ${iconColors[t.type]}`} aria-hidden />
       </div>
       <div className="flex-1 min-w-0">

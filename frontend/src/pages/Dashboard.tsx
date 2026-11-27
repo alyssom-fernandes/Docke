@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   FileText, FolderOpen, Anchor, Upload, Download, RefreshCw, AlertTriangle, ChevronRight, SlidersHorizontal,
   ArrowUpRight, ArrowDownRight, Minus,
+  ArrowUp, ArrowDown,
 } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { relativeDate, fullDate } from "@/lib/date";
@@ -44,6 +45,8 @@ const SECTIONS = [
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
 const hiddenKey = (userId: string) => `docke_inicio_ocultas_${userId}`;
+const orderKey = (userId: string) => `docke_inicio_ordem_${userId}`;
+const DEFAULT_ORDER: SectionId[] = SECTIONS.map((s) => s.id);
 
 // ─── Cache entre visitas (A3-09): mostra o último dado na hora e atualiza ───
 
@@ -146,7 +149,7 @@ function Panel({ id, title, action, children, className = "" }: { id: string; ti
 
 function SeeAll({ to, children }: { to: string; children: ReactNode }) {
   return (
-    <Link to={to} className="inline-flex items-center gap-1 min-h-8 pointer-coarse:min-h-11 text-mac-caption font-medium text-(--text-accent) hover:underline underline-offset-2 rounded-[6px] focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)">
+    <Link to={to} className="inline-flex items-center gap-1 min-h-8 pointer-coarse:min-h-11 text-mac-caption font-medium text-(--text-accent) hover:underline underline-offset-2 rounded-(--radius-control) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)">
       {children} <ChevronRight className="w-3 h-3" aria-hidden="true" />
     </Link>
   );
@@ -230,11 +233,32 @@ export default function Dashboard() {
 
   const [hidden, setHidden] = useState<SectionId[]>([]);
   const [customizing, setCustomizing] = useState(false);
+  const [soMinhas, setSoMinhas] = useState(() => localStorage.getItem("docke_inicio_atividade") === "minhas");
+  useEffect(() => { localStorage.setItem("docke_inicio_atividade", soMinhas ? "minhas" : "todas"); }, [soMinhas]);
   useEffect(() => {
     if (!user) return;
     try { setHidden(JSON.parse(localStorage.getItem(hiddenKey(user.id)) ?? "[]")); } catch { setHidden([]); }
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const shows = (id: SectionId) => !hidden.includes(id);
+  // Ordem das seções por pessoa (A3-36); "Para hoje" fica sempre no topo.
+  const [order, setOrder] = useState<SectionId[]>(DEFAULT_ORDER);
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const salvo = JSON.parse(localStorage.getItem(orderKey(user.id)) ?? "null") as SectionId[] | null;
+      setOrder(salvo ? [...salvo.filter((x) => DEFAULT_ORDER.includes(x)), ...DEFAULT_ORDER.filter((x) => !salvo.includes(x))] : DEFAULT_ORDER);
+    } catch { setOrder(DEFAULT_ORDER); }
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const ordem = (id: SectionId) => order.indexOf(id) + 1;
+  function moveSection(id: SectionId, d: -1 | 1) {
+    const i = order.indexOf(id);
+    const j = i + d;
+    if (j < 0 || j >= order.length) return;
+    const next = [...order];
+    [next[i], next[j]] = [next[j], next[i]];
+    setOrder(next);
+    if (user) localStorage.setItem(orderKey(user.id), JSON.stringify(next));
+  }
 
   const [period, setPeriod] = useState<Period>(14);
   const [folderPath, setFolderPath] = useState<FolderCrumb[]>([{ id: null, name: "Todas as pastas" }]);
@@ -365,7 +389,7 @@ export default function Dashboard() {
       {cid && s && <FirstSteps companyId={cid} folders={s.total_folders} documents={s.total_documents} isAdmin={["admin", "supremo"].includes(current?.permission_level ?? "")} />}
 
       {/* 2. Números, cada um leva à lista que conta. */}
-      {shows("numeros") && (
+      {shows("numeros") && (<div style={{ order: ordem("numeros") }} className="flex flex-col gap-4 sm:gap-6">{
         stats.status === "error" ? (
           <div className="glass-panel glass-blur-card rounded-(--radius-panel)"><SectionError what="os números da empresa" onRetry={stats.reload} /></div>
         ) : !s ? (
@@ -387,10 +411,10 @@ export default function Dashboard() {
             />
           </section>
         )
-      )}
+      }</div>)}
 
       {/* 3. Recentes e ancorados (antes dos gráficos: lista acionável primeiro). */}
-      {shows("recentes") && (
+      {shows("recentes") && (<div style={{ order: ordem("recentes") }} className="flex flex-col gap-4 sm:gap-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           <Panel
             id="inicio-recentes" title="Recentes" className="lg:col-span-2"
@@ -491,10 +515,10 @@ export default function Dashboard() {
             )}
           </Panel>
         </div>
-      )}
+      </div>)}
 
       {/* 4. Gráficos: cada um com o próprio filtro dentro do cartão (A3-22). */}
-      {shows("graficos") && (
+      {shows("graficos") && (<div style={{ order: ordem("graficos") }} className="flex flex-col gap-4 sm:gap-6">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
           <Panel
             id="inicio-envios" title="Envios por dia"
@@ -532,7 +556,7 @@ export default function Dashboard() {
           <Panel
             id="inicio-pastas" title="Documentos por pasta"
             action={(daily.data?.length || byFolder.data?.length) ? (
-              <button onClick={exportCsv} className="inline-flex items-center gap-1 min-h-8 pointer-coarse:min-h-11 px-1 text-mac-caption font-medium text-(--text-accent) hover:underline rounded-[6px] focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)">
+              <button onClick={exportCsv} className="inline-flex items-center gap-1 min-h-8 pointer-coarse:min-h-11 px-1 text-mac-caption font-medium text-(--text-accent) hover:underline rounded-(--radius-control) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)">
                 <Download className="w-3 h-3" aria-hidden="true" /> Exportar CSV
               </button>
             ) : undefined}
@@ -554,32 +578,45 @@ export default function Dashboard() {
             </div>
           </Panel>
         </div>
-      )}
+      </div>)}
 
       {/* 5. Atividade (sem aberturas e downloads, que viram ruído aqui). */}
-      {shows("atividade") && (
-        <Panel id="inicio-atividade" title="Atividade recente" action={<SeeAll to="/activity">Ver tudo</SeeAll>}>
+      {shows("atividade") && (<div style={{ order: ordem("atividade") }} className="flex flex-col gap-4 sm:gap-6">
+        <Panel id="inicio-atividade" title="Atividade recente" action={
+          <span className="flex items-center gap-2">
+            {/* Quem só acessa algumas pastas já vê só a atividade delas (o banco
+                filtra); o filtro aqui separa o que a própria pessoa fez (A3-31). */}
+            <span role="tablist" aria-label="De quem" className="mac-segmented">
+              <button role="tab" aria-selected={!soMinhas} onClick={() => setSoMinhas(false)} className="mac-segment">Todas</button>
+              <button role="tab" aria-selected={soMinhas} onClick={() => setSoMinhas(true)} className="mac-segment">Minhas</button>
+            </span>
+            <SeeAll to={soMinhas && user ? `/activity?pessoa=${user.id}` : "/activity"}>Ver tudo</SeeAll>
+          </span>
+        }>
           <ActivityFeed
             companyId={current.id} pageSize={10} groupByDay={false} embedded refreshKey={activityKey}
-            filters={{ semAcessos: true }} emptyDescription="Nenhuma alteração registrada ainda nesta empresa."
+            filters={{ semAcessos: true, userId: soMinhas ? user?.id : undefined }}
+            emptyDescription={soMinhas ? "Você ainda não alterou nada nesta empresa." : "Nenhuma alteração registrada ainda nesta empresa."}
           />
         </Panel>
-      )}
+      </div>)}
 
       {customizing && (
         <Dialog
           onClose={() => setCustomizing(false)}
           title="Personalizar o Início"
-          description="Escolha o que aparece para você. O quadro “Para hoje” fica sempre visível."
+          description="Escolha o que aparece e em que ordem. O quadro “Para hoje” fica sempre no topo."
           size="sm"
           footer={<Button onClick={() => setCustomizing(false)}>Pronto</Button>}
         >
           <ul className="space-y-1">
-            {SECTIONS.map((sec) => {
+            {order.map((id, idx) => {
+              const sec = SECTIONS.find((x) => x.id === id)!;
               const checked = !hidden.includes(sec.id);
+              const seta = "h-8 w-8 pointer-coarse:h-11 pointer-coarse:w-11 inline-flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) disabled:opacity-(--opacity-disabled)";
               return (
-                <li key={sec.id}>
-                  <label className="flex items-center gap-3 min-h-10 pointer-coarse:min-h-11 cursor-pointer text-mac-body text-(--text-primary)">
+                <li key={sec.id} className="flex items-center gap-1">
+                  <label className="flex-1 flex items-center gap-3 min-h-10 pointer-coarse:min-h-11 cursor-pointer text-mac-body text-(--text-primary)">
                     <Checkbox
                       checked={checked}
                       onChange={() => {
@@ -590,6 +627,8 @@ export default function Dashboard() {
                     />
                     {sec.label}
                   </label>
+                  <button type="button" className={seta} disabled={idx === 0} onClick={() => moveSection(sec.id, -1)} aria-label={`Subir ${sec.label}`}><ArrowUp className="w-3.5 h-3.5" aria-hidden="true" /></button>
+                  <button type="button" className={seta} disabled={idx === order.length - 1} onClick={() => moveSection(sec.id, 1)} aria-label={`Descer ${sec.label}`}><ArrowDown className="w-3.5 h-3.5" aria-hidden="true" /></button>
                 </li>
               );
             })}

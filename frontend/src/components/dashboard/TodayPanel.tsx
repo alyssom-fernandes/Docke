@@ -99,7 +99,7 @@ export default function TodayPanel() {
       ) : (
         <ul className="divide-y divide-(--border-default)">
           {linhas.map((l) => {
-            const cls = "group w-full text-left flex items-center gap-3 min-h-11 py-1.5 rounded-[6px] text-mac-body text-(--text-primary) hover:bg-(--bg-hover) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) px-1";
+            const cls = "group w-full text-left flex items-center gap-3 min-h-11 py-1.5 rounded-(--radius-control) text-mac-body text-(--text-primary) hover:bg-(--bg-hover) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) px-1";
             const inner = (
               <>
                 <l.icon className={`w-4 h-4 shrink-0 ${l.tone}`} aria-hidden />

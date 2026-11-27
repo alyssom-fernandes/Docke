@@ -101,7 +101,7 @@ export default function Dropdown({
         className="mac-popup w-full h-7 pointer-coarse:h-11 pl-2.5 pr-1.5 flex items-center justify-between gap-2 text-[13px] font-medium pointer-coarse:text-[16px] text-left focus:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) disabled:opacity-(--opacity-disabled) disabled:cursor-not-allowed"
       >
         <span className={`truncate ${selected ? "text-(--text-primary)" : "text-(--text-placeholder)"}`}>{selected?.label ?? placeholder}</span>
-        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] bg-(--accent) text-white" aria-hidden>
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-(--radius-badge) bg-(--accent) text-white" aria-hidden>
           <ChevronsUpDown className="w-3 h-3" strokeWidth={2.5} />
         </span>
       </button>
@@ -125,7 +125,7 @@ export default function Dropdown({
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => choose(i)}
               style={{ paddingLeft: 8 + (opt.depth ?? 0) * 14 }}
-              className={`flex items-center justify-between gap-2 h-6 pointer-coarse:h-11 pr-2 rounded-[6px] text-[13px] cursor-default select-none ${
+              className={`flex items-center justify-between gap-2 h-6 pointer-coarse:h-11 pr-2 rounded-(--radius-control) text-[13px] cursor-default select-none ${
                 i === active ? "bg-(--selection-bg) text-(--selection-text)" : "text-(--text-primary)"
               }`}
             >

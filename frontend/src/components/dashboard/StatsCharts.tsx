@@ -81,7 +81,7 @@ export function UploadsLineChart({ data }: { data: DailyUpload[] }) {
     <div>
       <div
         ref={boxRef}
-        className="relative outline-hidden rounded-[6px] focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
+        className="relative outline-hidden rounded-(--radius-control) focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
         tabIndex={0}
         role="group"
         aria-label={`Envios por dia. Use as setas para ver cada dia. Pico de ${plural(peak.count, "documento", "documentos")} em ${fmtDayLabel(peak.date)}.`}
@@ -133,7 +133,7 @@ export function UploadsLineChart({ data }: { data: DailyUpload[] }) {
         )}
         {hover && (
           <div
-            className="absolute top-0 px-2 py-1 rounded-[6px] bg-(--text-primary) text-(--bg-card) text-mac-caption pointer-events-none whitespace-nowrap"
+            className="absolute top-0 px-2 py-1 rounded-(--radius-control) bg-(--text-primary) text-(--bg-card) text-mac-caption pointer-events-none whitespace-nowrap"
             style={{
               left: `${(hover.x / W) * 100}%`,
               transform: `translate(${hover.x < W * 0.15 ? "0" : hover.x > W * 0.85 ? "-100%" : "-50%"}, -110%)`,
@@ -208,7 +208,7 @@ export function FolderBarChart({ data, onDrill }: { data: FolderBreakdown[]; onD
           <li key={`${id}-${f.kind ?? ""}`} className="group flex items-center gap-1">
             <button
               onClick={() => (drill ? onDrill(id, f.name) : navigate(`/documents?folder_id=${id}`))}
-              className="flex-1 min-w-0 flex items-center gap-2 min-h-8 pointer-coarse:min-h-11 rounded-[6px] text-left focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
+              className="flex-1 min-w-0 flex items-center gap-2 min-h-8 pointer-coarse:min-h-11 rounded-(--radius-control) text-left focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
               aria-label={`${f.name}: ${plural(f.document_count, "documento", "documentos")}. ${drill ? "Ver subpastas" : "Abrir em Documentos"}`}
             >
               {bar}

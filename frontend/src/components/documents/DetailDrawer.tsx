@@ -74,7 +74,7 @@ export function Disclosure({ icon, title, summary, children, defaultOpen = false
           aria-expanded={open}
           aria-controls={`${id}-painel`}
           onClick={() => { const next = !open; setOpen(next); if (next) onOpen?.(); }}
-          className="w-full flex items-center justify-between gap-2 min-h-9 pointer-coarse:min-h-11 rounded-[6px] text-mac-body text-(--text-primary) hover:text-(--text-accent)"
+          className="w-full flex items-center justify-between gap-2 min-h-9 pointer-coarse:min-h-11 rounded-(--radius-control) text-mac-body text-(--text-primary) hover:text-(--text-accent)"
         >
           <span className="flex items-center gap-2">{icon}{title}{summary && <span className="text-mac-caption text-(--text-secondary) font-normal">{summary}</span>}</span>
           <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} aria-hidden />
@@ -97,6 +97,8 @@ export function MetadataSection({ doc, companyId, canEdit, onSaved }: { doc: Doc
   const debounceRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const savedValues = useRef<Record<string, string>>({});
   const [undoFor, setUndoFor] = useState<Record<string, string>>({});
+  const [metaBusca, setMetaBusca] = useState("");
+  const [recolhidos, setRecolhidos] = useState<Set<string>>(new Set(["opc"]));
   const { run: runUndo } = useUndo();
   const uid = useId();
 
@@ -161,13 +163,40 @@ export function MetadataSection({ doc, companyId, canEdit, onSaved }: { doc: Doc
   if (failed) {
     return <p role="alert" className="border-t border-(--border-default) pt-3 text-mac-body text-(--text-secondary)">Não carregou os metadados. <button onClick={load} className="font-medium text-(--text-accent) underline underline-offset-2">Tentar de novo</button></p>;
   }
-  const visible = fields.filter((f) => !f.condition_field_id || (values[f.condition_field_id] ?? "") === (f.condition_value ?? ""));
-  if (visible.length === 0) return null;
+  const visibleAll = fields.filter((f) => !f.condition_field_id || (values[f.condition_field_id] ?? "") === (f.condition_value ?? ""));
+  if (visibleAll.length === 0) return null;
+  // Muitos campos (A5-13, B1.3.8): busca pelo nome e grupos recolhíveis
+  // (obrigatórios abertos; opcionais recolhem quando passam de 6).
+  const muitos = visibleAll.length > 6;
+  const dobra = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const visible = metaBusca.trim() ? visibleAll.filter((f) => dobra(f.label).includes(dobra(metaBusca.trim()))) : visibleAll;
+  const obrig = visible.filter((f) => f.required);
+  const opc = visible.filter((f) => !f.required);
+  const grupos: { id: string; titulo: string; itens: ResolvedField[] }[] = muitos && obrig.length && opc.length
+    ? [{ id: "obrig", titulo: "Obrigatórios", itens: obrig }, { id: "opc", titulo: "Opcionais", itens: opc }]
+    : [{ id: "todos", titulo: "", itens: visible }];
 
   return (
     <section aria-labelledby={`${uid}-meta`} className="border-t border-(--border-default) pt-3 space-y-3">
-      <h3 id={`${uid}-meta`} className="text-mac-body font-semibold text-(--text-primary)">Metadados</h3>
-      {visible.map((f) => {
+      <h3 id={`${uid}-meta`} className="text-mac-body font-semibold text-(--text-primary)">Metadados{muitos && <span className="font-normal text-(--text-secondary)"> · {visibleAll.length}</span>}</h3>
+      {muitos && (
+        <input type="search" value={metaBusca} onChange={(e) => setMetaBusca(e.target.value)} placeholder="Buscar campo" aria-label="Buscar campo de metadado"
+          className="mac-field w-full h-8 pointer-coarse:h-11 px-3 text-mac-body text-(--text-primary)" />
+      )}
+      {muitos && visible.length === 0 && <p className="text-mac-caption text-(--text-secondary)">Nenhum campo com “{metaBusca}”.</p>}
+      {grupos.map((g) => {
+        const fechado = !metaBusca.trim() && g.titulo !== "" && recolhidos.has(g.id);
+        return (
+          <div key={g.id} className="space-y-3">
+            {g.titulo && (
+              <button type="button" aria-expanded={!fechado}
+                onClick={() => setRecolhidos((r) => { const n = new Set(r); if (n.has(g.id)) n.delete(g.id); else n.add(g.id); return n; })}
+                className="flex items-center gap-1 text-mac-caption font-semibold text-(--text-secondary) hover:text-(--text-primary)">
+                <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-fast ${fechado ? "" : "rotate-90"}`} aria-hidden />
+                {g.titulo} · {g.itens.length}{fechado && g.id === "opc" ? ` (${g.itens.filter((f) => (values[f.custom_field_id] ?? "") !== "").length} preenchidos)` : ""}
+              </button>
+            )}
+            {!fechado && g.itens.map((f) => {
         const fid = `${uid}-${f.custom_field_id}`;
         const err = fieldError[f.custom_field_id];
         const status = fieldStatus[f.custom_field_id] ?? "idle";
@@ -227,7 +256,33 @@ export function MetadataSection({ doc, companyId, canEdit, onSaved }: { doc: Doc
           </div>
         );
       })}
+          </div>
+        );
+      })}
     </section>
+  );
+}
+
+/** Filtro por tipo de evento na atividade do documento (A5-28). */
+const DOC_EVENT_FILTERS: { id: string; label: string; actions?: string }[] = [
+  { id: "", label: "Tudo" },
+  { id: "mudancas", label: "Mudanças", actions: "upload,rename,move,update_metadata,version_delete,copy,restore,delete" },
+  { id: "acessos", label: "Aberturas", actions: "view,download" },
+];
+function DocActivity({ companyId, docId }: { companyId: string; docId: string }) {
+  const [f, setF] = useState("");
+  const filtro = DOC_EVENT_FILTERS.find((x) => x.id === f);
+  return (
+    <div className="space-y-2">
+      <div role="tablist" aria-label="Tipo de evento" className="mac-segmented">
+        {DOC_EVENT_FILTERS.map((x) => (
+          <button key={x.id} role="tab" aria-selected={f === x.id} onClick={() => setF(x.id)} className="mac-segment">{x.label}</button>
+        ))}
+      </div>
+      <ActivityFeed companyId={companyId} itemId={docId} pageSize={20} groupByDay={false}
+        filters={filtro?.actions ? { action: filtro.actions } : undefined}
+        emptyDescription={f ? "Nenhum evento deste tipo neste documento." : "Nenhuma atividade registrada neste documento ainda."} />
+    </div>
   );
 }
 
@@ -563,7 +618,7 @@ export function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit,
       <MetadataSection doc={doc} companyId={companyId} canEdit={canEdit} onSaved={(fid, v) => onFieldSaved(doc.id, fid, v)} />
       <Disclosure icon={<Clock className="w-4 h-4" aria-hidden />} title="Atividade"
         summary={act ? (act.total ? `${act.total} ${act.total === 1 ? "evento" : "eventos"} · último ${relativeDate(act.last ?? "")}` : "sem eventos") : undefined}>
-        <ActivityFeed companyId={companyId} itemId={doc.id} pageSize={20} groupByDay={false} emptyDescription="Nenhuma atividade registrada neste documento ainda." />
+        <DocActivity companyId={companyId} docId={doc.id} />
         <LinkAccesses documentId={doc.id} />
         <Link to={`/activity?item=${doc.id}&nome=${encodeURIComponent(doc.name)}`} className="mt-2 inline-flex items-center gap-1 min-h-6 pointer-coarse:min-h-11 text-mac-caption font-medium text-(--text-accent) hover:underline">
           Ver tudo na Atividade <ChevronRight className="w-3.5 h-3.5" aria-hidden />

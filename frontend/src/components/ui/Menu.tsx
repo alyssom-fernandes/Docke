@@ -156,7 +156,7 @@ export default function Menu({ items, onClose, anchor, label, align = "start" }:
             aria-disabled={it.disabled || undefined}
             onMouseEnter={() => !it.disabled && setActive(i)}
             onClick={() => { if (it.disabled) return; close(false); it.onSelect(); }}
-            className={`flex w-full items-center gap-2 rounded-[6px] px-2 text-left text-[13px] outline-hidden
+            className={`flex w-full items-center gap-2 rounded-(--radius-control) px-2 text-left text-[13px] outline-hidden
               ${sheet ? "h-12 px-3.5 text-[17px] active:bg-(--bg-hover) focus-visible:bg-(--bg-hover)" : "h-6 pointer-coarse:h-11"}
               ${it.danger ? "text-(--text-danger)" : "text-(--text-primary)"}
               ${!sheet && i === active ? (it.danger ? "bg-(--text-danger) text-white" : "bg-(--selection-bg) text-(--selection-text)") : ""}
@@ -175,7 +175,7 @@ export default function Menu({ items, onClose, anchor, label, align = "start" }:
       ))}
       {sheet && (
         <div className="mx-1.5 mt-1 border-t border-(--border-default) pt-1">
-          <button type="button" onClick={() => close()} className="flex w-[calc(100%-12px)] mx-1.5 h-12 items-center justify-center rounded-[6px] text-mac-body font-medium text-(--text-accent) active:bg-(--bg-hover)">
+          <button type="button" onClick={() => close()} className="flex w-[calc(100%-12px)] mx-1.5 h-12 items-center justify-center rounded-(--radius-control) text-mac-body font-medium text-(--text-accent) active:bg-(--bg-hover)">
             Cancelar
           </button>
         </div>

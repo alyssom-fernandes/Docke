@@ -96,7 +96,7 @@ export default function SessionExpiredOverlay() {
             </span>
           ) : (
             <button type="button" onClick={() => setConfirmExit(true)}
-              className="min-h-9 pointer-coarse:min-h-11 text-mac-body text-(--text-secondary) hover:text-(--text-primary) rounded-[6px] focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)">
+              className="min-h-9 pointer-coarse:min-h-11 text-mac-body text-(--text-secondary) hover:text-(--text-primary) rounded-(--radius-control) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)">
               Sair da conta
             </button>
           )}

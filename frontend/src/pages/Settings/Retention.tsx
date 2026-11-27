@@ -87,6 +87,21 @@ export default function Retention() {
   const [certs, setCerts] = useState<Certificate[]>([]);
   const [fields, setFields] = useState<Field[]>([]);
 
+  // Depois de uma ação, só o que ela mexe volta do servidor (A7-78): a aba
+  // e o resumo, em vez das sete consultas da tela inteira.
+  const refresh = useCallback((partes: ("politicas" | "atribuicoes" | "bloqueios" | "fila" | "certificados")[]) => {
+    if (!cid) return;
+    api.get<Summary>(`/companies/${cid}/retention/summary`).then((r) => setSummary(r.data)).catch(() => {});
+    if (partes.includes("politicas")) api.get<Policy[]>(`/companies/${cid}/retention/policies`).then((r) => setPolicies(r.data ?? [])).catch(() => {});
+    if (partes.includes("atribuicoes")) api.get<Assignment[]>(`/companies/${cid}/retention/assignments`).then((r) => setAssignments(r.data ?? [])).catch(() => {});
+    if (partes.includes("bloqueios")) api.get<Hold[]>(`/companies/${cid}/retention/holds`, { params: { active_only: false } }).then((r) => setHolds(r.data ?? [])).catch(() => {});
+    if (partes.includes("fila")) {
+      api.get<QueueItem[]>(`/companies/${cid}/retention/queue`, { params: { status: "pending" } }).then((r) => setQueue(r.data ?? [])).catch(() => {});
+      api.get<QueueItem[]>(`/companies/${cid}/retention/queue`, { params: { status: "approved" } }).then((r) => setApproved(r.data ?? [])).catch(() => {});
+    }
+    if (partes.includes("certificados") && isAdmin) api.get<Certificate[]>(`/companies/${cid}/retention/certificates`).then((r) => setCerts(r.data ?? [])).catch(() => {});
+  }, [cid, isAdmin]);
+
   const load = useCallback(() => {
     if (!cid) return;
     api.get<Summary>(`/companies/${cid}/retention/summary`).then((r) => setSummary(r.data)).catch(() => setSummary(null));
@@ -164,10 +179,10 @@ export default function Retention() {
         <div className="space-y-2" aria-label="Carregando">{[0, 1, 2].map((i) => <div key={i} className="h-14 rounded bg-(--bg-hover) animate-pulse" />)}</div>
       ) : (
         <div role="tabpanel">
-          {tab === "fila" && <QueueTab companyId={current.id} isAdmin={isAdmin} queue={queue} approved={approved} onChanged={load} />}
-          {tab === "politicas" && <PoliciesTab companyId={current.id} isAdmin={isAdmin} policies={policies} fields={fields} onChanged={load} />}
-          {tab === "onde" && <WhereTab companyId={current.id} isAdmin={isAdmin} policies={policies} folders={folders} assignments={assignments} initialFolderId={initialFolderId} onChanged={load} />}
-          {tab === "bloqueio" && <HoldTab companyId={current.id} isAdmin={isAdmin} holds={holds} folders={folders} onChanged={load} />}
+          {tab === "fila" && <QueueTab companyId={current.id} isAdmin={isAdmin} queue={queue} approved={approved} onChanged={() => refresh(["fila", "certificados"])} />}
+          {tab === "politicas" && <PoliciesTab companyId={current.id} isAdmin={isAdmin} policies={policies} fields={fields} onChanged={() => refresh(["politicas", "atribuicoes"])} />}
+          {tab === "onde" && <WhereTab companyId={current.id} isAdmin={isAdmin} policies={policies} folders={folders} assignments={assignments} initialFolderId={initialFolderId} onChanged={() => refresh(["atribuicoes", "fila"])} />}
+          {tab === "bloqueio" && <HoldTab companyId={current.id} isAdmin={isAdmin} holds={holds} folders={folders} onChanged={() => refresh(["bloqueios", "fila"])} />}
           {tab === "lixeira" && <TrashTab companyId={current.id} isSupremo={user?.role === "supremo"} />}
           {tab === "certificados" && isAdmin && <CertificatesTab companyId={current.id} certs={certs} />}
         </div>
@@ -588,7 +603,7 @@ function WhereTab({ companyId, isAdmin, policies, folders, assignments, initialF
               <div>
                 <label htmlFor="onde-tipo" className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Tipo do documento</label>
                 <input id="onde-tipo" list="onde-tipos" value={tipo} onChange={(e) => setTipo(e.target.value)} placeholder="Ex.: NF-e" maxLength={60}
-                  className="w-full h-8 pointer-coarse:h-11 px-2.5 rounded-[6px] border border-(--border-control) bg-(--bg-card) text-mac-body text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-2 focus:ring-(--focus-ring)" />
+                  className="w-full h-8 pointer-coarse:h-11 px-2.5 rounded-(--radius-control) border border-(--border-control) bg-(--bg-card) text-mac-body text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-2 focus:ring-(--focus-ring)" />
                 <datalist id="onde-tipos"><option value="NF-e" /><option value="NFC-e" /><option value="NFS-e" /><option value="CT-e" /></datalist>
               </div>
               <div>
@@ -600,7 +615,7 @@ function WhereTab({ companyId, isAdmin, policies, folders, assignments, initialF
                 <label htmlFor="onde-valor" className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Valor do campo</label>
                 <input id="onde-valor" value={campoValor} onChange={(e) => setCampoValor(e.target.value)} disabled={!campoId} placeholder={campoId ? "Ex.: Holerite" : "Escolha o campo"} maxLength={200}
                   aria-invalid={filtroCampoIncompleto || undefined}
-                  className="w-full h-8 pointer-coarse:h-11 px-2.5 rounded-[6px] border border-(--border-control) bg-(--bg-card) text-mac-body text-(--text-primary) placeholder:text-(--text-placeholder) disabled:opacity-(--opacity-disabled) focus:outline-hidden focus:ring-2 focus:ring-(--focus-ring)" />
+                  className="w-full h-8 pointer-coarse:h-11 px-2.5 rounded-(--radius-control) border border-(--border-control) bg-(--bg-card) text-mac-body text-(--text-primary) placeholder:text-(--text-placeholder) disabled:opacity-(--opacity-disabled) focus:outline-hidden focus:ring-2 focus:ring-(--focus-ring)" />
               </div>
             </div>
             {filtroCampoIncompleto && <p className="mt-1.5 text-mac-caption text-(--text-warning)">Informe o valor do campo (sem diferença de maiúsculas).</p>}
@@ -684,7 +699,7 @@ function HealthCheck({ companyId, assinatura }: { companyId: string; assinatura:
   if (!data) return null;
   const semPolitica = data.documents_without_policy_sample;
   return (
-    <section aria-labelledby="saude" className="space-y-2">
+    <section aria-labelledby="saude" className="space-y-2 reveal">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 id="saude" className="text-mac-body font-semibold text-(--text-primary)">O que está sem prazo</h2>
         <p className="text-mac-caption text-(--text-secondary)">

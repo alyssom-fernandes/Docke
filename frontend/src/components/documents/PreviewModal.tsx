@@ -159,7 +159,7 @@ const chunk4 = (s?: string | null) => (s ? s.match(/.{1,4}/g)?.join(" ") ?? s : 
 
 function Danfe({ fields, docName }: { fields: XmlFields; docName: string }) {
   const ref = useRef<HTMLDivElement>(null);
-  const box = "border border-black rounded-[2px] p-2";
+  const box = "border border-black rounded-(--radius-hair) p-2";
   const cap = "text-[8.5px] uppercase tracking-wide text-black/80";
   return (
     <div>
@@ -289,9 +289,9 @@ interface PreviewModalProps {
  */
 function PaginaCarregando({ thumb }: { thumb?: string | null }) {
   const [falhou, setFalhou] = useState(false);
-  if (!thumb || falhou) return <div className="mx-auto max-w-[640px] aspect-[1/1.3] rounded-[4px] bg-(--bg-hover) animate-pulse" />;
+  if (!thumb || falhou) return <div className="mx-auto max-w-[640px] aspect-[1/1.3] rounded-(--radius-badge) bg-(--bg-hover) animate-pulse" />;
   return (
-    <div className="mx-auto max-w-[640px] aspect-[1/1.3] rounded-[4px] overflow-hidden bg-white shadow-(--shadow-paper)">
+    <div className="mx-auto max-w-[640px] aspect-[1/1.3] rounded-(--radius-badge) overflow-hidden bg-white shadow-(--shadow-paper)">
       <img src={thumb} alt="" aria-hidden="true" onError={() => setFalhou(true)} className="w-full h-full object-contain object-top" />
     </div>
   );
@@ -456,7 +456,7 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
     let cursor = 0;
     (matches as unknown as { index: number; length: number }[]).forEach((m, i) => {
       if (m.index > cursor) parts.push(<span key={`t${i}`}>{textContent.slice(cursor, m.index)}</span>);
-      parts.push(<mark key={`m${i}`} data-match={i} className={i === active ? "bg-amber-400 text-black rounded-[2px]" : "bg-amber-200/70 dark:bg-amber-500/35 text-inherit rounded-[2px]"}>{textContent.slice(m.index, m.index + m.length)}</mark>);
+      parts.push(<mark key={`m${i}`} data-match={i} className={i === active ? "bg-amber-400 text-black rounded-(--radius-hair)" : "bg-amber-200/70 dark:bg-amber-500/35 text-inherit rounded-(--radius-hair)"}>{textContent.slice(m.index, m.index + m.length)}</mark>);
       cursor = m.index + m.length;
     });
     parts.push(<span key="fim">{textContent.slice(cursor)}</span>);
@@ -633,7 +633,7 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
               <li className="text-mac-caption text-(--text-secondary) px-2 py-1">Nada encontrado no texto reconhecido da imagem.</li>
             ) : matches.map((m, i) => (
               <li key={i}><button onClick={() => setActive(i)} aria-current={i === active || undefined}
-                className={`w-full text-left px-2 py-1.5 rounded-[6px] text-mac-caption ${i === active ? "bg-(--tint-accent) text-(--text-primary)" : "text-(--text-secondary) hover:bg-(--bg-hover)"}`}>{m.snippet}</button></li>
+                className={`w-full text-left px-2 py-1.5 rounded-(--radius-control) text-mac-caption ${i === active ? "bg-(--tint-accent) text-(--text-primary)" : "text-(--text-secondary) hover:bg-(--bg-hover)"}`}>{m.snippet}</button></li>
             ))}
           </ul>
         )}

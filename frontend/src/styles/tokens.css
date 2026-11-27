@@ -231,6 +231,15 @@ html, body {
   --radius-popover: 12px;
   --radius-control: 6px;
   --radius-pill: 9999px;
+  /* A2-43: os raios menores e as sombras finas que estavam soltos nas telas. */
+  --radius-hair: 2px;
+  --shadow-hairline: 0 0.5px 1px rgba(0,0,0,0.12);
+  --shadow-hairline-inset: inset 0 0 0 0.5px rgba(0,0,0,0.12);
+  --shadow-thumb: 0 0 0 0.5px rgba(0,0,0,0.2), 0 1px 3px rgba(0,0,0,0.18);
+  --shadow-toolbar-accent: 0 0 0 0.5px rgba(0,0,0,0.12), 0 8px 15px rgba(0,0,0,0.04);
+  --shadow-knob: 0 0.5px 1.5px rgba(0,0,0,0.25), 0 3px 8px rgba(0,0,0,0.08);
+  --shadow-separator: 0 0.5px 0 var(--separator);
+  --shadow-brand-tile: 0 1px 2px rgba(0,0,0,0.2), 0 6px 16px -6px rgba(10,107,97,0.55), inset 0 1px 0 rgba(255,255,255,0.25);
 
   /* Overlay scrim — usado por TODO modal/drawer/palette atrás do card, pra não
      ter opacidades diferentes (40/50/60) espalhadas pelo código torcendo o
@@ -938,6 +947,10 @@ input[type="number"] {
 .lock-shake { animation: lock-shake 420ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
 
 /* Galho da árvore que acabou de abrir: as linhas entram deslizando de leve. */
+/* Linha que sai da lista (excluir, mover): desliza e some em 170 ms (A4-18). */
+@keyframes row-leave { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(-12px); } }
+.row-leave { animation: row-leave 170ms var(--ease-standard) both; pointer-events: none; }
+
 @keyframes tree-row-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .tree-row-in { animation: tree-row-in 180ms var(--ease-standard) both; }
 

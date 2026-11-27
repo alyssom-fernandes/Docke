@@ -122,7 +122,7 @@ export default function FolderPickerDialog({
   }
 
   const optionClass = (active: boolean, disabled: boolean) =>
-    `flex items-center gap-2 h-8 pointer-coarse:h-11 pr-3 rounded-[6px] text-mac-body select-none ${
+    `flex items-center gap-2 h-8 pointer-coarse:h-11 pr-3 rounded-(--radius-control) text-mac-body select-none ${
       disabled ? "text-(--text-tertiary) cursor-not-allowed" : active ? "bg-(--accent) text-white" : "text-(--text-primary) hover:bg-(--bg-hover) cursor-pointer"
     }`;
 
@@ -160,7 +160,7 @@ export default function FolderPickerDialog({
       ) : folders === null ? (
         <div className="space-y-1.5" aria-label="Carregando pastas">
           {[70, 55, 80, 45, 60].map((w, i) => (
-            <div key={i} className="h-7 rounded-[6px] bg-(--bg-hover) animate-pulse" style={{ width: `${w}%`, marginLeft: (i % 3) * 16 }} />
+            <div key={i} className="h-7 rounded-(--radius-control) bg-(--bg-hover) animate-pulse" style={{ width: `${w}%`, marginLeft: (i % 3) * 16 }} />
           ))}
         </div>
       ) : (

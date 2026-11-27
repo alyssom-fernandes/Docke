@@ -704,7 +704,7 @@ function GroupsTab({ companyId, people, folders, onChanged }: { companyId: strin
           {groups.map((g) => (
             <li key={g.id} className="flex items-center gap-3 px-4 py-2.5 min-h-12">
               <UsersRound className="w-4 h-4 text-(--text-secondary)" aria-hidden="true" />
-              <button onClick={() => setOpen(g)} className="flex-1 text-left min-w-0 rounded-[6px] hover:underline focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)">
+              <button onClick={() => setOpen(g)} className="flex-1 text-left min-w-0 rounded-(--radius-control) hover:underline focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)">
                 <span className="block text-mac-body text-(--text-primary)">{g.name}</span>
                 <span className="block text-mac-caption text-(--text-secondary)">{g.member_count} {g.member_count === 1 ? "pessoa" : "pessoas"} · {g.grant_count} {g.grant_count === 1 ? "acesso" : "acessos"}</span>
               </button>

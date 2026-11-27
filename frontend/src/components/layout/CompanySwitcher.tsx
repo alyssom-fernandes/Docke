@@ -76,7 +76,7 @@ export default function CompanySwitcher({ variant = "default" }: { variant?: "de
 
   if (companies.length === 0) {
     return (
-      <span className="flex items-center gap-1.5 h-7 px-3 rounded-[6px] text-mac-body text-(--text-secondary) bg-(--bg-hover) min-w-0"
+      <span className="flex items-center gap-1.5 h-7 px-3 rounded-(--radius-control) text-mac-body text-(--text-secondary) bg-(--bg-hover) min-w-0"
         title="Nenhuma empresa foi liberada para a sua conta. Peça acesso a quem administra.">
         <Building2 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
         <span className="truncate">Sem empresa liberada</span>
@@ -98,10 +98,10 @@ export default function CompanySwitcher({ variant = "default" }: { variant?: "de
         title={current?.name}
         className={variant === "sidebar"
           // Barra lateral: botão pop-up do macOS, só texto e ⌃⌄ (o nome é o título da barra).
-          ? "flex w-full items-center gap-1 h-7 px-1.5 rounded-[6px] text-[13px] font-semibold text-(--sidebar-label) hover:bg-(--control-fill) transition-colors duration-fast min-w-0"
+          ? "flex w-full items-center gap-1 h-7 px-1.5 rounded-(--radius-control) text-[13px] font-semibold text-(--sidebar-label) hover:bg-(--control-fill) transition-colors duration-fast min-w-0"
           : variant === "mobile"
             ? "glass-capsule flex items-center gap-1.5 h-9 pl-3 pr-2.5 text-[15px] font-semibold text-(--text-primary) min-w-0 max-w-[min(60vw,260px)]"
-            : "flex items-center gap-1.5 h-7 pointer-coarse:h-10 px-3 rounded-[6px] text-mac-body font-medium text-(--text-primary) bg-black/3 dark:bg-white/4 hover:bg-black/6 dark:hover:bg-white/8 transition-colors duration-fast min-w-0 max-w-[clamp(100px,calc(100vw-236px),280px)] md:max-w-[320px]"}
+            : "flex items-center gap-1.5 h-7 pointer-coarse:h-10 px-3 rounded-(--radius-control) text-mac-body font-medium text-(--text-primary) bg-black/3 dark:bg-white/4 hover:bg-black/6 dark:hover:bg-white/8 transition-colors duration-fast min-w-0 max-w-[clamp(100px,calc(100vw-236px),280px)] md:max-w-[320px]"}
       >
         {variant === "default" && <Building2 className="w-3.5 h-3.5 shrink-0 text-(--text-secondary)" aria-hidden="true" />}
         <span className="truncate">{current?.name ?? "Selecionar empresa"}</span>
@@ -157,7 +157,7 @@ export default function CompanySwitcher({ variant = "default" }: { variant?: "de
                     data-idx={idx}
                     onMouseEnter={() => setActive(idx)}
                     onClick={() => choose(c.id)}
-                    className={`mx-1.5 flex items-center gap-2 px-2.5 min-h-7 pointer-coarse:min-h-11 rounded-[8px] cursor-default text-[13px] font-medium transition-colors duration-fast ${
+                    className={`mx-1.5 flex items-center gap-2 px-2.5 min-h-7 pointer-coarse:min-h-11 rounded-(--radius-sm) cursor-default text-[13px] font-medium transition-colors duration-fast ${
                       idx === active ? "bg-(--selection-bg) text-(--selection-text)" : "text-(--text-primary)"
                     }`}
                   >
