@@ -2041,7 +2041,7 @@ export default function Documents() {
                           }}
                           onClick={(e) => e.stopPropagation()}
                           onBlur={confirmRename}
-                          className="w-full h-6 px-1 text-mac-caption text-center bg-(--bg-page) border border-teal-500 rounded-badge text-(--text-primary) focus:outline-hidden"
+                          className="w-full h-6 px-1 text-mac-caption text-center mac-field reveal rounded-[4px] text-(--text-primary)"
                         />
                       ) : (
                         <span className={`max-w-full px-1.5 py-px rounded-[4px] text-[12px] leading-[15px] font-medium text-center line-clamp-2 ${selected.has(f.id) ? "bg-(--selection-bg) text-(--selection-text)" : "text-(--text-primary)"}`}>{f.name}</span>
@@ -2103,7 +2103,7 @@ export default function Documents() {
                             if (e.key === "Escape") setRenaming(null);
                           }}
                           onBlur={confirmRename}
-                          className="w-full min-w-0 h-6 px-1 text-mac-caption text-center bg-(--bg-page) border border-teal-500 rounded-badge text-(--text-primary) focus:outline-hidden"
+                          className="w-full min-w-0 h-6 px-1 text-mac-caption text-center mac-field reveal rounded-[4px] text-(--text-primary)"
                         />
                         <span className="text-mac-caption text-(--text-tertiary) shrink-0">{splitExt(d.name)[1]}</span>
                       </div>
@@ -2273,7 +2273,7 @@ export default function Documents() {
                               }}
                               onClick={(e) => e.stopPropagation()}
                               onBlur={confirmRename}
-                              className="w-full max-w-[280px] h-7 px-2 text-mac-body bg-(--bg-page) border border-teal-500 rounded-[6px] text-(--text-primary) focus:outline-hidden"
+                              className="w-full max-w-[280px] h-7 px-2 text-mac-body mac-field reveal rounded-[6px] text-(--text-primary)"
                             />
                           ) : (
                             <div className="flex items-center gap-1">
@@ -2440,7 +2440,7 @@ export default function Documents() {
                                   if (e.key === "Escape") setRenaming(null);
                                 }}
                                 onBlur={confirmRename}
-                                className="h-7 px-2 text-mac-body bg-(--bg-card) border border-teal-500 rounded-[6px] text-(--text-primary) focus:outline-hidden flex-1 min-w-0"
+                                className="h-7 px-2 text-mac-body mac-field reveal rounded-[6px] text-(--text-primary) flex-1 min-w-0"
                               />
                               <span className="text-mac-body text-(--text-tertiary) shrink-0">{splitExt(d.name)[1]}</span>
                             </div>
@@ -2533,7 +2533,7 @@ export default function Documents() {
           )}
           {dragBox && (
             <div
-              className="absolute border border-teal-500 bg-(--tint-accent) pointer-events-none z-20 rounded-[4px]"
+              className="absolute border border-(--text-secondary)/50 bg-(--text-secondary)/10 pointer-events-none z-20 rounded-[2px]"
               style={{
                 left: Math.min(dragBox.x1, dragBox.x2),
                 top: Math.min(dragBox.y1, dragBox.y2),
