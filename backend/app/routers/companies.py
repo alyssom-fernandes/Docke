@@ -1123,6 +1123,7 @@ _POLITICAS_MFA = ("desligada", "admins", "admins_sensiveis", "todos")
 
 class MfaPolicy(BaseModel):
     policy: str
+    motivo: str | None = None  # B4.2.7
 
 
 @router.get("/{company_id}/mfa-policy")
@@ -1156,7 +1157,8 @@ async def put_mfa_policy(
     await admin_conn.execute("UPDATE public.companies SET mfa_policy = $2 WHERE id = $1", company_id, body.policy)
     await CompaniesService.log_access(admin_conn, actor_id=claims["sub"], company_id=company_id, action="mfa_policy",
                                       target_id=company_id, target_name="Verificação em duas etapas",
-                                      metadata={"antes": antes, "depois": body.policy})
+                                      metadata={"antes": antes, "depois": body.policy,
+                                                **({"motivo": body.motivo.strip()[:300]} if (body.motivo or "").strip() else {})})
     return {"policy": body.policy, "can_edit": True}
 
 

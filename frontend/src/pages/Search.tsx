@@ -12,6 +12,7 @@ import Dialog from "@/components/ui/Dialog";
 import Input from "@/components/ui/Input";
 import { useToast } from "@/lib/toast";
 import { friendlyError } from "@/lib/errors";
+import OtherCompaniesResults from "@/components/shared/OtherCompaniesResults";
 import { PageHeader } from "@/components/layout/window";
 
 interface SavedSearch { id: string; name: string; query: string }
@@ -455,10 +456,11 @@ export default function Search() {
             <div className="glass-panel glass-blur-card rounded-(--radius-panel) p-5 space-y-2">
               <p className="text-mac-body font-medium text-(--text-primary)">Nada encontrado para “{q}”{filtros ? " com estes filtros" : ""}.</p>
               <ul className="list-disc pl-5 text-mac-caption text-(--text-secondary) space-y-0.5">
-                {filtros && <li><button className="text-(--text-accent) hover:underline" onClick={() => setP({ pasta: null, sub: null, periodo: null, de: null, ate: null, tipo: null, setor: null })}>Buscar sem os filtros</button></li>}
+                {filtros && <li><button className="text-(--text-accent) hover:underline" onClick={() => setP({ pasta: null, sub: null, periodo: null, de: null, ate: null, tipo: null, setor: null, guarda: null, ocr: null, campo: null, valor: null })}>Buscar sem os filtros</button></li>}
                 <li>Confira a grafia ou use menos palavras (a busca já ignora acentos).</li>
                 {!!data.sem_texto && <li>{data.sem_texto} {data.sem_texto === 1 ? "documento ainda não teve" : "documentos ainda não tiveram"} o texto lido e só {data.sem_texto === 1 ? "aparece" : "aparecem"} pelo nome.</li>}
               </ul>
+              <OtherCompaniesResults q={q} />
             </div>
           ) : (
             <>
@@ -537,6 +539,7 @@ export default function Search() {
                   );
                 })}
               </ul>
+              <OtherCompaniesResults q={q} />
               {pages > 1 && (
                 <nav aria-label="Páginas de resultados" className="flex items-center justify-center gap-2">
                   <Button variant="secondary" size="sm" disabled={pagina <= 1} onClick={() => setP({ pagina: String(pagina - 1) }, false)}><ChevronLeft className="w-3.5 h-3.5" aria-hidden="true" /> Anterior</Button>

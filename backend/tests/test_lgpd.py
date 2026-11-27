@@ -71,3 +71,20 @@ async def test_visualizador_nao_baixa_de_pasta_sensivel(api, admin, empresa):  #
         await admin.execute("DELETE FROM public.user_company_access WHERE user_id = $1", uuid.UUID(leitor))
         await admin.execute("DELETE FROM public.users WHERE id = $1", uuid.UUID(leitor))
         await admin.execute("DELETE FROM auth.users WHERE id = $1", uuid.UUID(leitor))
+
+
+@pytest.mark.asyncio
+async def test_sugere_classificar_pasta_com_cpf_ou_saude(api, admin, empresa):  # noqa: F811
+    """B3.7.1: CPF no texto sugere "pessoal"; termo de saúde sugere "sensível"; pasta já classificada some."""
+    h, co = _token(empresa["user"]), empresa["co"]
+    await _doc(admin, empresa, empresa["raiz"], "Holerite.pdf", "Funcionário CPF 529.982.247-25 salário")
+    await _doc(admin, empresa, empresa["sub"], "Exame.pdf", "ASO admissional apto")
+    r = await api.get(API + f"/companies/{co}/privacy/suggestions", headers=h)
+    assert r.status_code == 200, r.text
+    por_id = {x["id"]: x for x in r.json()}
+    assert por_id[empresa["sub"]]["sugestao"] == "sensivel"
+    assert por_id[empresa["raiz"]]["sugestao"] == "pessoal"
+    assert (await api.put(API + f"/folders/{empresa['raiz']}/privacy", json={"sensitivity": "pessoal"}, headers=h)).status_code == 200
+    ids = {x["id"] for x in (await api.get(API + f"/companies/{co}/privacy/suggestions", headers=h)).json()}
+    assert empresa["raiz"] not in ids and empresa["sub"] not in ids  # a subpasta herda a classificação
+    await api.put(API + f"/folders/{empresa['raiz']}/privacy", json={"sensitivity": "normal"}, headers=h)

@@ -79,6 +79,7 @@ class ShareCreate(BaseModel):
 class SharePolicy(BaseModel):
     require_password: bool = False
     max_days: int | None = None
+    motivo: str | None = None  # B4.2.7
 
 
 async def _log_link(conn: asyncpg.Connection, user_id: str, company_id: Any, action: str, resource_type: str,
@@ -383,7 +384,8 @@ async def put_share_policy(
         INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, event_category, metadata)
         VALUES ($1::uuid, $2::uuid, 'share_policy', 'config', $2::uuid, 'Política de links', 'config', $3::jsonb)
         """,
-        claims["sub"], company_id, json.dumps({"senha_obrigatoria": body.require_password, "validade_maxima_dias": body.max_days}),
+        claims["sub"], company_id, json.dumps({"senha_obrigatoria": body.require_password, "validade_maxima_dias": body.max_days,
+                                               **({"motivo": body.motivo.strip()[:300]} if (body.motivo or "").strip() else {})}),
     )
     return {"require_password": body.require_password, "max_days": body.max_days}
 

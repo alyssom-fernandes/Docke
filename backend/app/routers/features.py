@@ -11,7 +11,7 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.dependencies import get_app_role, get_current_user, get_db, get_db_admin
 from app.services import features_service
@@ -22,6 +22,8 @@ router = APIRouter(tags=["features"])
 
 class FeaturesUpdate(BaseModel):
     features: dict[str, bool]
+    # B4.2.7: por que mudou (opcional), guardado na trilha junto da mudança.
+    motivo: str | None = Field(default=None, max_length=300)
 
 
 @router.get("/companies/{company_id}/features")
@@ -67,6 +69,6 @@ async def put_features(
             INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, event_category, metadata)
             VALUES ($1::uuid, $2::uuid, 'features', 'config', $2::uuid, 'Recursos da empresa', 'config', $3::jsonb)
             """,
-            claims["sub"], company_id, json.dumps({"recursos": mudou}),
+            claims["sub"], company_id, json.dumps({"recursos": mudou, **({"motivo": body.motivo.strip()} if (body.motivo or "").strip() else {})}),
         )
     return {"features": depois}

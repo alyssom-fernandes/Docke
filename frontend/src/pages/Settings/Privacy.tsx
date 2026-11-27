@@ -25,8 +25,11 @@ const LABEL: Record<string, string> = { pessoal: "Dado pessoal", sensivel: "Dado
 export default function Privacy() {
   usePageTitle("Privacidade (LGPD)");
   const { current } = useCompany();
-  const { error: showError } = useToast();
+  const { success, error: showError } = useToast();
   const [folders, setFolders] = useState<SensFolder[] | null>(null);
+  // B3.7.1: pastas "normais" onde o texto lido tem CPF ou termos de saúde.
+  const [sugestoes, setSugestoes] = useState<{ id: string; name: string; caminho: string; com_cpf: number; com_saude: number; sugestao: "pessoal" | "sensivel" }[] | null>(null);
+  const [classificando, setClassificando] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [hits, setHits] = useState<{ total: number; results: Hit[] } | null>(null);
@@ -34,6 +37,7 @@ export default function Privacy() {
   useEffect(() => {
     if (!current) return;
     api.get<SensFolder[]>(`/companies/${current.id}/privacy/folders`).then((r) => setFolders(r.data)).catch(() => setFolders([]));
+    api.get(`/companies/${current.id}/privacy/suggestions`).then((r) => setSugestoes(r.data)).catch(() => setSugestoes([]));
   }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function buscar(e: FormEvent) {
@@ -119,6 +123,41 @@ export default function Privacy() {
           </ul>
         )}
       </section>
+
+      {sugestoes && sugestoes.length > 0 && current && ["admin", "supremo"].includes(current.permission_level) && (
+        <section className="glass-panel rounded-(--radius-panel) p-5 space-y-3" aria-labelledby="lgpd-sugestoes">
+          <h3 id="lgpd-sugestoes" className="flex items-center gap-2 text-mac-body font-semibold text-(--text-primary)"><ShieldAlert className="w-4 h-4 text-(--text-warning)" aria-hidden="true" /> Pastas que parecem ter dado pessoal</h3>
+          <p className="text-mac-caption text-(--text-secondary)">O texto lido dos documentos tem CPF ou termos de saúde ocupacional (ASO, atestado, CID, exames). É só uma sugestão: confira antes de classificar.</p>
+          <ul className="divide-y divide-(--border-default) rounded-(--radius-control) border border-(--border-default)">
+            {sugestoes.map((sg) => (
+              <li key={sg.id} className="flex flex-wrap items-center gap-3 px-3 py-2 min-h-11">
+                <span className="flex-1 min-w-48">
+                  <Link to={`/documents?folder_id=${sg.id}`} className="block truncate text-mac-body text-(--text-primary) hover:underline">{sg.caminho || sg.name}</Link>
+                  <span className="block text-mac-caption text-(--text-secondary)">
+                    {[sg.com_cpf ? `${sg.com_cpf} com CPF` : "", sg.com_saude ? `${sg.com_saude} com termo de saúde` : ""].filter(Boolean).join(" · ")}
+                  </span>
+                </span>
+                <Button size="sm" variant="secondary" loading={classificando === sg.id}
+                  onClick={async () => {
+                    setClassificando(sg.id);
+                    try {
+                      await api.put(`/folders/${sg.id}/privacy`, { sensitivity: sg.sugestao });
+                      success(`"${sg.name}" marcada como ${LABEL[sg.sugestao].toLowerCase()}.`);
+                      setSugestoes((x) => x?.filter((y) => y.id !== sg.id) ?? null);
+                      api.get<SensFolder[]>(`/companies/${current.id}/privacy/folders`).then((r) => setFolders(r.data)).catch(() => {});
+                    } catch (e: any) {
+                      showError(e?.response?.data?.detail ?? "Não foi possível classificar.");
+                    } finally {
+                      setClassificando(null);
+                    }
+                  }}>
+                  Marcar como {LABEL[sg.sugestao].toLowerCase()}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {current && ["admin", "supremo"].includes(current.permission_level) && <MfaPolicyCard companyId={current.id} />}
       {current && ["admin", "supremo"].includes(current.permission_level) && <LgpdRequests companyId={current.id} />}

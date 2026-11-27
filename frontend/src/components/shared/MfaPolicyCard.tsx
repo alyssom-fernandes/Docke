@@ -18,6 +18,7 @@ export default function MfaPolicyCard({ companyId }: { companyId: string }) {
   const [pol, setPol] = useState<{ policy: string; can_edit: boolean } | null>(null);
   const [falhou, setFalhou] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [motivo, setMotivo] = useState("");
 
   useEffect(() => {
     setFalhou(false);
@@ -30,7 +31,7 @@ export default function MfaPolicyCard({ companyId }: { companyId: string }) {
     setPol({ ...pol, policy });
     setSaving(true);
     try {
-      await api.put(`/companies/${companyId}/mfa-policy`, { policy });
+      await api.put(`/companies/${companyId}/mfa-policy`, { policy, motivo: motivo.trim() || null });
       success("Regra da verificação em duas etapas salva.");
     } catch (e: any) {
       setPol(antes);
@@ -55,6 +56,11 @@ export default function MfaPolicyCard({ companyId }: { companyId: string }) {
           <Dropdown className="w-72 max-w-full" ariaLabelledby="pol-mfa-quem" value={pol.policy} options={OPCOES} disabled={!pol.can_edit || saving}
             onChange={(v) => { if (pol.can_edit && !saving) salvar(v); }} />
           {!pol.can_edit && <p className="w-full text-mac-caption text-(--text-secondary)">Só o administrador geral muda esta regra.</p>}
+          {pol.can_edit && (
+            <input value={motivo} onChange={(e) => setMotivo(e.target.value)} maxLength={300} aria-label="Motivo da mudança (opcional)"
+              placeholder="Motivo da mudança (opcional, vai para a Atividade)"
+              className="mac-field w-full h-8 pointer-coarse:h-11 px-2.5 text-mac-caption text-(--text-primary)" />
+          )}
         </div>
       )}
     </section>
