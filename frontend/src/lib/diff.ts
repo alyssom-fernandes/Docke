@@ -84,9 +84,25 @@ function similarity(x: string, y: string): number {
 
 export interface DiffResult { lines: DiffLine[] | null; added: number; removed: number; changed: number }
 
-export function computeDiff(oldText: string, newText: string): DiffResult {
-  const a = oldText.replace(/\r\n/g, "\n").split("\n");
-  const b = newText.replace(/\r\n/g, "\n").split("\n");
+/**
+ * Unidade da comparação (B2.7.2): por linha (padrão) ou por frase. Por frase
+ * junta as quebras de linha do mesmo parágrafo e corta em ponto, ponto e
+ * vírgula, dois-pontos, exclamação e interrogação: o texto de um PDF quebrado
+ * em linhas diferentes não aparece todo como mudado.
+ */
+export type DiffUnit = "linha" | "frase";
+
+function unidades(text: string, unit: DiffUnit): string[] {
+  const t = text.replace(/\r\n/g, "\n");
+  if (unit === "linha") return t.split("\n");
+  return t.split(/\n{2,}/)
+    .map((par) => par.replace(/\s*\n\s*/g, " ").trim())
+    .flatMap((par) => (par ? par.split(/(?<=[.;:!?])\s+(?=\S)/) : [""]));
+}
+
+export function computeDiff(oldText: string, newText: string, unit: DiffUnit = "linha"): DiffResult {
+  const a = unidades(oldText, unit);
+  const b = unidades(newText, unit);
   const ops = myers(a, b, 6000);
   if (!ops) return { lines: null, added: 0, removed: 0, changed: 0 };
   const lines: DiffLine[] = [];

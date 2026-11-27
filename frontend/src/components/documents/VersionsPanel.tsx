@@ -137,6 +137,48 @@ function ResumoPartes({ documentId, a, b }: { documentId: string; a: string; b: 
   );
 }
 
+/**
+ * Lado a lado (B1.4.4, B2.7.3): versão antiga à esquerda e nova à direita,
+ * linha a linha na mesma grade. A rolagem é uma só, então as duas colunas
+ * andam juntas; em cada bloco de mudança, o que saiu fica em frente ao que
+ * entrou no lugar.
+ */
+function LadoALado({ lines, visible, older, newer, cursorLine }: {
+  lines: DiffLine[]; visible: (number | "gap")[]; older: number; newer: number; cursorLine?: number;
+}) {
+  const mostrar = new Set(visible.filter((v): v is number => v !== "gap"));
+  type Celula = { i: number; l: DiffLine } | null;
+  const linhas: { esq: Celula; dir: Celula }[] = [];
+  for (let i = 0; i < lines.length; ) {
+    if (lines[i].type === "same") { linhas.push({ esq: { i, l: lines[i] }, dir: { i, l: lines[i] } }); i++; continue; }
+    const rem: Celula[] = [], add: Celula[] = [];
+    while (i < lines.length && lines[i].type !== "same") { (lines[i].type === "remove" ? rem : add).push({ i, l: lines[i] }); i++; }
+    for (let k = 0; k < Math.max(rem.length, add.length); k++) linhas.push({ esq: rem[k] ?? null, dir: add[k] ?? null });
+  }
+  const cel = (c: Celula, lado: "esq" | "dir") => (
+    <div data-line={c?.i} className={`px-3 whitespace-pre-wrap break-words min-h-5 ${!c ? "bg-(--bg-hover)/40" : c.l.type === "add" ? "bg-(--tint-success)" : c.l.type === "remove" ? "bg-(--tint-danger)" : ""} ${lado === "esq" ? "border-r border-(--border-default)" : ""} ${c && cursorLine === c.i ? "ring-2 ring-inset ring-(--focus-ring)" : ""}`}>
+      {c && c.l.type !== "same" && <span className="sr-only">{c.l.type === "add" ? "Entrou: " : "Saiu: "}</span>}
+      {c ? <span className={c.l.type === "same" ? "text-(--text-secondary)" : "text-(--text-primary)"}><LineText line={c.l} /></span> : null}
+    </div>
+  );
+  let anterior = true;
+  return (
+    <div className="text-mac-caption font-mono leading-relaxed">
+      <div className="sticky top-0 z-[1] grid grid-cols-2 bg-(--bg-card) border-b border-(--border-default) text-(--text-secondary) font-sans font-semibold">
+        <div className="px-3 py-1.5 border-r border-(--border-default)">Versão {older}</div>
+        <div className="px-3 py-1.5">Versão {newer}</div>
+      </div>
+      {linhas.map((r, k) => {
+        const ve = (r.esq && mostrar.has(r.esq.i)) || (r.dir && mostrar.has(r.dir.i));
+        const gap = !ve && anterior;
+        anterior = !!ve;
+        if (!ve) return gap ? <div key={`g${k}`} className="my-1 px-4 text-(--text-secondary) select-none" aria-hidden="true">⋯</div> : null;
+        return <div key={k} className="grid grid-cols-2">{cel(r.esq, "esq")}{cel(r.dir, "dir")}</div>;
+      })}
+    </div>
+  );
+}
+
 /** Resultado de cada par de versões, guardado na aba (B2.7.10). */
 const diffCache = new Map<string, DiffResult | { motivo: string }>();
 
@@ -148,6 +190,9 @@ function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
   const [unavailableReason, setUnavailableReason] = useState<string | null>(null);
   const [onlyChanges, setOnlyChanges] = useState(true);
   const [tipoMudanca, setTipoMudanca] = useState<"todas" | "add" | "remove">("todas");
+  // B2.7.2: por linha ou por frase; B1.4.4/B2.7.3: em sequência ou lado a lado.
+  const [unidade, setUnidade] = useState<"linha" | "frase">("linha");
+  const [lado, setLado] = useState(false);
   const [cursor, setCursor] = useState(-1);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [older, newer] = versionA.version_number < versionB.version_number ? [versionA, versionB] : [versionB, versionA];
@@ -155,7 +200,8 @@ function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
   const [modo, setModo] = useState<"texto" | "sobrepor">(imagens ? "sobrepor" : "texto");
 
   useEffect(() => {
-    const chave = `${older.id}:${newer.id}`;
+    const chave = `${older.id}:${newer.id}:${unidade}`;
+    setUnavailableReason(null);
     const cached = diffCache.get(chave);
     if (cached) {
       if ("motivo" in cached) setUnavailableReason(cached.motivo);
@@ -189,11 +235,11 @@ function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
           setLoading(false);
         };
         worker.onerror = () => { setUnavailableReason("Não foi possível comparar agora. Tente de novo."); setLoading(false); };
-        worker.postMessage({ a: a.data.text ?? "", b: b.data.text ?? "" });
+        worker.postMessage({ a: a.data.text ?? "", b: b.data.text ?? "", unit: unidade });
       })
       .catch(() => { if (alive) { setUnavailableReason("Não foi possível carregar o conteúdo das versões."); setLoading(false); } });
     return () => { alive = false; worker?.terminate(); };
-  }, [documentId, older.id, newer.id]);
+  }, [documentId, older.id, newer.id, unidade]);
 
   const lines = result?.lines ?? null;
   // Índices das linhas mudadas e, no modo "só mudanças", o que fica visível (2 de contexto).
@@ -299,6 +345,15 @@ ${corpo}</body></html>`;
               <label className="inline-flex items-center gap-1.5 text-mac-caption text-(--text-secondary)">
                 <input type="checkbox" checked={onlyChanges} onChange={(e) => setOnlyChanges(e.target.checked)} className="accent-teal-600 w-4 h-4" /> Só as mudanças
               </label>
+              <div role="tablist" aria-label="Comparar por" className="mac-segmented">
+                {([["linha", "Linha"], ["frase", "Frase"]] as const).map(([v, l]) => (
+                  <button key={v} role="tab" aria-selected={unidade === v} onClick={() => { setUnidade(v); setCursor(-1); }} className="mac-segment">{l}</button>
+                ))}
+              </div>
+              <div role="tablist" aria-label="Arrumação" className="mac-segmented">
+                <button role="tab" aria-selected={!lado} onClick={() => setLado(false)} className="mac-segment">Em sequência</button>
+                <button role="tab" aria-selected={lado} onClick={() => setLado(true)} className="mac-segment">Lado a lado</button>
+              </div>
               <div role="tablist" aria-label="Tipo de mudança" className="mac-segmented">
                 {([["todas", "Todas"], ["add", "Entrou"], ["remove", "Saiu"]] as const).map(([v, l]) => (
                   <button key={v} role="tab" aria-selected={tipoMudanca === v} onClick={() => { setTipoMudanca(v); setCursor(-1); }} className="mac-segment">{l}</button>
@@ -329,6 +384,8 @@ ${corpo}</body></html>`;
           <div className="h-full flex items-center justify-center px-8 text-center"><p className="text-mac-body text-(--text-secondary)">{unavailableReason}</p></div>
         ) : lines && changeStarts.length === 0 ? (
           <div className="h-full flex items-center justify-center px-8 text-center"><p className="text-mac-body text-(--text-secondary)">Nenhuma diferença de texto entre estas duas versões.</p></div>
+        ) : lines && lado ? (
+          <LadoALado lines={lines} visible={visible} older={older.version_number} newer={newer.version_number} cursorLine={changeStarts[cursor]} />
         ) : lines && (
           <div className="py-2 text-mac-caption font-mono leading-relaxed">
             {visible.map((v, k) => v === "gap" ? (
