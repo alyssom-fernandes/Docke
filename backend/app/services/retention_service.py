@@ -410,11 +410,12 @@ class RetentionService:
         return await conn.fetch(
             f"""
             SELECT q.*, d.name AS document_name, d.deleted_at AS document_deleted_at, d.folder_id::text AS folder_id,
-                   f.name AS folder_name, ru.full_name AS reviewed_by_name
+                   f.name AS folder_name, ru.full_name AS reviewed_by_name, fu.full_name AS first_approved_by_name
             FROM public.retention_review_queue q
             JOIN public.documents d ON d.id = q.document_id
             LEFT JOIN public.folders f ON f.id = d.folder_id
             LEFT JOIN public.users ru ON ru.id = q.reviewed_by
+            LEFT JOIN public.users fu ON fu.id = q.first_approved_by
             WHERE {' AND '.join(conditions)}
             ORDER BY q.computed_expires_at
             """,
@@ -426,10 +427,40 @@ class RetentionService:
         conn: asyncpg.Connection, queue_id: UUID, *, decision: str, notes: str | None,
         deferred_until: Any | None, reviewed_by: str,
     ) -> asyncpg.Record:
+        # Aprovação dupla (B3.4.5): com a regra da empresa ligada, a primeira
+        # aprovação só fica registrada; a segunda, de outra pessoa, aprova.
+        item = await conn.fetchrow(
+            """
+            SELECT q.id, q.company_id, q.first_approved_by, q.first_approved_at, c.retention_double_approval AS dupla,
+                   u.full_name AS primeiro_nome
+            FROM public.retention_review_queue q JOIN public.companies c ON c.id = q.company_id
+            LEFT JOIN public.users u ON u.id = q.first_approved_by
+            WHERE q.id = $1
+            """,
+            queue_id,
+        )
+        if item is not None and item["dupla"] and decision == "approved":
+            if item["first_approved_by"] is None:
+                return await conn.fetchrow(
+                    """
+                    UPDATE public.retention_review_queue
+                    SET first_approved_by = $2, first_approved_at = now(), review_notes = coalesce($3, review_notes)
+                    WHERE id = $1 RETURNING *, true AS aguardando_segunda
+                    """,
+                    queue_id, reviewed_by, notes,
+                )
+            if str(item["first_approved_by"]) == str(reviewed_by):
+                from fastapi import HTTPException, status
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                    detail="A segunda aprovação precisa ser de outra pessoa.")
+            primeira = f'1ª aprovação: {item["primeiro_nome"] or "outra pessoa"} em {item["first_approved_at"]:%d/%m/%Y %H:%M}'
+            notes = f"{notes} ({primeira})" if notes else primeira
         return await conn.fetchrow(
             """
             UPDATE public.retention_review_queue
-            SET status = $2, review_notes = $3, deferred_until = $4, reviewed_by = $5, reviewed_at = now()
+            SET status = $2, review_notes = $3, deferred_until = $4, reviewed_by = $5, reviewed_at = now(),
+                first_approved_by = CASE WHEN $2 = 'approved' THEN first_approved_by END,
+                first_approved_at = CASE WHEN $2 = 'approved' THEN first_approved_at END
             WHERE id = $1
             RETURNING *
             """,
