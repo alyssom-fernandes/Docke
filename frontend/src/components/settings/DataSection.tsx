@@ -131,6 +131,8 @@ export default function DataSection({ companyId, companyName }: { companyId: str
         </h2>
       </div>
 
+      <PacoteContador companyId={companyId} />
+
       {/* Texto dos documentos (OCR) */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <FileSearch className="w-5 h-5 text-(--text-tertiary) shrink-0 hidden sm:block" aria-hidden />
@@ -221,5 +223,50 @@ export default function DataSection({ companyId, companyName }: { companyId: str
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * Pacote para o contador (B2.5.7): os XMLs das NF-e emitidas no mês escolhido,
+ * com um resumo.csv (chave, número, emissão, emitente, destinatário, valor).
+ */
+function PacoteContador({ companyId }: { companyId: string }) {
+  const { error: showError } = useToast();
+  const hoje = new Date();
+  const anterior = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+  const [mes, setMes] = useState(`${anterior.getFullYear()}-${String(anterior.getMonth() + 1).padStart(2, "0")}`);
+  const [busy, setBusy] = useState(false);
+  async function baixar() {
+    const [a, m] = mes.split("-").map(Number);
+    const de = `${a}-${String(m).padStart(2, "0")}-01`;
+    const ate = new Date(a, m, 0).toLocaleDateString("sv-SE");
+    setBusy(true);
+    try {
+      const r = await api.get("/documents/nfe-package", { params: { company_id: companyId, de, ate }, responseType: "blob" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(r.data);
+      link.download = `nfe_${mes}.zip`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
+    } catch (e: any) {
+      const detalhe = e?.response?.data instanceof Blob ? JSON.parse(await e.response.data.text()).detail : null;
+      showError(detalhe ?? "Não foi possível montar o pacote agora.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+      <Download className="w-5 h-5 text-(--text-tertiary) shrink-0 hidden sm:block" aria-hidden />
+      <div className="flex-1 min-w-0">
+        <p className="text-mac-body font-medium text-(--text-primary)">Pacote para o contador</p>
+        <p className="text-mac-caption text-(--text-secondary)">XMLs das NF-e emitidas no mês, com um resumo em planilha (chave, número, emitente, valor).</p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <input type="month" value={mes} max={`${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}`} onChange={(e) => setMes(e.target.value)}
+          aria-label="Mês de emissão" className="mac-field h-8 pointer-coarse:h-11 px-2 text-mac-body text-(--text-primary)" />
+        <Button size="sm" variant="secondary" loading={busy} onClick={baixar} disabled={!mes}>Baixar</Button>
+      </div>
+    </div>
   );
 }

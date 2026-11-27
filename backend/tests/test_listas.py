@@ -286,3 +286,54 @@ async def test_tipos_de_campo_extras(api, admin, empresa):  # noqa: F811
     await admin.execute("DELETE FROM public.activity_log WHERE company_id = $1", uuid.UUID(co))
     for i in ids.values():
         await admin.execute("DELETE FROM public.custom_field WHERE id = $1", uuid.UUID(i))
+
+
+@pytest.mark.asyncio
+async def test_pacote_de_nfe_para_o_contador(api, admin, empresa):  # noqa: F811
+    """B2.5.7: XMLs do período e resumo.csv."""
+    import io
+    import zipfile as zf
+
+    from app.services import storage_service
+    h, co = _token(empresa["user"]), empresa["co"]
+    doc = await _doc(admin, empresa, empresa["raiz"], "nota-123.xml", "nfe")
+    chave = "35261112345678000190550010000001231000001234"
+    await admin.execute("UPDATE public.documents SET storage_path = $2 WHERE id = $1", uuid.UUID(doc), f"pacote/{doc}.xml")
+    storage_service.mock_save(f"pacote/{doc}.xml", b"<nfeProc/>")
+    await admin.execute(
+        """
+        INSERT INTO public.document_nfe (document_id, company_id, reconhecida, chave, numero, serie, data_emissao, emitente_nome, valor_total)
+        VALUES ($1, $2, true, $3, '123', '1', '2026-11-05T10:00:00-03:00', 'Fornecedor Teste', 150.5)
+        """,
+        uuid.UUID(doc), uuid.UUID(co), chave,
+    )
+    r = await api.get(API + "/documents/nfe-package", params={"company_id": co, "de": "2026-11-01", "ate": "2026-11-30"}, headers=h)
+    assert r.status_code == 200, r.text
+    z = zf.ZipFile(io.BytesIO(r.content))
+    assert f"xml/{chave}.xml" in z.namelist() and "resumo.csv" in z.namelist()
+    assert "Fornecedor Teste" in z.read("resumo.csv").decode("utf-8-sig")
+    r = await api.get(API + "/documents/nfe-package", params={"company_id": co, "de": "2026-10-01", "ate": "2026-10-31"}, headers=h)
+    assert r.status_code == 404
+    await admin.execute("DELETE FROM public.document_nfe WHERE document_id = $1", uuid.UUID(doc))
+
+
+@pytest.mark.asyncio
+async def test_adiar_e_arquivar_aviso(api, admin, empresa):  # noqa: F811
+    """B4.4.1: adiado some até a data e volta não lido; arquivado sai da caixa."""
+    h, co, uid = _token(empresa["user"]), empresa["co"], empresa["user"]
+    ids = [str(await admin.fetchval(
+        "INSERT INTO public.notifications (user_id, company_id, type, message) VALUES ($1, $2, 'folder_activity', $3) RETURNING id",
+        uuid.UUID(uid), uuid.UUID(co), m)) for m in ("um", "dois")]
+    from datetime import datetime, timedelta, timezone
+    r = await api.post(API + f"/notifications/{ids[0]}/snooze", json={"until": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()}, headers=h)
+    assert r.status_code == 200, r.text
+    assert (await api.post(API + f"/notifications/{ids[1]}/archive", headers=h)).status_code == 200
+    caixa = (await api.get(API + "/notifications", headers=h)).json()
+    assert not {ids[0], ids[1]} & {n["id"] for n in caixa["results"]}
+    arq = (await api.get(API + "/notifications", params={"archived": True}, headers=h)).json()
+    assert [n["id"] for n in arq["results"]] == [ids[1]]
+    # O adiado volta quando chega a hora.
+    await admin.execute("UPDATE public.notifications SET snoozed_until = now() - interval '1 minute' WHERE id = $1", uuid.UUID(ids[0]))
+    caixa = (await api.get(API + "/notifications", headers=h)).json()
+    assert ids[0] in {n["id"] for n in caixa["results"]}
+    await admin.execute("DELETE FROM public.notifications WHERE user_id = $1", uuid.UUID(uid))

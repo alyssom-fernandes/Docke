@@ -115,11 +115,14 @@ async def notify_share_accessed(conn: asyncpg.Connection, share_id: UUID) -> Non
         )
 
 
-async def list_notifications(conn: asyncpg.Connection, *, unread_only: bool, limit: int) -> list[asyncpg.Record]:
+async def list_notifications(conn: asyncpg.Connection, *, unread_only: bool, limit: int, archived: bool = False) -> list[asyncpg.Record]:
+    # B4.4.1: a caixa esconde os arquivados e os adiados até a data; a aba
+    # "Arquivados" mostra só os arquivados. O adiado volta como não lido
+    # (o read_at é limpo ao adiar).
     return await conn.fetch(
         """
         SELECT n.id::text, n.type, n.resource_type, n.resource_id::text, n.company_id::text,
-               n.message, n.read_at, n.created_at,
+               n.message, n.read_at, n.created_at, n.snoozed_until, n.archived_at,
                -- Para a notificação levar ao item (A2-26): pasta do documento
                -- e se o item está na lixeira. Sem acesso (RLS), vem nulo.
                d.folder_id::text AS folder_id,
@@ -129,16 +132,19 @@ async def list_notifications(conn: asyncpg.Connection, *, unread_only: bool, lim
         LEFT JOIN public.folders f ON n.resource_type = 'folder' AND f.id = n.resource_id
         WHERE n.user_id = auth.uid()
           AND ($1::boolean IS FALSE OR n.read_at IS NULL)
-        ORDER BY n.created_at DESC
+          AND (CASE WHEN $3::boolean THEN n.archived_at IS NOT NULL
+                    ELSE n.archived_at IS NULL AND (n.snoozed_until IS NULL OR n.snoozed_until <= now()) END)
+        ORDER BY coalesce(n.snoozed_until, n.created_at) DESC
         LIMIT $2
         """,
-        unread_only, limit,
+        unread_only, limit, archived,
     )
 
 
 async def count_unread(conn: asyncpg.Connection) -> int:
     return await conn.fetchval(
         "SELECT count(*) FROM public.notifications WHERE user_id = auth.uid() AND read_at IS NULL"
+        " AND archived_at IS NULL AND (snoozed_until IS NULL OR snoozed_until <= now())"
     )
 
 

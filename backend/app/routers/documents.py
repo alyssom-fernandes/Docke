@@ -807,6 +807,98 @@ async def bulk_download(
 
 
 # ---------------------------------------------------------------------------
+# GET /documents/nfe-package — pacote para o contador (B2.5.7)
+# ---------------------------------------------------------------------------
+
+@router.get("/nfe-package")
+async def nfe_package(
+    company_id: UUID = Query(...),
+    de: date = Query(..., description="Emitidas a partir de (inclusive)."),
+    ate: date = Query(..., description="Emitidas até (inclusive)."),
+    conn: asyncpg.Connection = Depends(get_db),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> StreamingResponse:
+    """
+    Pacote do período para o contador: os XMLs das NF-e lidas na entrada
+    (pela data de emissão) e um resumo.csv com chave, número, série, emissão,
+    emitente, destinatário e valor. Só o que a pessoa pode abrir (RLS), sem os
+    documentos de pasta sensível para quem só visualiza, até 1.000 notas.
+    """
+    if de > ate:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="O início do período é depois do fim.")
+    rows = await conn.fetch(
+        """
+        SELECT d.id::text, d.name, d.storage_path, n.chave, n.numero, n.serie, n.data_emissao,
+               n.emitente_cnpj, n.emitente_nome, n.destinatario_doc, n.destinatario_nome, n.valor_total
+        FROM public.document_nfe n
+        JOIN public.documents d ON d.id = n.document_id
+        WHERE n.company_id = $1 AND n.reconhecida AND d.deleted_at IS NULL AND d.content_hash IS NOT NULL
+          AND n.data_emissao::date BETWEEN $2 AND $3
+          AND lower(d.name) LIKE '%.xml'
+          AND NOT (public.folder_effective_sensitivity(d.folder_id) = 'sensivel'
+                   AND public.user_has_access(auth.uid(), (SELECT f.path FROM public.folders f WHERE f.id = d.folder_id), d.company_id) = 'visualizador')
+        ORDER BY n.data_emissao, n.numero
+        LIMIT 1000
+        """,
+        company_id, de, ate,
+    )
+    if not rows:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nenhuma NF-e lida com emissão nesse período.")
+    for r in rows:
+        await _log_access(conn, claims["sub"], UUID(r["id"]), "download")
+
+    def montar() -> str:
+        import csv as _csv
+        import io as _io
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+        try:
+            with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
+                buf = _io.StringIO()
+                w = _csv.writer(buf, delimiter=";")
+                w.writerow(["arquivo", "chave", "numero", "serie", "emissao", "emitente_cnpj", "emitente", "destinatario", "destinatario_nome", "valor"])
+                usados: set[str] = set()
+                for r in rows:
+                    data = storage_service.read_object(r["storage_path"])
+                    if data is None:
+                        continue
+                    nome = f'{r["chave"]}.xml' if r["chave"] else r["name"]
+                    if nome in usados:
+                        nome = f'{r["id"][:8]}_{nome}'
+                    usados.add(nome)
+                    zf.writestr(f"xml/{nome}", data)
+                    del data
+                    valor = f'{r["valor_total"]:.2f}'.replace(".", ",") if r["valor_total"] is not None else ""
+                    w.writerow([f"xml/{nome}", r["chave"] or "", r["numero"] or "", r["serie"] or "",
+                                r["data_emissao"].strftime("%d/%m/%Y") if r["data_emissao"] else "", r["emitente_cnpj"] or "",
+                                r["emitente_nome"] or "", r["destinatario_doc"] or "", r["destinatario_nome"] or "", valor])
+                zf.writestr("resumo.csv", "\ufeff" + buf.getvalue())
+        finally:
+            tmp.close()
+        return tmp.name
+
+    caminho = await asyncio.to_thread(montar)
+
+    def enviar():
+        try:
+            with open(caminho, "rb") as fh:
+                while True:
+                    bloco = fh.read(1024 * 1024)
+                    if not bloco:
+                        break
+                    yield bloco
+        finally:
+            os.unlink(caminho)
+
+    return StreamingResponse(
+        enviar(), media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="nfe_{de.isoformat()}_a_{ate.isoformat()}.zip"',
+            "Content-Length": str(os.path.getsize(caminho)),
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 # POST /documents/bulk-copy — copia documentos para uma pasta (Alt ao arrastar, A4-38)
 # ---------------------------------------------------------------------------
 
