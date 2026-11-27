@@ -193,6 +193,7 @@ async def company_members(
 @router.get("/{company_id}/stats")
 async def company_stats(
     company_id: UUID,
+    folder_id: UUID | None = Query(None),
     conn: asyncpg.Connection = Depends(get_db),
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
@@ -204,6 +205,12 @@ async def company_stats(
     """
     if not await CompaniesService.is_member(conn, claims["sub"], company_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem acesso a esta empresa.")
+    if folder_id is not None:
+        # Escopo "minha área" (B4.1.5): só a pasta escolhida e subpastas.
+        row = await CompaniesService.get_stats_folder(conn, company_id, folder_id)
+        if row is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada.")
+        return {**dict(row), **await CompaniesService.stats_context(conn, company_id), "escopo_pasta": str(folder_id)}
     if await CompaniesService.has_unscoped_access(conn, claims["sub"], company_id):
         row = await CompaniesService.get_stats(conn, company_id)
         if row is not None and _stats_stale(row["refreshed_at"]) and rate_limit.check_and_record(

@@ -217,6 +217,36 @@ class CompaniesService:
         )
 
     @staticmethod
+    async def get_stats_folder(conn: asyncpg.Connection, company_id: UUID, folder_id: UUID) -> asyncpg.Record | None:
+        """Números do Início só de uma pasta e subpastas (B4.1.5, escopo "minha
+        área"). Conexão do usuário: a RLS limita ao que ele vê."""
+        caminho = await conn.fetchval(
+            "SELECT path FROM public.folders WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL", folder_id, company_id,
+        )
+        if caminho is None:
+            return None
+        return await conn.fetchrow(
+            """
+            SELECT
+              (SELECT COUNT(*) FROM public.documents d JOIN public.folders f ON f.id = d.folder_id
+               WHERE d.company_id = $1 AND d.deleted_at IS NULL AND f.path <@ $2::ltree) AS total_documents,
+              (SELECT COUNT(*) FROM public.folders f
+               WHERE f.company_id = $1 AND f.deleted_at IS NULL AND f.path <@ $2::ltree AND f.path <> $2::ltree) AS total_folders,
+              (SELECT COUNT(*) FROM public.favorites fav
+               JOIN public.documents d ON d.id = fav.document_id JOIN public.folders f ON f.id = d.folder_id
+               WHERE d.company_id = $1 AND fav.user_id = auth.uid() AND f.path <@ $2::ltree) AS total_favorites,
+              (SELECT COUNT(*) FROM public.documents d JOIN public.folders f ON f.id = d.folder_id
+               WHERE d.company_id = $1 AND d.deleted_at IS NULL AND f.path <@ $2::ltree
+                 AND d.created_at >= now() - interval '7 days') AS recent_uploads,
+              (SELECT COUNT(*) FROM public.documents d JOIN public.folders f ON f.id = d.folder_id
+               WHERE d.company_id = $1 AND d.deleted_at IS NULL AND f.path <@ $2::ltree
+                 AND d.created_at >= now() - interval '1 day') AS documents_today,
+              now() AS refreshed_at
+            """,
+            company_id, caminho,
+        )
+
+    @staticmethod
     async def get_stats_live(conn: asyncpg.Connection, company_id: UUID) -> asyncpg.Record:
         """
         Fase 3.8: caminho pra quem só tem concessão restrita a pasta — usa

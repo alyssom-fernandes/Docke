@@ -23,6 +23,8 @@ export interface Task {
   pausable?: boolean;
   /** Parado por quem enviou: "Continuar" retoma das partes que faltam. */
   paused?: boolean;
+  /** Aviso com escolha (B1.1.5): ex.: a mesma nota já estava na empresa. */
+  aviso?: { texto: string; acoes: { label: string; run: () => void | Promise<void> }[] };
 }
 
 interface TaskCtx {

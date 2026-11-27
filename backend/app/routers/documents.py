@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -386,8 +386,88 @@ async def _finalize_confirmed_upload(
                 if updated is not None:
                     result["tipo_fiscal"] = updated["tipo_fiscal"]
                     result["competencia"] = updated["competencia"]
+                # B1.1.5: outra nota com a mesma chave de 44 dígitos já está na
+                # empresa? O envio entra, e quem enviou decide: juntar como nova
+                # versão da que já existe ou manter os dois.
+                chave = "".join(ch for ch in (nfe_fields.get("chave_acesso") or "") if ch.isdigit())
+                if len(chave) == 44:
+                    outra = await admin_conn.fetchrow(
+                        """
+                        SELECT d.id::text, d.name, d.folder_id::text
+                        FROM public.document_nfe n JOIN public.documents d ON d.id = n.document_id
+                        WHERE n.company_id = $1 AND n.chave = $2 AND d.id <> $3 AND d.deleted_at IS NULL
+                        ORDER BY d.created_at LIMIT 1
+                        """,
+                        row["company_id"] if not isinstance(row["company_id"], str) else UUID(row["company_id"]), chave, document_id,
+                    )
+                    if outra is not None:
+                        result["mesma_chave"] = dict(outra)
 
     return result
+
+
+class JuntarRequest(BaseModel):
+    destino_id: UUID
+
+
+@router.post("/{document_id}/juntar")
+async def juntar_como_versao(
+    document_id: UUID,
+    body: JuntarRequest,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    B1.1.5: o arquivo que acabou de entrar vira a nova versão de outro
+    documento (a mesma nota já estava na empresa). Só quem enviou, nas
+    primeiras 24 h, e quando nada protege o envio (bloqueio judicial ou
+    retenção travada). O arquivo não é copiado: o objeto guardado passa a ser
+    a versão nova do outro documento e o registro duplicado sai.
+    """
+    from app.services.versions_service import VersionsService
+
+    novo = await admin_conn.fetchrow(
+        """
+        SELECT id, company_id, name, storage_path, mime_type, size_bytes, content_hash, uploaded_by, created_at, deleted_at
+        FROM public.documents WHERE id = $1
+        """,
+        document_id,
+    )
+    destino = await conn.fetchrow("SELECT id, company_id, name, deleted_at FROM public.documents WHERE id = $1", body.destino_id)
+    if novo is None or destino is None or novo["deleted_at"] is not None or destino["deleted_at"] is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+    if novo["company_id"] != destino["company_id"] or novo["id"] == destino["id"]:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Os dois documentos precisam ser da mesma empresa.")
+    if str(novo["uploaded_by"]) != claims["sub"] or novo["created_at"] < datetime.now(timezone.utc) - timedelta(hours=24):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Só quem enviou junta o arquivo, no mesmo dia do envio.")
+    if not content_matches_extension(destino["name"], (await asyncio.to_thread(storage_service.read_head, novo["storage_path"])) or b""):
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                            detail=f"A nova versão precisa ser do mesmo tipo de \"{destino['name']}\".")
+    if await admin_conn.fetchval("SELECT public.document_deletion_block_reason($1)", novo["id"]):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Este envio está protegido (bloqueio judicial ou prazo de guarda) e não pode sair como documento separado.")
+    # Escrever no destino exige o mesmo acesso de enviar uma versão.
+    from app.routers.versions import _check_write_access
+    await _check_write_access(conn, destino["id"])
+
+    async with admin_conn.transaction():
+        numero = await VersionsService.next_version_number(admin_conn, destino["id"])
+        versao = uuid4()
+        await VersionsService.insert_version(
+            admin_conn, version_id=versao, document_id=destino["id"], version_number=numero,
+            storage_key=novo["storage_path"], size_bytes=novo["size_bytes"] or 0, mime_type=novo["mime_type"],
+            uploaded_by=claims["sub"], sha256=novo["content_hash"],
+        )
+        # O registro duplicado sai sem apagar o objeto (agora é a versão nova).
+        await admin_conn.execute("DELETE FROM public.document_versions WHERE document_id = $1", novo["id"])
+        await admin_conn.execute("DELETE FROM public.documents WHERE id = $1", novo["id"])
+        await VersionsService.activate_version(
+            admin_conn, document_id=destino["id"], version_id=versao,
+            storage_key=novo["storage_path"], mime_type=novo["mime_type"], size_bytes=novo["size_bytes"] or 0,
+        )
+        await DocumentsService.enqueue_ocr(admin_conn, destino["id"])
+        await VersionsService.log_version_upload(admin_conn, document_id=destino["id"], user_id=claims["sub"])
+    return {"document_id": str(destino["id"]), "version_number": numero}
 
 
 # ---------------------------------------------------------------------------

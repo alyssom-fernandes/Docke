@@ -3,6 +3,8 @@ import { getFileStyle } from "@/lib/fileType";
 import { Folder, Upload, X, FolderUp, Camera } from "lucide-react";
 import api from "@/lib/api";
 import { useTaskCenter } from "@/lib/TaskContext";
+import { useCompany } from "@/lib/CompanyContext";
+import Checkbox from "@/components/ui/Checkbox";
 import { useToast } from "@/lib/toast";
 import Button from "@/components/ui/Button";
 import CameraCapture from "@/components/documents/CameraCapture";
@@ -110,6 +112,12 @@ function apagarSessao(fp: string) {
 }
 
 export function UploadModal({ folderId, folderName, companyId, onClose, onDone, initialFiles }: { folderId: string | null; folderName: string; companyId: string; onClose: () => void; onDone: () => void; initialFiles?: File[] }) {
+  // Importação de acervo (B4.3.7): o admin pode manter a data original de cada arquivo.
+  const { current: empresaAtual } = useCompany();
+  const podeDataOriginal = empresaAtual?.permission_level === "admin" || empresaAtual?.permission_level === "supremo";
+  const [dataOriginal, setDataOriginal] = useState(false);
+  // Resposta da confirmação de cada documento (ex.: mesma chave de NF-e — B1.1.5).
+  const confirmacoes = useRef(new Map<string, { mesma_chave?: { id: string; name: string; folder_id: string | null } }>());
   const { success, warning, info } = useToast();
   const { addTask, updateTask, registerRetry, registerCancel, registerPause } = useTaskCenter();
   const [pending, setPending] = useState<PendingFile[]>([]);
@@ -220,6 +228,7 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone, 
         name: file.name,
         size_bytes: file.size,
         content_type: file.type || "application/octet-stream",
+        original_created_at: dataOriginal && file.lastModified ? new Date(file.lastModified).toISOString() : undefined,
       });
       sess = { documentId: created.document_id, uploadId: created.upload_id, partSize: created.part_size, totalParts: created.total_parts, parts: [], savedAt: Date.now() };
       gravarSessao(fp, sess);
@@ -253,7 +262,8 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone, 
         onProgress(`${file.name}`, Math.round((sess.parts.length / totalParts) * 100));
       }
       const parts = [...sess.parts].sort((a, b) => a.part_number - b.part_number);
-      await api.post(`/documents/multipart/${documentId}/complete`, { upload_id: uploadId, parts });
+      const { data: fim } = await api.post(`/documents/multipart/${documentId}/complete`, { upload_id: uploadId, parts });
+      confirmacoes.current.set(documentId, fim ?? {});
       apagarSessao(fp);
       return documentId;
     } catch (err) {
@@ -289,6 +299,7 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone, 
           name: file.name,
           size_bytes: file.size,
           content_type: file.type || "application/octet-stream",
+          original_created_at: dataOriginal && file.lastModified ? new Date(file.lastModified).toISOString() : undefined,
         });
         // Mesmo tipo da assinatura da URL (o Chrome chama XML de text/xml e a
         // URL vem assinada com application/xml — achado X2-03).
@@ -300,12 +311,31 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone, 
             ? "A conexão caiu durante o envio. Confira a internet e tente de novo."
             : `O armazenamento recusou o arquivo (código ${status}). Tente de novo; se continuar, avise o administrador.`);
         }
-        await api.post(`/documents/${data.document_id}/confirm`);
+        const { data: conf } = await api.post(`/documents/${data.document_id}/confirm`);
+        confirmacoes.current.set(data.document_id, conf ?? {});
         documentId = data.document_id;
       }
       registerCancel(taskId, null);
       updateTask(taskId, { label: `${displayName} · lendo o texto…`, phase: "processing", progress: undefined });
       pollOcrStatus([{ documentId, taskId, fileName: displayName }], updateTask);
+      // B1.1.5: a mesma nota (mesma chave de 44 dígitos) já estava na empresa.
+      const outra = confirmacoes.current.get(documentId)?.mesma_chave;
+      if (outra) {
+        const novoId = documentId;
+        updateTask(taskId, { aviso: {
+          texto: `A mesma nota já está na empresa: "${outra.name}".`,
+          acoes: [
+            { label: "Juntar como nova versão", run: async () => {
+              try {
+                const r = await api.post(`/documents/${novoId}/juntar`, { destino_id: outra.id });
+                updateTask(taskId, { aviso: undefined, label: `${displayName} · virou a versão ${r.data.version_number} de "${outra.name}"` });
+                onDone();
+              } catch (e) { updateTask(taskId, { aviso: { texto: friendlyError(e, "Não foi possível juntar."), acoes: [] } }); }
+            } },
+            { label: "Manter os dois", run: () => updateTask(taskId, { aviso: undefined }) },
+          ],
+        } });
+      }
       return { ok: true, documentId, taskId, fileName: displayName };
     } catch (fileErr: any) {
       registerCancel(taskId, null);
@@ -332,6 +362,11 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone, 
     const failures: { name: string; reason: string }[] = [];
     let okCount = 0;
     let pausados = 0;
+    // Lote no servidor (B1.1.9): consultável depois, mesmo se a aba fechar.
+    const lote = pending.length > 1
+      ? await api.post<{ id: string }>("/upload-batches", { company_id: companyId, folder_id: dest.id, folder_name: dest.name, total: pending.length, data_original: dataOriginal })
+          .then((r) => r.data.id).catch(() => null)
+      : null;
     // Três envios ao mesmo tempo (antes, um arquivo e uma parte por vez — A4-55).
     const queue = [...pending];
     async function worker() {
@@ -357,6 +392,9 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone, 
     }
     try {
       await Promise.all([worker(), worker(), worker()]);
+      if (lote) {
+        api.patch(`/upload-batches/${lote}`, { ok: okCount, concluido: true, falhas: failures.map((f) => ({ nome: f.name.slice(0, 600), motivo: f.reason.slice(0, 600) })) }).catch(() => {});
+      }
       if (okCount > 0) success(`${plural(okCount, "arquivo enviado", "arquivos enviados")} para "${dest.name}".`);
       if (pausados > 0) info(`${plural(pausados, "envio pausado", "envios pausados")}: continue pela Central de tarefas.`);
       if (failures.length > 0) {
@@ -403,6 +441,12 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone, 
     >
       <div className="space-y-3">
         {camera && <CameraCapture onClose={() => setCamera(false)} onReady={(file) => addFiles([{ file, relativePath: "" }])} />}
+        {podeDataOriginal && (
+          <label className="flex items-start gap-2 text-mac-caption text-(--text-secondary)">
+            <Checkbox checked={dataOriginal} disabled={uploading} onChange={(e) => setDataOriginal(e.target.checked)} className="mt-0.5" />
+            <span><span className="font-medium text-(--text-primary)">Importação de acervo: manter a data original de cada arquivo.</span> Use ao trazer documentos de outro sistema. O resultado do envio fica em Envios anteriores, na central de tarefas, com o relatório do que entrou e do que não entrou.</span>
+          </label>
+        )}
         <label
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
