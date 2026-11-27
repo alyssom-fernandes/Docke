@@ -120,6 +120,7 @@ async def export_activity_csv(
 async def verify_activity_integrity(
     company_id: UUID = Query(...),
     conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     role = await get_app_role(conn, claims)
@@ -133,14 +134,18 @@ async def verify_activity_integrity(
     first = summary["first_broken"]
     if isinstance(first, str):
         first = json.loads(first)
+    # Marcos diários assinados pela API (X3-12): pegam a cadeia recalculada.
+    marcos = await ActivityService.conferir_marcos(admin_conn, company_id)
     await _log_auditoria(conn, claims["sub"], company_id, "audit_verify", {
         "eventos": summary["total_events"], "quebras": summary["broken_count"],
+        "marcos": marcos["total"], "marcos_ruins": marcos["total"] - marcos["ok"],
     })
     return {
         "total_events": summary["total_events"],
-        "intact": summary["broken_count"] == 0,
+        "intact": summary["broken_count"] == 0 and marcos["ok"] == marcos["total"],
         "broken_count": summary["broken_count"],
         "first_broken": first,
+        "checkpoints": marcos,
     }
 
 

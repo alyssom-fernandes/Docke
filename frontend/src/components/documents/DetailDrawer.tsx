@@ -333,11 +333,13 @@ export const brDate = (iso: string | null) => (iso ? new Date(iso.length === 10 
 export function DocumentRetentionSection({ docId }: { docId: string }) {
   const [info, setInfo] = useState<{ policy_name: string | null; expires_at: string | null; is_indeterminate: boolean | null; locked: boolean; under_hold: boolean } | null | "erro">(null);
   const [candidates, setCandidates] = useState<RetentionCandidate[] | null>(null);
+  // B3.4.2: o que valia quando o documento entrou (gravado no envio).
+  const [inicio, setInicio] = useState<{ policy_name: string | null; expires_at: string | null; is_indeterminate: boolean | null; captured_at: string } | null>(null);
   const [showCalc, setShowCalc] = useState(false);
   const load = () => { setInfo(null); api.get(`/documents/${docId}/retention`).then((r) => setInfo(r.data)).catch(() => setInfo("erro")); };
   // Carrega junto com o painel: o cabeçalho já diz o prazo, sem abrir (A5-24).
   useEffect(load, [docId]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (showCalc) api.get<{ candidates: RetentionCandidate[] }>(`/documents/${docId}/retention/explain`).then((r) => setCandidates(r.data.candidates)).catch(() => setCandidates([])); }, [showCalc, docId]);
+  useEffect(() => { if (showCalc) api.get<{ candidates: RetentionCandidate[]; inicio?: typeof inicio }>(`/documents/${docId}/retention/explain`).then((r) => { setCandidates(r.data.candidates); setInicio(r.data.inicio ?? null); }).catch(() => setCandidates([])); }, [showCalc, docId]);
   const resumo = info === null || info === "erro" ? undefined
     : info.under_hold ? "bloqueio judicial"
     : !info.policy_name ? "sem prazo"
@@ -374,6 +376,13 @@ export function DocumentRetentionSection({ docId }: { docId: string }) {
                       </span>
                     </li>
                   ))}
+                  {inicio && (
+                    <li className="pt-1 border-t border-(--border-default)">
+                      Quando entrou, em {brDate(inicio.captured_at)}: {inicio.policy_name
+                        ? <>valia {inicio.policy_name}, com descarte {inicio.is_indeterminate ? "por prazo indeterminado" : `a partir de ${brDate(inicio.expires_at)}`}.</>
+                        : "nenhuma política valia para ele."}
+                    </li>
+                  )}
                 </ul>
               )}
             </>
