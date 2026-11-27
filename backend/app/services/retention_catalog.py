@@ -37,6 +37,15 @@ RETENTION_CATALOG: list[dict[str, Any]] = [
         "notes": "Conta a partir do fim do contrato: use um campo de data de término como gatilho.",
         "duration_months": 60, "start_rule": "data", "locked": False,
     },
+    {
+        # B3.7.6: currículo de quem não foi contratado não deve ficar guardado
+        # sem motivo (LGPD, art. 15 e 16). Prazo curto e sem trava: a empresa
+        # pode guardar mais com consentimento para vagas futuras.
+        "key": "candidatos_nao_contratados", "name": "Candidatos não contratados — 6 meses",
+        "legal_basis": "LGPD art. 15 e 16 (fim do tratamento)",
+        "notes": "Currículos e testes de quem não foi contratado. Se o candidato consentiu em ficar no banco de talentos, use um prazo maior (até 2 anos) e registre o consentimento.",
+        "duration_months": 6, "start_rule": "data", "locked": False,
+    },
 ]
 
 RETENTION_BY_KEY = {p["key"]: p for p in RETENTION_CATALOG}

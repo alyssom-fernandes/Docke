@@ -20,7 +20,7 @@ _PAGE_SIZE_MAX = 100
 
 @router.get("")
 async def search(
-    q: str = Query(..., min_length=1, max_length=500),
+    q: str = Query("", max_length=500),
     company_id: UUID = Query(...),
     folder_id: UUID | None = Query(None),
     sector: str | None = Query(None),
@@ -42,7 +42,10 @@ async def search(
     A query é normalizada e passada para websearch_to_tsquery('portuguese', ...).
     """
     normalized = SearchService.normalize_query(q)
-    if not normalized and not SearchService.digits_pattern(q):
+    # Visões prontas (B4.1.4, FA-A3-05): sem termo, a busca lista o que bate
+    # nos filtros (guarda, pasta, período, tipo). Sem termo e sem filtro, nada.
+    so_filtros = not q.strip() and any(x is not None for x in (guarda, folder_id, sector, file_type, date_from, date_to))
+    if not so_filtros and not normalized and not SearchService.digits_pattern(q):
         return {"results": [], "total": 0, "page": page, "page_size": page_size, "query": q, "facets": {"sector": [], "file_type": []}}
     if date_from and date_to and date_from > date_to:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="O início do período é depois do fim.")

@@ -107,6 +107,14 @@ async def test_lixeira_ancorados_e_links_dizem_onde_quando_e_quem(api, admin, em
     por_doc = (await api.get(API + "/shares/by-resource/accesses", params={"resource_type": "document", "resource_id": d}, headers=h)).json()
     assert [(x["share_id"], x["user_agent"]) for x in por_doc] == [(share_id, "Firefox")]
 
+    # Revogar é reversível (B3.2.2): o mesmo link volta a valer.
+    assert (await api.delete(API + f"/shares/{share_id}", headers=h)).status_code == 204
+    r = await api.post(API + f"/shares/{share_id}/reactivate", headers=h)
+    assert r.status_code == 200, r.text
+    assert await admin.fetchval("SELECT revoked_at FROM public.shares WHERE id = $1", uuid.UUID(share_id)) is None
+    acoes = [x["action"] for x in await admin.fetch("SELECT action FROM public.activity_log WHERE company_id = $1", uuid.UUID(co))]
+    assert "share_revoke" in acoes and "share_reactivate" in acoes
+
     assert (await api.delete(API + f"/documents/{d}", headers=h)).status_code in (200, 204)
     itens = (await api.get(API + "/trash", params={"company_id": co}, headers=h)).json()
     item = next(x for x in (itens["documents"] if isinstance(itens, dict) else itens) if x["id"] == d)
@@ -194,6 +202,12 @@ async def test_busca_filtra_por_guarda(api, admin, empresa):  # noqa: F811
         assert {x["id"] for x in r.json()["results"]} == {preso, livre}
         r = await api.get(API + "/search", params={"q": "guarda", "company_id": co, "guarda": "qualquer"}, headers=h)
         assert r.status_code == 422
+        # Visão pronta (B4.1.4): sem termo, só o filtro.
+        r = await api.get(API + "/search", params={"company_id": co, "guarda": "bloqueio"}, headers=h)
+        assert r.status_code == 200, r.text
+        assert [x["id"] for x in r.json()["results"]] == [preso]
+        r = await api.get(API + "/search", params={"company_id": co}, headers=h)
+        assert r.json()["total"] == 0
     finally:
         await admin.execute("UPDATE public.legal_holds SET released_at = now() WHERE id = $1", hold)
         await admin.execute("DELETE FROM public.legal_holds WHERE id = $1", hold)

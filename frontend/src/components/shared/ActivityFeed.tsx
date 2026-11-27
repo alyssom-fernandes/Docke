@@ -98,6 +98,7 @@ export const ACTION_LABELS: Record<string, string> = {
   upload_request: "pediu arquivos por link para a pasta",
   share_create: "criou um link público para",
   share_revoke: "desativou o link público de",
+  share_reactivate: "reativou o link público de",
   audit_verify: "verificou a integridade da",
   field_rules_copy: "copiou regras de metadados para a pasta",
   field_rule_exclude: "tirou de uma pasta o campo",
@@ -232,7 +233,7 @@ function timeLabel(iso: string, relative: boolean | "dia") {
  * fica mais apagado. Antes excluir e visualizar tinham a mesma cara.
  */
 const DESTRUTIVAS = new Set(["delete", "version_delete", "access_revoke", "member_remove", "account_deactivate", "share_revoke", "retention_queue_approved", "field_archive", "obligation_cancel", "retention_policy_archive", "obligation_archive"]);
-const SENSIVEIS = new Set(["access_grant", "access_role_change", "account_password_reset", "mfa_policy", "mfa_reset", "sessions_end", "share_create", "share_policy", "privacy_set", "lgpd_titular_search", "retention_hold_create", "retention_hold_release", "features", "audit_export", "upload_request", "account_activate"]);
+const SENSIVEIS = new Set(["share_reactivate", "access_grant", "access_role_change", "account_password_reset", "mfa_policy", "mfa_reset", "sessions_end", "share_create", "share_policy", "privacy_set", "lgpd_titular_search", "retention_hold_create", "retention_hold_release", "features", "audit_export", "upload_request", "account_activate"]);
 const LEITURAS = new Set(["view", "download", "integrity_check", "audit_verify"]);
 export function actionTone(action: string): string {
   if (DESTRUTIVAS.has(action)) return "font-medium text-(--text-danger)";

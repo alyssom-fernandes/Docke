@@ -4,6 +4,7 @@ import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
 import { useTaskCenter } from "@/lib/TaskContext";
+import { useUndo } from "@/lib/undo";
 import Button from "@/components/ui/Button";
 import Dialog from "@/components/ui/Dialog";
 import Dropdown from "@/components/ui/Dropdown";
@@ -77,6 +78,7 @@ export default function CopyStructureModal({
 }) {
   const { companies, current } = useCompany();
   const { success, error: showError } = useToast();
+  const { offer: offerUndo } = useUndo();
   const { addTask, updateTask, registerCancel } = useTaskCenter();
 
   // Só empresas onde o usuário é admin fazem sentido como destino — criar
@@ -208,7 +210,11 @@ export default function CopyStructureModal({
       if (data.access_copied > 0) partes.push(plural(data.access_copied, "acesso", "acessos"));
       if (data.retention_copied > 0) partes.push(plural(data.retention_copied, "regra de retenção", "regras de retenção"));
       const nome = data.root_renamed ? ` como “${data.name}” (já existia “${data.source_name}” no destino)` : "";
-      success(`Estrutura copiada${nome}: ${partes.join(", ")}.${includeDocuments && (preview?.documents ?? 1) > 0 ? " Os documentos seguem na central de tarefas." : ""}`);
+      const msg = `Estrutura copiada${nome}: ${partes.join(", ")}.${includeDocuments && (preview?.documents ?? 1) > 0 ? " Os documentos seguem na central de tarefas." : ""}`;
+      // Desfazer a cópia inteira (B1.5.2): a pasta criada vai para a lixeira.
+      // Com documentos ainda copiando em segundo plano, o aviso é só informativo.
+      if (!includeDocuments && data.id) offerUndo(msg, `copiar a estrutura de "${data.source_name ?? data.name}"`, async () => { await api.delete(`/folders/${data.id}`); });
+      else success(msg);
       onDone();
       onClose();
       if (includeDocuments && Array.isArray(data.pairs) && data.pairs.length) {

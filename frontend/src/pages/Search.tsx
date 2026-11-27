@@ -197,7 +197,8 @@ export default function Search() {
   }, [periodo, de, ate]);
 
   useEffect(() => {
-    if (!current || !q) { setData(null); setState("idle"); return; }
+    // Sem termo, só busca quando há filtro (visões prontas, B4.1.4).
+    if (!current || (!q && !(pasta || periodo || tipo || setor || guarda))) { setData(null); setState("idle"); return; }
     const id = ++reqId.current;
     setState("loading");
     api.get<SearchResponse>("/search", {
@@ -220,7 +221,7 @@ export default function Search() {
   const folderOpts = useMemo(() => [{ value: "", label: "Todas as pastas" }, ...[...folders].sort((a, b) => a.path.localeCompare(b.path)).map((f) => ({ value: f.id, label: f.name, depth: f.path.split(".").length - 1 }))], [folders]);
   const total = data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const filtros = !!(pasta || periodo || tipo || setor);
+  const filtros = !!(pasta || periodo || tipo || setor || guarda);
   const results = data?.results ?? [];
   // Também nos comentários e anotações (B2.6.7), só dos documentos que a pessoa enxerga.
   const [notas, setNotas] = useState<{ comment_id: string; document_id: string; document_name: string; folder_id: string; folder_path_label: string | null; body: string; page: number | null; anotacao: boolean; author: string }[]>([]);
@@ -251,6 +252,27 @@ export default function Search() {
           </button>
         )}
       </form>
+      {/* Sintaxe da busca à vista (B2.1.8): o que o campo entende, com exemplos que dá para clicar. */}
+      <details className="-mt-3 text-mac-caption text-(--text-secondary)">
+        <summary className="cursor-pointer w-fit font-medium text-(--text-accent)">Como buscar</summary>
+        <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">
+          {([
+            ["\"nota fiscal\"", "a frase exata, nessa ordem"],
+            ["contrato -aditivo", "tem “contrato” e não tem “aditivo”"],
+            ["holerite OR recibo", "um ou outro"],
+            ["12.345.678/0001-90", "CNPJ ou CPF, com ou sem pontuação"],
+            ["35260512345678000190550010000012341000012345", "chave de acesso da NF-e"],
+            ["contrarto", "erro de digitação: mostra os parecidos se nada bater"],
+          ] as [string, string][]).map(([ex, explica]) => (
+            <li key={ex} className="flex items-baseline gap-2 min-w-0">
+              <button type="button" onClick={() => { setText(ex); setP({ q: ex }); }}
+                className="shrink-0 max-w-[60%] truncate rounded-(--radius-badge) bg-(--bg-hover) px-1.5 py-0.5 font-mono text-[12px] text-(--text-primary) hover:bg-(--control-fill)">{ex}</button>
+              <span className="min-w-0">{explica}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2">Acentos e maiúsculas não importam. A busca olha o nome, o texto lido do documento e os metadados.</p>
+      </details>
 
       <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] xl:grid-cols-[240px_1fr_320px] gap-6">
         {/* Filtros (A6-03) */}
@@ -325,7 +347,30 @@ export default function Search() {
               )}
             </div>
           )}
-          {filtros && <Button variant="ghost" size="sm" onClick={() => setP({ pasta: null, sub: null, periodo: null, de: null, ate: null, tipo: null, setor: null })}>Limpar filtros</Button>}
+          {filtros && <Button variant="ghost" size="sm" onClick={() => setP({ pasta: null, sub: null, periodo: null, de: null, ate: null, tipo: null, setor: null, guarda: null })}>Limpar filtros</Button>}
+          {/* Visões prontas por pergunta (B4.1.4, FA-A3-05): um clique, sem digitar nada. */}
+          <div>
+            <p className="text-mac-caption font-medium text-(--text-secondary) mb-1">Visões prontas</p>
+            <ul className="space-y-0.5">
+              {([
+                ["Enviados nos últimos 7 dias", { periodo: "7", ordem: "recentes" }],
+                ["Sob bloqueio judicial", { guarda: "bloqueio", ordem: "recentes" }],
+                ["Sem prazo de guarda", { guarda: "sem_prazo", ordem: "antigos" }],
+                ["Prazo de guarda vencido", { guarda: "vencido", ordem: "antigos" }],
+              ] as [string, Record<string, string>][]).map(([nome, f]) => {
+                const ativa = !q && Object.entries(f).every(([k, v]) => params.get(k) === v);
+                return (
+                  <li key={nome}>
+                    <button type="button" aria-current={ativa ? "true" : undefined}
+                      onClick={() => { setText(""); setParams(new URLSearchParams(f), { replace: false }); }}
+                      className={`w-full flex items-center gap-1.5 h-8 pointer-coarse:h-10 px-2 rounded-(--radius-control) text-left text-mac-caption hover:bg-(--bg-hover) ${ativa ? "text-(--text-accent) font-medium" : "text-(--text-primary)"}`}>
+                      <SearchIcon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" /><span className="truncate">{nome}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
           {salvas.length > 0 && (
             <div>
               <p className="text-mac-caption font-medium text-(--text-secondary) mb-1">Buscas salvas</p>
@@ -350,10 +395,10 @@ export default function Search() {
 
         <section aria-label="Resultados" className="min-w-0 space-y-3">
           <p className="sr-only" role="status" aria-live="polite">
-            {state === "loading" ? "Buscando" : state === "error" ? "A busca falhou" : q && data ? `${total} ${total === 1 ? "resultado" : "resultados"}` : ""}
+            {state === "loading" ? "Buscando" : state === "error" ? "A busca falhou" : data ? `${total} ${total === 1 ? "resultado" : "resultados"}` : ""}
           </p>
 
-          {!q ? (
+          {!q && !filtros ? (
             <div className="glass-panel glass-blur-card rounded-(--radius-panel) p-5 space-y-3">
               <p className="text-mac-body text-(--text-primary)">Busque pelo nome do arquivo, por qualquer trecho do texto lido nos documentos ou por um valor de metadado.</p>
               <p className="text-mac-caption text-(--text-secondary)">Dica: CNPJ, CPF e números funcionam com ou sem pontuação. Aspas buscam a frase exata; um sinal de menos tira uma palavra (ex.: nota -cancelada).</p>

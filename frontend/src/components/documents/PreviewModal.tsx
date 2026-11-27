@@ -9,6 +9,7 @@ import type { PdfViewerHandle } from "./PdfViewer";
 const PageOrganizer = lazy(() => import("@/components/documents/PageOrganizer"));
 import CommentsPanel, { type Comentario } from "./CommentsPanel";
 import PreviewInfoPanel from "./PreviewInfoPanel";
+import Watermark from "./Watermark";
 import { useFeature } from "@/lib/CompanyContext";
 
 // pdf.js (~400 KB) só é baixado quando alguém abre um PDF.
@@ -28,7 +29,7 @@ function fold(s: string): string {
 }
 
 /** Ocorrências em texto, comparando sem acento; índices no texto original (NFD preserva o comprimento base). */
-function findMatches(text: string, query: string): { index: number; length: number; snippet: string }[] {
+function findMatches(text: string, query: string, wholeWord = false): { index: number; length: number; snippet: string }[] {
   const q = fold(query.trim());
   if (q.length < 2 || !text) return [];
   // Normaliza caractere a caractere para manter os índices do texto original.
@@ -44,6 +45,11 @@ function findMatches(text: string, query: string): { index: number; length: numb
   while (out.length < 500) {
     const at = folded.indexOf(q, from);
     if (at < 0) break;
+    // Palavra inteira (B2.6.5): letra ou número colado antes ou depois descarta.
+    if (wholeWord && ((at > 0 && /[\p{L}\p{N}]/u.test(folded[at - 1])) || /[\p{L}\p{N}]/u.test(folded[at + q.length] ?? ""))) {
+      from = at + 1;
+      continue;
+    }
     const start = map[at];
     const end = (map[at + q.length - 1] ?? start) + 1;
     const s0 = Math.max(0, start - 40);
@@ -116,15 +122,7 @@ function getWatermarkLabel(): string {
 }
 
 function PreviewWatermark({ label }: { label: string }) {
-  return (
-    <div className="absolute inset-0 z-10 overflow-hidden pointer-events-none select-none" aria-hidden="true">
-      <div className="absolute flex flex-wrap content-start gap-14 origin-center" style={{ inset: "-30%", transform: "rotate(-30deg)" }}>
-        {Array.from({ length: 48 }).map((_, i) => (
-          <span key={i} className="text-mac-caption font-medium whitespace-nowrap text-(--text-primary) opacity-[0.05]">{label}</span>
-        ))}
-      </div>
-    </div>
-  );
+  return <Watermark label={label} />;
 }
 
 /** Imprime só um nó (o DANFE): copia para a raiz e esconde o resto na impressão. */
@@ -328,6 +326,7 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
   const [ocrText, setOcrText] = useState<string | null>(null);
   const [pdfPages, setPdfPages] = useState<string[] | null>(null);
   const [searchOpen, setSearchOpen] = useState(!!initialQuery);
+  const [inteira, setInteira] = useState(false);
   const [query, setQuery] = useState(initialQuery ?? "");
   const [active, setActive] = useState(0);
   const [imgZoom, setImgZoom] = useState(1);
@@ -405,12 +404,12 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
   const matches = useMemo(() => {
     if (type === "pdf" && pdfPages) {
       const out: { page: number; snippet: string }[] = [];
-      pdfPages.forEach((t, i) => findMatches(t, query).forEach((m) => out.push({ page: i + 1, snippet: m.snippet })));
+      pdfPages.forEach((t, i) => findMatches(t, query, inteira).forEach((m) => out.push({ page: i + 1, snippet: m.snippet })));
       return out;
     }
     const base = type === "text" ? textContent : ocrText;
-    return findMatches(base ?? "", query).map((m) => ({ ...m, page: 0 }));
-  }, [type, pdfPages, textContent, ocrText, query]);
+    return findMatches(base ?? "", query, inteira).map((m) => ({ ...m, page: 0 }));
+  }, [type, pdfPages, textContent, ocrText, query, inteira]);
 
   useEffect(() => { setActive(0); }, [query]);
   useEffect(() => {
@@ -546,6 +545,11 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
             disabled={noText}
             className="flex-1 h-8 pointer-coarse:h-11 px-3 text-mac-body bg-(--bg-card) border border-(--border-control) rounded-full text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring)"
           />
+          <button type="button" aria-pressed={inteira} onClick={() => { setInteira((v) => !v); setActive(0); }}
+            title="Só a palavra inteira (“nota” não acha “notas”)"
+            className={`shrink-0 h-7 pointer-coarse:h-11 px-2.5 rounded-full text-mac-caption font-medium border transition-colors duration-fast ${inteira ? "bg-(--accent) text-white border-(--accent)" : "border-(--border-control) text-(--text-secondary) hover:bg-(--bg-hover)"}`}>
+            Palavra inteira
+          </button>
           <span className="text-mac-caption text-(--text-secondary) tabular-nums shrink-0" aria-live="polite">
             {query.trim().length >= 2 ? (matches.length ? `${active + 1} de ${matches.length}` : "nada encontrado") : ""}
           </span>
@@ -590,6 +594,7 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
             <PdfViewer
               ref={pdfRef}
               url={url}
+              rememberKey={doc.id}
               query={searchOpen ? query : ""}
               focusPage={matches.length && searchOpen ? (matches[active] as { page: number }).page : null}
               onLoaded={() => { if (searchOpen) ensurePdfText(); }}

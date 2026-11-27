@@ -7,6 +7,7 @@ import Input from "@/components/ui/Input";
 import Wallpaper from "@/components/layout/Wallpaper";
 
 const PdfViewer = lazy(() => import("@/components/documents/PdfViewer"));
+import Watermark from "@/components/documents/Watermark";
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? "http://localhost:8000") + "/api/v1";
 
@@ -66,6 +67,8 @@ export default function PublicShare() {
   const [visitante, setVisitante] = useState("");
   const [aceite, setAceite] = useState(false);
   const precisaTermo = !!info?.terms_text;
+  // Marca d'água da prévia pública (B3.2.4): quem disse ser, quando e de onde veio.
+  const marca = [visitante.trim() || "Visitante", new Date().toLocaleDateString("pt-BR"), info?.company_name ?? ""].filter(Boolean).join(" · ");
   const termoOk = !precisaTermo || (aceite && visitante.trim().length >= 2);
 
   useEffect(() => {
@@ -239,12 +242,16 @@ export default function PublicShare() {
               <h1 className="text-mac-body font-medium text-(--text-primary) wrap-break-word">{content.name}</h1>
               {info?.size_bytes != null && <p className="text-mac-caption text-(--text-secondary) mb-4">{fmtSize(info.size_bytes)}</p>}
               {content.mime_type.startsWith("image/") ? (
-                <img src={content.preview_url} alt={content.name} className="max-w-full max-h-[400px] mx-auto rounded-(--radius-control) mb-4" />
+                <div className="relative w-fit mx-auto mb-4">
+                  <img src={content.preview_url} alt={content.name} className="max-w-full max-h-[400px] rounded-(--radius-control)" />
+                  <Watermark label={marca} strength="media" />
+                </div>
               ) : content.mime_type === "application/pdf" ? (
-                <div className="h-[min(70vh,640px)] mb-4 rounded-(--radius-control) border border-(--border-default) overflow-hidden text-left">
+                <div className="relative h-[min(70vh,640px)] mb-4 rounded-(--radius-control) border border-(--border-default) overflow-hidden text-left">
                   <Suspense fallback={<div className="h-full flex items-center justify-center text-mac-body text-(--text-secondary)">Abrindo o PDF…</div>}>
                     <PdfViewer url={content.preview_url} />
                   </Suspense>
+                  <Watermark label={marca} strength="media" />
                 </div>
               ) : null}
               {canDownload ? (
