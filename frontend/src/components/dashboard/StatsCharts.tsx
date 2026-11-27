@@ -36,6 +36,9 @@ const plural = (n: number, um: string, varios: string) => `${n.toLocaleString("p
  */
 export function UploadsLineChart({ data }: { data: DailyUpload[] }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const navigate = useNavigate();
+  // Cada coluna abre os documentos enviados naquele dia (B4.1.2): nenhum número é beco sem saída.
+  const abrirDia = (iso: string) => navigate(`/search?periodo=custom&de=${iso}&ate=${iso}&ordem=recentes`);
   const boxRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(560);
 
@@ -84,13 +87,14 @@ export function UploadsLineChart({ data }: { data: DailyUpload[] }) {
         className="relative outline-hidden rounded-(--radius-control) focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
         tabIndex={0}
         role="group"
-        aria-label={`Envios por dia. Use as setas para ver cada dia. Pico de ${plural(peak.count, "documento", "documentos")} em ${fmtDayLabel(peak.date)}.`}
+        aria-label={`Envios por dia. Use as setas para ver cada dia e Enter para abrir os documentos dele. Pico de ${plural(peak.count, "documento", "documentos")} em ${fmtDayLabel(peak.date)}.`}
         onKeyDown={(e) => {
           if (e.key === "ArrowRight") { e.preventDefault(); setHoverIdx((i) => Math.min(points.length - 1, (i ?? -1) + 1)); }
           if (e.key === "ArrowLeft") { e.preventDefault(); setHoverIdx((i) => Math.max(0, (i ?? points.length) - 1)); }
           if (e.key === "Home") { e.preventDefault(); setHoverIdx(0); }
           if (e.key === "End") { e.preventDefault(); setHoverIdx(points.length - 1); }
           if (e.key === "Escape") setHoverIdx(null);
+          if (e.key === "Enter" && hoverIdx !== null && points[hoverIdx].count > 0) { e.preventDefault(); abrirDia(points[hoverIdx].date); }
         }}
         onBlur={() => setHoverIdx(null)}
       >
@@ -102,6 +106,12 @@ export function UploadsLineChart({ data }: { data: DailyUpload[] }) {
           onPointerMove={(e) => pick(e.clientX, e.currentTarget.getBoundingClientRect())}
           onPointerDown={(e) => pick(e.clientX, e.currentTarget.getBoundingClientRect())}
           onPointerLeave={(e) => { if (e.pointerType === "mouse") setHoverIdx(null); }}
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const i = Math.min(points.length - 1, Math.max(0, Math.floor((((e.clientX - rect.left) / rect.width) * W) / slot)));
+            if (points[i].count > 0) abrirDia(points[i].date);
+          }}
+          style={{ cursor: "pointer" }}
           aria-hidden="true"
         >
           <line x1={0} x2={W} y1={padTop} y2={padTop} stroke="var(--border-default)" strokeDasharray="2,3" />
@@ -140,7 +150,7 @@ export function UploadsLineChart({ data }: { data: DailyUpload[] }) {
             }}
             role="status"
           >
-            {hover.today ? "Hoje" : fmtDayLabel(hover.date)} · {plural(hover.count, "documento", "documentos")}
+            {hover.today ? "Hoje" : fmtDayLabel(hover.date)} · {plural(hover.count, "documento", "documentos")}{hover.count > 0 ? " · clique para ver" : ""}
           </div>
         )}
       </div>

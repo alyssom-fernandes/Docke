@@ -32,6 +32,9 @@ async def search(
     sort: str = Query("relevancia", pattern="^(relevancia|recentes|antigos|nome)$"),
     subfolders: bool = Query(True, description="Com folder_id, inclui as subpastas."),
     guarda: str | None = Query(None, pattern="^(bloqueio|sem_prazo|vencido)$", description="Retenção: sob bloqueio judicial, sem prazo de guarda ou com o prazo vencido."),
+    ocr: str | None = Query(None, pattern="^(lido|fila|falhou)$", description="Situação da leitura do texto (FA-A6-01)."),
+    campo: UUID | None = Query(None, description="Campo de metadado (FA-A6-01); com valor, filtra pelo conteúdo."),
+    valor: str | None = Query(None, max_length=200),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> dict[str, Any]:
     """
@@ -44,7 +47,7 @@ async def search(
     normalized = SearchService.normalize_query(q)
     # Visões prontas (B4.1.4, FA-A3-05): sem termo, a busca lista o que bate
     # nos filtros (guarda, pasta, período, tipo). Sem termo e sem filtro, nada.
-    so_filtros = not q.strip() and any(x is not None for x in (guarda, folder_id, sector, file_type, date_from, date_to))
+    so_filtros = not q.strip() and any(x is not None for x in (guarda, folder_id, sector, file_type, date_from, date_to, ocr, campo))
     if not so_filtros and not normalized and not SearchService.digits_pattern(q):
         return {"results": [], "total": 0, "page": page, "page_size": page_size, "query": q, "facets": {"sector": [], "file_type": []}}
     if date_from and date_to and date_from > date_to:
@@ -64,7 +67,7 @@ async def search(
         sector=sector, file_type=file_type, page=page, page_size=page_size,
         date_from=date_from, date_to=date_to, sort=sort,
         folder_path=folder_path if subfolders else None, exact_folder_id=None if subfolders else folder_id,
-        guarda=guarda,
+        guarda=guarda, ocr=ocr, campo=campo, valor=(valor or "").strip() or None,
     )
     return result
 

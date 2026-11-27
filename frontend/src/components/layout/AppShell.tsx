@@ -5,6 +5,7 @@ import { PanelLeft, Search } from "lucide-react";
 import Footer from "./Footer";
 import CommandPalette from "@/components/shared/CommandPalette";
 import KeyboardShortcuts from "@/components/shared/KeyboardShortcuts";
+import FirstTimeTip from "@/components/shared/FirstTimeTip";
 import ErrorBoundary from "@/components/shared/ErrorBoundary";
 import TaskCenter from "@/components/shared/TaskCenter";
 import { useCommandPalette } from "@/hooks/useCommandPalette";
@@ -159,6 +160,7 @@ function Shell({ children }: AppShellProps) {
       </div>
       <CommandPalette />
       <KeyboardShortcuts />
+      <FirstTimeTip />
     </div>
   );
 }
