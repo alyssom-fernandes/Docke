@@ -1,4 +1,5 @@
 import { ReactNode, useCallback, useRef, useEffect, useState } from "react";
+import { useUndoShortcut } from "@/lib/undo";
 import { useNavigate, useLocation } from "react-router-dom";
 import { PanelLeft, Search } from "lucide-react";
 import Footer from "./Footer";
@@ -82,6 +83,9 @@ function Shell({ children }: AppShellProps) {
   useEffect(() => { prefetchCommonRoutes(); }, []);
   // Segmentados mais largos que a tela rolam de lado, com a borda esmaecida.
   useEffect(() => watchSegmented(), []);
+
+  // Ctrl/⌘ + Z desfaz a última ação em qualquer tela (FA-A2-03).
+  useUndoShortcut();
 
   // Ctrl/⌘ + vírgula abre os Ajustes, como em todo app do Mac.
   useEffect(() => {

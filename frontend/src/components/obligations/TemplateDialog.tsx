@@ -13,6 +13,7 @@ const CONDITIONAL_FIELD_LABEL: Record<string, string> = {
   faixa_funcionarios: "Quantidade de funcionários",
   uf: "UF",
   tipo_juridico: "Tipo jurídico",
+  atividade: "Atividade (CNAE)",
 };
 const UFS = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
 const CONDITIONAL_VALUE_OPTIONS: Record<string, { value: string; label: string }[]> = {
@@ -33,6 +34,19 @@ const CONDITIONAL_VALUE_OPTIONS: Record<string, { value: string; label: string }
     { value: "eireli", label: "EIRELI" }, { value: "outro", label: "Outro" },
   ],
   uf: UFS.map((u) => ({ value: u, label: u })),
+  // Começo do CNAE principal do perfil fiscal: o tipo de unidade do grupo.
+  atividade: [
+    { value: "4731", label: "Posto de combustível (4731)" },
+    { value: "4732", label: "Lubrificantes (4732)" },
+    { value: "5611", label: "Restaurante, bar, lanchonete (5611)" },
+    { value: "5620", label: "Fornecimento de refeições (5620)" },
+    { value: "5510", label: "Hotel (5510)" },
+    { value: "5590", label: "Outro alojamento (5590)" },
+    { value: "4711", label: "Mercado, loja de conveniência (4711/4712)" },
+    { value: "4712", label: "Conveniência (4712)" },
+    { value: "4520", label: "Oficina, troca de óleo, lava-rápido (4520)" },
+    { value: "6810", label: "Imóveis próprios (6810)" },
+  ],
 };
 
 const CRIT_HINT: Record<string, string> = {
@@ -51,7 +65,7 @@ const FREQ_HINT: Record<string, string> = {
 
 function parseRules(t?: Template) {
   const r = typeof t?.rules_json === "string" ? JSON.parse(t.rules_json || "{}") : t?.rules_json ?? {};
-  return r?.not_applicable_when as { field: string; in: string[] } | undefined;
+  return r?.not_applicable_when as { field: string; in: string[]; only?: boolean } | undefined;
 }
 
 /** Cadastro e edição com os primitivos do projeto (A7-04, A7-39), vencimento e responsável padrão (A7-38). */
@@ -77,6 +91,8 @@ export default function TemplateDialog({ companyId, template, members, onClose, 
   const [condOn, setCondOn] = useState(!!cond);
   const [condField, setCondField] = useState(cond?.field ?? "regime_tributario");
   const [condValues, setCondValues] = useState<string[]>(cond?.in ?? []);
+  const [condOnly, setCondOnly] = useState<boolean>(cond?.only ?? false);
+  const [weight, setWeight] = useState(String(template?.weight ?? 1));
   const [saving, setSaving] = useState(false);
   const [touched, setTouched] = useState(false);
 
@@ -90,6 +106,8 @@ export default function TemplateDialog({ companyId, template, members, onClose, 
   const val = Number(validity);
   if (validity && (!Number.isInteger(val) || val < 1 || val > 240)) errors.validity = "De 1 a 240 meses.";
   if (condOn && condValues.length === 0) errors.cond = "Escolha ao menos um valor.";
+  const w = Number(weight);
+  if (!Number.isInteger(w) || w < 1 || w > 10) errors.weight = "De 1 a 10.";
   const invalid = Object.keys(errors).length > 0;
 
   async function submit() {
@@ -101,7 +119,8 @@ export default function TemplateDialog({ companyId, template, members, onClose, 
       frequency, criticality, sla_days: sla, due_day: dueDay ? dd : null,
       due_month_offset: frequency === "mensal" ? Number(offset) : 1, due_month: frequency === "anual" && dueMonth ? Number(dueMonth) : null,
       validity_months: validity ? val : null, default_owner_id: owner || null, requires_review: review, legal_basis: legal.trim() || null,
-      rules_json: condOn ? { not_applicable_when: { field: condField, in: condValues } } : {},
+      weight: w,
+      rules_json: condOn ? { not_applicable_when: { field: condField, in: condValues, ...(condOnly ? { only: true } : {}) } } : {},
     };
     try {
       const r = template
@@ -191,6 +210,10 @@ export default function TemplateDialog({ companyId, template, members, onClose, 
           <Dropdown ariaLabelledby={`${uid}-own`} value={owner} onChange={setOwner} placeholder="Ninguém (avisa admins e operadores)"
             options={[{ value: "", label: "Ninguém (avisa admins e operadores)" }, ...people.map((m) => ({ value: m.user_id, label: m.full_name }))]} />
         </div>
+        <div>
+          <Input label="Peso na conformidade" inputMode="numeric" value={weight} onChange={(e) => setWeight(e.target.value.replace(/\D/g, "").slice(0, 2))} error={err("weight")} />
+          <p className="mt-1 text-mac-caption text-(--text-secondary)">De 1 a 10. Quanto conta no “em dia”: um imposto pode pesar 5 e um contrato, 1.</p>
+        </div>
         <Input label="Departamento (opcional)" value={department} onChange={(e) => setDepartment(e.target.value)} maxLength={60} placeholder="Ex.: Fiscal, RH" />
         <div className="sm:col-span-2">
           <Input label="Base legal ou quem exige (opcional)" value={legal} onChange={(e) => setLegal(e.target.value)} maxLength={200} placeholder="Ex.: RDC Anvisa 216/2004" />
@@ -208,14 +231,18 @@ export default function TemplateDialog({ companyId, template, members, onClose, 
           <label className="flex items-start gap-3 cursor-pointer text-mac-body text-(--text-primary)">
             <Checkbox checked={condOn} onChange={(e) => setCondOn(e.target.checked)} className="mt-0.5" />
             <span>
-              Não se aplica a algumas empresas
-              <span className="block text-mac-caption text-(--text-secondary)">Usa o perfil fiscal cadastrado em Ajustes → Organização.</span>
+              Vale só para algumas empresas
+              <span className="block text-mac-caption text-(--text-secondary)">Usa o perfil fiscal cadastrado em Ajustes → Organização (regime, UF, atividade pelo CNAE).</span>
             </span>
           </label>
           {condOn && (
             <>
+              <div className="mac-segmented" role="radiogroup" aria-label="Como a regra vale">
+                <button type="button" role="radio" className="mac-segment" aria-checked={!condOnly} onClick={() => setCondOnly(false)}>Não vale quando</button>
+                <button type="button" role="radio" className="mac-segment" aria-checked={condOnly} onClick={() => setCondOnly(true)}>Vale só quando</button>
+              </div>
               <div>
-                <label id={`${uid}-cf`} className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Quando</label>
+                <label id={`${uid}-cf`} className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Campo do perfil</label>
                 <Dropdown ariaLabelledby={`${uid}-cf`} value={condField} onChange={(v) => { setCondField(v); setCondValues([]); }}
                   options={Object.entries(CONDITIONAL_FIELD_LABEL).map(([value, label]) => ({ value, label }))} />
               </div>
@@ -232,6 +259,13 @@ export default function TemplateDialog({ companyId, template, members, onClose, 
                 })}
               </div>
               {err("cond") && <p className="text-mac-caption text-(--text-danger)">{errors.cond}</p>}
+              {condValues.length > 0 && (
+                <p className="text-mac-caption text-(--text-secondary)">
+                  {condOnly ? "Só aparece para empresas com " : "Some das empresas com "}
+                  {CONDITIONAL_FIELD_LABEL[condField].toLowerCase()} {condValues.map((v) => (CONDITIONAL_VALUE_OPTIONS[condField] ?? []).find((o) => o.value === v)?.label ?? v).join(" ou ")}.
+                  {" "}Empresa sem esse dado no perfil continua com a obrigação.
+                </p>
+              )}
             </>
           )}
         </div>

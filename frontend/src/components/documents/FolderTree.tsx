@@ -2,6 +2,7 @@ import { KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from
 import { ChevronRight, FolderOpen, Folder, FolderPlus, RefreshCw } from "lucide-react";
 import api from "@/lib/api";
 import { useToast } from "@/lib/toast";
+import { useUndo } from "@/lib/undo";
 
 export interface FolderNode {
   id: string;
@@ -54,6 +55,12 @@ export default function FolderTree({
   companyId, activeFolderId, onSelect, version = 0, allowCreate = false, onMove, onDropDocuments,
 }: FolderTreeProps) {
   const { success, error: showError } = useToast();
+  const { offer: offerUndo } = useUndo();
+  useEffect(() => {
+    function onUndone() { load(); }
+    window.addEventListener("docke:desfeito", onUndone);
+    return () => window.removeEventListener("docke:desfeito", onUndone);
+  });
   const [flat, setFlat] = useState<FolderNode[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -187,7 +194,12 @@ export default function FolderTree({
     try {
       await api.patch(`/folders/${srcId}/move`, { parent_id: targetId });
       onMove?.(srcId, targetId, src.parent_id, src.name);
-      if (!onMove) success("Pasta movida.");
+      if (!onMove) {
+        const oldParent = src.parent_id;
+        offerUndo(`Pasta "${src.name}" movida.`, `mover a pasta "${src.name}"`, async () => {
+          await api.patch(`/folders/${srcId}/move`, { parent_id: oldParent });
+        });
+      }
       load();
     } catch (err: any) {
       showError(err?.response?.data?.detail ?? "Não foi possível mover a pasta.");

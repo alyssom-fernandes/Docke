@@ -19,6 +19,7 @@ import {
 import api from "@/lib/api";
 import { useAuthContext } from "@/lib/AuthContext";
 import { useToast } from "@/lib/toast";
+import { pushUndo, useUndo } from "@/lib/undo";
 import Dropdown from "@/components/ui/Dropdown";
 import VersionsPanel from "@/components/documents/VersionsPanel";
 import ActivityFeed from "@/components/shared/ActivityFeed";
@@ -94,6 +95,9 @@ export function MetadataSection({ doc, companyId, canEdit, onSaved }: { doc: Doc
   const [fieldStatus, setFieldStatus] = useState<Record<string, FieldSaveStatus>>({});
   const [fieldError, setFieldError] = useState<Record<string, string>>({});
   const debounceRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const savedValues = useRef<Record<string, string>>({});
+  const [undoFor, setUndoFor] = useState<Record<string, string>>({});
+  const { run: runUndo } = useUndo();
   const uid = useId();
 
   const load = useCallback(() => {
@@ -108,6 +112,8 @@ export function MetadataSection({ doc, companyId, canEdit, onSaved }: { doc: Doc
       const vmap: Record<string, string> = {};
       const saved = new Set<string>();
       for (const row of Array.isArray(vRes.data) ? vRes.data : []) { vmap[row.custom_field_id] = row.value_text; saved.add(row.custom_field_id); }
+      savedValues.current = { ...vmap };
+      setUndoFor({});
       for (const f of fetched) if (!saved.has(f.custom_field_id) && f.default_value) vmap[f.custom_field_id] = f.default_value;
       setFields(fetched); setValues(vmap); setSavedFieldIds(saved); setFieldStatus({}); setFieldError({});
     }).catch(() => { setFailed(true); setFields([]); });
@@ -122,8 +128,23 @@ export function MetadataSection({ doc, companyId, canEdit, onSaved }: { doc: Doc
     setFieldError((s) => { const n = { ...s }; delete n[f.custom_field_id]; return n; });
     if (!trimmed) { setFieldStatus((s) => ({ ...s, [f.custom_field_id]: "idle" })); return; }
     setFieldStatus((s) => ({ ...s, [f.custom_field_id]: "saving" }));
+    const before = savedFieldIds.has(f.custom_field_id) ? savedValues.current[f.custom_field_id] : undefined;
     try {
       await api.put(`/documents/${doc.id}/field-values`, [{ custom_field_id: f.custom_field_id, value: trimmed }], { params: { company_id: companyId } });
+      // Desfazer (Ctrl+Z ou "Desfazer" ao lado do campo) volta ao valor que
+      // estava salvo antes; vários salvamentos seguidos no mesmo campo viram
+      // uma entrada só. Campo que estava vazio não tem para onde voltar.
+      if (before !== undefined && before !== trimmed) {
+        const entry = pushUndo(`editar "${f.label}"`, async () => {
+          await api.put(`/documents/${doc.id}/field-values`, [{ custom_field_id: f.custom_field_id, value: before }], { params: { company_id: companyId } });
+          savedValues.current[f.custom_field_id] = before;
+          setValues((s) => ({ ...s, [f.custom_field_id]: before }));
+          onSaved(f.custom_field_id, before);
+          setUndoFor((u) => { const n = { ...u }; delete n[f.custom_field_id]; return n; });
+        }, `meta:${doc.id}:${f.custom_field_id}`);
+        setUndoFor((u) => ({ ...u, [f.custom_field_id]: entry.id }));
+      }
+      savedValues.current[f.custom_field_id] = trimmed;
       setFieldStatus((s) => ({ ...s, [f.custom_field_id]: "saved" }));
       setSavedFieldIds((s) => new Set(s).add(f.custom_field_id));
       onSaved(f.custom_field_id, trimmed);
@@ -160,7 +181,12 @@ export function MetadataSection({ doc, companyId, canEdit, onSaved }: { doc: Doc
                 {brokeInheritance && <span className="text-(--text-warning) inline-flex" title={`Diferente do padrão da pasta ("${f.default_value}")`}><GitBranch className="w-3 h-3" aria-hidden /><span className="sr-only">diferente do padrão da pasta</span></span>}
                 {fromDefault && <span className="text-(--text-secondary) font-normal">· padrão da pasta</span>}
               </label>
-              <span aria-live="polite"><FieldStatusIndicator status={status} message={status === "error" ? "não salvou" : undefined} /></span>
+              <span className="flex items-center gap-2">
+                {undoFor[f.custom_field_id] && status !== "saving" && (
+                  <button type="button" onClick={() => runUndo(undoFor[f.custom_field_id])} className="text-mac-caption font-medium text-(--text-accent) hover:underline underline-offset-2">Desfazer</button>
+                )}
+                <span aria-live="polite"><FieldStatusIndicator status={status} message={status === "error" ? "não salvou" : undefined} /></span>
+              </span>
             </div>
             {isChoice(f.type) ? (
               <Dropdown
@@ -432,6 +458,7 @@ export function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit,
   onFieldSaved: (docId: string, fieldId: string, value: string) => void;
 }) {
   const { success, error: showError } = useToast();
+  const { offer: offerUndo } = useUndo();
   const recursos = useFeatures();
   // Resumo da atividade no cabeçalho (A5-26): quantos eventos e o último.
   const [act, setAct] = useState<{ total: number; last: string | null } | null>(null);
@@ -456,11 +483,18 @@ export function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit,
     const goingTo = !favorited;
     setFavorited(goingTo);
     try {
-      if (goingTo) { await api.post("/favorites", { document_id: doc.id }); success(`"${doc.name}" ancorado.`); }
-      else {
+      const unanchor = async () => {
         const list = await api.get<{ id: string; document_id: string | null }[]>("/favorites");
         const id = list.data.find((f) => f.document_id === doc.id)?.id;
         if (id) await api.delete(`/favorites/${id}`);
+      };
+      const anchor = async () => { await api.post("/favorites", { document_id: doc.id }); };
+      if (goingTo) {
+        await anchor();
+        offerUndo(`"${doc.name}" ancorado.`, `ancorar "${doc.name}"`, async () => { await unanchor(); setFavorited(false); onFavorite(); });
+      } else {
+        await unanchor();
+        offerUndo(`"${doc.name}" desancorado.`, `desancorar "${doc.name}"`, async () => { await anchor(); setFavorited(true); onFavorite(); });
       }
       onFavorite();
     } catch (e: any) {

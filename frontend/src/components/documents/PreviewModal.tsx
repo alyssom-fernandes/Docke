@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import XmlCode from "./XmlCode";
-import { X, Download, AlertCircle, Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Printer, RotateCw, ZoomIn, ZoomOut, Layers, MessageSquare } from "lucide-react";
+import { X, Download, AlertCircle, Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Printer, RotateCw, ZoomIn, ZoomOut, Layers, MessageSquare, Info } from "lucide-react";
 import { getFileStyle } from "@/lib/fileType";
 import api from "@/lib/api";
 import Dialog, { DialogCloseButton } from "@/components/ui/Dialog";
@@ -8,6 +8,7 @@ import Code128 from "./Code128";
 import type { PdfViewerHandle } from "./PdfViewer";
 const PageOrganizer = lazy(() => import("@/components/documents/PageOrganizer"));
 import CommentsPanel, { type Comentario } from "./CommentsPanel";
+import PreviewInfoPanel from "./PreviewInfoPanel";
 import { useFeature } from "@/lib/CompanyContext";
 
 // pdf.js (~400 KB) só é baixado quando alguém abre um PDF.
@@ -300,7 +301,12 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
   const [organizing, setOrganizing] = useState(false);
   // Comentários e anotações (B2.4.6, B2.4.9), quando o recurso está ligado.
   const comentariosLigados = useFeature("comentarios");
-  const [showComments, setShowComments] = useState(false);
+  const [showComments, setShowCommentsRaw] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
+  // Um painel lateral por vez: abrir comentários fecha informações e vice-versa.
+  const setShowComments = (v: boolean | ((p: boolean) => boolean)) => {
+    setShowCommentsRaw((p) => { const n = typeof v === "function" ? v(p) : v; if (n) setShowInfo(false); return n; });
+  };
   const [comentarios, setComentarios] = useState<Comentario[]>([]);
   const [ponto, setPonto] = useState<{ page: number; x: number; y: number } | null>(null);
   const [annotating, setAnnotating] = useState(false);
@@ -438,6 +444,7 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
       if (typing || e.altKey || e.ctrlKey || e.metaKey) return;
       if (e.key === "ArrowRight" && index < list.length - 1) { e.preventDefault(); setIndex(index + 1); }
       else if (e.key === "ArrowLeft" && index > 0) { e.preventDefault(); setIndex(index - 1); }
+      else if (e.key.toLowerCase() === "i" && !e.shiftKey) { e.preventDefault(); setShowInfo((v) => !v); setShowCommentsRaw(false); }
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -491,6 +498,10 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
           <Search className="w-4 h-4" aria-hidden />
         </button>
       )}
+      <button className={iconBtn} onClick={() => { setShowInfo((v) => !v); setShowCommentsRaw(false); setAnnotating(false); }} aria-pressed={showInfo}
+        aria-label="Informações e versões (I)" title="Informações e versões (I)">
+        <Info className="w-4 h-4" aria-hidden />
+      </button>
       {comentariosLigados && (
         <button className={iconBtn} onClick={() => setShowComments((v) => !v)} aria-pressed={showComments}
           aria-label={`Comentários${comentarios.length ? ` (${comentarios.length})` : ""}`} title="Comentários e anotações">
@@ -594,6 +605,7 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
             annotating={annotating} setAnnotating={setAnnotating} ativo={ativo} podeAnotar={type === "pdf"}
             onGoTo={(page, id) => { pdfRef.current?.goToPage(page); setAtivo(id); }} onClose={() => { setShowComments(false); setAnnotating(false); }} />
         )}
+        {showInfo && <PreviewInfoPanel doc={doc} onClose={() => setShowInfo(false)} onChanged={onChanged} />}
         {organizing && url && (
           <Suspense fallback={null}>
             <PageOrganizer docId={doc.id} docName={doc.name} url={url} onClose={() => setOrganizing(false)} onDone={() => { onChanged?.(); onClose(); }} />

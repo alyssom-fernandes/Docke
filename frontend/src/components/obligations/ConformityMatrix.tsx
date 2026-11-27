@@ -21,6 +21,9 @@ const ESTILO: Record<string, { rotulo: string; cls: string }> = {
   not_applicable: { rotulo: "Não se aplica", cls: "text-(--text-secondary)" },
 };
 
+/** O que pede ação vem primeiro na lista do celular. */
+const ORDEM: Record<string, number> = { overdue: 0, expired: 1, blocked: 2, at_risk: 3, pending: 4, reviewing: 5, approved: 6, dispensado: 7, not_applicable: 8 };
+
 /**
  * Conformidade do grupo (FA-A7-04): cada empresa numa linha, cada obrigação
  * numa coluna, com a situação da competência mais recente até o fim do mês.
@@ -33,8 +36,44 @@ export default function ConformityMatrix() {
   if (!m.obrigacoes.length) return <p className="text-mac-body text-(--text-secondary)">Nenhuma obrigação com competência até o fim deste mês nas empresas que você acessa.</p>;
   return (
     <div className="space-y-2">
-      <p className="text-mac-caption text-(--text-secondary)">Situação da competência mais recente de cada obrigação, até o fim deste mês. Clique numa célula para abrir.</p>
-      <div className="glass-panel glass-blur-card rounded-(--radius-panel) overflow-auto max-h-[70vh]">
+      <p className="text-mac-caption text-(--text-secondary)">Situação da competência mais recente de cada obrigação, até o fim deste mês. Toque para abrir.</p>
+      {/* Celular (A7-23): uma lista por empresa, o que pede ação primeiro, em
+          linhas de 44 px, em vez da tabela larga que rolava de lado. */}
+      <div className="sm:hidden space-y-3">
+        {m.empresas.map((e) => {
+          const linhas = m.obrigacoes
+            .map((o) => ({ o, c: m.celulas[e.company_id]?.[o] }))
+            .filter((x): x is { o: string; c: Celula } => !!x.c)
+            .sort((a, b) => (ORDEM[a.c.status] ?? 9) - (ORDEM[b.c.status] ?? 9) || a.o.localeCompare(b.o));
+          return (
+            <section key={e.company_id} aria-label={e.name} className="glass-panel glass-blur-card rounded-(--radius-panel) overflow-hidden">
+              <h3 className="px-4 py-2.5 border-b border-(--border-default) text-mac-body font-semibold text-(--text-primary)">
+                {e.name}
+                <span className={`block text-mac-caption font-normal ${e.atrasadas ? "text-(--text-danger)" : "text-(--text-secondary)"}`}>
+                  {e.em_dia} de {e.total} em dia{e.atrasadas ? ` · ${e.atrasadas} ${e.atrasadas === 1 ? "atrasada" : "atrasadas"}` : ""}
+                </span>
+              </h3>
+              <ul>
+                {linhas.map(({ o, c }) => {
+                  const st = ESTILO[c.status] ?? { rotulo: c.status, cls: "" };
+                  return (
+                    <li key={o} className="border-b border-(--border-default) last:border-0">
+                      <Link to={`/obligations?instancia=${c.instance_id}`} className="flex items-center gap-3 min-h-11 px-4 py-2 active:bg-(--bg-hover) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-(--focus-ring)">
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-mac-body text-(--text-primary) truncate">{o}</span>
+                          <span className="block text-mac-caption text-(--text-secondary)">{c.period_label} · vence {new Date(c.due_date + "T12:00").toLocaleDateString("pt-BR")}</span>
+                        </span>
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-mac-caption font-medium ${st.cls}`}>{st.rotulo}</span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          );
+        })}
+      </div>
+      <div className="hidden sm:block glass-panel glass-blur-card rounded-(--radius-panel) overflow-auto max-h-[70vh]">
         <table className="w-full border-separate border-spacing-0 text-mac-caption">
           <caption className="sr-only">Matriz de conformidade: empresas nas linhas, obrigações nas colunas</caption>
           <thead>

@@ -63,7 +63,7 @@ import Dialog from "@/components/ui/Dialog";
 import Input from "@/components/ui/Input";
 import Menu, { type MenuItem } from "@/components/ui/Menu";
 import FolderPickerDialog, { type PickedFolder } from "@/components/documents/FolderPickerDialog";
-import { pushUndo, takeUndo, isUndoShortcut } from "@/lib/undo";
+import { useUndo } from "@/lib/undo";
 import { SkeletonTableRow, SkeletonGridItem } from "@/components/shared/Skeleton";
 import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 import { prefetchPdfViewer } from "@/lib/prefetch";
@@ -669,24 +669,14 @@ export default function Documents() {
     setRenaming({ kind, id, value: base });
   }
 
-  async function runUndo(id?: string) {
-    const entry = takeUndo(id);
-    if (!entry) { toast({ type: "info", message: "Não há nada para desfazer." }); return; }
-    try {
-      await entry.undo();
-      toast({ type: "success", message: `Desfeito: ${entry.label}.` });
-    } catch (e: any) {
-      showError(friendlyError(e, `Não foi possível desfazer: ${entry.label}.`));
-    }
-    load();
-    setFolderTreeVersion((v) => v + 1);
-  }
-
-  /** Aviso com "Desfazer" ligado à mesma entrada do Ctrl+Z. */
-  function toastWithUndo(message: string, label: string, undo: () => Promise<void>) {
-    const entry = pushUndo(label, undo);
-    toast({ type: "success", message, action: { label: "Desfazer", onClick: () => runUndo(entry.id) } });
-  }
+  // Desfazer é global (lib/undo): aviso com "Desfazer" e Ctrl+Z em qualquer
+  // tela. Depois de desfazer, a lista e a árvore recarregam.
+  const { offer: toastWithUndo } = useUndo();
+  useEffect(() => {
+    function onUndone() { load(); setFolderTreeVersion((v) => v + 1); }
+    window.addEventListener("docke:desfeito", onUndone);
+    return () => window.removeEventListener("docke:desfeito", onUndone);
+  });
 
   // Renomear grava na hora (antes esperava 5 s e se perdia ao recarregar — A4-45).
   async function confirmRename() {
@@ -751,7 +741,6 @@ export default function Documents() {
       if (target.closest('aside, [role="tree"], header, nav, [data-dock]')) return;
 
       const mod = e.metaKey || e.ctrlKey;
-      if (isUndoShortcut(e)) { e.preventDefault(); runUndo(); return; }
       if (mod && e.shiftKey && e.key.toLowerCase() === "n") { e.preventDefault(); if (currentFolderId !== undefined && canWrite) setShowNewFolder(true); return; }
       if (mod && e.key.toLowerCase() === "a") {
         e.preventDefault();
@@ -1564,12 +1553,20 @@ export default function Documents() {
 
   async function anchorDocuments(ids: string[]) {
     let ok = 0;
+    const novos: string[] = [];
     for (const id of ids) {
-      try { await api.post("/favorites", { document_id: id }); ok++; } catch (e: any) { if (e?.response?.status === 409) ok++; }
+      try { await api.post("/favorites", { document_id: id }); ok++; novos.push(id); } catch (e: any) { if (e?.response?.status === 409) ok++; }
     }
     setDocuments((prev) => prev.map((d) => (ids.includes(d.id) ? { ...d, favorited: true } : d)));
     loadSidebarFavorites();
-    success(`${plural(ok, "documento ancorado", "documentos ancorados")}.`);
+    const msg = `${plural(ok, "documento ancorado", "documentos ancorados")}.`;
+    if (!novos.length) { success(msg); return; }
+    // Desfazer tira só as âncoras criadas agora (as que já existiam ficam).
+    toastWithUndo(msg, novos.length === 1 ? "ancorar o documento" : `ancorar ${novos.length} documentos`, async () => {
+      const list = await api.get<{ id: string; document_id: string | null }[]>("/favorites", { params: { company_id: current?.id } });
+      for (const f of list.data) if (f.document_id && novos.includes(f.document_id)) await api.delete(`/favorites/${f.id}`);
+      loadSidebarFavorites();
+    });
   }
 
   async function marcarComoTriagem(f: Folder) {
