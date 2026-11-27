@@ -2,7 +2,10 @@ import { ReactNode, cloneElement, isValidElement, useEffect, useLayoutEffect, us
 import { createPortal } from "react-dom";
 
 interface TooltipProps {
+  /** Nome acessível do elemento (vai no aria-label) e texto da dica. */
   label: string;
+  /** Texto da dica quando deve ser diferente do nome (ex.: um detalhe a mais). */
+  text?: string;
   children: ReactNode;
   side?: "top" | "bottom";
 }
@@ -21,7 +24,7 @@ const FIRST_DELAY_MS = 450;
 const WARM_WINDOW_MS = 600;
 let lastClosedAt = 0;
 
-export default function Tooltip({ label, children, side = "top" }: TooltipProps) {
+export default function Tooltip({ label, text, children, side = "top" }: TooltipProps) {
   const anchorRef = useRef<HTMLSpanElement>(null);
   const tipRef = useRef<HTMLSpanElement>(null);
   const timer = useRef<number | undefined>(undefined);
@@ -44,7 +47,7 @@ export default function Tooltip({ label, children, side = "top" }: TooltipProps)
     const left = Math.min(Math.max(8, centro - t.width / 2), window.innerWidth - t.width - 8);
     const top = lado === "top" ? a.top - t.height - gap : a.bottom + gap;
     setPos({ left, top });
-  }, [open, side, label]);
+  }, [open, side, label, text]);
 
   useEffect(() => {
     if (!open) return;
@@ -81,7 +84,7 @@ export default function Tooltip({ label, children, side = "top" }: TooltipProps)
         >
           {/* Como a etiqueta de ajuda do macOS: retângulo pequeno, sem seta. */}
           <span className="block rounded-[5px] mac-sheet px-[7px] py-[3px] text-[11px] leading-[14px] text-(--text-primary)">
-            {label}
+            {text ?? label}
           </span>
         </span>,
         document.body,
