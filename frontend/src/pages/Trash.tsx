@@ -13,6 +13,7 @@ import ConfirmModal from "@/components/ui/ConfirmModal";
 import Button from "@/components/ui/Button";
 import Checkbox from "@/components/ui/Checkbox";
 import { PageHeader } from "@/components/layout/window";
+import { InspectorLayout, useInspectorTarget, useLargo } from "@/components/shared/ListInspector";
 
 interface TrashItem {
   id: string;
@@ -43,6 +44,8 @@ function expiresText(iso?: string | null) {
  * onde volta; exclusão definitiva em lote com progresso e resumo.
  */
 export default function Trash() {
+  const insp = useInspectorTarget();
+  const largo = useLargo();
   usePageTitle("Lixeira");
   const { current } = useCompany();
   const navigate = useNavigate();
@@ -126,7 +129,7 @@ export default function Trash() {
   const allOn = list.length > 0 && sel.size === list.length;
 
   return (
-    <div className="space-y-6 max-w-[1100px] w-full mx-auto">
+    <div className={`space-y-6 ${largo ? "max-w-[1480px]" : "max-w-[1100px]"} w-full mx-auto`}>
       <PageHeader title="Lixeira" subtitle={items ? `${list.length} ${list.length === 1 ? "item" : "itens"}` : undefined} />
       <p className="text-mac-footnote text-(--text-secondary) mb-3!">O que foi excluído fica aqui por um tempo e volta para o lugar de origem ao restaurar. Depois do prazo, sai sozinho.</p>
 
@@ -154,12 +157,12 @@ export default function Trash() {
             )}
             {progress && <span role="status" className="text-mac-caption text-(--text-secondary)">{progress.done} de {progress.total}…</span>}
           </div>
-          <ul className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
+          <InspectorLayout item={insp.item}><ul className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
             {list.map((item) => {
               const k = key(item);
               const bloqueio = item.bloqueio === "legal_hold" ? "Bloqueio judicial: não pode ser apagado" : item.bloqueio === "retencao" ? "Prazo de guarda travado: não pode ser apagado ainda" : null;
               return (
-                <li key={k} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 sm:px-5 py-3 border-b border-(--border-default) last:border-0">
+                <li key={k} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 sm:px-5 py-3 border-b border-(--border-default) last:border-0" {...insp.bind({ kind: item.item_type, id: item.id, name: item.name, extra: [["Veio de", item.original_path ?? item.original_folder_name ?? null], ["Excluído em", fullDate(item.deleted_at)], ["Por", item.deleted_by_name ?? null], ["Sai da lixeira", item.trash_expires_at ? fullDate(item.trash_expires_at) : null], ["Bloqueio", bloqueio]] })}>
                   <Checkbox aria-label={`Selecionar ${item.name}`} checked={sel.has(k)} onChange={() => setSel((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; })} />
                   <ItemIcon name={item.name} folder={item.item_type === "folder"} className="w-8 h-8 shrink-0" />
                   <div className="flex-1 min-w-[14rem]">
@@ -186,7 +189,7 @@ export default function Trash() {
                 </li>
               );
             })}
-          </ul>
+          </ul></InspectorLayout>
         </>
       )}
 

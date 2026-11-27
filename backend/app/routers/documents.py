@@ -1359,19 +1359,37 @@ async def list_documents(
     sort: str = Query("name"),
     dir: str = Query("asc"),
     q: str | None = Query(None, max_length=200),
+    cursor: str | None = Query(None, max_length=600),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> list[dict[str, Any]]:
-    """Documentos da pasta; com limit, paginados (total no cabeçalho X-Total-Count)."""
+    """Documentos da pasta; com limit, paginados (total no cabeçalho X-Total-Count).
+    A próxima página vem pelo cursor do cabeçalho X-Next-Cursor (FA-A4-03)."""
+    import base64
+    import json as _json
+
+    posicao = None
+    if cursor:
+        try:
+            c = _json.loads(base64.urlsafe_b64decode(cursor.encode()).decode())
+            posicao = (str(c["v"]), str(UUID(c["id"])))
+        except Exception:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Cursor inválido.")
     rows, total = await DocumentsService.list_by_folder(
         conn, folder_id, company_id, limit=limit, offset=offset, sort=sort, direction=dir, q=(q or "").strip() or None,
+        cursor=posicao,
     )
     response.headers["X-Total-Count"] = str(total)
+    if limit and len(rows) == limit:
+        ultimo = rows[-1]
+        response.headers["X-Next-Cursor"] = base64.urlsafe_b64encode(
+            _json.dumps({"v": ultimo["cursor_valor"], "id": ultimo["id"]}).encode()).decode()
     from app.services.thumbnail_service import thumb_url
     out = []
     for r in rows:
         d = dict(r)
         # Miniatura da grade (A4-20): URL assinada por 1 h, só quando existe.
         d["thumb_url"] = thumb_url(d["storage_path"]) if d.pop("has_thumb", False) else None
+        d.pop("cursor_valor", None)
         out.append(d)
     return out
 
@@ -1391,6 +1409,13 @@ async def get_document(
     # X3-16: o caminho interno do storage não sai da API, e o texto lido vem
     # só como trecho (o texto inteiro tem rota própria, sob demanda).
     d = dict(row)
+    # Painel de detalhe das listas (A6-T3): miniatura e quem enviou.
+    from app.services.thumbnail_service import thumb_url
+    tem_miniatura = await conn.fetchval(
+        "SELECT EXISTS (SELECT 1 FROM public.document_thumbnails WHERE storage_path = $1 AND ok)", d.get("storage_path"),
+    )
+    d["thumb_url"] = thumb_url(d["storage_path"]) if tem_miniatura and d.get("storage_path") else None
+    d["uploaded_by_name"] = await conn.fetchval("SELECT full_name FROM public.users WHERE id = $1", d.get("uploaded_by"))
     d.pop("storage_path", None)
     texto = d.pop("ocr_text", None) or ""
     d["ocr_excerpt"] = texto[:600]

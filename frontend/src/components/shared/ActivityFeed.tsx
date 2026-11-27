@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, type HTMLAttributes } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, ChevronDown, ChevronRight, Clock, RefreshCw } from "lucide-react";
 import api from "@/lib/api";
@@ -209,7 +209,10 @@ const META_LABEL: Record<string, string> = {
 };
 
 /** Detalhe do evento em português, sem ids nem chaves internas (achado A6-25). */
-function readableMetadata(meta: Record<string, any> | null): string[] {
+/** Painel de detalhe da Atividade (A6-T3): props de foco/ponteiro para cada linha. */
+export const InspecionarEvento = createContext<((ev: ActivityEvent) => HTMLAttributes<HTMLLIElement>) | null>(null);
+
+export function readableMetadata(meta: Record<string, any> | null): string[] {
   if (!meta) return [];
   const out: string[] = [];
   if (meta.reason === "retention_purge") out.push("Descarte pelo prazo de guarda, com certificado");
@@ -248,6 +251,7 @@ export function actionTone(action: string): string {
 
 function EventRow({ ev, onNavigate, relative }: { ev: ActivityEvent; onNavigate: (target: string) => void; relative: boolean | "dia" }) {
   const [expanded, setExpanded] = useState(false);
+  const inspecionar = useContext(InspecionarEvento);
   const target = activityTarget(ev);
   const hasDetail = (ev.action === "update_metadata" && !!ev.metadata?.field_label) || (ev.action === "rename" && !!ev.metadata?.de) || readableMetadata(ev.metadata).length > 0;
   const texto = (
@@ -258,7 +262,7 @@ function EventRow({ ev, onNavigate, relative }: { ev: ActivityEvent; onNavigate:
   );
 
   return (
-    <li className="px-4 sm:px-5 py-2.5 border-b border-(--border-default) last:border-0">
+    <li className="px-4 sm:px-5 py-2.5 border-b border-(--border-default) last:border-0" {...(inspecionar?.(ev) ?? {})}>
       <div className="flex items-center gap-3 min-h-8">
         <Avatar name={ev.user_name} size="sm" />
         {target ? (

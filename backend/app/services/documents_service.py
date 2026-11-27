@@ -492,23 +492,34 @@ class DocumentsService:
     async def list_by_folder(
         conn: asyncpg.Connection, folder_id: UUID, company_id: UUID, *,
         limit: int | None = None, offset: int = 0, sort: str = "name", direction: str = "asc", q: str | None = None,
+        cursor: tuple[str, str] | None = None,
     ) -> tuple[list[asyncpg.Record], int]:
         """
         Documentos da pasta, paginados (achado A4-12: pasta com 5.000 documentos
         voltava inteira, com dois subselects por linha). Sem limit, devolve tudo
         (compatível com quem já usava). Envios incompletos (sem hash) não entram.
         """
-        order = {
-            "name": "lower(d.name)", "size": "d.size_bytes", "created_at": "d.created_at",
-            "updated_at": "d.updated_at", "kind": "d.file_type", "ocr": "d.ocr_status",
-            "uploader": "lower(u.full_name)",
-        }.get(sort, "lower(d.name)")
+        # Expressões sem nulo (FA-A4-03): a página seguinte vem por cursor
+        # (valor da ordenação + id da última linha), sem OFFSET.
+        order, tipo = {
+            "name": ("lower(d.name)", "text"), "size": ("coalesce(d.size_bytes, 0)", "bigint"),
+            "created_at": ("d.created_at", "timestamptz"), "updated_at": ("coalesce(d.updated_at, d.created_at)", "timestamptz"),
+            "kind": ("coalesce(d.file_type, '')", "text"), "ocr": ("coalesce(d.ocr_status, '')", "text"),
+            "uploader": ("coalesce(lower(u.full_name), '')", "text"),
+        }.get(sort, ("lower(d.name)", "text"))
         direction = "DESC" if direction == "desc" else "ASC"
         where = """
             d.folder_id = $1 AND d.company_id = $2 AND d.deleted_at IS NULL AND d.content_hash IS NOT NULL
             AND ($3::text IS NULL OR d.name ILIKE '%' || $3 || '%')
         """
         total = await conn.fetchval(f"SELECT count(*) FROM public.documents d WHERE {where}", folder_id, company_id, q)
+        apos = ""
+        extra: list = []
+        if cursor is not None:
+            cmp = "<" if direction == "DESC" else ">"
+            apos = f" AND ({order} {cmp} $6::text::{tipo} OR ({order} = $6::text::{tipo} AND d.id > $7::uuid))"
+            extra = [cursor[0], cursor[1]]
+            offset = 0
         rows = await conn.fetch(
             f"""
             SELECT
@@ -527,15 +538,16 @@ class DocumentsService:
                   AND s.revoked_at IS NULL
                   AND (s.expires_at IS NULL OR s.expires_at > now())
               ) AS active_share_count,
-              (th.storage_path IS NOT NULL) AS has_thumb
+              (th.storage_path IS NOT NULL) AS has_thumb,
+              {order}::text AS cursor_valor
             FROM public.documents d
             LEFT JOIN public.users u ON u.id = d.uploaded_by
             LEFT JOIN public.document_thumbnails th ON th.storage_path = d.storage_path AND th.ok
-            WHERE {where}
+            WHERE {where}{apos}
             ORDER BY {order} {direction}, d.id
             LIMIT $4 OFFSET $5
             """,
-            folder_id, company_id, q, limit, offset,
+            folder_id, company_id, q, limit, offset, *extra,
         )
         return rows, total
 

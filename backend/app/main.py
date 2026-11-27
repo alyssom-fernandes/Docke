@@ -100,7 +100,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Total-Count"],
+    expose_headers=["X-Total-Count", "X-Next-Cursor"],
 )
 
 _MENSAGEM_BLOQUEIO = {

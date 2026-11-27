@@ -18,6 +18,7 @@ import Dialog from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
 import ShareModal from "@/components/documents/ShareModal";
 import { PageHeader } from "@/components/layout/window";
+import { InspectorLayout, useInspectorTarget, useLargo } from "@/components/shared/ListInspector";
 
 interface ShareLink {
   id: string;
@@ -61,6 +62,8 @@ export default function Shares() {
 }
 
 function SharesPage() {
+  const insp = useInspectorTarget();
+  const largo = useLargo();
   usePageTitle("Links");
   const { current } = useCompany();
   const { user } = useAuthContext();
@@ -121,7 +124,7 @@ function SharesPage() {
   const ativos = (shares ?? []).filter((s) => situacao(s).ativo).length;
 
   return (
-    <div className="space-y-6 max-w-[1100px] w-full mx-auto">
+    <div className={`space-y-6 ${largo ? "max-w-[1480px]" : "max-w-[1100px]"} w-full mx-auto`}>
       <PageHeader title="Links" subtitle={shares ? `${ativos} ${ativos === 1 ? "ativo" : "ativos"}` : undefined} />
       <p className="text-mac-footnote text-(--text-secondary) mb-3!">Links que levam documentos e pastas para fora do Docke. Admins veem os de toda a empresa.</p>
 
@@ -147,11 +150,11 @@ function SharesPage() {
           {visible.length === 0 ? (
             <p className="text-mac-body text-(--text-secondary)">Nenhum link aqui.</p>
           ) : (
-            <ul className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
+            <InspectorLayout item={insp.item}><ul className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
               {visible.map((s) => {
                 const st = situacao(s);
                 return (
-                  <li key={s.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 sm:px-5 py-3 border-b border-(--border-default) last:border-0">
+                  <li key={s.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 sm:px-5 py-3 border-b border-(--border-default) last:border-0" {...insp.bind({ kind: s.resource_type, id: s.resource_id, name: s.resource_name ?? "Item excluído", extra: [["Link criado em", fullDate(s.created_at)], ["Por", s.created_by_name ?? null], ["Aberturas", s.max_views ? `${s.view_count} de ${s.max_views}` : String(s.view_count)], ["Última abertura", s.last_accessed_at ? fullDate(s.last_accessed_at) : "nunca"], ["Vence", s.expires_at ? fullDate(s.expires_at) : "sem prazo"], ["Senha", s.has_password ? "sim" : "não"], ["Baixar", s.allow_download === false ? "não permitido" : "permitido"]] })}>
                     <ItemIcon name={s.resource_name ?? ""} folder={s.resource_type === "folder"} className="w-8 h-8 shrink-0" />
                     <div className="flex-1 min-w-[14rem]">
                       <Link to={href(s)} className="block truncate text-mac-body text-(--text-primary) hover:underline">{s.resource_name ?? "Item excluído"}</Link>
@@ -179,7 +182,7 @@ function SharesPage() {
                   </li>
                 );
               })}
-            </ul>
+            </ul></InspectorLayout>
           )}
           <p className="text-mac-caption text-(--text-secondary)">Por segurança o endereço completo só aparece quando o link é criado. Para mandar de novo, crie outro link no item.</p>
         </>

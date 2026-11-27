@@ -282,6 +282,10 @@ function ColumnResizeHandle({ label, width, onMouseDown, onReset, onNudge }: {
 const NAV_KEY = "documents";
 
 
+// Lista virtualizada: a partir de quantos itens, e quantas linhas a mais acima e abaixo da área visível.
+const VIRT_MIN = 300;
+const VIRT_FOLGA = 15;
+
 export default function Documents() {
   usePageTitle("Documentos");
   const { current } = useCompany();
@@ -798,8 +802,9 @@ export default function Documents() {
           if (d) setDetailDoc(d);
         }
         const el = rowRefs.current.get(id);
-        el?.focus({ preventScroll: true });
-        el?.scrollIntoView({ block: "nearest" });
+        if (!el) { revelarLinha(id); return; }
+        el.focus({ preventScroll: true });
+        el.scrollIntoView({ block: "nearest" });
       };
       const cols = viewMode === "grid" ? Math.max(1, Math.round((scrollBodyRef.current?.clientWidth ?? 600) / 118)) : 1;
       if (e.key === "ArrowDown") return moveTo(idx < 0 ? 0 : idx + cols);
@@ -966,7 +971,9 @@ export default function Documents() {
 
   // Pré-carga ao pairar sobre uma pasta (A4-06): quando ela abre, o conteúdo
   // já está a caminho (ou pronto) e a troca acontece sem esqueleto.
-  type FolderContent = { folders: Folder[]; docs: Document[]; total: number };
+  type FolderContent = { folders: Folder[]; docs: Document[]; total: number; cursor: string | null };
+  // FA-A4-03: a próxima página vem pelo cursor (não pula nem repete quando a lista muda no meio).
+  const cursorRef = useRef<string | null>(null);
   const prefetchRef = useRef(new Map<string, { at: number; p: Promise<FolderContent> }>());
   const fetchFolderContent = useCallback((companyId: string, folderId: string | null, sk: string, sd: string, q: string): Promise<FolderContent> => {
     const foldersParams: Record<string, string> = { company_id: companyId };
@@ -982,6 +989,7 @@ export default function Documents() {
         folders: Array.isArray(fRes.data) ? fRes.data : [],
         docs,
         total: Number((dRes.headers as Record<string, string>)?.["x-total-count"] ?? docs.length) || docs.length,
+        cursor: (dRes.headers as Record<string, string>)?.["x-next-cursor"] ?? null,
       };
     });
   }, []);
@@ -1020,6 +1028,7 @@ export default function Documents() {
       setFolders(r.folders);
       setDocuments(r.docs);
       setTotal(r.total);
+      cursorRef.current = r.cursor;
     } catch (e: any) {
       setFolders([]);
       setDocuments([]);
@@ -1035,8 +1044,12 @@ export default function Documents() {
     setLoadingMore(true);
     try {
       const r = await api.get<Document[]>("/documents", {
-        params: { company_id: current.id, folder_id: currentFolderId, limit: PAGE, offset: documents.length, sort: sort.key, dir: sort.dir, q: serverQuery || undefined },
+        params: {
+          company_id: current.id, folder_id: currentFolderId, limit: PAGE, sort: sort.key, dir: sort.dir, q: serverQuery || undefined,
+          ...(cursorRef.current ? { cursor: cursorRef.current } : { offset: documents.length }),
+        },
       });
+      cursorRef.current = (r.headers as Record<string, string>)?.["x-next-cursor"] ?? null;
       setDocuments((prev) => {
         const ids = new Set(prev.map((d) => d.id));
         return [...prev, ...r.data.filter((d) => !ids.has(d.id))];
@@ -1695,6 +1708,54 @@ export default function Documents() {
     ...visibleDocuments.map((d): Item => ({ kind: "document", data: d })),
   ];
 
+  // Lista virtualizada (B1.2.10, FA-A4-03, A4-24): com muitos itens, só as
+  // linhas perto da área visível vão para a tela; espaçadores no lugar das
+  // outras mantêm a rolagem do tamanho certo. A altura vem medida da própria
+  // linha. Pastas abertas em árvore desligam a janela (alturas variam muito).
+  const virt = viewMode === "list" && items.length > VIRT_MIN && !Object.values(expandedFolders).some(Boolean);
+  const tbodyRef = useRef<HTMLTableSectionElement>(null);
+  const alturaLinha = useRef(density === "compact" ? 36 : density === "spacious" ? 60 : 48);
+  const [janela, setJanela] = useState({ start: 0, end: VIRT_MIN });
+  useEffect(() => {
+    if (!virt) return;
+    const box = scrollBodyRef.current;
+    if (!box) return;
+    let frame = 0;
+    const calc = () => {
+      frame = 0;
+      const tb = tbodyRef.current;
+      if (!tb) return;
+      const linha = tb.querySelector<HTMLElement>("tr[data-linha]");
+      if (linha && linha.offsetHeight > 0) alturaLinha.current = linha.offsetHeight;
+      const h = alturaLinha.current;
+      const topo = tb.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+      const ini = Math.max(0, Math.floor((box.scrollTop - topo) / h) - VIRT_FOLGA);
+      const fim = Math.min(items.length, Math.ceil((box.scrollTop - topo + box.clientHeight) / h) + VIRT_FOLGA);
+      setJanela((j) => (j.start === ini && j.end === fim ? j : { start: ini, end: fim }));
+    };
+    const onScroll = () => { if (!frame) frame = requestAnimationFrame(calc); };
+    calc();
+    box.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => { box.removeEventListener("scroll", onScroll); window.removeEventListener("resize", onScroll); if (frame) cancelAnimationFrame(frame); };
+  }, [virt, items.length, density]);
+  /** Leva a lista até um item fora da janela e foca a linha quando ela aparecer. */
+  function revelarLinha(id: string) {
+    const box = scrollBodyRef.current, tb = tbodyRef.current;
+    const idx = items.findIndex((it) => it.data.id === id);
+    if (!box || !tb || idx < 0) return;
+    const topo = tb.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+    box.scrollTop = Math.max(0, topo + idx * alturaLinha.current - box.clientHeight / 2);
+    box.dispatchEvent(new Event("scroll"));
+    let tentativas = 0;
+    const focar = () => {
+      const el = rowRefs.current.get(id);
+      if (el) el.focus({ preventScroll: true });
+      else if (++tentativas < 60) setTimeout(focar, 16);
+    };
+    setTimeout(focar, 0);
+  }
+
   // Seleção única para pastas e documentos (ids não colidem).
   const docIdSet = new Set(documents.map((d) => d.id));
   const selDocIds = [...selected].filter((id) => docIdSet.has(id));
@@ -2099,7 +2160,7 @@ export default function Documents() {
                     aria-label={d.name}
                     tabIndex={focusedId === d.id || (!focusedId && items[0]?.data.id === d.id) ? 0 : -1}
                     onFocus={() => setFocusedId(d.id)}
-                    className={`group relative flex flex-col items-center gap-1 py-2 px-1.5 rounded-(--radius-sm) cursor-default outline-none focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${isDragging ? "opacity-40" : ""}`}
+                    className={`group relative flex flex-col items-center gap-1 py-2 px-1.5 rounded-(--radius-sm) cursor-default outline-none [content-visibility:auto] [contain-intrinsic-size:auto_132px] focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${isDragging ? "opacity-40" : ""}`}
                     onClick={(e) => selectDocClick(e, d.id)}
                     onDoubleClick={() => setPreviewDoc(d)}
                     onContextMenu={(e) => openContextMenu(e, "document", d)}
@@ -2233,8 +2294,10 @@ export default function Documents() {
                   <th className="w-[76px]"><span className="sr-only">Ações</span></th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody ref={tbodyRef}>
+                {virt && janela.start > 0 && <tr aria-hidden="true" style={{ height: janela.start * alturaLinha.current }} />}
                 {items.map((item, idx) => {
+                  if (virt && (idx < janela.start || idx >= janela.end)) return null;
                   if (item.kind === "folder") {
                     const f = item.data;
                     const isDropTarget = dragOverFolderId === f.id;
@@ -2441,6 +2504,7 @@ export default function Documents() {
                       </tr>
                     )}
                     <tr
+                      data-linha
                       ref={(el) => { if (el) rowRefs.current.set(d.id, el); else rowRefs.current.delete(d.id); }}
                       tabIndex={focusedId === d.id || (!focusedId && items[0]?.data.id === d.id) ? 0 : -1}
                       aria-selected={isSelected}
@@ -2557,6 +2621,7 @@ export default function Documents() {
                     </Fragment>
                   );
                 })}
+                {virt && janela.end < items.length && <tr aria-hidden="true" style={{ height: (items.length - janela.end) * alturaLinha.current }} />}
               </tbody>
             </table>
             </div>
