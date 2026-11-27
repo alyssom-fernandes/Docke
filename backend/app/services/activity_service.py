@@ -3,9 +3,11 @@
 NUNCA edita ou deleta linhas do activity_log (append-only, Invariante I1).
 """
 import csv
+import hashlib
+import hmac
 import io
 import json
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -270,6 +272,65 @@ class ActivityService:
             """,
             company_id,
         )
+
+    # -------------------------------------------------------------------
+    # Marcos assinados (X3-12): o topo da cadeia de cada empresa, uma vez por
+    # dia, assinado com uma chave que só a API conhece (derivada do segredo
+    # dela, nunca gravada no banco). Trocar o JWT_SECRET invalida as
+    # assinaturas antigas: a verificação passa a dizer "assinatura não confere".
+    # -------------------------------------------------------------------
+    @staticmethod
+    def assinar_marco(company_id: Any, last_hash: bytes, created_at: datetime) -> str:
+        from app.config import settings
+        chave = hashlib.sha256(("docke-trilha-marcos|" + settings.JWT_SECRET).encode()).digest()
+        msg = f"{company_id}|{bytes(last_hash).hex()}|{created_at.astimezone(timezone.utc).isoformat()}"
+        return hmac.new(chave, msg.encode(), hashlib.sha256).hexdigest()
+
+    @staticmethod
+    async def gravar_marcos(conn: asyncpg.Connection) -> int:
+        """Grava o marco de cada empresa cuja cadeia andou e que não tem marco nas últimas 24 h."""
+        rows = await conn.fetch(
+            """
+            SELECT c.company_id, c.last_hash FROM public.activity_log_chain c
+            WHERE c.last_hash <> '\\x00'::bytea
+              AND NOT EXISTS (
+                SELECT 1 FROM public.activity_log_checkpoints k
+                WHERE k.company_id = c.company_id
+                  AND (k.last_hash = c.last_hash OR k.created_at > now() - interval '1 day'))
+            """
+        )
+        for r in rows:
+            quando = datetime.now(timezone.utc)
+            await conn.execute(
+                "INSERT INTO public.activity_log_checkpoints (company_id, last_hash, signature, created_at) VALUES ($1, $2, $3, $4)",
+                r["company_id"], r["last_hash"], ActivityService.assinar_marco(r["company_id"], r["last_hash"], quando), quando,
+            )
+        return len(rows)
+
+    @staticmethod
+    async def conferir_marcos(conn: asyncpg.Connection, company_id: UUID) -> dict[str, Any]:
+        """Cada marco precisa ter assinatura válida e o hash dele precisa
+        continuar na cadeia (é o topo atual ou o anterior de algum evento)."""
+        marcos = await conn.fetch(
+            "SELECT last_hash, signature, created_at FROM public.activity_log_checkpoints WHERE company_id = $1 ORDER BY created_at",
+            company_id,
+        )
+        topo = await conn.fetchval("SELECT last_hash FROM public.activity_log_chain WHERE company_id = $1", company_id)
+        primeiro: dict[str, Any] | None = None
+        ruins = 0
+        for m in marcos:
+            motivo = None
+            if not hmac.compare_digest(ActivityService.assinar_marco(company_id, m["last_hash"], m["created_at"]), m["signature"]):
+                motivo = "A assinatura do marco não confere."
+            elif m["last_hash"] != topo and not await conn.fetchval(
+                "SELECT EXISTS (SELECT 1 FROM public.activity_log WHERE company_id = $1 AND prev_hash = $2)", company_id, m["last_hash"],
+            ):
+                motivo = "A trilha até este marco foi reescrita: o ponto assinado não existe mais na cadeia."
+            if motivo:
+                ruins += 1
+                if primeiro is None:
+                    primeiro = {"created_at": m["created_at"].isoformat(), "reason": motivo}
+        return {"total": len(marcos), "ok": len(marcos) - ruins, "first_bad": primeiro}
 
     @staticmethod
     async def get_event(conn: asyncpg.Connection, event_id: UUID) -> asyncpg.Record | None:

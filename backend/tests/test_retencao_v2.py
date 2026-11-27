@@ -210,3 +210,56 @@ async def test_aprovacao_dupla_do_descarte(api, admin, empresa):  # noqa: F811
         await admin.execute("DELETE FROM public.user_company_access WHERE user_id = $1", uuid.UUID(outro))
         await admin.execute("DELETE FROM public.users WHERE id = $1", uuid.UUID(outro))
         await admin.execute("DELETE FROM auth.users WHERE id = $1", uuid.UUID(outro))
+
+
+@pytest.mark.asyncio
+async def test_worker_varre_uma_vez_e_alimenta_fila_e_avisos(api, admin, empresa):  # noqa: F811
+    """X3-19: a mesma varredura serve aos avisos de 90/30/7 dias e à fila de descarte."""
+    from app.workers.maintenance_worker import (
+        _documentos_com_prazo_proximo, _notify_retention_expiring_soon, _scan_retention_expirations,
+    )
+    h, co = _token(empresa["user"]), empresa["co"]
+    p = await _policy(api, h, co, name="Curta 1 mês", duration_months=1)
+    assert (await api.post(API + f"/companies/{co}/retention/assignments",
+                           json={"company_id": co, "policy_id": p["id"], "folder_id": empresa["fiscal"]}, headers=h)).status_code == 201
+    agora = datetime.datetime.now(datetime.timezone.utc)
+    vencido = await _doc(admin, empresa, empresa["fiscal"], "Antigo.pdf", agora - datetime.timedelta(days=60))
+    perto = await _doc(admin, empresa, empresa["fiscal"], "Quase.pdf", agora - datetime.timedelta(days=20))
+
+    prazos = await _documentos_com_prazo_proximo(admin)
+    ids = {str(x["id"]) for x in prazos}
+    assert vencido in ids and perto in ids
+    try:
+        for _ in range(2):  # a segunda rodada não duplica nada
+            await _notify_retention_expiring_soon(admin, prazos)
+            await _scan_retention_expirations(admin, prazos)
+        fila = await admin.fetch("SELECT document_id FROM public.retention_review_queue WHERE company_id = $1", co)
+        assert {str(r["document_id"]) for r in fila} == {vencido}
+        tipos = await admin.fetch("SELECT type FROM public.notifications WHERE resource_id = $1", uuid.UUID(perto))
+        assert [r["type"] for r in tipos] == ["retention_expiring_30"]
+        assert not await admin.fetchval("SELECT count(*) FROM public.notifications WHERE resource_id = $1", uuid.UUID(vencido))
+    finally:
+        await admin.execute("DELETE FROM public.notifications WHERE company_id = $1", co)
+
+
+@pytest.mark.asyncio
+async def test_foto_da_retencao_no_inicio(api, admin, empresa):  # noqa: F811
+    """B3.4.2: a política e a data que valiam na entrada ficam gravadas, mesmo que a regra mude depois."""
+    h, co = _token(empresa["user"]), empresa["co"]
+    p = await _policy(api, h, co, name="Contratos 2 anos", duration_months=24)
+    assert (await api.post(API + f"/companies/{co}/retention/assignments",
+                           json={"company_id": co, "policy_id": p["id"], "folder_id": empresa["fiscal"]}, headers=h)).status_code == 201
+    criado = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=3)
+    doc = await _doc(admin, empresa, empresa["fiscal"], "Contrato.pdf", criado)
+    foto = await admin.fetchrow("SELECT * FROM public.document_retention_snapshots WHERE document_id = $1", uuid.UUID(doc))
+    assert foto["policy_name"] == "Contratos 2 anos"
+    assert foto["policy"]["duration_months"] == 24 if isinstance(foto["policy"], dict) else '"duration_months": 24' in foto["policy"]
+    antes = foto["expires_at"]
+
+    # A política aumenta depois: o prazo vigente muda, a foto do início não.
+    assert (await api.patch(API + f"/retention/policies/{p['id']}", json={"duration_months": 60}, headers=h)).status_code == 200
+    r = await api.get(API + f"/documents/{doc}/retention/explain", headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json()["inicio"]["policy_name"] == "Contratos 2 anos"
+    assert r.json()["inicio"]["expires_at"] == antes.isoformat()
+    assert r.json()["winner"]["expires_at"] != antes.isoformat()

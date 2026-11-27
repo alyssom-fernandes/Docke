@@ -23,6 +23,8 @@ interface IntegrityResult {
   // event_id e event_created_at vêm nulos na quebra de "Cadeia truncada"
   // (eventos mais recentes apagados): não há evento para apontar.
   first_broken: { event_id: string | null; event_created_at: string | null; reason: string } | null;
+  // Marcos diários assinados pela API (X3-12).
+  checkpoints?: { total: number; ok: number; first_bad: { created_at: string; reason: string } | null };
 }
 
 // Cartão com cabeçalho padrão (A8-11): ícone, título e descrição.
@@ -219,7 +221,7 @@ function IntegritySection() {
 
   return (
     <Cartao icon={ShieldCheck} cor="bg-(--accent)" titulo="Integridade da trilha de auditoria" className="mt-4"
-      descricao="Cada evento registrado em Atividade carrega um hash encadeado ao anterior. Um evento alterado fora do fluxo normal aparece como adulterado, e um evento apagado quebra a cadeia a partir dele, inclusive quando é o mais recente.">
+      descricao="Cada evento registrado em Atividade carrega um hash encadeado ao anterior. Um evento alterado fora do fluxo normal aparece como adulterado, e um evento apagado quebra a cadeia a partir dele, inclusive quando é o mais recente. Uma vez por dia o topo da cadeia é assinado com uma chave que fica fora do banco: reescrever o passado e recalcular a cadeia também aparece.">
       <Button size="sm" variant="secondary" onClick={verify} loading={checking}>
         Verificar agora
       </Button>
@@ -232,7 +234,13 @@ function IntegritySection() {
           )}
           <div className="text-mac-caption">
             {result.intact ? (
-              <p className="text-(--text-primary)">Cadeia íntegra — {result.total_events} eventos verificados, nenhuma quebra encontrada.</p>
+              <p className="text-(--text-primary)">Cadeia íntegra — {result.total_events} eventos verificados, nenhuma quebra encontrada.
+                {result.checkpoints && result.checkpoints.total > 0 && <> {result.checkpoints.total} {result.checkpoints.total === 1 ? "marco diário assinado conferido" : "marcos diários assinados conferidos"}.</>}
+              </p>
+            ) : result.broken_count === 0 && result.checkpoints?.first_bad ? (
+              <p className="text-(--text-danger)">
+                {result.checkpoints.first_bad.reason} Marco de {new Date(result.checkpoints.first_bad.created_at).toLocaleString("pt-BR")}; {result.checkpoints.total - result.checkpoints.ok} de {result.checkpoints.total} não conferem.
+              </p>
             ) : (
               <p className="text-(--text-danger)">
                 Quebra detectada em {result.broken_count} ponto{result.broken_count > 1 ? "s" : ""}. {result.first_broken?.reason}

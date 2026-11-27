@@ -395,7 +395,15 @@ class RetentionService:
         winner = candidates[0] if candidates else None
         for c in candidates:
             c["is_winner"] = c is winner
-        return {"winner": winner, "candidates": candidates}
+        # B3.4.2: a política e a data que valiam quando o documento entrou.
+        foto = await conn.fetchrow(
+            """
+            SELECT policy_name, expires_at, is_indeterminate, captured_at, policy->>'duration_months' AS duration_months
+            FROM public.document_retention_snapshots WHERE document_id = $1
+            """,
+            document_id,
+        )
+        return {"winner": winner, "candidates": candidates, "inicio": dict(foto) if foto else None}
 
     # -------------------------------------------------------------------
     # Fila de revisão (5.5 — só registro + decisão humana, sem executar exclusão)

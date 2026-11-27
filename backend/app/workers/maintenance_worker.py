@@ -125,8 +125,11 @@ async def _run_once() -> None:
         except Exception as exc:  # noqa: BLE001 — um modelo ruim não pode parar a manutenção
             logger.exception("Falha ao gerar competências de obrigações: %s", exc)
         await _notify_obligation_alerts(conn)
-        await _notify_retention_expiring_soon(conn)
-        await _scan_retention_expirations(conn)
+        # X3-19: uma varredura só por rodada alimenta os avisos e a fila de
+        # descarte (antes eram 4 passadas por todos os documentos ativos).
+        prazos = await _documentos_com_prazo_proximo(conn)
+        await _notify_retention_expiring_soon(conn, prazos)
+        await _scan_retention_expirations(conn, prazos)
         await _reset_demo_data_if_due(conn)
         # Revisão de acessos (A9-21): lembra o responsável 7 dias e 1 dia antes do prazo e 1 dia depois.
         try:
@@ -138,6 +141,12 @@ async def _run_once() -> None:
             await _varrer_arquivos_de_empresas_apagadas(conn)
         except Exception as exc:  # noqa: BLE001 — melhor esforço; tenta de novo no dia seguinte
             logger.exception("Falha na varredura de arquivos de empresas apagadas: %s", exc)
+        # Marcos assinados da trilha (X3-12): um por empresa por dia.
+        try:
+            from app.services.activity_service import ActivityService
+            await ActivityService.gravar_marcos(conn)
+        except Exception as exc:  # noqa: BLE001 — não pode parar a manutenção
+            logger.exception("Falha ao gravar marcos da trilha: %s", exc)
         # Partições futuras da trilha (X3-13): cria as que faltam, 24 meses à frente.
         try:
             criadas = await conn.fetchval("SELECT public.ensure_activity_log_partitions(24)")
@@ -247,7 +256,29 @@ async def _cleanup_stale_pending_uploads(conn) -> None:
         logger.info("Limpeza: %d envio(s) incompleto(s) removido(s).", len(rows))
 
 
-async def _scan_retention_expirations(conn) -> None:
+async def _documentos_com_prazo_proximo(conn) -> list:
+    """
+    Uma passada só (X3-19) por documento ativo e fora de legal hold com prazo
+    de retenção vencido ou a até 90 dias: `document_retention_info()` e
+    `document_is_under_hold()` rodam uma vez por documento por rodada, e o
+    resultado serve aos avisos de 90/30/7 dias e à fila de descarte.
+    Cada linha traz `hoje` (CURRENT_DATE do banco) para as contas de janela.
+    """
+    return await conn.fetch(
+        """
+        SELECT d.id, d.name, d.company_id, info.policy_id, info.policy_name, info.expires_at, CURRENT_DATE AS hoje
+        FROM public.documents d
+        CROSS JOIN LATERAL public.document_retention_info(d.id) info
+        WHERE d.deleted_at IS NULL
+          AND info.expires_at IS NOT NULL
+          AND info.expires_at <= CURRENT_DATE + ($1::int * interval '1 day')
+          AND NOT public.document_is_under_hold(d.id)
+        """,
+        max(_RETENTION_WARNING_DAYS),
+    )
+
+
+async def _scan_retention_expirations(conn, prazos: list | None = None) -> None:
     """
     Fase 5.5: varre documentos ativos cujo prazo de retenção calculado
     (`document_retention_info`) já passou e que NÃO estão sob legal hold,
@@ -259,25 +290,27 @@ async def _scan_retention_expirations(conn) -> None:
     não bloqueiam uma reentrada se o documento voltar a vencer sob uma nova
     política — mas isso é cenário raro e aceitável nesta fatia).
     """
+    if prazos is None:
+        prazos = await _documentos_com_prazo_proximo(conn)
+    vencidos = [p for p in prazos if p["expires_at"] < p["hoje"]]
+    if not vencidos:
+        return
     await conn.execute(
         """
         INSERT INTO public.retention_review_queue (company_id, document_id, policy_id, policy_name_snapshot, computed_expires_at)
-        SELECT d.company_id, d.id, info.policy_id, info.policy_name, info.expires_at
-        FROM public.documents d
-        CROSS JOIN LATERAL public.document_retention_info(d.id) info
-        WHERE d.deleted_at IS NULL
-          AND info.expires_at IS NOT NULL
-          AND info.expires_at < CURRENT_DATE
-          AND NOT public.document_is_under_hold(d.id)
+        SELECT * FROM unnest($1::uuid[], $2::uuid[], $3::uuid[], $4::text[], $5::date[])
         ON CONFLICT (document_id) WHERE status IN ('pending', 'deferred') DO NOTHING
-        """
+        """,
+        [p["company_id"] for p in vencidos], [p["id"] for p in vencidos],
+        [p["policy_id"] for p in vencidos], [p["policy_name"] for p in vencidos],
+        [p["expires_at"] for p in vencidos],
     )
 
 
 _RETENTION_WARNING_DAYS = (90, 30, 7)
 
 
-async def _notify_retention_expiring_soon(conn) -> None:
+async def _notify_retention_expiring_soon(conn, prazos: list | None = None) -> None:
     """
     Fase 14.5: avisa admin/operador com acesso não-escopado à empresa quando o
     prazo de retenção de um documento (calculado por `document_retention_info`,
@@ -291,48 +324,53 @@ async def _notify_retention_expiring_soon(conn) -> None:
     # Só a janela mais próxima: um documento a 25 dias do prazo recebe o aviso
     # de 30 dias, não o de 90 e o de 30 juntos (achado X3-09 — com a máquina
     # desligada por dias, as três janelas chegavam de uma vez).
+    if prazos is None:
+        prazos = await _documentos_com_prazo_proximo(conn)
     janelas = sorted(_RETENTION_WARNING_DAYS)
-    for i, days in enumerate(janelas):
-        anterior = janelas[i - 1] if i > 0 else -1
-        notif_type = f"retention_expiring_{days}"
-        rows = await conn.fetch(
-            """
-            SELECT d.id, d.name, d.company_id, info.expires_at
-            FROM public.documents d
-            CROSS JOIN LATERAL public.document_retention_info(d.id) info
-            WHERE d.deleted_at IS NULL
-              AND info.expires_at IS NOT NULL
-              AND info.expires_at >= CURRENT_DATE
-              AND info.expires_at <= CURRENT_DATE + ($1::int * interval '1 day')
-              AND ($3::int < 0 OR info.expires_at > CURRENT_DATE + ($3::int * interval '1 day'))
-              AND NOT public.document_is_under_hold(d.id)
-              AND NOT EXISTS (
-                SELECT 1 FROM public.notifications n
-                WHERE n.type = $2 AND n.resource_id = d.id
-              )
-            """,
-            days, notif_type, anterior,
+    # A janela de cada documento: a menor que ainda cobre os dias que faltam.
+    por_janela: list[tuple[int, object]] = []
+    for p in prazos:
+        faltam = (p["expires_at"] - p["hoje"]).days
+        if faltam < 0:
+            continue
+        janela = next((j for j in janelas if faltam <= j), None)
+        if janela is not None:
+            por_janela.append((janela, p))
+    if not por_janela:
+        return
+    # Idempotência por (type, resource_id), numa consulta só para todos.
+    ja_avisados = {
+        (r["type"], r["resource_id"])
+        for r in await conn.fetch(
+            "SELECT type, resource_id FROM public.notifications WHERE type = ANY($1::text[]) AND resource_id = ANY($2::uuid[])",
+            [f"retention_expiring_{j}" for j in janelas], list({p["id"] for _, p in por_janela}),
         )
-        for row in rows:
-            recipients = await conn.fetch(
+    }
+    destinatarios: dict = {}
+    for days, row in por_janela:
+        notif_type = f"retention_expiring_{days}"
+        if (notif_type, row["id"]) in ja_avisados:
+            continue
+        if row["company_id"] not in destinatarios:
+            destinatarios[row["company_id"]] = await conn.fetch(
                 """
                 SELECT DISTINCT user_id FROM public.user_company_access
                 WHERE company_id = $1 AND folder_path IS NULL AND permission_level IN ('admin', 'operador')
                 """,
                 row["company_id"],
             )
-            message = (
-                f'"{row["name"]}" vence a retenção em {days} dia(s) '
-                f'({row["expires_at"].strftime("%d/%m/%Y")}).'
+        message = (
+            f'"{row["name"]}" vence a retenção em {days} dia(s) '
+            f'({row["expires_at"].strftime("%d/%m/%Y")}).'
+        )
+        for r in destinatarios[row["company_id"]]:
+            await conn.execute(
+                """
+                INSERT INTO public.notifications (user_id, company_id, type, resource_type, resource_id, message)
+                VALUES ($1, $2, $3, 'document', $4, $5)
+                """,
+                r["user_id"], row["company_id"], notif_type, row["id"], message,
             )
-            for r in recipients:
-                await conn.execute(
-                    """
-                    INSERT INTO public.notifications (user_id, company_id, type, resource_type, resource_id, message)
-                    VALUES ($1, $2, $3, 'document', $4, $5)
-                    """,
-                    r["user_id"], row["company_id"], notif_type, row["id"], message,
-                )
 
 
 _OBLIGATION_ALERT_STATUSES = ("overdue", "at_risk", "blocked", "expired")
