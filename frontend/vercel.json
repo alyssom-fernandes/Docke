@@ -45,7 +45,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://docke-api.fly.dev https://*.r2.cloudflarestorage.com; connect-src 'self' https://docke-api.fly.dev https://*.r2.cloudflarestorage.com; frame-src 'self' blob: https://*.r2.cloudflarestorage.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+          "value": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://docke-api.fly.dev https://docke-demo-api.fly.dev https://*.r2.cloudflarestorage.com; connect-src 'self' https://docke-api.fly.dev https://docke-demo-api.fly.dev https://*.r2.cloudflarestorage.com; frame-src 'self' blob: https://*.r2.cloudflarestorage.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
         }
       ]
     }
