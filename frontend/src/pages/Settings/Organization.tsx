@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Building2, Plus, Image as ImageIcon, ChevronRight, ScrollText } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { friendlyError } from "@/lib/errors";
@@ -119,6 +119,9 @@ function OrgModal({ org, onClose, onDone }: { org: Org | null; onClose: () => vo
         )}
         <button type="submit" className="sr-only">Salvar</button>
       </form>
+      {/* Perfil fiscal desta empresa sem trocar a empresa no topo (A9-05);
+          salva cada campo ao escolher, como na seção da empresa atual. */}
+      {org && <div className="mt-4"><FiscalProfileSection companyId={org.id} companyName={org.name} isAdmin embedded /></div>}
     </Dialog>
   );
 }
@@ -156,8 +159,9 @@ const TIPO_JURIDICO_LABEL: Record<string, string> = {
 };
 const UFS = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
 
-function FiscalProfileSection({ companyId, companyName, isAdmin }: { companyId: string; companyName: string; isAdmin: boolean }) {
+function FiscalProfileSection({ companyId, companyName, isAdmin, embedded = false }: { companyId: string; companyName: string; isAdmin: boolean; embedded?: boolean }) {
   const { error: showError } = useToast();
+  const fpId = useId();
   const [profile, setProfile] = useState<FiscalProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<keyof FiscalProfile | null>(null);
@@ -215,7 +219,7 @@ function FiscalProfileSection({ companyId, companyName, isAdmin }: { companyId: 
   }
 
   return (
-    <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-5 space-y-4 border border-teal-500/20">
+    <div className={embedded ? "space-y-4 border-t border-(--border-default) pt-4" : "glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-5 space-y-4 border border-teal-500/20"}>
       <div className="flex items-center gap-2">
         <ScrollText className="w-4 h-4 text-(--text-accent) shrink-0" />
         <h2 className="text-mac-body font-semibold text-(--text-primary) truncate">
@@ -229,9 +233,9 @@ function FiscalProfileSection({ companyId, companyName, isAdmin }: { companyId: 
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label id="fp-regime_tributario" className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Regime tributário</label>
+          <label id={`${fpId}-regime_tributario`} className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Regime tributário</label>
           <Dropdown
-            ariaLabelledby="fp-regime_tributario"
+            ariaLabelledby={`${fpId}-regime_tributario`}
             value={profile.regime_tributario ?? ""}
             onChange={(v) => update("regime_tributario", v)}
             placeholder="Não informado"
@@ -240,9 +244,9 @@ function FiscalProfileSection({ companyId, companyName, isAdmin }: { companyId: 
           />
         </div>
         <div>
-          <label id="fp-faixa_funcionarios" className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Quantidade de funcionários</label>
+          <label id={`${fpId}-faixa_funcionarios`} className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Quantidade de funcionários</label>
           <Dropdown
-            ariaLabelledby="fp-faixa_funcionarios"
+            ariaLabelledby={`${fpId}-faixa_funcionarios`}
             value={profile.faixa_funcionarios ?? ""}
             onChange={(v) => update("faixa_funcionarios", v)}
             placeholder="Não informado"
@@ -251,9 +255,9 @@ function FiscalProfileSection({ companyId, companyName, isAdmin }: { companyId: 
           />
         </div>
         <div>
-          <label id="fp-uf" className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">UF</label>
+          <label id={`${fpId}-uf`} className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">UF</label>
           <Dropdown
-            ariaLabelledby="fp-uf"
+            ariaLabelledby={`${fpId}-uf`}
             value={profile.uf ?? ""}
             onChange={(v) => update("uf", v)}
             placeholder="Não informado"
@@ -262,9 +266,9 @@ function FiscalProfileSection({ companyId, companyName, isAdmin }: { companyId: 
           />
         </div>
         <div>
-          <label id="fp-tipo_juridico" className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Tipo jurídico</label>
+          <label id={`${fpId}-tipo_juridico`} className="block text-mac-caption font-medium text-(--text-secondary) mb-1.5">Tipo jurídico</label>
           <Dropdown
-            ariaLabelledby="fp-tipo_juridico"
+            ariaLabelledby={`${fpId}-tipo_juridico`}
             value={profile.tipo_juridico ?? ""}
             onChange={(v) => update("tipo_juridico", v)}
             placeholder="Não informado"
@@ -291,6 +295,35 @@ function FiscalProfileSection({ companyId, companyName, isAdmin }: { companyId: 
         </div>
       </div>
     </div>
+  );
+}
+
+/** Cor estável por nome, para empresas sem logo se distinguirem na lista. */
+const ORG_TINTS = ["#0D9488", "#2563EB", "#7C3AED", "#DB2777", "#EA580C", "#65A30D", "#0891B2", "#B45309"];
+function OrgIcon({ org }: { org: Org }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!org.logo_key) { setUrl(null); return; }
+    let vivo = true;
+    api.get(`/companies/${org.id}/logo-url`).then((r) => { if (vivo) setUrl(r.data.logo_url); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [org.id, org.logo_key]);
+  if (url) {
+    return (
+      <span className="w-9 h-9 rounded-(--radius-control) border border-(--border-default) bg-white flex items-center justify-center overflow-hidden shrink-0">
+        <img src={url} alt="" className="max-w-full max-h-full object-contain" onError={() => setUrl(null)} />
+      </span>
+    );
+  }
+  const palavras = org.name.replace(/\b(ltda|me|epp|s\.?a\.?|eireli)\b\.?/gi, "").trim().split(/\s+/).filter(Boolean);
+  const iniciais = ((palavras[0]?.[0] ?? "") + (palavras[1]?.[0] ?? "")).toUpperCase() || "?";
+  let h = 0;
+  for (const ch of org.name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return (
+    <span aria-hidden="true" className="w-9 h-9 rounded-(--radius-control) flex items-center justify-center shrink-0 text-white text-mac-caption font-semibold"
+      style={{ background: ORG_TINTS[h % ORG_TINTS.length] }}>
+      {iniciais}
+    </span>
   );
 }
 
@@ -367,16 +400,14 @@ export default function Organization() {
           <ul>
             {orgs.map((org) => (
               <li key={org.id} className="flex items-center gap-3 px-5 py-4 border-b border-(--border-default) last:border-0">
-                <div className="w-9 h-9 rounded-(--radius-control) bg-(--tint-accent) flex items-center justify-center shrink-0">
-                  <Building2 className="w-4 h-4 text-(--text-accent)" />
-                </div>
+                <OrgIcon org={org} />
                 <div className="flex-1 min-w-0">
                   <p className="text-mac-body font-medium text-(--text-primary) flex items-center gap-2 min-w-0">
                     <span className="truncate">{org.name}</span>
                     {current?.id === org.id && <Badge variant="teal">Atual</Badge>}
                   </p>
                   <p className="text-mac-caption text-(--text-secondary)">
-                    {org.cnpj ? formatCnpj(org.cnpj) : "CNPJ não informado"} · {org.document_count} documentos · {org.user_count} usuários
+                    {org.cnpj ? formatCnpj(org.cnpj) : "CNPJ não informado"} · {org.document_count} {Number(org.document_count) === 1 ? "documento" : "documentos"} · {org.user_count} {Number(org.user_count) === 1 ? "pessoa com acesso" : "pessoas com acesso"}
                   </p>
                 </div>
                 {!org.is_active && <Badge variant="default">Inativa</Badge>}

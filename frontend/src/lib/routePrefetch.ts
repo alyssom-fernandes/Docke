@@ -12,6 +12,17 @@ const LOADERS: Record<string, () => Promise<unknown>> = {
   "/activity": () => import("@/pages/Activity"),
   "/obligations": () => import("@/pages/Obligations"),
   "/trash": () => import("@/pages/Trash"),
+  // Painéis de Ajustes antes do layout: a busca pega o caminho mais específico.
+  "/settings/profile": () => import("@/pages/Settings/Profile"),
+  "/settings/security": () => import("@/pages/Settings/Security"),
+  "/settings/admin": () => import("@/pages/Settings/AdminHome"),
+  "/settings/features": () => import("@/pages/Settings/Features"),
+  "/settings/organization": () => import("@/pages/Settings/Organization"),
+  "/settings/users": () => import("@/pages/Settings/Users"),
+  "/settings/metadata": () => import("@/pages/Settings/Metadata"),
+  "/settings/retention": () => import("@/pages/Settings/Retention"),
+  "/settings/privacy": () => import("@/pages/Settings/Privacy"),
+  "/settings/preferences": () => import("@/pages/Settings/Preferences"),
   "/settings": () => import("@/pages/Settings/SettingsLayout"),
 };
 

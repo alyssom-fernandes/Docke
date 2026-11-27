@@ -7,6 +7,7 @@ import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
 import Input from "@/components/ui/Input";
 import SaveBar from "@/components/shared/SaveBar";
+import { useUnsavedGuard } from "@/hooks/useUnsavedGuard";
 
 const ROLE_LABEL: Record<string, string> = { visualizador: "Visualizador", operador: "Operador", admin: "Administrador", supremo: "Administrador geral" };
 
@@ -35,6 +36,9 @@ export default function Profile() {
     window.addEventListener("beforeunload", h);
     return () => window.removeEventListener("beforeunload", h);
   }, [dirty]);
+
+  // Trocar de painel ou de tela pelo app também avisa (A8-07).
+  const guard = useUnsavedGuard(dirty);
 
   async function handleSave() {
     if (!dirty) return;
@@ -73,6 +77,7 @@ export default function Profile() {
           <button type="submit" className="sr-only">Salvar</button>
         </form>
         <SaveBar visible={dirty} saving={saving} onSave={handleSave} onDiscard={() => setFullName(user?.full_name ?? "")} />
+        {guard}
       </div>
 
       <section aria-labelledby="perfil-empresas" className="glass-panel glass-blur-card rounded-(--radius-panel) p-5 sm:p-6 space-y-2">
