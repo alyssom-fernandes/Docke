@@ -35,7 +35,7 @@ const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(
         aria-hidden="true"
         className={`w-4 h-4 pointer-coarse:w-5 pointer-coarse:h-5 rounded-[5px] flex items-center justify-center transition-colors duration-fast pointer-events-none
           peer-focus-visible:outline-solid peer-focus-visible:outline-[3px] peer-focus-visible:outline-(--focus-ring) peer-focus-visible:outline-offset-1
-          ${on ? "bg-(--accent) shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.12)]" : "mac-check-off"}`}
+          ${on ? "bg-(--accent) shadow-(--shadow-hairline-inset)" : "mac-check-off"}`}
       >
         {checked ? <Check className="w-3 h-3 text-white" strokeWidth={3} /> : indeterminate ? <Minus className="w-3 h-3 text-white" strokeWidth={3} /> : null}
       </span>

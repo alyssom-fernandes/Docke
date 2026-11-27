@@ -1279,9 +1279,20 @@ export default function Documents() {
   }
 
   // Excluir grava na hora e empilha a restauração (achados A4-26, A4-61).
+  /** As linhas que saem da lista somem deslizando, em vez de sumir de uma vez (A4-18). */
+  async function animateOut(ids: string[]) {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const els = ids.map((id) => rowRefs.current.get(id)).filter((el): el is HTMLElement => !!el);
+    if (!els.length || els.length > 60) return;
+    els.forEach((el) => el.classList.add("row-leave"));
+    await new Promise((r) => window.setTimeout(r, 170));
+    els.forEach((el) => el.classList.remove("row-leave"));
+  }
+
   async function deleteDocuments(ids: string[]) {
     if (!ids.length) return;
     const backup = documents.filter((d) => ids.includes(d.id));
+    await animateOut(ids);
     setDocuments((prev) => prev.filter((d) => !ids.includes(d.id)));
     setTotal((t) => Math.max(0, t - ids.length));
     setSelected(new Set());
@@ -1979,7 +1990,7 @@ export default function Documents() {
                       aria-label={`Pasta ${f.name}`}
                       tabIndex={focusedId === f.id || (!focusedId && items[0]?.data.id === f.id) ? 0 : -1}
                       onFocus={() => setFocusedId(f.id)}
-                      className={`group relative flex flex-col items-center gap-1 py-2 px-1.5 rounded-[8px] cursor-default outline-none focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${isDropTarget ? "spring-target bg-(--control-fill)" : ""} ${dragFolderIds?.includes(f.id) ? "opacity-40" : ""} ${droppedOn === f.id ? "drop-pulse" : ""}`}
+                      className={`group relative flex flex-col items-center gap-1 py-2 px-1.5 rounded-(--radius-sm) cursor-default outline-none focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${isDropTarget ? "spring-target bg-(--control-fill)" : ""} ${dragFolderIds?.includes(f.id) ? "opacity-40" : ""} ${droppedOn === f.id ? "drop-pulse" : ""}`}
                       onClick={(e) => selectDocClick(e, f.id)}
                       onDoubleClick={() => openFolder(f)}
                       onContextMenu={(e) => openContextMenu(e, "folder", f)}
@@ -2024,7 +2035,7 @@ export default function Documents() {
                       >
                         <MoreHorizontal className="w-4 h-4" aria-hidden />
                       </button>
-                      <span className={`flex h-[80px] items-end justify-center rounded-[6px] px-1.5 pb-1 ${selected.has(f.id) || isDropTarget ? "bg-(--control-fill)" : ""}`} aria-hidden>
+                      <span className={`flex h-[80px] items-end justify-center rounded-(--radius-control) px-1.5 pb-1 ${selected.has(f.id) || isDropTarget ? "bg-(--control-fill)" : ""}`} aria-hidden>
                         <MacFolderIcon className="w-[72px] h-[58px]" open={isDropTarget} />
                       </span>
                       {renaming?.kind === "folder" && renaming.id === f.id ? (
@@ -2039,10 +2050,10 @@ export default function Documents() {
                           }}
                           onClick={(e) => e.stopPropagation()}
                           onBlur={confirmRename}
-                          className="w-full h-6 px-1 text-mac-caption text-center mac-field reveal rounded-[4px] text-(--text-primary)"
+                          className="w-full h-6 px-1 text-mac-caption text-center mac-field reveal rounded-(--radius-badge) text-(--text-primary)"
                         />
                       ) : (
-                        <span className={`max-w-full px-1.5 py-px rounded-[4px] text-[12px] leading-[15px] font-medium text-center line-clamp-2 ${selected.has(f.id) ? "bg-(--selection-bg) text-(--selection-text)" : "text-(--text-primary)"}`}>{f.name}</span>
+                        <span className={`max-w-full px-1.5 py-px rounded-(--radius-badge) text-[12px] leading-[15px] font-medium text-center line-clamp-2 ${selected.has(f.id) ? "bg-(--selection-bg) text-(--selection-text)" : "text-(--text-primary)"}`}>{f.name}</span>
                       )}
                     </div>
                   );
@@ -2061,7 +2072,7 @@ export default function Documents() {
                     aria-label={d.name}
                     tabIndex={focusedId === d.id || (!focusedId && items[0]?.data.id === d.id) ? 0 : -1}
                     onFocus={() => setFocusedId(d.id)}
-                    className={`group relative flex flex-col items-center gap-1 py-2 px-1.5 rounded-[8px] cursor-default outline-none focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${isDragging ? "opacity-40" : ""}`}
+                    className={`group relative flex flex-col items-center gap-1 py-2 px-1.5 rounded-(--radius-sm) cursor-default outline-none focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${isDragging ? "opacity-40" : ""}`}
                     onClick={(e) => selectDocClick(e, d.id)}
                     onDoubleClick={() => setPreviewDoc(d)}
                     onContextMenu={(e) => openContextMenu(e, "document", d)}
@@ -2101,14 +2112,14 @@ export default function Documents() {
                             if (e.key === "Escape") setRenaming(null);
                           }}
                           onBlur={confirmRename}
-                          className="w-full min-w-0 h-6 px-1 text-mac-caption text-center mac-field reveal rounded-[4px] text-(--text-primary)"
+                          className="w-full min-w-0 h-6 px-1 text-mac-caption text-center mac-field reveal rounded-(--radius-badge) text-(--text-primary)"
                         />
                         <span className="text-mac-caption text-(--text-tertiary) shrink-0">{splitExt(d.name)[1]}</span>
                       </div>
                     ) : (
                       // Nome em até duas linhas sem perder a extensão (A4-21): a base corta
                       // com reticências e a extensão fica sempre visível embaixo.
-                      <span className={`max-w-full px-1.5 py-px rounded-[4px] text-[12px] leading-[15px] font-medium text-center ${isSelected ? "bg-(--selection-bg) text-(--selection-text)" : "text-(--text-primary)"}`} title={d.name}>
+                      <span className={`max-w-full px-1.5 py-px rounded-(--radius-badge) text-[12px] leading-[15px] font-medium text-center ${isSelected ? "bg-(--selection-bg) text-(--selection-text)" : "text-(--text-primary)"}`} title={d.name}>
                         <span className="line-clamp-2 break-words [hyphens:none]">{d.name}</span>
                       </span>
                     )}
@@ -2149,7 +2160,7 @@ export default function Documents() {
                 <col style={{ width: 76 }} />
               </colgroup>
               <thead
-                className="sticky top-0 z-[2] bg-(--window-bg) shadow-[0_0.5px_0_var(--separator)]"
+                className="sticky top-0 z-[2] bg-(--window-bg) shadow-(--shadow-separator)"
                 onContextMenu={(e) => { e.preventDefault(); setViewMenu({ x: e.clientX, y: e.clientY }); }}
               >
                 <tr>
@@ -2271,7 +2282,7 @@ export default function Documents() {
                               }}
                               onClick={(e) => e.stopPropagation()}
                               onBlur={confirmRename}
-                              className="w-full max-w-[280px] h-7 px-2 text-mac-body mac-field reveal rounded-[6px] text-(--text-primary)"
+                              className="w-full max-w-[280px] h-7 px-2 text-mac-body mac-field reveal rounded-(--radius-control) text-(--text-primary)"
                             />
                           ) : (
                             <div className="flex items-center gap-1">
@@ -2438,7 +2449,7 @@ export default function Documents() {
                                   if (e.key === "Escape") setRenaming(null);
                                 }}
                                 onBlur={confirmRename}
-                                className="h-7 px-2 text-mac-body mac-field reveal rounded-[6px] text-(--text-primary) flex-1 min-w-0"
+                                className="h-7 px-2 text-mac-body mac-field reveal rounded-(--radius-control) text-(--text-primary) flex-1 min-w-0"
                               />
                               <span className="text-mac-body text-(--text-tertiary) shrink-0">{splitExt(d.name)[1]}</span>
                             </div>
@@ -2531,7 +2542,7 @@ export default function Documents() {
           )}
           {dragBox && (
             <div
-              className="absolute border border-(--text-secondary)/50 bg-(--text-secondary)/10 pointer-events-none z-20 rounded-[2px]"
+              className="absolute border border-(--text-secondary)/50 bg-(--text-secondary)/10 pointer-events-none z-20 rounded-(--radius-hair)"
               style={{
                 left: Math.min(dragBox.x1, dragBox.x2),
                 top: Math.min(dragBox.y1, dragBox.y2),
@@ -2564,7 +2575,7 @@ export default function Documents() {
                   }}
                   onDragLeave={() => setDragOverFolderId((v) => (v === `crumb-${idx}` ? null : v))}
                   onDrop={(e) => { e.preventDefault(); dropOnTarget({ id: crumb.id ?? null, name: idx === 0 ? "Documentos" : crumb.name }, e.altKey); }}
-                  className={`text-mac-caption hover:text-(--text-accent) transition-colors duration-fast rounded-[4px] px-0.5 ${dragOverFolderId === `crumb-${idx}` ? "bg-(--tint-accent) text-(--text-accent) outline-solid outline-1 outline-teal-400" : ""} ${
+                  className={`text-mac-caption hover:text-(--text-accent) transition-colors duration-fast rounded-(--radius-badge) px-0.5 ${dragOverFolderId === `crumb-${idx}` ? "bg-(--tint-accent) text-(--text-accent) outline-solid outline-1 outline-teal-400" : ""} ${
                     idx === breadcrumbs.length - 1
                       ? "text-(--text-primary) font-medium"
                       : "text-(--text-secondary)"
@@ -2692,7 +2703,7 @@ export default function Documents() {
         <Dialog onClose={() => setShowTreeDrawer(false)} title="Pastas" size="sm" bodyClassName="px-2 py-2">
           <button
             onClick={() => { navigateHome(); setShowTreeDrawer(false); }}
-            className={`w-full flex items-center gap-1.5 h-9 pointer-coarse:h-11 pl-3 pr-2 text-mac-body rounded-[6px] text-left ${currentFolderId === null ? "bg-(--tint-accent) text-(--text-accent) font-medium" : "text-(--text-primary) hover:bg-(--bg-hover)"}`}
+            className={`w-full flex items-center gap-1.5 h-9 pointer-coarse:h-11 pl-3 pr-2 text-mac-body rounded-(--radius-control) text-left ${currentFolderId === null ? "bg-(--tint-accent) text-(--text-accent) font-medium" : "text-(--text-primary) hover:bg-(--bg-hover)"}`}
           >
             <Home className="w-4 h-4 shrink-0" aria-hidden /> Início
           </button>

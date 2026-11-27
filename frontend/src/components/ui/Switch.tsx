@@ -26,7 +26,7 @@ export default function Switch({
       }`}
     >
       <span
-        className={`absolute top-1/2 -translate-y-1/2 h-[13px] w-[21px] pointer-coarse:h-[27px] pointer-coarse:w-[27px] rounded-full bg-white shadow-[0_0.5px_1.5px_rgba(0,0,0,0.25),0_3px_8px_rgba(0,0,0,0.08)] transition-[left] duration-normal ${
+        className={`absolute top-1/2 -translate-y-1/2 h-[13px] w-[21px] pointer-coarse:h-[27px] pointer-coarse:w-[27px] rounded-full bg-white shadow-(--shadow-knob) transition-[left] duration-normal ${
           checked ? "left-[13px] pointer-coarse:left-[22px]" : "left-[2px]"
         }`}
       />

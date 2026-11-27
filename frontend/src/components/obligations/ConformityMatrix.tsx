@@ -102,7 +102,7 @@ export default function ConformityMatrix() {
                     <td key={o} className="px-1.5 py-1.5 border-b border-(--border-default) align-top">
                       {c && st ? (
                         <Link to={`/obligations?instancia=${c.instance_id}`} title={`${o} · ${c.period_label} · vence ${new Date(c.due_date + "T12:00").toLocaleDateString("pt-BR")}${c.owner_name ? ` · ${c.owner_name}` : ""}`}
-                          className={`block rounded-[6px] px-2 py-1 font-medium hover:ring-2 hover:ring-(--focus-ring) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${st.cls}`}>
+                          className={`block rounded-(--radius-control) px-2 py-1 font-medium hover:ring-2 hover:ring-(--focus-ring) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${st.cls}`}>
                           {st.rotulo}
                           <span className="block font-normal opacity-80">{c.period_label}</span>
                         </Link>

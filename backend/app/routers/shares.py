@@ -585,6 +585,9 @@ async def share_download(
 
     download_url, expires_at = storage_service.generate_download_url(
         key=doc["storage_path"], filename=doc["name"], content_type=doc["mime_type"],
+        # X2-19: o navegador começa o download na hora; 2 minutos bastam e o
+        # endereço copiado da página do link não serve depois.
+        expires_in=120,
     )
     await _log_access(conn, request, share["id"], True, visitante)
     return {"download_url": download_url, "name": doc["name"]}

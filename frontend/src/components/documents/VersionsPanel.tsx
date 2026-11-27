@@ -44,7 +44,7 @@ function LineText({ line }: { line: DiffLine }) {
   return (
     <>
       {line.parts.map((p, i) => p.changed
-        ? <mark key={i} className={`rounded-[2px] px-px text-(--text-primary) ${line.type === "add" ? "bg-emerald-500/40" : "bg-red-500/40"}`}>{p.text}</mark>
+        ? <mark key={i} className={`rounded-(--radius-hair) px-px text-(--text-primary) ${line.type === "add" ? "bg-emerald-500/40" : "bg-red-500/40"}`}>{p.text}</mark>
         : <span key={i}>{p.text}</span>)}
     </>
   );

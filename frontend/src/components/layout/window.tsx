@@ -187,7 +187,7 @@ export const ToolbarButton = forwardRef<HTMLButtonElement, ToolbarButtonProps>(f
   const shape = showLabel ? "px-2.5 gap-1.5" : inGroup ? "w-8" : "w-9";
   const size = inGroup ? "h-7" : "h-9";
   const look = prominent
-    ? "bg-(--accent) text-white hover:bg-(--accent-hover) shadow-[0_0_0_0.5px_rgba(0,0,0,0.12),0_8px_15px_rgba(0,0,0,0.04)]"
+    ? "bg-(--accent) text-white hover:bg-(--accent-hover) shadow-(--shadow-toolbar-accent)"
     : inGroup
       ? selected
         ? "bg-(--control-fill-selected) text-(--text-primary)"

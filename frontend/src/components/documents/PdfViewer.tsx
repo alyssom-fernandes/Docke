@@ -194,7 +194,7 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer({ url, q
         <nav aria-label="Miniaturas das páginas" className="hidden sm:block w-[132px] shrink-0 overflow-y-auto border-r border-(--border-default) p-2 space-y-2">
           {sizes.map((_, i) => (
             <button key={i} onClick={() => goToPage(i + 1)} aria-label={`Ir para a página ${i + 1}`} aria-current={page === i + 1 ? "page" : undefined}
-              className={`block w-full rounded-[6px] p-1 ${page === i + 1 ? "ring-2 ring-(--focus-ring)" : "hover:bg-(--bg-hover)"}`}>
+              className={`block w-full rounded-(--radius-control) p-1 ${page === i + 1 ? "ring-2 ring-(--focus-ring)" : "hover:bg-(--bg-hover)"}`}>
               <PdfPage pdf={pdf} index={i} scale={100 / (rotated ? sizes[i].h : sizes[i].w)} rotation={rotation} thumbnail />
               <span className="block text-center text-mac-caption text-(--text-secondary) mt-0.5">{i + 1}</span>
             </button>
@@ -213,7 +213,7 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer({ url, q
         >
           {!pdf ? (
             <div className="mx-auto max-w-[720px] space-y-6" aria-label="Carregando PDF">
-              {[0, 1].map((i) => <div key={i} className="aspect-[1/1.414] rounded-[4px] bg-(--bg-hover) animate-pulse" />)}
+              {[0, 1].map((i) => <div key={i} className="aspect-[1/1.414] rounded-(--radius-badge) bg-(--bg-hover) animate-pulse" />)}
             </div>
           ) : (
             <div className="flex flex-col items-center gap-6">
@@ -250,7 +250,7 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer({ url, q
             <form onSubmit={(e) => { e.preventDefault(); const n = Number(pageInput); if (n >= 1 && n <= sizes.length) goToPage(n); }} className="flex items-center gap-1 text-mac-caption text-(--text-secondary)">
               <label htmlFor="pdf-pagina" className="sr-only">Página</label>
               <input id="pdf-pagina" value={pageInput} onChange={(e) => setPageInput(e.target.value.replace(/\D/g, ""))} inputMode="numeric"
-                className="w-9 h-7 rounded-[6px] border border-(--border-control) bg-(--bg-card) text-center text-(--text-primary) tabular-nums focus:outline-hidden focus:ring-2 focus:ring-(--focus-ring)" />
+                className="w-9 h-7 rounded-(--radius-control) border border-(--border-control) bg-(--bg-card) text-center text-(--text-primary) tabular-nums focus:outline-hidden focus:ring-2 focus:ring-(--focus-ring)" />
               <span aria-live="polite" className="tabular-nums pr-1">de {sizes.length || "…"}</span>
             </form>
             <button className={btn} onClick={() => goToPage(Math.min(sizes.length, page + 1))} disabled={page >= sizes.length} aria-label="Próxima página"><ChevronRight className="w-4 h-4" aria-hidden /></button>
@@ -307,8 +307,10 @@ function PdfPage({ pdf, index, scale, rotation, query = "", thumbnail = false }:
       const dpr = window.devicePixelRatio || 1;
       canvas.width = Math.floor(viewport.width * dpr);
       canvas.height = Math.floor(viewport.height * dpr);
-      canvas.style.width = `${viewport.width}px`;
-      canvas.style.height = `${viewport.height}px`;
+      // A tela ocupa a folha inteira: no zoom, a página antiga cresce junto com
+      // a folha (transição de 200 ms) até a nova renderização chegar (A5-48).
+      canvas.style.width = "100%";
+      canvas.style.height = "100%";
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       renderTask = page.render({ canvas: null, canvasContext: ctx, viewport });
       await renderTask.promise.catch(() => {});
@@ -327,8 +329,12 @@ function PdfPage({ pdf, index, scale, rotation, query = "", thumbnail = false }:
 
   useEffect(() => { if (textRef.current) highlight(textRef.current, query); }, [query]);
 
+  // Só anima depois do primeiro tamanho real (a entrada não "cresce" do provisório).
+  const sized = useRef(false);
+  const animate = sized.current && !thumbnail;
+  if (dims) sized.current = true;
   return (
-    <div ref={holder} className="relative bg-white rounded-[3px] shadow-(--shadow-paper)"
+    <div ref={holder} className={`relative bg-white rounded-[3px] shadow-(--shadow-paper) ${animate ? "transition-[width,height] duration-200 ease-out motion-reduce:transition-none" : ""}`}
       style={dims ? { width: dims.w, height: dims.h } : { width: thumbnail ? 100 : 600, height: thumbnail ? 141 : 848 }}>
       <canvas ref={canvasRef} className="block rounded-[3px]" aria-hidden />
       {!thumbnail && <div ref={textRef} className="pdf-text-layer" />}

@@ -228,7 +228,7 @@ export default function FolderTree({
     return (
       <div className="py-1 space-y-1" aria-label="Carregando pastas">
         {[72, 58, 64, 50].map((w, i) => (
-          <div key={i} className="h-5 my-1 rounded-[6px] bg-(--control-fill) animate-pulse" style={{ width: `${w}%`, marginLeft: 8 + (i % 2) * 14 }} />
+          <div key={i} className="h-5 my-1 rounded-(--radius-control) bg-(--control-fill) animate-pulse" style={{ width: `${w}%`, marginLeft: 8 + (i % 2) * 14 }} />
         ))}
       </div>
     );
@@ -237,7 +237,7 @@ export default function FolderTree({
   return (
     <div className="py-1">
       {failed && (
-        <div role="alert" className="mx-1 mb-1 rounded-[6px] bg-(--tint-warning) px-2.5 py-2 text-mac-caption text-(--text-primary)">
+        <div role="alert" className="mx-1 mb-1 rounded-(--radius-control) bg-(--tint-warning) px-2.5 py-2 text-mac-caption text-(--text-primary)">
           Não carregou a árvore de pastas.{" "}
           <button onClick={load} className="inline-flex items-center gap-1 font-medium text-(--text-accent) underline-offset-2 hover:underline">
             <RefreshCw className="w-3 h-3" aria-hidden /> Tentar de novo
@@ -289,7 +289,7 @@ export default function FolderTree({
                 setDragSrcId(null);
               }}
               style={{ paddingLeft: `${2 + depth * 14}px` }}
-              className={`relative flex items-center gap-1 h-7 pointer-coarse:h-11 pr-2 text-[13px] font-medium rounded-[8px] cursor-default select-none outline-none text-(--sidebar-label)
+              className={`relative flex items-center gap-1 h-7 pointer-coarse:h-11 pr-2 text-[13px] font-medium rounded-(--radius-sm) cursor-default select-none outline-none text-(--sidebar-label)
                 focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-(--focus-ring)
                 ${appearing.has(node.id) ? "tree-row-in" : ""}
                 ${isActive ? "bg-(--sidebar-selection)" : ""}
@@ -313,7 +313,7 @@ export default function FolderTree({
           onDragOver={(e) => { e.preventDefault(); setDragOverId("__raiz__"); }}
           onDragLeave={() => setDragOverId(null)}
           onDrop={(e) => { e.preventDefault(); setDragOverId(null); if (dragSrcId) moveFolder(dragSrcId, null); setDragSrcId(null); }}
-          className={`mt-1 mx-1 rounded-[6px] border border-dashed px-2 py-2 text-center text-mac-caption ${dragOverId === "__raiz__" ? "border-teal-500 bg-(--tint-accent) text-(--text-accent)" : "border-(--border-control) text-(--text-secondary)"}`}
+          className={`mt-1 mx-1 rounded-(--radius-control) border border-dashed px-2 py-2 text-center text-mac-caption ${dragOverId === "__raiz__" ? "border-teal-500 bg-(--tint-accent) text-(--text-accent)" : "border-(--border-control) text-(--text-secondary)"}`}
         >
           Soltar aqui para levar ao início
         </div>
@@ -333,12 +333,12 @@ export default function FolderTree({
               onBlur={createRootFolder}
               placeholder="Nome da pasta"
               aria-label="Nome da nova pasta"
-              className="w-full h-7 px-2 text-mac-caption bg-(--bg-card) border border-(--border-control) rounded-[6px] text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring)"
+              className="w-full h-7 px-2 text-mac-caption bg-(--bg-card) border border-(--border-control) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring)"
             />
           ) : (
             <button
               onClick={() => setCreatingRoot(true)}
-              className="flex items-center gap-1.5 h-7 px-2 text-mac-caption text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-hover) rounded-[6px] transition-colors duration-fast w-full"
+              className="flex items-center gap-1.5 h-7 px-2 text-mac-caption text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-hover) rounded-(--radius-control) transition-colors duration-fast w-full"
             >
               <FolderPlus className="w-3.5 h-3.5" aria-hidden />
               Nova pasta

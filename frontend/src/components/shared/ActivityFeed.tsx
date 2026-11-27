@@ -226,13 +226,28 @@ function timeLabel(iso: string, relative: boolean | "dia") {
   return relative ? relativeDate(iso) : new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
+/**
+ * Peso visual por ação (A6-28): o que apaga ou tira acesso aparece em
+ * vermelho, o que mexe em acesso e segurança em laranja, e só ver ou baixar
+ * fica mais apagado. Antes excluir e visualizar tinham a mesma cara.
+ */
+const DESTRUTIVAS = new Set(["delete", "version_delete", "access_revoke", "member_remove", "account_deactivate", "share_revoke", "retention_queue_approved", "field_archive", "obligation_cancel", "retention_policy_archive", "obligation_archive"]);
+const SENSIVEIS = new Set(["access_grant", "access_role_change", "account_password_reset", "mfa_policy", "mfa_reset", "sessions_end", "share_create", "share_policy", "privacy_set", "lgpd_titular_search", "retention_hold_create", "retention_hold_release", "features", "audit_export", "upload_request", "account_activate"]);
+const LEITURAS = new Set(["view", "download", "integrity_check", "audit_verify"]);
+export function actionTone(action: string): string {
+  if (DESTRUTIVAS.has(action)) return "font-medium text-(--text-danger)";
+  if (SENSIVEIS.has(action)) return "font-medium text-(--text-warning)";
+  if (LEITURAS.has(action)) return "text-(--text-secondary)";
+  return "";
+}
+
 function EventRow({ ev, onNavigate, relative }: { ev: ActivityEvent; onNavigate: (target: string) => void; relative: boolean | "dia" }) {
   const [expanded, setExpanded] = useState(false);
   const target = activityTarget(ev);
   const hasDetail = (ev.action === "update_metadata" && !!ev.metadata?.field_label) || (ev.action === "rename" && !!ev.metadata?.de) || readableMetadata(ev.metadata).length > 0;
   const texto = (
     <>
-      <span className="font-medium">{ev.user_name}</span> {ACTION_LABELS[ev.action] ?? ev.action}{" "}
+      <span className="font-medium">{ev.user_name}</span> <span className={actionTone(ev.action)}>{ACTION_LABELS[ev.action] ?? ev.action}</span>{" "}
       <span className="text-(--text-secondary)">{ev.item_name_snapshot}</span>
     </>
   );
@@ -244,7 +259,7 @@ function EventRow({ ev, onNavigate, relative }: { ev: ActivityEvent; onNavigate:
         {target ? (
           <button
             onClick={() => onNavigate(target)}
-            className="flex-1 min-w-0 text-left text-mac-body text-(--text-primary) line-clamp-2 rounded-[6px] hover:underline underline-offset-2 focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
+            className="flex-1 min-w-0 text-left text-mac-body text-(--text-primary) line-clamp-2 rounded-(--radius-control) hover:underline underline-offset-2 focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
           >
             {texto}
           </button>
@@ -286,7 +301,7 @@ function ClusterRow({ cluster, onNavigate, relative }: { cluster: Cluster; onNav
       >
         <Avatar name={cluster.userName} size="sm" />
         <p className="flex-1 min-w-0 text-mac-body text-(--text-primary) line-clamp-2">
-          <span className="font-medium">{cluster.userName}</span> {verbo}
+          <span className="font-medium">{cluster.userName}</span> <span className={new Set(cluster.events.map((e) => e.action)).size === 1 ? actionTone(cluster.events[0].action) : ""}>{verbo}</span>
           {nomes && <span className="text-(--text-secondary)">: {nomes}</span>}
         </p>
         {expanded ? <ChevronDown className="w-3.5 h-3.5 text-(--text-secondary)" aria-hidden="true" /> : <ChevronRight className="w-3.5 h-3.5 text-(--text-secondary)" aria-hidden="true" />}

@@ -111,7 +111,7 @@ export default function Preferences() {
                 role="radio"
                 aria-checked={theme === opt.value}
                 onClick={() => choose(opt.value)}
-                className="flex flex-col items-center gap-2 group rounded-[12px] focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
+                className="flex flex-col items-center gap-2 group rounded-(--radius-card) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
               >
                 <span
                   className={`relative w-full aspect-4/3 rounded-[10px] border-2 overflow-hidden transition-[border-color,transform] duration-fast group-active:scale-[0.98] ${

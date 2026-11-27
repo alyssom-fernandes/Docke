@@ -74,7 +74,7 @@ export default function AdminHome() {
           <ul className="divide-y divide-(--border-default)">
             {attention.map((a) => (
               <li key={a.key}>
-                <Link to={a.to} className="flex items-center gap-3 min-h-11 py-1.5 text-mac-body text-(--text-primary) hover:underline rounded-[6px] focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)">
+                <Link to={a.to} className="flex items-center gap-3 min-h-11 py-1.5 text-mac-body text-(--text-primary) hover:underline rounded-(--radius-control) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)">
                   <AlertTriangle className="w-4 h-4 text-(--text-warning) shrink-0" aria-hidden="true" /><span className="flex-1">{a.text}</span><ChevronRight className="w-4 h-4 text-(--text-secondary)" aria-hidden="true" />
                 </Link>
               </li>

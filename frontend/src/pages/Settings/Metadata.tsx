@@ -309,7 +309,7 @@ function CopyFieldsModal({ companies, targetCompanyId, onClose, onCopied }: {
           previewFailed ? (
             <p role="alert" className="text-mac-caption text-(--text-danger)">Não foi possível ler os campos dessa empresa. Tente de novo.</p>
           ) : !preview ? (
-            <div className="space-y-1.5" aria-label="Carregando campos">{[0, 1, 2].map((k) => <div key={k} className="h-8 rounded-[6px] bg-(--bg-hover) animate-pulse" />)}</div>
+            <div className="space-y-1.5" aria-label="Carregando campos">{[0, 1, 2].map((k) => <div key={k} className="h-8 rounded-(--radius-control) bg-(--bg-hover) animate-pulse" />)}</div>
           ) : todos.length === 0 ? (
             <p className="text-mac-caption text-(--text-secondary)">Essa empresa não tem campos ativos.</p>
           ) : (
@@ -815,7 +815,7 @@ function TreeTab({ companyId, initialFolderId, onGoCatalog }: { companyId: strin
                           defaultValue={ownRule.default_value ?? ""}
                           placeholder="Valor padrão"
                           onBlur={(e) => saveDefaultValue(ownRule, e.target.value)}
-                          className="w-32 h-8 px-2.5 text-mac-caption bg-(--bg-card) border border-(--border-default) rounded-[6px] text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
+                          className="w-32 h-8 px-2.5 text-mac-caption bg-(--bg-card) border border-(--border-default) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-teal-500/70"
                         />
                         {ownRule.default_value && (
                           <Button variant="ghost" size="sm" onClick={() => setApplyingDefault({ rule: ownRule, label: f.label })}>Aplicar aos existentes…</Button>
@@ -827,7 +827,7 @@ function TreeTab({ companyId, initialFolderId, onGoCatalog }: { companyId: strin
                         <button
                           onClick={() => setRemoving(ownRule)}
                           title="Remover desta pasta"
-                          className="p-1.5 rounded-[6px] text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--bg-hover) transition-colors duration-fast"
+                          className="p-1.5 rounded-(--radius-control) text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--bg-hover) transition-colors duration-fast"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

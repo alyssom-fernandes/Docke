@@ -176,7 +176,7 @@ export function GridThumb({ doc, selected }: { doc: Document; selected: boolean 
   const Icon = s.icon;
   return (
     // Como no Finder: selecionado, o ícone ganha um fundo cinza arredondado.
-    <div className={`h-[80px] flex items-end justify-center shrink-0 rounded-[6px] px-1.5 pb-1 ${selected ? "bg-(--control-fill)" : ""}`} aria-hidden>
+    <div className={`h-[80px] flex items-end justify-center shrink-0 rounded-(--radius-control) px-1.5 pb-1 ${selected ? "bg-(--control-fill)" : ""}`} aria-hidden>
       {doc.thumb_url && !falhou ? (
         <img
           src={doc.thumb_url}
@@ -185,7 +185,7 @@ export function GridThumb({ doc, selected }: { doc: Document; selected: boolean 
           decoding="async"
           draggable={false}
           onError={() => setFalhou(true)}
-          className="max-h-[72px] max-w-[64px] rounded-[2px] bg-white object-contain shadow-[0_0_0_0.5px_rgba(0,0,0,0.2),0_1px_3px_rgba(0,0,0,0.18)]"
+          className="max-h-[72px] max-w-[64px] rounded-(--radius-hair) bg-white object-contain shadow-(--shadow-thumb)"
         />
       ) : (
         <Icon className="w-16 h-16" />
