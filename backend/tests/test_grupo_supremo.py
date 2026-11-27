@@ -20,6 +20,7 @@ async def cenario(admin: asyncpg.Connection):
     await admin.execute("INSERT INTO public.user_company_access (user_id, company_id, permission_level, folder_path) VALUES ($1, $2, 'admin', NULL)", adm, co)
     grupo = str(await admin.fetchval('INSERT INTO public."group" (company_id, name) VALUES ($1, \'Frentistas\') RETURNING id', co))
     yield {"co": co, "sup": sup, "adm": adm, "fora": fora, "grupo": grupo}
+    await admin.execute("DELETE FROM public.activity_log WHERE company_id = $1", uuid.UUID(co))
     await admin.execute("DELETE FROM public.companies WHERE id = $1", uuid.UUID(co))
     for uid in (sup, adm, fora):
         await admin.execute("DELETE FROM public.users WHERE id = $1", uid)
