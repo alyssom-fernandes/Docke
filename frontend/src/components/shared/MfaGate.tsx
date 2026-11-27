@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { useAuthContext } from "@/lib/AuthContext";
 import Dialog from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
-import { MfaCodeForm, MfaEnroll } from "@/components/shared/MfaSetup";
+import { MfaCodeForm, MfaEnroll, MfaRecoverForm } from "@/components/shared/MfaSetup";
 
 /**
  * Antes de usar o Docke: o código do app autenticador (quem já ativou) ou o
@@ -10,6 +11,7 @@ import { MfaCodeForm, MfaEnroll } from "@/components/shared/MfaSetup";
  */
 export default function MfaGate({ modo }: { modo: "verificar" | "cadastrar" }) {
   const { completeMfa, logout } = useAuthContext();
+  const [recuperar, setRecuperar] = useState(false);
   return (
     <Dialog
       onClose={() => {}}
@@ -22,7 +24,14 @@ export default function MfaGate({ modo }: { modo: "verificar" | "cadastrar" }) {
       footer={<Button variant="ghost" onClick={logout}>Sair</Button>}
     >
       <div className="@container">
-        {modo === "verificar" ? <MfaCodeForm onDone={completeMfa} /> : <MfaEnroll onDone={completeMfa} />}
+        {modo === "verificar" ? (recuperar ? <MfaRecoverForm onCancel={() => setRecuperar(false)} /> : (
+          <>
+            <MfaCodeForm onDone={completeMfa} />
+            <button type="button" onClick={() => setRecuperar(true)} className="mt-3 w-full text-mac-caption text-(--text-accent) hover:underline">
+              Perdi o celular: usar um código de recuperação
+            </button>
+          </>
+        )) : <MfaEnroll onDone={completeMfa} />}
       </div>
     </Dialog>
   );

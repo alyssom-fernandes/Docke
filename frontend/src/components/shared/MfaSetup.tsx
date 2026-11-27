@@ -39,6 +39,66 @@ export async function verifyCode(code: string, opts: { factorId?: string; token?
   return r.data as SessionTokens;
 }
 
+/**
+ * Celular perdido (FA-A8-01): um código de recuperação apaga o app
+ * autenticador da conta. Depois a tela recarrega e, se a empresa exigir,
+ * pede o cadastro de um app novo.
+ */
+export function MfaRecoverForm({ onCancel }: { onCancel: () => void }) {
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState("");
+  async function enviar() {
+    if (code.replace(/[^a-z0-9]/gi, "").length < 10 || busy) return;
+    setBusy(true);
+    setErro("");
+    try {
+      await api.post("/auth/mfa/recover", { code });
+      window.location.reload();
+    } catch (e: any) {
+      setErro(friendlyError(e, "Código de recuperação incorreto ou já usado."));
+      setBusy(false);
+    }
+  }
+  return (
+    <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); enviar(); }}>
+      <p className="text-mac-body text-(--text-secondary)">
+        Digite um dos códigos de recuperação que você guardou. Ele vale uma vez: o app autenticador desta conta é apagado e você cadastra um novo.
+      </p>
+      <Input label="Código de recuperação" placeholder="xxxxx-xxxxx" autoComplete="off" autoCapitalize="none" spellCheck={false}
+        className="font-mono tracking-wider text-center" value={code} onChange={(e) => setCode(e.target.value.slice(0, 20))} autoFocus error={erro || undefined} />
+      <Button type="submit" className="w-full" loading={busy} disabled={code.replace(/[^a-z0-9]/gi, "").length < 10}>Usar o código</Button>
+      <button type="button" onClick={onCancel} className="w-full text-mac-caption text-(--text-accent) hover:underline">Voltar para o código do app</button>
+    </form>
+  );
+}
+
+/** Mostra os códigos novos uma vez, com copiar e baixar. */
+export function RecoveryCodesList({ codigos }: { codigos: string[] }) {
+  const [copiado, setCopiado] = useState(false);
+  const texto = `Códigos de recuperação do Docke (cada um vale uma vez)\n\n${codigos.join("\n")}\n`;
+  function baixar() {
+    const url = URL.createObjectURL(new Blob([texto], { type: "text/plain;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = "docke-codigos-de-recuperacao.txt"; a.click();
+    URL.revokeObjectURL(url);
+  }
+  return (
+    <div className="space-y-3">
+      <p className="text-mac-body text-(--text-secondary)">Guarde num lugar seguro, fora do celular. Eles não aparecem de novo; gerar outros invalida estes.</p>
+      <ul className="grid grid-cols-2 gap-1.5 rounded-(--radius-control) bg-(--bg-hover) p-3 font-mono text-mac-body text-(--text-primary)" aria-label="Códigos de recuperação">
+        {codigos.map((c) => <li key={c} className="text-center select-all">{c}</li>)}
+      </ul>
+      <div className="flex gap-2">
+        <Button size="sm" variant="secondary" onClick={() => navigator.clipboard?.writeText(texto).then(() => setCopiado(true))}>
+          <Copy className="w-4 h-4" aria-hidden="true" /> {copiado ? "Copiados" : "Copiar"}
+        </Button>
+        <Button size="sm" variant="secondary" onClick={baixar}>Baixar .txt</Button>
+      </div>
+    </div>
+  );
+}
+
 export function MfaCodeForm({ onDone, token, submitLabel = "Continuar" }: { onDone: (t: SessionTokens) => void; token?: string; submitLabel?: string }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
