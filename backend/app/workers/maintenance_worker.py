@@ -128,6 +128,12 @@ async def _run_once() -> None:
         await _notify_retention_expiring_soon(conn)
         await _scan_retention_expirations(conn)
         await _reset_demo_data_if_due(conn)
+        # Revisão de acessos (A9-21): lembra o responsável 7 dias e 1 dia antes do prazo e 1 dia depois.
+        try:
+            from app.routers.access_reviews import lembrar_prazos
+            await lembrar_prazos(conn)
+        except Exception as exc:  # noqa: BLE001 — não pode parar a manutenção
+            logger.exception("Falha ao lembrar revisões de acesso: %s", exc)
         try:
             await _varrer_arquivos_de_empresas_apagadas(conn)
         except Exception as exc:  # noqa: BLE001 — melhor esforço; tenta de novo no dia seguinte
