@@ -605,8 +605,8 @@ async def new_from_document_template(
     novo = novos[0]
     copiados = await conn.execute(
         """
-        INSERT INTO public.document_field_value (company_id, document_id, custom_field_id, value_text, value_date, value_number, updated_by)
-        SELECT company_id, $2::uuid, custom_field_id, value_text, value_date, value_number, $3::uuid
+        INSERT INTO public.document_field_value (company_id, document_id, custom_field_id, value_text, value_date, value_number, updated_by, source)
+        SELECT company_id, $2::uuid, custom_field_id, value_text, value_date, value_number, $3::uuid, 'modelo'
         FROM public.document_field_value WHERE document_id = $1
         ON CONFLICT (document_id, custom_field_id) DO NOTHING
         """,

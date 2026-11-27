@@ -1,10 +1,11 @@
+import json
 from datetime import date
 from typing import Any
 from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import httpx
 
@@ -1124,6 +1125,41 @@ _POLITICAS_MFA = ("desligada", "admins", "admins_sensiveis", "todos")
 class MfaPolicy(BaseModel):
     policy: str
     motivo: str | None = None  # B4.2.7
+
+
+class WatermarkConfig(BaseModel):
+    """Marca d'água (B2.4.7): texto extra, intensidade e onde aparece."""
+    texto: str | None = Field(None, max_length=60)
+    intensidade: str = Field("padrao", pattern="^(padrao|fraca|media|forte)$")
+    previa: bool = True
+    link: bool = True
+
+
+@router.get("/{company_id}/watermark")
+async def get_watermark(company_id: UUID, conn: asyncpg.Connection = Depends(get_db)) -> dict[str, Any]:
+    cfg = await conn.fetchval("SELECT watermark FROM public.companies WHERE id = $1", company_id)
+    if isinstance(cfg, str):
+        cfg = json.loads(cfg)
+    return WatermarkConfig(**(cfg or {})).model_dump()
+
+
+@router.put("/{company_id}/watermark")
+async def put_watermark(
+    company_id: UUID,
+    body: WatermarkConfig,
+    conn: asyncpg.Connection = Depends(get_db),
+    admin_conn: asyncpg.Connection = Depends(get_db_admin),
+    claims: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    role = await get_app_role(conn, claims)
+    if role != "supremo" and not await CompaniesService.user_manages_company(conn, claims["sub"], company_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Só administradores da empresa mudam a marca d'água.")
+    dados = body.model_dump()
+    dados["texto"] = (dados["texto"] or "").strip() or None
+    await admin_conn.execute("UPDATE public.companies SET watermark = $2::jsonb WHERE id = $1", company_id, json.dumps(dados))
+    await CompaniesService.log_access(admin_conn, actor_id=claims["sub"], company_id=company_id, action="watermark",
+                                      target_id=company_id, target_name="Marca d'água")
+    return dados
 
 
 @router.get("/{company_id}/mfa-policy")

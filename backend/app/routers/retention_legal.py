@@ -192,8 +192,8 @@ class HoldCreate(BaseModel):
     @field_validator("resource_type")
     @classmethod
     def _valid_resource_type(cls, v: str) -> str:
-        if v not in ("document", "folder"):
-            raise ValueError("resource_type deve ser 'document' ou 'folder'.")
+        if v not in ("document", "folder", "custodian"):
+            raise ValueError("resource_type deve ser 'document', 'folder' ou 'custodian'.")
         return v
 
     @field_validator("reason")

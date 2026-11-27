@@ -650,6 +650,11 @@ class BulkFieldValues(BaseModel):
     values: list[DocumentFieldValueSet]
 
 
+def _origem_manual() -> str:
+    """Origem padrão do valor (B1.3.9): digitado no formulário."""
+    return "manual"
+
+
 @router.put("/documents/field-values/batch")
 async def set_field_values_batch(
     body: BulkFieldValues,
@@ -667,7 +672,7 @@ async def set_field_values_batch(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nenhum campo para alterar.")
     async with conn.transaction():
         for document_id in body.document_ids:
-            await set_document_field_values(document_id, body.values, conn, claims)
+            await set_document_field_values(document_id, body.values, conn, claims, _origem="lote")
     return {"updated": len(body.document_ids)}
 
 
@@ -677,6 +682,7 @@ async def set_document_field_values(
     body: list[DocumentFieldValueSet] = ...,
     conn: asyncpg.Connection = Depends(get_db),
     claims: dict[str, Any] = Depends(get_current_user),
+    _origem: str = Depends(_origem_manual),
 ) -> list[dict[str, Any]]:
     """
     Grava um lote de valores para o documento. Validação de formato por tipo
@@ -793,7 +799,7 @@ async def set_document_field_values(
 
         row = await CustomFieldsService.upsert_document_value(
             conn, document_id=document_id, company_id=company_id, custom_field_id=item.custom_field_id,
-            value_text=value_text, value_date=value_date, value_number=value_number, updated_by=user_id,
+            value_text=value_text, value_date=value_date, value_number=value_number, updated_by=user_id, source=_origem,
         )
         results.append(dict(row))
 
@@ -1038,7 +1044,7 @@ async def apply_default_to_existing(
         for doc_id in alvo:
             await CustomFieldsService.upsert_document_value(
                 conn, document_id=doc_id, company_id=regra["company_id"], custom_field_id=regra["custom_field_id"],
-                value_text=texto, value_date=data, value_number=numero, updated_by=claims["sub"],
+                value_text=texto, value_date=data, value_number=numero, updated_by=claims["sub"], source="padrao",
             )
     await _log_config(conn, claims["sub"], regra["company_id"], "field_default_apply", regra["custom_field_id"], regra["label"],
                       {"valor": texto, "modo": body.modo, "documentos": len(alvo)})

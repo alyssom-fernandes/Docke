@@ -93,6 +93,7 @@ export const ACTION_LABELS: Record<string, string> = {
   share_policy: "mudou a",
   features: "mudou os",
   mfa_policy: "mudou a regra da",
+  watermark: "mudou a",
   mfa_reset: "zerou a verificação em duas etapas de",
   sessions_end: "encerrou as sessões de",
   upload_request: "pediu arquivos por link para a pasta",

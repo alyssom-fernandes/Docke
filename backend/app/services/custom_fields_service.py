@@ -419,9 +419,11 @@ class CustomFieldsService:
         return await conn.fetch(
             """
             SELECT dfv.custom_field_id::text, dfv.value_text, dfv.value_date, dfv.value_number,
-                   cf.label, cf.field_key, cf.type
+                   cf.label, cf.field_key, cf.type,
+                   dfv.source, dfv.updated_at, u.full_name AS updated_by_name
             FROM public.document_field_value dfv
             JOIN public.custom_field cf ON cf.id = dfv.custom_field_id
+            LEFT JOIN public.users u ON u.id = dfv.updated_by
             WHERE dfv.document_id = $1
             """,
             document_id,
@@ -445,7 +447,7 @@ class CustomFieldsService:
     @staticmethod
     async def upsert_document_value(
         conn: asyncpg.Connection, *, document_id: UUID, company_id: UUID, custom_field_id: UUID,
-        value_text: str, value_date, value_number, updated_by: str,
+        value_text: str, value_date, value_number, updated_by: str, source: str = "manual",
     ) -> asyncpg.Record:
         return await conn.fetchrow(
             """
@@ -453,12 +455,12 @@ class CustomFieldsService:
               SELECT value_text FROM public.document_field_value
               WHERE document_id = $1 AND custom_field_id = $3
             )
-            INSERT INTO public.document_field_value (document_id, company_id, custom_field_id, value_text, value_date, value_number, updated_by)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO public.document_field_value (document_id, company_id, custom_field_id, value_text, value_date, value_number, updated_by, source)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (document_id, custom_field_id)
-            DO UPDATE SET value_text = $4, value_date = $5, value_number = $6, updated_by = $7, updated_at = now()
+            DO UPDATE SET value_text = $4, value_date = $5, value_number = $6, updated_by = $7, updated_at = now(), source = $8
             RETURNING id::text, document_id::text, custom_field_id::text, value_text, value_date, value_number,
               (SELECT value_text FROM old) AS old_value_text
             """,
-            document_id, company_id, custom_field_id, value_text, value_date, value_number, updated_by,
+            document_id, company_id, custom_field_id, value_text, value_date, value_number, updated_by, source,
         )

@@ -102,6 +102,8 @@ export function MetadataSection({ doc, companyId, canEdit, onSaved }: { doc: Doc
   const { run: runUndo } = useUndo();
   const uid = useId();
 
+  // B1.3.9: de onde veio o valor (lote, padrão da pasta, modelo).
+  const [origem, setOrigem] = useState<Record<string, { source: string; quem?: string | null; quando?: string | null }>>({});
   const load = useCallback(() => {
     if (!doc.folder_id) { setFields([]); return; }
     setFields(null);
@@ -113,7 +115,13 @@ export function MetadataSection({ doc, companyId, canEdit, onSaved }: { doc: Doc
       const fetched = Array.isArray(fRes.data) ? [...fRes.data].sort((a, b) => a.display_order - b.display_order) : [];
       const vmap: Record<string, string> = {};
       const saved = new Set<string>();
-      for (const row of Array.isArray(vRes.data) ? vRes.data : []) { vmap[row.custom_field_id] = row.value_text; saved.add(row.custom_field_id); }
+      const origens: Record<string, { source: string; quem?: string | null; quando?: string | null }> = {};
+      for (const row of Array.isArray(vRes.data) ? vRes.data : []) {
+        vmap[row.custom_field_id] = row.value_text; saved.add(row.custom_field_id);
+        const r = row as typeof row & { source?: string | null; updated_by_name?: string | null; updated_at?: string | null };
+        if (r.source && r.source !== "manual") origens[row.custom_field_id] = { source: r.source, quem: r.updated_by_name, quando: r.updated_at };
+      }
+      setOrigem(origens);
       savedValues.current = { ...vmap };
       setUndoFor({});
       for (const f of fetched) if (!saved.has(f.custom_field_id) && f.default_value) vmap[f.custom_field_id] = f.default_value;
@@ -209,6 +217,12 @@ export function MetadataSection({ doc, companyId, canEdit, onSaved }: { doc: Doc
                 {f.label}{f.required && <span className="text-(--text-danger)" aria-label="obrigatório">*</span>}
                 {brokeInheritance && <span className="text-(--text-warning) inline-flex" title={`Diferente do padrão da pasta ("${f.default_value}")`}><GitBranch className="w-3 h-3" aria-hidden /><span className="sr-only">diferente do padrão da pasta</span></span>}
                 {fromDefault && <span className="text-(--text-secondary) font-normal">· padrão da pasta</span>}
+                {!fromDefault && origem[f.custom_field_id] && values[f.custom_field_id] === savedValues.current[f.custom_field_id] && (() => {
+                  const o = origem[f.custom_field_id];
+                  const txt = o.source === "lote" ? "preenchido em lote" : o.source === "padrao" ? "valor padrão aplicado" : "veio do modelo";
+                  const det = [o.quem ? `por ${o.quem}` : "", o.quando ? `em ${new Date(o.quando).toLocaleDateString("pt-BR")}` : ""].filter(Boolean).join(" ");
+                  return <span className="text-(--text-secondary) font-normal" title={det ? `${txt[0].toUpperCase()}${txt.slice(1)} ${det}` : undefined}>· {txt}</span>;
+                })()}
               </label>
               <span className="flex items-center gap-2">
                 {undoFor[f.custom_field_id] && status !== "saving" && (
