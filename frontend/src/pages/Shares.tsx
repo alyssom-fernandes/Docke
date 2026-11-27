@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { readView, writeView } from "@/lib/viewCache";
 import { Link } from "react-router-dom";
 import { Link2, Lock, AlertTriangle, RefreshCw, Eye, Pencil, Ban, History } from "lucide-react";
 import { ItemIcon } from "@/lib/fileType";
@@ -62,7 +63,8 @@ function SharesPage() {
   const { current } = useCompany();
   const { user } = useAuthContext();
   const { success, error: showError } = useToast();
-  const [shares, setShares] = useState<ShareLink[] | null>(null);
+  const cacheKey = `links:${current?.id}`;
+  const [shares, setShares] = useState<ShareLink[] | null>(() => readView<ShareLink[]>(cacheKey) ?? null);
   const [failed, setFailed] = useState(false);
   const [filtro, setFiltro] = useState<Filtro>("ativos");
   const [revoking, setRevoking] = useState<ShareLink | null>(null);
@@ -74,10 +76,10 @@ function SharesPage() {
     if (!current) return;
     setFailed(false);
     api.get<ShareLink[]>("/shares", { params: { company_id: current.id } })
-      .then((r) => setShares(Array.isArray(r.data) ? r.data : []))
+      .then((r) => setShares(writeView(`links:${current.id}`, Array.isArray(r.data) ? r.data : [])))
       .catch(() => setFailed(true));
   }
-  useEffect(load, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setShares(readView<ShareLink[]>(`links:${current?.id}`) ?? null); load(); }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function confirmRevoke() {
     if (!revoking) return;

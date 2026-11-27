@@ -17,6 +17,7 @@ import Dialog from "@/components/ui/Dialog";
 import Input from "@/components/ui/Input";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import Dropdown from "@/components/ui/Dropdown";
+import Checkbox from "@/components/ui/Checkbox";
 import { friendly } from "@/components/obligations/shared";
 
 interface DirectGrant { access_id: string; role: string; folder_id: string | null; folder_name: string | null; expires_at?: string | null }
@@ -81,14 +82,23 @@ export default function Users() {
   const [grupoTodo, setGrupoTodo] = useState(false);
   const [aba, setAba] = useState<"pessoas" | "grupos">("pessoas");
 
+  // Depois de cada ação só a lista de pessoas volta do servidor, no lugar e
+  // sem esqueleto (A9-25); as pastas vêm uma vez por empresa.
   function load() {
     if (!current) return;
     api.get<Person[]>(`/companies/${current.id}/people`)
       .then((r) => { setPeople(r.data ?? []); setState("ok"); })
       .catch((e) => setState(e?.response?.status === 403 ? "forbidden" : "error"));
-    api.get<FolderOption[]>("/folders", { params: { company_id: current.id, flat: true } }).then((r) => setFolders(r.data ?? [])).catch(() => setFolders([]));
   }
-  useEffect(load, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!current) return;
+    setSel(new Set());
+    load();
+    api.get<FolderOption[]>("/folders", { params: { company_id: current.id, flat: true } }).then((r) => setFolders(r.data ?? [])).catch(() => setFolders([]));
+  }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Seleção para ações em lote (A9-19).
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [lote, setLote] = useState<null | "acesso" | "sessoes" | "desativar">(null);
 
   const folderName = folderFilter ? folders.find((f) => f.id === folderFilter)?.name : null;
   const visible = useMemo(() => {
@@ -178,7 +188,25 @@ export default function Users() {
                 className="h-9 px-3 rounded-full bg-(--tint-accent) text-mac-caption font-medium text-(--text-accent)">Com acesso a {folderName ?? "pasta"} ✕</button>
             )}
           </div>
-          <p className="sr-only" role="status" aria-live="polite">{visible.length} pessoas</p>
+          <p className="sr-only" role="status" aria-live="polite">{visible.length} pessoas{sel.size ? `, ${sel.size} selecionadas` : ""}</p>
+          {visible.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 min-h-9">
+              <label className="inline-flex items-center gap-2 text-mac-caption text-(--text-secondary)">
+                <Checkbox checked={visible.length > 0 && visible.every((p) => sel.has(p.user_id))}
+                  indeterminate={visible.some((p) => sel.has(p.user_id))}
+                  onChange={(e) => setSel(e.target.checked ? new Set(visible.map((p) => p.user_id)) : new Set())} />
+                {sel.size ? `${sel.size} ${sel.size === 1 ? "selecionada" : "selecionadas"}` : "Selecionar todas"}
+              </label>
+              {sel.size > 0 && (
+                <span className="reveal flex flex-wrap gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => setLote("acesso")}><Plus className="w-3.5 h-3.5" aria-hidden="true" /> Dar acesso</Button>
+                  <Button size="sm" variant="secondary" onClick={() => setLote("sessoes")}><LogOut className="w-3.5 h-3.5" aria-hidden="true" /> Encerrar sessões</Button>
+                  <Button size="sm" variant="secondary" onClick={() => setLote("desativar")}><Ban className="w-3.5 h-3.5" aria-hidden="true" /> Desativar</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setSel(new Set())}>Limpar</Button>
+                </span>
+              )}
+            </div>
+          )}
           {visible.length === 0 ? <p className="text-mac-body text-(--text-secondary)">Ninguém com esses filtros.</p> : (
             <ul className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
               {visible.map((p) => {
@@ -187,9 +215,13 @@ export default function Users() {
                   ...p.via_groups.map((g) => `${ROLE_LABEL[g.role]} ${where(g.folder_name)} (grupo ${g.group_name})`),
                 ];
                 return (
-                  <li key={p.user_id} className="border-b border-(--border-default) last:border-0">
+                  <li key={p.user_id} className={`flex items-center border-b border-(--border-default) last:border-0 ${sel.has(p.user_id) ? "bg-(--tint-accent)" : ""}`}>
+                    <span className="pl-4 sm:pl-5 flex items-center">
+                      <Checkbox checked={sel.has(p.user_id)} aria-label={`Selecionar ${p.full_name}`}
+                        onChange={(e) => setSel((s) => { const n = new Set(s); if (e.target.checked) n.add(p.user_id); else n.delete(p.user_id); return n; })} />
+                    </span>
                     <button onClick={() => setOpen(p.user_id)}
-                      className="w-full text-left flex items-center gap-3 px-4 sm:px-5 py-3 min-h-16 hover:bg-(--bg-hover) transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-(--focus-ring)">
+                      className="flex-1 min-w-0 text-left flex items-center gap-3 px-3 sm:px-4 py-3 min-h-16 hover:bg-(--bg-hover) transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-(--focus-ring)">
                       <Avatar name={p.full_name} size="md" />
                       <span className="flex-1 min-w-0">
                         <span className="block text-mac-body text-(--text-primary) truncate">
@@ -218,6 +250,11 @@ export default function Users() {
 
       {person && <PersonDialog companyId={current.id} person={person} folders={folders} isSelf={person.user_id === user?.id} onClose={() => setOpen(null)} onChanged={load} />}
       {grupoTodo && <GroupPeopleDialog onClose={() => setGrupoTodo(false)} />}
+      {lote && people && (
+        <BatchDialog kind={lote} companyId={current.id} folders={folders} selfId={user?.id}
+          people={people.filter((p) => sel.has(p.user_id))}
+          onClose={() => setLote(null)} onDone={() => { setLote(null); setSel(new Set()); load(); }} />
+      )}
       {creating && <NewPersonDialog companyId={current.id} folders={folders} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); load(); }} />}
     </div>
   );
@@ -435,7 +472,7 @@ function PersonDialog({ companyId, person, folders, isSelf, onClose, onChanged }
   );
 }
 
-function PasswordShown({ name, password, onClose }: { name: string; password: string; onClose: () => void }) {
+function PasswordShown({ name, password, onClose, warning }: { name: string; password: string; onClose: () => void; warning?: string }) {
   const { success } = useToast();
   return (
     <Dialog onClose={onClose} title="Senha provisória" size="sm" description={`Entregue a ${name} por um canal seguro. No primeiro acesso ela cria a própria senha. Esta senha não aparece de novo.`}
@@ -444,6 +481,78 @@ function PasswordShown({ name, password, onClose }: { name: string; password: st
         <code className="flex-1 rounded-(--radius-control) bg-(--bg-hover) px-3 py-2 font-mono text-mac-callout text-(--text-primary) select-all">{password}</code>
         <Button variant="secondary" size="sm" onClick={() => navigator.clipboard.writeText(password).then(() => success("Senha copiada."))}><Copy className="w-3.5 h-3.5" aria-hidden="true" /> Copiar</Button>
       </div>
+      {warning && <p role="alert" className="mt-3 rounded-(--radius-control) bg-(--tint-warning) px-3 py-2 text-mac-caption text-(--text-primary)">{warning}</p>}
+    </Dialog>
+  );
+}
+
+/**
+ * Ações em lote nas pessoas selecionadas (A9-19, FA-A9-04): dar o mesmo acesso,
+ * encerrar sessões ou desativar, com progresso e o resumo do que falhou.
+ */
+function BatchDialog({ kind, companyId, folders, people, selfId, onClose, onDone }: {
+  kind: "acesso" | "sessoes" | "desativar"; companyId: string; folders: FolderOption[]; people: Person[]; selfId?: string;
+  onClose: () => void; onDone: () => void;
+}) {
+  const { success, error: showError } = useToast();
+  const [role, setRole] = useState("visualizador");
+  const [folderId, setFolderId] = useState("");
+  const [ate, setAte] = useState("");
+  const [prog, setProg] = useState<{ feito: number; total: number } | null>(null);
+  const alvo = kind === "desativar" ? people.filter((p) => p.user_id !== selfId && p.is_active) : people;
+  const titulo = kind === "acesso" ? `Dar acesso a ${alvo.length} ${alvo.length === 1 ? "pessoa" : "pessoas"}`
+    : kind === "sessoes" ? `Encerrar as sessões de ${alvo.length} ${alvo.length === 1 ? "pessoa" : "pessoas"}?`
+    : `Desativar ${alvo.length} ${alvo.length === 1 ? "conta" : "contas"}?`;
+
+  async function run() {
+    setProg({ feito: 0, total: alvo.length });
+    const falhas: string[] = [];
+    for (const [i, p] of alvo.entries()) {
+      try {
+        if (kind === "acesso") await api.post(`/companies/${companyId}/members/${p.user_id}/access`, { permission_level: role, folder_id: folderId || null, expires_on: ate || null });
+        else if (kind === "sessoes") await api.post(`/companies/${companyId}/members/${p.user_id}/end-sessions`);
+        else await api.post(`/companies/${companyId}/members/${p.user_id}/deactivate`);
+      } catch (e) {
+        falhas.push(`${p.full_name}: ${friendly(e, "falhou")}`);
+      }
+      setProg({ feito: i + 1, total: alvo.length });
+    }
+    const ok = alvo.length - falhas.length;
+    if (!falhas.length) success(kind === "acesso" ? `Acesso dado a ${ok} ${ok === 1 ? "pessoa" : "pessoas"}.` : kind === "sessoes" ? `Sessões encerradas (${ok}).` : `${ok} ${ok === 1 ? "conta desativada" : "contas desativadas"}.`);
+    else showError(`${ok} de ${alvo.length} feitas. ${falhas.slice(0, 3).join(" · ")}${falhas.length > 3 ? ` e mais ${falhas.length - 3}` : ""}`);
+    onDone();
+  }
+
+  const busy = prog !== null;
+  return (
+    <Dialog onClose={onClose} title={titulo} size="md" busy={busy}
+      description={alvo.map((p) => p.full_name).slice(0, 6).join(", ") + (alvo.length > 6 ? ` e mais ${alvo.length - 6}` : "")}
+      footer={<>
+        <Button variant="secondary" onClick={onClose} disabled={busy}>Cancelar</Button>
+        <Button variant={kind === "desativar" ? "danger" : "primary"} loading={busy} disabled={!alvo.length} onClick={run}>
+          {kind === "acesso" ? "Dar acesso" : kind === "sessoes" ? "Encerrar sessões" : "Desativar"}
+        </Button>
+      </>}>
+      {kind === "acesso" ? (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div><label id="lt-role" className="block text-mac-body font-medium text-(--text-secondary) mb-1">Papel</label><Dropdown ariaLabelledby="lt-role" value={role} onChange={setRole} options={ROLE_OPTS} /></div>
+            <div><label id="lt-f" className="block text-mac-body font-medium text-(--text-secondary) mb-1">Onde</label><Dropdown ariaLabelledby="lt-f" value={folderId} onChange={setFolderId} options={folderOptions(folders)} /></div>
+          </div>
+          <div className="w-48">
+            <label htmlFor="lt-ate" className="block text-mac-body font-medium text-(--text-secondary) mb-1">Até (opcional)</label>
+            <input id="lt-ate" type="date" value={ate} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setAte(e.target.value)} className="mac-field w-full h-9 pointer-coarse:h-11 px-2 text-mac-body text-(--text-primary)" />
+          </div>
+          <p className="text-mac-caption text-(--text-secondary)">{ROLE_HELP[role]} Quem já tiver esse acesso fica como está.</p>
+        </div>
+      ) : (
+        <p className="text-mac-body text-(--text-primary)">
+          {kind === "sessoes" ? "Cada pessoa precisa entrar de novo na próxima ação. Nada é apagado."
+            : "As contas deixam de entrar no Docke. Nada é apagado e dá para reativar uma a uma."}
+          {kind === "desativar" && alvo.length < people.length ? " Sua própria conta e as já desativadas ficam de fora." : ""}
+        </p>
+      )}
+      {prog && <p role="status" className="mt-3 text-mac-caption text-(--text-secondary)">{prog.feito} de {prog.total}…</p>}
     </Dialog>
   );
 }
@@ -457,6 +566,13 @@ function NewPersonDialog({ companyId, folders, onClose, onCreated }: { companyId
   const [role, setRole] = useState("visualizador");
   const [folderId, setFolderId] = useState("");
   const [ate, setAte] = useState("");
+  const { companies } = useCompany();
+  const [grupos, setGrupos] = useState<GroupSummary[]>([]);
+  const [gruposSel, setGruposSel] = useState<string[]>([]);
+  const [outras, setOutras] = useState<string[]>([]);
+  const [avisos, setAvisos] = useState<string[]>([]);
+  useEffect(() => { api.get<GroupSummary[]>(`/companies/${companyId}/groups`).then((r) => setGrupos(r.data ?? [])).catch(() => setGrupos([])); }, [companyId]);
+  const outrasEmpresas = companies.filter((c) => c.id !== companyId);
   // Convite sem atrito (B4.3.6): o usuário sai do nome, até a pessoa editar.
   const [userEditado, setUserEditado] = useState(false);
   const sugestao = fullName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().split(/\s+/).filter(Boolean);
@@ -474,12 +590,27 @@ function NewPersonDialog({ companyId, folders, onClose, onCreated }: { companyId
     if (invalid) return;
     setSaving(true);
     try {
-      await api.post(`/companies/${companyId}/members`, { email: email.trim(), password, username: userEditado ? username : (username || userSugerido.replace(/[^a-z0-9._-]/g, "")), full_name: fullName.trim(), permission_level: role, folder_id: folderId || null, expires_on: ate || null });
+      const r = await api.post(`/companies/${companyId}/members`, { email: email.trim(), password, username: userEditado ? username : (username || userSugerido.replace(/[^a-z0-9._-]/g, "")), full_name: fullName.trim(), permission_level: role, folder_id: folderId || null, expires_on: ate || null });
+      const novo = r.data?.user_id as string | undefined;
+      // Grupos e outras empresas: a conta já existe; o que falhar vira aviso,
+      // sem desfazer a criação.
+      const falhas: string[] = [];
+      if (novo) {
+        for (const g of gruposSel) {
+          try { await api.post(`/companies/${companyId}/groups/${g}/members`, { user_id: novo }); }
+          catch { falhas.push(`grupo ${grupos.find((x) => x.id === g)?.name ?? ""}`); }
+        }
+        for (const c of outras) {
+          try { await api.post(`/companies/${c}/members/${novo}/access`, { permission_level: role, folder_id: null, expires_on: ate || null }); }
+          catch { falhas.push(companies.find((x) => x.id === c)?.name ?? "outra empresa"); }
+        }
+      }
+      setAvisos(falhas);
       setDone(true);
     } catch (e) { showError(friendly(e, "Não foi possível criar a pessoa.")); } finally { setSaving(false); }
   }
 
-  if (done) return <PasswordShown name={fullName.trim()} password={password} onClose={onCreated} />;
+  if (done) return <PasswordShown name={fullName.trim()} password={password} onClose={onCreated} warning={avisos.length ? `A conta foi criada, mas não deu para incluir em: ${avisos.join(", ")}. Ajuste pela pessoa.` : undefined} />;
   return (
     <Dialog onClose={onClose} title="Nova pessoa" description="A conta já nasce pronta para entrar. Você entrega a senha inicial." size="md" busy={saving}
       footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={saving} onClick={create}>Criar</Button></>}>
@@ -497,6 +628,36 @@ function NewPersonDialog({ companyId, folders, onClose, onCreated }: { companyId
             className="w-full h-9 pointer-coarse:h-11 px-2 rounded-(--radius-control) border border-(--border-control) bg-(--bg-card) text-mac-body text-(--text-primary) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring)" />
         </div>
         <p className="text-mac-caption text-(--text-secondary)">{ROLE_HELP[role]}{ate ? " O acesso sai sozinho ao fim do dia escolhido (bom para auditor ou temporário)." : ""}</p>
+        {grupos.length > 0 && (
+          <fieldset className="space-y-1.5">
+            <legend className="text-mac-body font-medium text-(--text-secondary) mb-1">Grupos (opcional)</legend>
+            <div className="flex flex-wrap gap-1.5">
+              {grupos.map((g) => {
+                const on = gruposSel.includes(g.id);
+                return (
+                  <button key={g.id} type="button" aria-pressed={on} onClick={() => setGruposSel((p) => (on ? p.filter((x) => x !== g.id) : [...p, g.id]))}
+                    className={`px-2.5 h-8 pointer-coarse:h-10 rounded-full text-mac-caption font-medium border transition-colors duration-fast ${on ? "bg-(--accent) text-white border-(--accent)" : "border-(--border-control) text-(--text-primary) hover:bg-(--bg-hover)"}`}>
+                    {g.name}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
+        )}
+        {outrasEmpresas.length > 0 && (
+          <fieldset className="space-y-1.5">
+            <legend className="text-mac-body font-medium text-(--text-secondary) mb-1">Também nestas empresas (opcional)</legend>
+            <div className="max-h-36 overflow-y-auto rounded-(--radius-control) border border-(--border-default) divide-y divide-(--border-default)">
+              {outrasEmpresas.map((c) => (
+                <label key={c.id} className="flex items-center gap-2 px-3 py-1.5 text-mac-body text-(--text-primary) cursor-pointer">
+                  <Checkbox checked={outras.includes(c.id)} onChange={(e) => setOutras((p) => (e.target.checked ? [...p, c.id] : p.filter((x) => x !== c.id)))} />
+                  {c.name}
+                </label>
+              ))}
+            </div>
+            <p className="text-mac-caption text-(--text-secondary)">Com o mesmo papel, na empresa toda{ate ? " e até a mesma data" : ""}.</p>
+          </fieldset>
+        )}
       </div>
     </Dialog>
   );

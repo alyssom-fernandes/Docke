@@ -502,7 +502,14 @@ async def add_access_grant(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="permission_level inválido.")
 
     if not await CompaniesService.member_exists(admin_conn, member_id, company_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não é membro desta empresa.")
+        # A9-27: o administrador geral (dono das contas, A9-42) põe uma conta
+        # ativa em outra empresa do grupo já com o acesso; o admin da empresa
+        # só ajusta quem já é dela.
+        ativo = role == "supremo" and await admin_conn.fetchval(
+            "SELECT EXISTS (SELECT 1 FROM public.users WHERE id = $1 AND is_active IS NOT FALSE)", member_id,
+        )
+        if not ativo:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não é membro desta empresa.")
 
     folder_path = None
     if body.folder_id is not None:

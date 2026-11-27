@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Tags, Plus, Archive, FolderTree, Copy, Trash2 } from "lucide-react";
+import { Tags, Plus, Archive, FolderTree, Copy, Trash2, X, ArrowUp, ArrowDown, Search } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { friendlyError } from "@/lib/errors";
 import api from "@/lib/api";
@@ -92,7 +92,8 @@ function NewFieldModal({ companyId, existingFields, onClose, onCreated }: {
   // quando o admin explicitamente desmarca e escolhe um número de casas.
   const [limitDecimals, setLimitDecimals] = useState(false);
   const [decimals, setDecimals] = useState(2);
-  const [optionsText, setOptionsText] = useState("");
+  const [options, setOptions] = useState<string[]>([]);
+  const [optionDraft, setOptionDraft] = useState("");
   // Fase 8.4: campos condicionais — só aparece no formulário do documento
   // quando o campo escolhido aqui tem exatamente o valor informado.
   const [conditionFieldId, setConditionFieldId] = useState("");
@@ -105,7 +106,7 @@ function NewFieldModal({ companyId, existingFields, onClose, onCreated }: {
     try {
       const format_config: Record<string, unknown> =
         type === "numero" ? (limitDecimals ? { decimals } : {}) :
-        type === "selecao" ? { options: optionsText.split(",").map((o) => o.trim()).filter(Boolean) } :
+        type === "selecao" ? { options: [...options, ...(optionDraft.trim() ? [optionDraft.trim()] : [])] } :
         {};
       await api.post("/custom-fields", {
         company_id: companyId, label: label.trim(), type, format_config,
@@ -149,14 +150,7 @@ function NewFieldModal({ companyId, existingFields, onClose, onCreated }: {
           </div>
         )}
         {type === "selecao" && (
-          <div>
-            <Input label="Opções (separe por vírgula)" value={optionsText} onChange={(e) => setOptionsText(e.target.value)} placeholder="Ex.: Banco do Brasil, Itaú, Bradesco" />
-            {optionsText.trim() && (
-              <ul aria-label="Prévia das opções" className="mt-2 flex flex-wrap gap-1.5">
-                {optionsText.split(",").map((o) => o.trim()).filter(Boolean).map((o) => <li key={o} className="rounded-full bg-(--bg-hover) px-2.5 py-0.5 text-mac-caption text-(--text-primary)">{o}</li>)}
-              </ul>
-            )}
-          </div>
+          <OptionsEditor options={options} setOptions={setOptions} draft={optionDraft} setDraft={setOptionDraft} />
         )}
         {existingFields.length > 0 && (
           <div className="pt-2 border-t border-(--border-default) space-y-2">
@@ -174,6 +168,62 @@ function NewFieldModal({ companyId, existingFields, onClose, onCreated }: {
         <button type="submit" className="sr-only">Criar</button>
       </form>
     </Dialog>
+  );
+}
+
+/**
+ * Opções da seleção como lista (A8-26): uma por linha, Enter acrescenta,
+ * vírgula colada vira várias, setas reordenam e o X tira. Antes era um texto
+ * com vírgulas, que quebrava opções como "Itaú, agência 10".
+ */
+function OptionsEditor({ options, setOptions, draft, setDraft }: {
+  options: string[]; setOptions: (o: string[]) => void; draft: string; setDraft: (s: string) => void;
+}) {
+  const [erro, setErro] = useState<string | null>(null);
+  function add(raw: string) {
+    const novas = raw.split(/\n/).map((o) => o.trim()).filter(Boolean);
+    if (!novas.length) return;
+    const repetida = novas.find((n) => options.some((o) => o.toLowerCase() === n.toLowerCase()));
+    if (repetida) { setErro(`“${repetida}” já está na lista.`); return; }
+    setErro(null);
+    setOptions([...options, ...novas]);
+    setDraft("");
+  }
+  function move(i: number, d: -1 | 1) {
+    const j = i + d;
+    if (j < 0 || j >= options.length) return;
+    const n = [...options];
+    [n[i], n[j]] = [n[j], n[i]];
+    setOptions(n);
+  }
+  const btn = "h-7 w-7 pointer-coarse:h-11 pointer-coarse:w-11 inline-flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) disabled:opacity-(--opacity-disabled)";
+  return (
+    <div>
+      <label htmlFor="nf-opcao" className="block text-mac-body font-medium text-(--text-secondary) mb-1">Opções</label>
+      {options.length > 0 && (
+        <ol aria-label="Opções da lista" className="mb-2 rounded-(--radius-control) border border-(--border-default) divide-y divide-(--border-default)">
+          {options.map((o, i) => (
+            <li key={o} className="flex items-center gap-1 pl-3 pr-1 py-0.5 text-mac-body text-(--text-primary)">
+              <span className="flex-1 min-w-0 truncate">{o}</span>
+              <button type="button" className={btn} onClick={() => move(i, -1)} disabled={i === 0} aria-label={`Subir ${o}`}><ArrowUp className="w-3.5 h-3.5" aria-hidden /></button>
+              <button type="button" className={btn} onClick={() => move(i, 1)} disabled={i === options.length - 1} aria-label={`Descer ${o}`}><ArrowDown className="w-3.5 h-3.5" aria-hidden /></button>
+              <button type="button" className={btn} onClick={() => setOptions(options.filter((_, k) => k !== i))} aria-label={`Tirar ${o}`}><X className="w-3.5 h-3.5" aria-hidden /></button>
+            </li>
+          ))}
+        </ol>
+      )}
+      <div className="flex gap-2">
+        <input id="nf-opcao" value={draft} onChange={(e) => { setDraft(e.target.value); setErro(null); }}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(draft); } }}
+          onPaste={(e) => { const t = e.clipboardData.getData("text"); if (t.includes("\n")) { e.preventDefault(); add(t); } }}
+          placeholder={options.length ? "Outra opção" : "Ex.: Banco do Brasil"} maxLength={120}
+          className="mac-field flex-1 min-w-0 h-8 pointer-coarse:h-11 px-3 text-mac-body text-(--text-primary)" aria-describedby="nf-opcao-ajuda" />
+        <Button type="button" variant="secondary" size="sm" onClick={() => add(draft)} disabled={!draft.trim()}><Plus className="w-3.5 h-3.5" aria-hidden /> Acrescentar</Button>
+      </div>
+      <p id="nf-opcao-ajuda" className={`mt-1 text-mac-caption ${erro ? "text-(--text-danger)" : "text-(--text-secondary)"}`} role={erro ? "alert" : undefined}>
+        {erro ?? "Enter acrescenta. Colar uma lista (uma por linha) acrescenta todas."}
+      </p>
+    </div>
   );
 }
 
@@ -348,6 +398,9 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
   const [applying, setApplying] = useState<CustomField | null>(null);
   const [retyping, setRetyping] = useState<CustomField | null>(null);
   const [newLabel, setNewLabel] = useState("");
+  const [busca, setBusca] = useState("");
+  const dobra = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const visiveis = busca.trim() ? fields.filter((f) => dobra(`${f.label} ${TYPE_LABEL[f.type]}`).includes(dobra(busca.trim()))) : fields;
 
   function load() {
     setLoading(true);
@@ -419,7 +472,7 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
           para fora. Só fica em linha quando o cartão tem espaço (@2xl). */}
       <div className="flex flex-col @2xl:flex-row @2xl:items-center @2xl:justify-between gap-3 mb-4">
         <p className="text-mac-caption text-(--text-tertiary)">
-          Campos personalizados disponíveis para aplicar nas pastas (aba "Aplicação na árvore").
+          Campos que os documentos preenchem. Escolha onde cada um vale em “Aplicar em pastas…” ou na aba Por pasta.
         </p>
         <div className="flex flex-col @sm:flex-row items-stretch @sm:items-center gap-2 shrink-0">
           <Button variant="secondary" size="sm" onClick={() => setShowCopy(true)}>
@@ -443,8 +496,17 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
       ) : fields.length === 0 ? (
         <EmptyState title="Nenhum campo personalizado ainda" description="Crie campos como CPF, competência ou instituição financeira." icon={<Tags className="w-6 h-6" />} />
       ) : (
-        <ul className="border border-(--border-default) rounded-(--radius-control) divide-y divide-(--border-default) overflow-hidden">
-          {fields.map((f) => (
+        <>
+        {fields.length >= 6 && (
+          <div className="relative mb-3 max-w-[320px]">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-(--text-secondary)" aria-hidden />
+            <input type="search" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={`Buscar entre ${fields.length} campos`} aria-label="Buscar campo"
+              className="mac-field w-full h-8 pointer-coarse:h-11 pl-8 pr-3 text-mac-body text-(--text-primary)" />
+          </div>
+        )}
+        {visiveis.length === 0 && <p className="py-4 text-mac-body text-(--text-secondary)">Nenhum campo com “{busca}”.</p>}
+        <ul className="border border-(--border-default) rounded-(--radius-control) divide-y divide-(--border-default) overflow-hidden empty:hidden">
+          {visiveis.map((f) => (
             <li key={f.id} className="flex flex-wrap items-center gap-2 px-4 py-3">
               <div className="flex-1 min-w-40">
                 <p className="text-mac-body text-(--text-primary)">{f.label}</p>
@@ -476,6 +538,7 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
             </li>
           ))}
         </ul>
+        </>
       )}
 
       {archived.length > 0 && !loading && !failed && (
@@ -541,7 +604,7 @@ function CatalogTab({ companyId, companies }: { companyId: string; companies: { 
 
 // ─── Aba: Aplicação na árvore ─────────────────────────────────────────────────
 
-function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFolderId?: string }) {
+function TreeTab({ companyId, initialFolderId, onGoCatalog }: { companyId: string; initialFolderId?: string; onGoCatalog: () => void }) {
   const [applyingDefault, setApplyingDefault] = useState<{ rule: FolderFieldRule; label: string } | null>(null);
   const { success, error: showError } = useToast();
   const [folders, setFolders] = useState<FolderOption[]>([]);
@@ -568,8 +631,10 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
     });
   }, [companyId]);
 
-  function load() {
-    setLoading(true);
+  // Só a troca de pasta mostra o esqueleto; depois de uma ação a lista é
+  // atualizada no lugar, sem piscar (A8-15).
+  function load(silencioso = false) {
+    if (!silencioso) setLoading(true);
     const params = { company_id: companyId, ...(folderId ? { folder_id: folderId } : {}) };
     Promise.all([
       api.get<ResolvedField[]>("/folder-fields/resolved", { params }),
@@ -580,7 +645,8 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
     }).finally(() => setLoading(false));
   }
 
-  useEffect(load, [companyId, folderId]);
+  useEffect(() => load(), [companyId, folderId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const reload = () => load(true);
 
   const ownFieldIds = new Set(rules.filter((r) => r.mode === "apply").map((r) => r.custom_field_id));
   const availableToAdd = allFields.filter((f) => !resolved.some((r) => r.custom_field_id === f.id));
@@ -593,21 +659,45 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
       });
       success("Campo aplicado nesta pasta.");
       setAddFieldId("");
-      load();
+      reload();
     } catch (e: any) {
       showError(e?.response?.data?.detail ?? "Não foi possível aplicar o campo.");
     }
   }
 
+  // Ordem dos campos no formulário do documento (A8-22): troca a posição com
+  // o vizinho entre os campos definidos nesta pasta.
+  async function move(rule: FolderFieldRule, d: -1 | 1) {
+    const own = rules.filter((r) => r.mode === "apply").sort((a, b) => a.display_order - b.display_order);
+    const i = own.findIndex((r) => r.id === rule.id);
+    const other = own[i + d];
+    if (!other) return;
+    const put = (r: FolderFieldRule, order: number) => api.put("/folder-fields", {
+      company_id: companyId, folder_id: folderId || null, custom_field_id: r.custom_field_id,
+      mode: "apply", required: r.required, display_order: order, default_value: r.default_value,
+    });
+    // Ordens iguais (regras antigas) ganham posições distintas antes da troca.
+    const a = i, b = i + d;
+    try {
+      await Promise.all(own.map((r, k) => (k === a ? put(r, b) : k === b ? put(r, a) : r.display_order !== k ? put(r, k) : null)).filter(Boolean));
+      reload();
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível mudar a ordem. Tente de novo."));
+    }
+  }
+
   async function toggleRequired(rule: FolderFieldRule) {
+    // Otimista: o interruptor responde na hora e volta se o servidor recusar.
+    setRules((p) => p.map((r) => (r.id === rule.id ? { ...r, required: !rule.required } : r)));
     try {
       await api.put("/folder-fields", {
         company_id: companyId, folder_id: folderId || null, custom_field_id: rule.custom_field_id,
         mode: "apply", required: !rule.required, display_order: rule.display_order,
         default_value: rule.default_value,
       });
-      load();
+      reload();
     } catch (e: any) {
+      setRules((p) => p.map((r) => (r.id === rule.id ? { ...r, required: rule.required } : r)));
       showError(friendlyError(e, "Não foi possível atualizar o campo. Tente de novo."));
     }
   }
@@ -623,7 +713,8 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
         mode: "apply", required: rule.required, display_order: rule.display_order,
         default_value: trimmed || null,
       });
-      load();
+      success(trimmed ? `Padrão de "${rule.label}" salvo: novos documentos desta pasta já vêm com ele.` : `Padrão de "${rule.label}" retirado.`);
+      reload();
     } catch (e: any) {
       showError(friendlyError(e, "Não foi possível salvar o valor padrão. Confira o formato do campo e tente de novo."));
     }
@@ -636,7 +727,7 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
         mode: "exclude", required: false, display_order: 0,
       });
       success("Herança removida nesta pasta.");
-      load();
+      reload();
     } catch (e: any) {
       showError(friendlyError(e, "Não foi possível deixar de herdar o campo aqui. Tente de novo."));
     }
@@ -647,7 +738,7 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
     try {
       await api.delete(`/folder-fields/${removing.id}`, { params: { company_id: companyId } });
       success("Regra removida — volta a herdar do ancestral, se houver.");
-      load();
+      reload();
     } catch (e: any) {
       showError(friendlyError(e, "Não foi possível remover a regra. Tente de novo."));
     } finally {
@@ -679,7 +770,7 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
         )}
         {copyingRules && folders.find((f) => f.id === folderId) && (
           <CopyRulesModal companyId={companyId} sourceFolder={folders.find((f) => f.id === folderId)!} folders={folders}
-            onClose={() => setCopyingRules(false)} onCopied={load} />
+            onClose={() => setCopyingRules(false)} onCopied={reload} />
         )}
       </div>
 
@@ -689,8 +780,14 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
         </div>
       ) : (
         <>
-          {resolved.length === 0 ? (
-            <p className="text-mac-caption text-(--text-tertiary) py-4">Nenhum campo aplicado nesta pasta ainda.</p>
+          {allFields.length === 0 ? (
+            <div className="rounded-(--radius-control) border border-dashed border-(--border-control) px-4 py-5 text-center space-y-2">
+              <p className="text-mac-body text-(--text-primary)">Ainda não há campos no catálogo.</p>
+              <p className="text-mac-caption text-(--text-secondary)">Crie o campo uma vez (ex.: CNPJ do fornecedor) e depois escolha em quais pastas ele vale.</p>
+              <Button size="sm" onClick={onGoCatalog}><Plus className="w-3.5 h-3.5" aria-hidden /> Criar o primeiro campo</Button>
+            </div>
+          ) : resolved.length === 0 ? (
+            <p className="text-mac-caption text-(--text-tertiary) py-4">Nenhum campo aplicado nesta pasta ainda. Escolha um do catálogo abaixo.</p>
           ) : (
             <ul className="border border-(--border-default) rounded-(--radius-control) divide-y divide-(--border-default) overflow-hidden mb-4">
               {resolved.map((f) => {
@@ -706,6 +803,12 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
                     </div>
                     {isOwn && ownRule ? (
                       <>
+                        <span className="inline-flex">
+                          <button type="button" onClick={() => move(ownRule, -1)} aria-label={`Subir ${f.label}`} title="Subir no formulário"
+                            className="h-8 w-8 pointer-coarse:h-11 pointer-coarse:w-11 inline-flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover)"><ArrowUp className="w-3.5 h-3.5" aria-hidden /></button>
+                          <button type="button" onClick={() => move(ownRule, 1)} aria-label={`Descer ${f.label}`} title="Descer no formulário"
+                            className="h-8 w-8 pointer-coarse:h-11 pointer-coarse:w-11 inline-flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover)"><ArrowDown className="w-3.5 h-3.5" aria-hidden /></button>
+                        </span>
                         <input
                           type="text"
                           aria-label={`Valor padrão de ${f.label}`}
@@ -774,7 +877,7 @@ function TreeTab({ companyId, initialFolderId }: { companyId: string; initialFol
         </>
       )}
 
-      {applyingDefault && <ApplyDefaultDialog rule={applyingDefault.rule} label={applyingDefault.label} onClose={() => { setApplyingDefault(null); load(); }} />}
+      {applyingDefault && <ApplyDefaultDialog rule={applyingDefault.rule} label={applyingDefault.label} onClose={() => { setApplyingDefault(null); reload(); }} />}
       {removing && (
         <ConfirmModal
           title={removing.mode === "exclude" ? `Voltar a herdar "${removing.label}" aqui?` : `Remover "${removing.label}" desta pasta?`}
@@ -833,7 +936,7 @@ export default function Metadata() {
           </button>
         </div>
 
-        {tab === "catalog" ? <CatalogTab companyId={current.id} companies={companies} /> : <TreeTab companyId={current.id} initialFolderId={initialFolderId} />}
+        {tab === "catalog" ? <CatalogTab companyId={current.id} companies={companies} /> : <TreeTab companyId={current.id} initialFolderId={initialFolderId} onGoCatalog={() => changeTab("catalog")} />}
       </div>
     </div>
   );

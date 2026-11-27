@@ -80,7 +80,15 @@ class CompaniesService:
             SELECT
               c.id::text, c.name, c.cnpj, c.logo_key, c.is_active, c.created_at,
               (SELECT COUNT(*) FROM public.documents d WHERE d.company_id = c.id AND d.deleted_at IS NULL) AS document_count,
-              (SELECT COUNT(*) FROM public.user_company_access uca WHERE uca.company_id = c.id AND uca.folder_path IS NULL) AS user_count
+              (
+                SELECT COUNT(*) FROM (
+                  SELECT uca.user_id FROM public.user_company_access uca WHERE uca.company_id = c.id
+                  UNION
+                  SELECT gm.user_id FROM public.group_member gm
+                  JOIN public."group" g ON g.id = gm.group_id
+                  WHERE g.company_id = c.id AND EXISTS (SELECT 1 FROM public.group_access ga WHERE ga.group_id = g.id)
+                ) pessoas
+              ) AS user_count
             FROM public.companies c
             ORDER BY c.name
             """
@@ -93,7 +101,15 @@ class CompaniesService:
             SELECT
               c.id::text, c.name, c.cnpj, c.logo_key, c.is_active, c.created_at,
               (SELECT COUNT(*) FROM public.documents d WHERE d.company_id = c.id AND d.deleted_at IS NULL) AS document_count,
-              (SELECT COUNT(*) FROM public.user_company_access uca WHERE uca.company_id = c.id AND uca.folder_path IS NULL) AS user_count
+              (
+                SELECT COUNT(*) FROM (
+                  SELECT uca.user_id FROM public.user_company_access uca WHERE uca.company_id = c.id
+                  UNION
+                  SELECT gm.user_id FROM public.group_member gm
+                  JOIN public."group" g ON g.id = gm.group_id
+                  WHERE g.company_id = c.id AND EXISTS (SELECT 1 FROM public.group_access ga WHERE ga.group_id = g.id)
+                ) pessoas
+              ) AS user_count
             FROM public.companies c
             JOIN public.user_company_access mine
               ON mine.company_id = c.id AND mine.user_id = $1

@@ -4,6 +4,7 @@ import { Building2, Users as UsersIcon, Tags, Archive, ChevronRight, AlertTriang
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
+import { readView, writeView } from "@/lib/viewCache";
 
 type Count = number | null | "erro";
 
@@ -18,10 +19,13 @@ interface Attention { key: string; text: string; to: string }
 export default function AdminHome() {
   usePageTitle("Administração");
   const { current, companies } = useCompany();
-  const [people, setPeople] = useState<Count>(null);
-  const [fields, setFields] = useState<Count>(null);
-  const [policies, setPolicies] = useState<Count>(null);
-  const [attention, setAttention] = useState<Attention[] | null>(null);
+  // A visita anterior aparece na hora e é atualizada por baixo (A9-04).
+  type Snap = { people: Count; fields: Count; policies: Count; attention: Attention[] | null };
+  const snap = readView<Snap>(`admin:${current?.id}`);
+  const [people, setPeople] = useState<Count>(snap?.people ?? null);
+  const [fields, setFields] = useState<Count>(snap?.fields ?? null);
+  const [policies, setPolicies] = useState<Count>(snap?.policies ?? null);
+  const [attention, setAttention] = useState<Attention[] | null>(snap?.attention ?? null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -48,6 +52,9 @@ export default function AdminHome() {
     ];
     Promise.allSettled(jobs).then(() => setAttention(items));
   }, [current?.id]);
+  useEffect(() => {
+    if (current && attention !== null) writeView(`admin:${current.id}`, { people, fields, policies, attention });
+  }, [current?.id, people, fields, policies, attention]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fmt = (c: Count, um: string, varios: string) => (c === null ? "…" : c === "erro" ? "—" : `${c} ${c === 1 ? um : varios}`);
   const cards = [

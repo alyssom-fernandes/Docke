@@ -7,6 +7,7 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { PageHeader } from "@/components/layout/window";
 import Avatar from "@/components/ui/Avatar";
 import Footer from "@/components/layout/Footer";
+import { prefetchRoute } from "@/lib/routePrefetch";
 
 // Lembra o último painel visitado (regra do HIG: "Restore the most recently
 // viewed pane") — sem isso, /settings sempre caía em Perfil mesmo se o
@@ -27,7 +28,7 @@ const TABS = [
   { to: "/settings/features", icon: ToggleRight, label: "Recursos", color: "bg-sky-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["recursos", "módulos", "ligar", "desligar", "links", "compartilhamento", "pedidos de arquivo", "obrigações", "exames", "aso", "comentários", "anotações", "leitura de texto", "ocr", "canal do titular", "senha do link", "validade do link"] },
   { to: "/settings/organization", icon: Building2, label: "Organização", color: "bg-slate-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["empresa", "cnpj", "desativar", "reativar", "perfil fiscal", "logo", "regime", "segmento", "exportar", "exportação", "backup", "ler de novo", "ocr"] },
   { to: "/settings/users", icon: UsersIcon, label: "Pessoas e acessos", color: "bg-indigo-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["usuário", "membro", "grupo", "grupos", "permissão", "acesso", "operador", "visualizador", "admin", "explain access"] },
-  { to: "/settings/metadata", icon: Tags, label: "Metadados", color: "bg-orange-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["campo", "campos", "cpf", "cnpj", "catálogo", "aplicação na árvore", "herança", "obrigatório"] },
+  { to: "/settings/metadata", icon: Tags, label: "Metadados", color: "bg-orange-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["campo", "campos", "cpf", "cnpj", "catálogo", "herança", "obrigatório"] },
   { to: "/settings/retention", icon: Archive, label: "Retenção e descarte", color: "bg-amber-600", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["lixeira", "política", "hold", "legal hold", "descarte", "certificado", "fila", "purga"] },
   { to: "/settings/privacy", icon: ShieldAlert, label: "Privacidade (LGPD)", color: "bg-rose-600", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["lgpd", "titular", "cpf", "dado pessoal", "dado sensível", "saúde", "aso", "holerite", "privacidade", "encarregado", "dpo"] },
   { to: "/settings/preferences", icon: Sliders, label: "Preferências", color: "bg-purple-500", adminOnly: false, supremoOnly: false, group: "Aplicativo", keywords: ["tema", "dark mode", "modo escuro", "claro", "densidade", "aparência", "atalhos"] },
@@ -165,6 +166,8 @@ export default function SettingsLayout() {
                   <NavLink
                     key={tab.to}
                     to={tab.to}
+                    onMouseEnter={() => prefetchRoute(tab.to)}
+                    onFocus={() => prefetchRoute(tab.to)}
                     className={({ isActive }) => `sidebar-item ${isActive ? "is-selected" : ""}`}
                   >
                     <span className={`w-5 h-5 rounded-[5px] flex items-center justify-center shrink-0 ${tab.color}`}>

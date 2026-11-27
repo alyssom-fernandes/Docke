@@ -1,3 +1,4 @@
+import { clearViews } from "@/lib/viewCache";
 /**
  * Tokens da sessão (acesso + renovação) num lugar só.
  *
@@ -54,6 +55,7 @@ export function saveSession(tokens: SessionTokens, remember: boolean = rememberC
 }
 
 export function clearSession(): void {
+  clearViews();
   for (const s of [localStorage, sessionStorage]) {
     for (const k of [ACCESS, REFRESH, EXPIRES]) s.removeItem(k);
   }
