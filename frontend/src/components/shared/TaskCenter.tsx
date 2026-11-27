@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useCallback, type ElementType } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, Upload, FileSearch, Archive, Download, Copy, X, CheckCircle2, AlertCircle, Loader2, RotateCcw, RefreshCw, ChevronRight } from "lucide-react";
+import { Bell, Upload, FileSearch, Archive, Download, Copy, X, CheckCircle2, AlertCircle, Loader2, RotateCcw, RefreshCw, ChevronRight, Pause, Play } from "lucide-react";
 import { useTaskCenter, type Task, type TaskKind } from "@/lib/TaskContext";
 import { useCompany } from "@/lib/CompanyContext";
 import api from "@/lib/api";
@@ -39,11 +39,11 @@ function notificationTarget(n: Notification): string | null {
   return null;
 }
 
-function TaskRow({ task, onRemove, onRetry, onCancel }: { task: Task; onRemove: () => void; onRetry: () => void; onCancel: () => void }) {
+function TaskRow({ task, onRemove, onRetry, onCancel, onPause }: { task: Task; onRemove: () => void; onRetry: () => void; onCancel: () => void; onPause: () => void }) {
   // Estados separados na fila: o ícone reflete a fase real (subindo bytes ou
   // lendo o texto), não só um spinner igual para as duas etapas.
   const Icon = task.kind === "upload" && task.phase === "processing" ? FileSearch : KIND_ICON[task.kind];
-  const estado = task.status === "running" ? "em andamento" : task.status === "done" ? "concluída" : "com falha";
+  const estado = task.status === "running" ? "em andamento" : task.status === "done" ? "concluída" : task.paused ? "pausada" : "com falha";
   return (
     <li className="flex items-center gap-3 px-4 py-3 group" aria-label={`${task.label}, ${estado}`}>
       <div className="shrink-0" aria-hidden="true">
@@ -51,6 +51,8 @@ function TaskRow({ task, onRemove, onRetry, onCancel }: { task: Task; onRemove: 
           <Loader2 className="w-4 h-4 text-(--text-accent) animate-spin" />
         ) : task.status === "done" ? (
           <CheckCircle2 className="w-4 h-4 text-(--text-success)" />
+        ) : task.paused ? (
+          <Pause className="w-4 h-4 text-(--text-secondary)" />
         ) : (
           <AlertCircle className="w-4 h-4 text-(--text-danger)" />
         )}
@@ -68,11 +70,17 @@ function TaskRow({ task, onRemove, onRetry, onCancel }: { task: Task; onRemove: 
           </div>
         )}
         {task.status === "failed" && task.error && (
-          <p className="text-mac-caption text-(--text-danger) mt-0.5">{task.error}</p>
+          <p className={`text-mac-caption mt-0.5 ${task.paused ? "text-(--text-secondary)" : "text-(--text-danger)"}`}>{task.error}</p>
         )}
       </div>
       <div className="flex items-center gap-0.5 shrink-0">
         <Icon className="w-3.5 h-3.5 text-(--text-tertiary) mr-1" aria-hidden="true" />
+        {task.status === "running" && task.pausable && (
+          <button onClick={onPause} aria-label={`Pausar ${task.label}`} title="Pausar o envio (continua de onde parou)"
+            className="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-hover) transition-colors duration-fast">
+            <Pause className="w-3.5 h-3.5" aria-hidden="true" />
+          </button>
+        )}
         {task.status === "running" && task.cancellable && (
           <button onClick={onCancel} aria-label={`Cancelar ${task.label}`} title="Cancelar envio"
             className="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-danger) hover:bg-(--bg-hover) transition-colors duration-fast">
@@ -80,7 +88,13 @@ function TaskRow({ task, onRemove, onRetry, onCancel }: { task: Task; onRemove: 
           </button>
         )}
         {/* Tentar de novo: só o envio sabe refazer com o arquivo original. */}
-        {task.status === "failed" && task.kind === "upload" && (
+        {task.status === "failed" && task.kind === "upload" && task.paused && (
+          <button onClick={onRetry} aria-label={`Continuar o envio de ${task.label}`} title="Continuar"
+            className="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-accent) hover:bg-(--accent)/10 transition-colors duration-fast">
+            <Play className="w-3.5 h-3.5" aria-hidden="true" />
+          </button>
+        )}
+        {task.status === "failed" && task.kind === "upload" && !task.paused && (
           <button onClick={onRetry} aria-label={`Tentar enviar ${task.label} de novo`} title="Tentar de novo"
             className="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-accent) hover:bg-(--accent)/10 transition-colors duration-fast">
             <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
@@ -109,7 +123,7 @@ const POLL_INTERVAL_MS = 60_000;
  * diálogo não modal, Esc devolve o foco ao sino.
  */
 export default function TaskCenter() {
-  const { tasks, removeTask, clearDone, retry, cancel } = useTaskCenter();
+  const { tasks, removeTask, clearDone, retry, cancel, pause } = useTaskCenter();
   const { current, companies, setCurrent } = useCompany() as ReturnType<typeof useCompany> & { companies: { id: string; name: string }[] };
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -255,7 +269,7 @@ export default function TaskCenter() {
                 </div>
                 <ul className="divide-y divide-(--border-default)">
                   {tasks.map((task) => (
-                    <TaskRow key={task.id} task={task} onRemove={() => removeTask(task.id)} onRetry={() => retry(task.id)} onCancel={() => cancel(task.id)} />
+                    <TaskRow key={task.id} task={task} onRemove={() => removeTask(task.id)} onRetry={() => retry(task.id)} onCancel={() => cancel(task.id)} onPause={() => pause(task.id)} />
                   ))}
                 </ul>
               </section>

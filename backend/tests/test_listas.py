@@ -173,3 +173,27 @@ async def test_verificar_integridade_resume_no_banco(api, admin, empresa):  # no
     assert corpo["intact"] is False
     assert corpo["first_broken"]["event_id"] == str(ids[1])
     assert "adulterado" in corpo["first_broken"]["reason"].lower()
+
+
+@pytest.mark.asyncio
+async def test_busca_filtra_por_guarda(api, admin, empresa):  # noqa: F811
+    """A7-108, B3.4.8: "sob bloqueio judicial" e "sem prazo de guarda" na busca."""
+    h, co = _token(empresa["user"]), empresa["co"]
+    preso = await _doc(admin, empresa, empresa["raiz"], "Contrato guarda preso.pdf", "contrato guarda teste")
+    livre = await _doc(admin, empresa, empresa["raiz"], "Contrato guarda livre.pdf", "contrato guarda teste")
+    hold = await admin.fetchval(
+        "INSERT INTO public.legal_holds (company_id, resource_type, resource_id, reason, created_by)"
+        " VALUES ($1, 'document', $2, 'Processo de teste', $3) RETURNING id",
+        uuid.UUID(co), uuid.UUID(preso), uuid.UUID(empresa["user"]),
+    )
+    try:
+        r = await api.get(API + "/search", params={"q": "guarda", "company_id": co, "guarda": "bloqueio"}, headers=h)
+        assert r.status_code == 200, r.text
+        assert [x["id"] for x in r.json()["results"]] == [preso]
+        r = await api.get(API + "/search", params={"q": "guarda", "company_id": co, "guarda": "sem_prazo"}, headers=h)
+        assert {x["id"] for x in r.json()["results"]} == {preso, livre}
+        r = await api.get(API + "/search", params={"q": "guarda", "company_id": co, "guarda": "qualquer"}, headers=h)
+        assert r.status_code == 422
+    finally:
+        await admin.execute("UPDATE public.legal_holds SET released_at = now() WHERE id = $1", hold)
+        await admin.execute("DELETE FROM public.legal_holds WHERE id = $1", hold)

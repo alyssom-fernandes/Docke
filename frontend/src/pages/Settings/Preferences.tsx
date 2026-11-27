@@ -9,6 +9,7 @@ import DangerZone from "@/components/shared/DangerZone";
 import Button from "@/components/ui/Button";
 import Switch from "@/components/ui/Switch";
 import PushPreference from "@/components/shared/PushPreference";
+import NotificationPrefs from "@/components/shared/NotificationPrefs";
 import { getReduceTransparency, setReduceTransparency } from "@/lib/theme";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 
@@ -173,6 +174,8 @@ export default function Preferences() {
             <Switch checked={reduceTransparency} onChange={chooseReduceTransparency} label="Reduzir transparência" />
           </div>
         </div>
+
+        <NotificationPrefs />
 
         <PushPreference />
 

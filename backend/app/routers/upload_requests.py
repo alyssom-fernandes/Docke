@@ -47,6 +47,8 @@ class UploadRequestCreate(BaseModel):
     expires_days: int = Field(default=7, ge=1, le=90)
     password: str | None = Field(default=None, max_length=200)
     max_files: int = Field(default=20, ge=1, le=200)
+    # A7-55, B3.5.8: o que chegar já comprova esta competência.
+    obligation_instance_id: UUID | None = None
 
 
 @router.post("/upload-requests", status_code=status.HTTP_201_CREATED)
@@ -79,17 +81,26 @@ async def create_upload_request(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                             detail=f"A empresa permite links de no máximo {max_dias} {'dia' if max_dias == 1 else 'dias'}.")
 
+    if body.obligation_instance_id is not None:
+        # A competência precisa ser desta empresa e visível para quem pede.
+        dona = await conn.fetchval(
+            "SELECT company_id FROM public.obligation_instances WHERE id = $1", body.obligation_instance_id,
+        )
+        if dona is None or dona != body.company_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Obrigação não encontrada nesta empresa.")
+
     token = secrets.token_urlsafe(24)
     expira = datetime.now(timezone.utc) + timedelta(days=body.expires_days)
     row = await admin_conn.fetchrow(
         """
-        INSERT INTO public.upload_requests (company_id, folder_id, token, title, message, password_hash, expires_at, max_files, created_by)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        RETURNING id::text, token, title, expires_at, max_files
+        INSERT INTO public.upload_requests (company_id, folder_id, token, title, message, password_hash, expires_at, max_files, created_by,
+                                            obligation_instance_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        RETURNING id::text, token, title, expires_at, max_files, obligation_instance_id::text
         """,
         body.company_id, body.folder_id, token, body.title.strip(), (body.message or "").strip() or None,
         bcrypt.hashpw(senha.encode(), bcrypt.gensalt()).decode() if senha else None,
-        expira, body.max_files, claims["sub"],
+        expira, body.max_files, claims["sub"], body.obligation_instance_id,
     )
     await admin_conn.execute(
         """
@@ -178,7 +189,8 @@ async def _pedido(admin_conn: asyncpg.Connection, token: str) -> asyncpg.Record:
     req = await admin_conn.fetchrow(
         """
         SELECT r.id, r.company_id, r.folder_id, r.title, r.message, r.password_hash, r.expires_at, r.max_files,
-               r.revoked_at, r.created_by, c.name AS company_name, f.name AS folder_name, f.deleted_at AS folder_deleted,
+               r.revoked_at, r.created_by, r.obligation_instance_id,
+               c.name AS company_name, f.name AS folder_name, f.deleted_at AS folder_deleted,
                (SELECT count(*) FROM public.upload_request_files x WHERE x.request_id = r.id AND x.confirmed_at IS NOT NULL) AS received
         FROM public.upload_requests r
         JOIN public.companies c ON c.id = r.company_id
@@ -288,6 +300,53 @@ async def _arquivo_do_pedido(admin_conn: asyncpg.Connection, req: asyncpg.Record
     return x
 
 
+async def _comprovar_obrigacao(admin_conn: asyncpg.Connection, req: asyncpg.Record, doc: asyncpg.Record, remetente: str) -> None:
+    """
+    A7-55, B3.5.8: o arquivo recebido pelo pedido vira comprovante da
+    competência (em nome de quem pediu), entra na trilha da obrigação e, se
+    ela pede conferência, avisa os administradores.
+    """
+    from app.services.obligations_service import period_label
+
+    inst = await admin_conn.fetchrow(
+        """
+        SELECT oi.id, oi.status, oi.period, ot.name AS template_name
+        FROM public.obligation_instances oi JOIN public.obligation_templates ot ON ot.id = oi.template_id
+        WHERE oi.id = $1 AND oi.company_id = $2
+        """,
+        req["obligation_instance_id"], req["company_id"],
+    )
+    if inst is None or inst["status"] in ("dispensado", "cancelado"):
+        return
+    await admin_conn.execute(
+        """
+        INSERT INTO public.obligation_documents (obligation_instance_id, document_id, linked_by)
+        VALUES ($1, $2, $3) ON CONFLICT DO NOTHING
+        """,
+        inst["id"], doc["id"], req["created_by"],
+    )
+    nome = f'{inst["template_name"]} · {period_label(inst["period"])}'
+    await admin_conn.execute(
+        """
+        INSERT INTO public.activity_log (user_id, company_id, action, item_type, item_id, item_name_snapshot, event_category, metadata)
+        VALUES ($1, $2, 'obligation_link', 'obligation', $3, $4, 'obligation',
+                jsonb_build_object('tipo', 'competencia', 'documento', $5::text, 'pelo_pedido', $6::text, 'remetente', $7::text))
+        """,
+        req["created_by"], req["company_id"], inst["id"], nome, doc["name"], req["title"], remetente,
+    )
+    status_agora = await admin_conn.fetchval("SELECT status FROM public.obligation_instances WHERE id = $1", inst["id"])
+    if status_agora == "reviewing":
+        await admin_conn.execute(
+            """
+            INSERT INTO public.notifications (user_id, company_id, type, resource_type, resource_id, message)
+            SELECT DISTINCT uca.user_id, $1::uuid, 'obligation_review', 'obligation_instance', $2::uuid, $3::text
+            FROM public.user_company_access uca
+            WHERE uca.company_id = $1 AND uca.folder_path IS NULL AND uca.permission_level = 'admin'
+            """,
+            req["company_id"], inst["id"], f'"{nome}": {remetente} mandou {doc["name"]} pelo pedido; espera sua conferência.',
+        )
+
+
 @router.post("/r/{token}/confirm")
 async def public_confirm(
     token: str, body: PublicConfirm, request: Request, admin_conn: asyncpg.Connection = Depends(get_db_admin),
@@ -315,6 +374,8 @@ async def public_confirm(
                                 detail="Este arquivo já estava no Docke (o mesmo conteúdo foi enviado antes). Não precisa mandar de novo.")
         raise
     await admin_conn.execute("UPDATE public.upload_request_files SET confirmed_at = now() WHERE id = $1", x["id"])
+    if req["obligation_instance_id"] is not None:
+        await _comprovar_obrigacao(admin_conn, req, row, x["sender_name"])
     await admin_conn.execute(
         """
         INSERT INTO public.notifications (user_id, company_id, type, resource_type, resource_id, message)

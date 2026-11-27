@@ -19,6 +19,10 @@ export interface Task {
   createdAt: number;
   /** Há como cancelar (A2-26): quem criou a tarefa registrou o cancelamento. */
   cancellable?: boolean;
+  /** Envio em partes que pode parar e continuar depois (A4-58). */
+  pausable?: boolean;
+  /** Parado por quem enviou: "Continuar" retoma das partes que faltam. */
+  paused?: boolean;
 }
 
 interface TaskCtx {
@@ -35,6 +39,8 @@ interface TaskCtx {
   retry: (id: string) => void;
   registerCancel: (id: string, fn: (() => void) | null) => void;
   cancel: (id: string) => void;
+  registerPause: (id: string, fn: (() => void) | null) => void;
+  pause: (id: string) => void;
 }
 
 const Ctx = createContext<TaskCtx>({
@@ -47,6 +53,8 @@ const Ctx = createContext<TaskCtx>({
   retry: () => {},
   registerCancel: () => {},
   cancel: () => {},
+  registerPause: () => {},
+  pause: () => {},
 });
 
 let _seq = 0;
@@ -74,6 +82,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const retryHandlers = useRef<Map<string, () => void>>(new Map());
   const cancelHandlers = useRef<Map<string, () => void>>(new Map());
+  const pauseHandlers = useRef<Map<string, () => void>>(new Map());
 
   const persist = useCallback((next: Task[]) => {
     try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* quota/privado — ignora */ }
@@ -150,8 +159,23 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     fn?.();
   }, []);
 
+  const registerPause = useCallback((id: string, fn: (() => void) | null) => {
+    if (fn) pauseHandlers.current.set(id, fn); else pauseHandlers.current.delete(id);
+    setTasks((prev) => {
+      const next = prev.map((t) => (t.id === id ? { ...t, pausable: !!fn } : t));
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
+  const pause = useCallback((id: string) => {
+    const fn = pauseHandlers.current.get(id);
+    pauseHandlers.current.delete(id);
+    fn?.();
+  }, []);
+
   return (
-    <Ctx.Provider value={{ tasks, addTask, updateTask, removeTask, clearDone, registerRetry, retry, registerCancel, cancel }}>
+    <Ctx.Provider value={{ tasks, addTask, updateTask, removeTask, clearDone, registerRetry, retry, registerCancel, cancel, registerPause, pause }}>
       {children}
     </Ctx.Provider>
   );
