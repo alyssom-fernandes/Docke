@@ -58,7 +58,7 @@ export default function AdminHome() {
   ];
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <section aria-labelledby="adm-atencao" className="glass-panel glass-blur-card rounded-(--radius-panel) p-4 sm:p-5 space-y-2">
         <h2 id="adm-atencao" className="text-mac-body font-semibold text-(--text-primary)">Precisa de atenção em {current?.name ?? "…"}</h2>
         {!attention ? <div className="h-12 rounded bg-(--bg-hover) animate-pulse" aria-label="Carregando" /> : attention.length === 0 ? (

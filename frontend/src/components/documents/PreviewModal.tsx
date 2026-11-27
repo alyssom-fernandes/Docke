@@ -17,6 +17,7 @@ interface Doc {
   name: string;
   mime_type: string;
   size_bytes: number;
+  thumb_url?: string | null;
 }
 
 /** Sem acento e sem caixa (achado A5-60). */
@@ -166,7 +167,7 @@ function Danfe({ fields, docName }: { fields: XmlFields; docName: string }) {
           <Printer className="w-3.5 h-3.5" aria-hidden /> Imprimir DANFE
         </button>
       </div>
-      <div ref={ref} className="danfe max-w-[760px] mx-auto bg-white text-black rounded-[3px] shadow-[0_2px_16px_rgba(0,0,0,0.15)] p-5 font-sans text-[11px] leading-snug">
+      <div ref={ref} className="danfe max-w-[760px] mx-auto bg-white text-black rounded-[3px] shadow-(--shadow-paper) p-5 font-sans text-[11px] leading-snug">
         <div className="grid grid-cols-[1.4fr_1fr_1.6fr] gap-2 mb-2">
           <section className={box} aria-label="Emitente">
             <p className={cap}>Emitente</p>
@@ -279,6 +280,21 @@ interface PreviewModalProps {
  * realça no próprio PDF e salta para a página (Ctrl+F abre a busca daqui),
  * imagem com zoom e girar, impressão do arquivo e DANFE com Code-128 real.
  */
+/**
+ * Enquanto o arquivo carrega (estética P2): a miniatura da própria página 1
+ * ocupa o lugar da página, então a imagem cresce junto com a janela desde o
+ * item clicado, em vez de um bloco cinza. Sem miniatura, o bloco de sempre.
+ */
+function PaginaCarregando({ thumb }: { thumb?: string | null }) {
+  const [falhou, setFalhou] = useState(false);
+  if (!thumb || falhou) return <div className="mx-auto max-w-[640px] aspect-[1/1.3] rounded-[4px] bg-(--bg-hover) animate-pulse" />;
+  return (
+    <div className="mx-auto max-w-[640px] aspect-[1/1.3] rounded-[4px] overflow-hidden bg-white shadow-(--shadow-paper)">
+      <img src={thumb} alt="" aria-hidden="true" onError={() => setFalhou(true)} className="w-full h-full object-contain object-top" />
+    </div>
+  );
+}
+
 export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = null, initialQuery = null, onChanged }: PreviewModalProps) {
   const [organizing, setOrganizing] = useState(false);
   // Comentários e anotações (B2.4.6, B2.4.9).
@@ -536,7 +552,7 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
         }}>
         {loading && (
           <div className="absolute inset-0 p-8" aria-label="Carregando pré-visualização">
-            <div className="mx-auto max-w-[640px] aspect-[1/1.3] rounded-[4px] bg-(--bg-hover) animate-pulse" />
+            <PaginaCarregando thumb={doc.thumb_url} />
           </div>
         )}
         {!loading && error && (
@@ -555,7 +571,7 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
         )}
         {!loading && !error && (type === "pdf" || type === "image") && <PreviewWatermark label={watermarkLabel} />}
         {!loading && !error && type === "pdf" && url && (
-          <Suspense fallback={<div className="p-8"><div className="mx-auto max-w-[640px] aspect-[1/1.3] rounded-[4px] bg-(--bg-hover) animate-pulse" /></div>}>
+          <Suspense fallback={<div className="p-8"><PaginaCarregando thumb={doc.thumb_url} /></div>}>
             <PdfViewer
               ref={pdfRef}
               url={url}

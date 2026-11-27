@@ -317,7 +317,7 @@ function PdfPage({ pdf, index, scale, rotation, query = "", thumbnail = false }:
   useEffect(() => { if (textRef.current) highlight(textRef.current, query); }, [query]);
 
   return (
-    <div ref={holder} className="relative bg-white rounded-[3px] shadow-[0_2px_16px_rgba(0,0,0,0.15)]"
+    <div ref={holder} className="relative bg-white rounded-[3px] shadow-(--shadow-paper)"
       style={dims ? { width: dims.w, height: dims.h } : { width: thumbnail ? 100 : 600, height: thumbnail ? 141 : 848 }}>
       <canvas ref={canvasRef} className="block rounded-[3px]" aria-hidden />
       {!thumbnail && <div ref={textRef} className="pdf-text-layer" />}

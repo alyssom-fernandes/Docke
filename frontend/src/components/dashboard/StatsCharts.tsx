@@ -50,8 +50,8 @@ export function UploadsLineChart({ data }: { data: DailyUpload[] }) {
   if (data.length === 0) return null;
 
   const W = width;
-  const H = 96;
-  const padTop = 14;
+  const H = 112;
+  const padTop = 18;
   const padBottom = 1;
   const max = Math.max(1, ...data.map((d) => d.count));
   const slot = W / data.length;
@@ -63,6 +63,13 @@ export function UploadsLineChart({ data }: { data: DailyUpload[] }) {
   });
   const peak = data.reduce((a, b) => (b.count > a.count ? b : a), data[0]);
   const hover = hoverIdx !== null ? points[hoverIdx] : null;
+  // Rótulo direto em cima da coluna quando cabe (estética P3): sem precisar pairar.
+  const rotulos = slot >= 18;
+  // Coluna com só os cantos de cima arredondados: a base fica reta na linha do eixo.
+  const coluna = (x: number, y: number, w: number, h: number) => {
+    const r = Math.min(4, w / 2, h);
+    return `M${x},${y + h} V${y + r} Q${x},${y} ${x + r},${y} H${x + w - r} Q${x + w},${y} ${x + w},${y + r} V${y + h} Z`;
+  };
   const ticks = [0, Math.floor((data.length - 1) / 2), data.length - 1];
 
   function pick(clientX: number, rect: DOMRect) {
@@ -99,22 +106,31 @@ export function UploadsLineChart({ data }: { data: DailyUpload[] }) {
         >
           <line x1={0} x2={W} y1={padTop} y2={padTop} stroke="var(--border-default)" strokeDasharray="2,3" />
           {points.map((p, i) => (
-            <rect
-              key={p.date}
-              x={p.x - barW / 2}
-              y={p.y}
-              width={barW}
-              height={p.h}
-              rx={Math.min(3, barW / 2)}
-              fill={p.count === 0 ? "var(--border-control)" : "var(--chart-line)"}
-              opacity={hoverIdx === null || hoverIdx === i ? 1 : 0.45}
-            />
+            <g key={p.date} opacity={hoverIdx === null || hoverIdx === i ? 1 : 0.45} className="transition-opacity duration-fast">
+              <path
+                d={coluna(p.x - barW / 2, p.y, barW, p.h)}
+                fill={p.count === 0 ? "var(--border-control)" : "var(--chart-line)"}
+                fillOpacity={p.count === 0 || p.count === peak.count ? 1 : 0.72}
+                className="chart-grow-y"
+                style={{ animationDelay: `${Math.min(i, 30) * 16}ms` }}
+              />
+              {rotulos && p.count > 0 && (
+                <text x={p.x} y={p.y - 4} textAnchor="middle" fontSize="10.5" fontWeight={p.count === peak.count ? 600 : 500}
+                  fill={p.count === peak.count ? "var(--text-primary)" : "var(--text-secondary)"} className="tabular-nums chart-fade"
+                  style={{ animationDelay: `${180 + Math.min(i, 30) * 16}ms` }}>
+                  {p.count.toLocaleString("pt-BR")}
+                </text>
+              )}
+              {p.today && <circle cx={p.x} cy={H + 5} r={2} fill="var(--text-accent)" />}
+            </g>
           ))}
           <line x1={0} x2={W} y1={H - padBottom} y2={H - padBottom} stroke="var(--border-default)" />
         </svg>
-        <span className="absolute left-0 top-0 -translate-y-1/2 text-mac-caption2 text-(--text-secondary) tabular-nums bg-(--bg-card) pr-1">
-          {max.toLocaleString("pt-BR")}
-        </span>
+        {!rotulos && (
+          <span className="absolute left-0 top-0 -translate-y-1/2 text-mac-caption2 text-(--text-secondary) tabular-nums bg-(--bg-card) pr-1" style={{ top: padTop }}>
+            {max.toLocaleString("pt-BR")}
+          </span>
+        )}
         {hover && (
           <div
             className="absolute top-0 px-2 py-1 rounded-[6px] bg-(--text-primary) text-(--bg-card) text-mac-caption pointer-events-none whitespace-nowrap"
@@ -128,7 +144,7 @@ export function UploadsLineChart({ data }: { data: DailyUpload[] }) {
           </div>
         )}
       </div>
-      <div className="relative h-5 mt-1 text-mac-caption2 text-(--text-secondary) tabular-nums" aria-hidden="true">
+      <div className="relative h-5 mt-2.5 text-mac-caption2 text-(--text-secondary) tabular-nums" aria-hidden="true">
         {ticks.map((i, k) => (
           <span
             key={k}
@@ -162,19 +178,19 @@ export function FolderBarChart({ data, onDrill }: { data: FolderBreakdown[]; onD
 
   return (
     <ul className="space-y-1">
-      {data.map((f) => {
+      {data.map((f, i) => {
         const bar = (
           <>
             <span className="w-28 sm:w-32 shrink-0 text-mac-caption text-(--text-secondary) truncate group-hover:text-(--text-primary)" title={f.name}>
               {f.name}
             </span>
-            <span className="flex-1 h-4 bg-(--chart-track) rounded-[3px] overflow-hidden">
+            <span className="flex-1 h-3 bg-(--chart-track) rounded-full overflow-hidden">
               <span
-                className={`block h-full rounded-[3px] transition-[width] duration-normal ${f.kind ? "bg-(--chart-bar)/55" : "bg-(--chart-bar) group-hover:bg-(--chart-bar-hover)"}`}
-                style={{ width: `${Math.max(3, (f.document_count / max) * 100)}%` }}
+                className={`block h-full rounded-full transition-[width] duration-normal chart-grow-x ${f.kind ? "bg-(--chart-bar)/55" : "bg-(--chart-bar) group-hover:bg-(--chart-bar-hover)"}`}
+                style={{ width: `${Math.max(3, (f.document_count / max) * 100)}%`, animationDelay: `${Math.min(i, 12) * 40}ms` }}
               />
             </span>
-            <span className="w-10 shrink-0 text-mac-caption text-(--text-secondary) text-right tabular-nums">
+            <span className={`w-10 shrink-0 text-mac-caption text-right tabular-nums ${f.document_count === max ? "font-semibold text-(--text-primary)" : "text-(--text-secondary)"}`}>
               {f.document_count.toLocaleString("pt-BR")}
             </span>
           </>

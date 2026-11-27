@@ -146,7 +146,7 @@ export default function CatalogDialog({ companyId, companyName, members, onClose
                   <Checkbox checked={i.ja_existe || chosen.has(i.key)} disabled={i.ja_existe} onChange={() => toggle(i.key)} className="mt-1" />
                   <span className="flex-1 min-w-0">
                     <span className="block text-mac-body font-medium text-(--text-primary)">{i.name}{i.ja_existe && <span className="font-normal text-(--text-secondary)"> · já cadastrada</span>}</span>
-                    {i.motivos?.length > 0 && (i.situacao !== "recomendado" || segmento === "perfil") ? (
+                    {i.motivos?.length > 0 && i.motivos[0] !== "vale para todas as empresas" && (i.situacao !== "recomendado" || segmento === "perfil") ? (
                       <span className="my-0.5 inline-flex flex-wrap gap-1">
                         {i.motivos.map((m) => (
                           <span key={m} className={`rounded-full px-2 py-px text-mac-caption ${i.situacao === "recomendado" ? "bg-(--tint-success) text-(--text-success)" : i.situacao === "falta_perfil" ? "bg-(--tint-warning) text-(--text-warning)" : "bg-(--bg-hover) text-(--text-secondary)"}`}>

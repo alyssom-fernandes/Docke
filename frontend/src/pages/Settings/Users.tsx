@@ -126,7 +126,7 @@ export default function Users() {
   if (!current) return null;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-mac-caption text-(--text-secondary) max-w-2xl">Quem acessa {current.name}, com que papel e onde. O acesso pode vir direto ou por um grupo.{user?.role !== "supremo" && " Contas novas são criadas pelo administrador geral."}</p>
         {state === "ok" && (

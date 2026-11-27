@@ -242,7 +242,7 @@ APLICA: dict[str, dict[str, Any]] = {
     "posto_inmetro_bombas": {"cnae": ["4731"]},
     "posto_oleo_usado": {"cnae": ["4731", "4520", "4530"]},
     "restaurante_licenca_sanitaria": {"cnae": ["5611", "5612", "5620", "5510", "5590", "1091", "4721"]},
-    "restaurante_caixa_dagua": {"cnae": ["5611", "5612", "5620", "5510", "5590"]},
+    "restaurante_caixa_dagua": {"cnae": ["5611", "5612", "5620", "5510", "5590", "1091"]},
     "restaurante_pragas": {"cnae": ["5611", "5612", "5620", "5510", "5590", "1091", "4721"]},
     "restaurante_boas_praticas": {"cnae": ["5611", "5612", "5620", "1091"]},
     "hotel_cadastur": {"cnae": ["5510", "5590"]},

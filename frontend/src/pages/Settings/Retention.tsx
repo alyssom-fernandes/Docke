@@ -126,7 +126,7 @@ export default function Retention() {
   ];
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div>
         <p className="text-mac-caption text-(--text-secondary)">
           Quanto tempo cada documento precisa ser guardado, o que está bloqueado pela Justiça e o que já pode ser descartado. Nada é apagado sem duas confirmações.

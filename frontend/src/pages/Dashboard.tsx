@@ -341,24 +341,26 @@ export default function Dashboard() {
   const totalDaily = (daily.data ?? []).reduce((a, d) => a + d.count, 0);
 
   return (
-    <div className="cascade flex flex-col gap-5 sm:gap-6 max-w-[1440px] w-full mx-auto">
-      <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
-        <div>
+    <div className="cascade flex flex-col gap-4 sm:gap-6 max-w-[1440px] w-full mx-auto">
+      <div className="flex items-end justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Início</h1>
-          <p className="text-mac-caption text-(--text-secondary)">{current.name}</p>
+          <p className="text-mac-caption text-(--text-secondary) truncate">{current.name}</p>
         </div>
-        <div className="flex items-center gap-1">
+        {/* No celular, só os ícones ao lado do título (estética P4): a faixa de botões ocupava uma linha inteira. */}
+        <div className="flex items-center gap-1 shrink-0">
           {s && (
             <span className="hidden sm:inline text-mac-caption text-(--text-secondary) mr-1" title={s.refreshed_at ? fullDate(s.refreshed_at) : undefined}>
               {s.refreshed_at ? `Atualizado ${relativeDate(s.refreshed_at)}` : "Números ao vivo"}
             </span>
           )}
-          <Button variant="ghost" size="sm" onClick={refreshAll} disabled={refreshing || cooldown > 0} aria-label="Atualizar o Início">
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} aria-hidden="true" />
-            {cooldown > 0 ? `Aguarde ${cooldown}s` : "Atualizar"}
+          <Button variant="ghost" size="sm" onClick={refreshAll} disabled={refreshing || cooldown > 0}
+            aria-label={cooldown > 0 ? `Atualizar o Início: aguarde ${cooldown} segundos` : "Atualizar o Início"} title="Atualizar">
+            <RefreshCw className={`w-4 h-4 sm:w-3.5 sm:h-3.5 ${refreshing ? "animate-spin" : ""}`} aria-hidden="true" />
+            <span className="hidden sm:inline">{cooldown > 0 ? `Aguarde ${cooldown}s` : "Atualizar"}</span>
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setCustomizing(true)}>
-            <SlidersHorizontal className="w-3.5 h-3.5" aria-hidden="true" /> Personalizar
+          <Button variant="ghost" size="sm" onClick={() => setCustomizing(true)} aria-label="Personalizar o Início" title="Personalizar">
+            <SlidersHorizontal className="w-4 h-4 sm:w-3.5 sm:h-3.5" aria-hidden="true" /> <span className="hidden sm:inline">Personalizar</span>
           </Button>
         </div>
       </div>
@@ -372,11 +374,11 @@ export default function Dashboard() {
         stats.status === "error" ? (
           <div className="glass-panel glass-blur-card rounded-(--radius-panel)"><SectionError what="os números da empresa" onRetry={stats.reload} /></div>
         ) : !s ? (
-          <div className="grid grid-cols-4 gap-2 sm:gap-5" aria-label="Carregando os números">
+          <div className="grid grid-cols-4 gap-2 sm:gap-4" aria-label="Carregando os números">
             {[0, 1, 2, 3].map((i) => <div key={i} className="min-h-[68px] sm:min-h-[96px] rounded-(--radius-panel) bg-(--bg-hover) animate-pulse" />)}
           </div>
         ) : (
-          <section aria-label="Números da empresa" className="cascade grid grid-cols-4 gap-2 sm:gap-5">
+          <section aria-label="Números da empresa" className="cascade grid grid-cols-4 gap-2 sm:gap-4">
             <StatCard
               to="/documents" label="Documentos" value={s.total_documents} icon={FileText}
               context={s.documents_today > 0 ? `+${s.documents_today.toLocaleString("pt-BR")} hoje` : "nenhum envio hoje"}
@@ -394,7 +396,7 @@ export default function Dashboard() {
 
       {/* 3. Recentes e ancorados (antes dos gráficos: lista acionável primeiro). */}
       {shows("recentes") && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           <Panel
             id="inicio-recentes" title="Recentes" className="lg:col-span-2"
             action={
@@ -498,7 +500,7 @@ export default function Dashboard() {
 
       {/* 4. Gráficos: cada um com o próprio filtro dentro do cartão (A3-22). */}
       {shows("graficos") && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
           <Panel
             id="inicio-envios" title="Envios por dia"
             action={

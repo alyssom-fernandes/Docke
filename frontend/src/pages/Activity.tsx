@@ -139,7 +139,7 @@ export default function Activity() {
   const labelOf = (v: string) => ACTION_GROUPS.find((a) => a.value === v)?.label ?? ACTION_LABELS[v] ?? v;
 
   return (
-    <div className="space-y-5 max-w-[1100px] w-full mx-auto">
+    <div className="space-y-6 max-w-[1100px] w-full mx-auto">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Atividade</h1>
