@@ -47,6 +47,10 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer({ url, q
   const [width, setWidth] = useState(800);
   const [height, setHeight] = useState(600);
   const [zoom, setZoom] = useState(1);
+  // A cápsula de controles sai do caminho ao rolar para baixo e volta ao rolar
+  // para cima, ao mexer o mouse ou ao focar pelo teclado (A5-47).
+  const [controlsHidden, setControlsHidden] = useState(false);
+  const lastScrollTop = useRef(0);
   const [fit, setFit] = useState<Fit>("largura");
   const [rotation, setRotation] = useState(0);
   const [page, setPage] = useState(1);
@@ -150,6 +154,10 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer({ url, q
   function onScroll() {
     const el = scrollRef.current;
     if (!el) return;
+    const delta = el.scrollTop - lastScrollTop.current;
+    if (delta > 6 && el.scrollTop > 40) setControlsHidden(true);
+    else if (delta < -6) setControlsHidden(false);
+    lastScrollTop.current = el.scrollTop;
     const mid = el.scrollTop + el.clientHeight / 3;
     let current = 1;
     el.querySelectorAll<HTMLElement>("[data-page]").forEach((p) => {
@@ -193,7 +201,7 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer({ url, q
           ))}
         </nav>
       )}
-      <div className="relative flex-1 min-w-0 flex flex-col">
+      <div className="relative flex-1 min-w-0 flex flex-col" onMouseMove={() => { if (controlsHidden) setControlsHidden(false); }}>
         <div
           ref={scrollRef}
           onScroll={onScroll}
@@ -232,8 +240,11 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer({ url, q
           )}
         </div>
         {/* Cápsula de controles (Preview.app). */}
-        <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none">
-          <div className="pointer-events-auto glass-panel glass-blur-strong glass-shadow rounded-full flex items-center gap-0.5 px-1.5 py-1">
+        <div
+          className={`absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none transition-[opacity,transform] duration-200 ${controlsHidden ? "opacity-0 translate-y-2" : ""}`}
+          onFocusCapture={() => setControlsHidden(false)}
+        >
+          <div className={`${controlsHidden ? "pointer-events-none" : "pointer-events-auto"} glass-capsule rounded-full flex items-center gap-0.5 px-1.5 py-1`}>
             <button className={`${btn} hidden sm:flex`} onClick={() => setThumbs((v) => !v)} aria-label="Miniaturas" aria-pressed={thumbs}><PanelLeft className="w-4 h-4" aria-hidden /></button>
             <button className={btn} onClick={() => goToPage(Math.max(1, page - 1))} disabled={page <= 1} aria-label="Página anterior"><ChevronLeft className="w-4 h-4" aria-hidden /></button>
             <form onSubmit={(e) => { e.preventDefault(); const n = Number(pageInput); if (n >= 1 && n <= sizes.length) goToPage(n); }} className="flex items-center gap-1 text-mac-caption text-(--text-secondary)">
