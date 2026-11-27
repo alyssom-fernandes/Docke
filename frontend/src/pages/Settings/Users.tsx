@@ -311,6 +311,41 @@ function PersonReach({ companyId, userId, version }: { companyId: string; userId
   );
 }
 
+/**
+ * Prévia do impacto de tirar um acesso (B3.1.5): se outro acesso (direto ou
+ * por grupo) ainda cobre o lugar, diz qual; senão, quanto a pessoa deixa de
+ * ver (subpastas e documentos).
+ */
+function RevokeImpact({ person, grant, folders }: { person: Person; grant: DirectGrant; folders: FolderOption[] }) {
+  const [resumo, setResumo] = useState<{ subfolders: number; documents: number } | null>(null);
+  const caminho = (id: string | null) => (id ? folders.find((f) => f.id === id)?.path ?? null : null);
+  const alvo = caminho(grant.folder_id);
+  const cobre = (fid: string | null) => {
+    if (!fid) return true;
+    const p = caminho(fid);
+    return !!p && !!alvo && (alvo === p || alvo.startsWith(p + "."));
+  };
+  const outros = [
+    ...person.grants.filter((g) => g.access_id !== grant.access_id).map((g) => ({ ...g, origem: "outro acesso direto" })),
+    ...person.via_groups.map((g) => ({ ...g, origem: `o grupo ${g.group_name}` })),
+  ].filter((g) => cobre(g.folder_id));
+  useEffect(() => {
+    if (outros.length || !grant.folder_id) return;
+    api.get(`/folders/${grant.folder_id}/summary`).then((r) => setResumo(r.data)).catch(() => {});
+  }, [grant.access_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (outros.length) {
+    const o = outros[0];
+    return <span className="block mt-2">Continua vendo {grant.folder_name ?? "a empresa"} como {ROLE_LABEL[o.role] ?? o.role} por {o.origem}.</span>;
+  }
+  if (!grant.folder_id) return <span className="block mt-2">Deixa de ver a empresa toda, a não ser o que outros acessos por pasta cobrirem.</span>;
+  if (!resumo) return null;
+  return (
+    <span className="block mt-2">
+      Deixa de ver {grant.folder_name}{resumo.subfolders ? `, ${resumo.subfolders} ${resumo.subfolders === 1 ? "subpasta" : "subpastas"}` : ""} e {resumo.documents} {resumo.documents === 1 ? "documento" : "documentos"}.
+    </span>
+  );
+}
+
 function PersonDialog({ companyId, person, folders, isSelf, onClose, onChanged }: {
   companyId: string; person: Person; folders: FolderOption[]; isSelf: boolean; onClose: () => void; onChanged: () => void;
 }) {
@@ -450,7 +485,8 @@ function PersonDialog({ companyId, person, folders, isSelf, onClose, onChanged }
 
       {confirm?.kind === "revoke" && (
         <ConfirmModal title="Tirar este acesso?" loading={busy} confirmLabel="Tirar" danger
-          description={<>{person.full_name} deixa de ser {ROLE_LABEL[confirm.grant.role]} {where(confirm.grant.folder_name)}.{person.grants.length === 1 && person.via_groups.length === 0 ? " É o último acesso dela: use “Remover desta empresa”." : ""}</>}
+          description={<>{person.full_name} deixa de ser {ROLE_LABEL[confirm.grant.role]} {where(confirm.grant.folder_name)}.{person.grants.length === 1 && person.via_groups.length === 0 ? " É o último acesso dela: use “Remover desta empresa”." : ""}
+            <RevokeImpact person={person} grant={confirm.grant} folders={folders} /></>}
           onClose={() => setConfirm(null)}
           onConfirm={async () => { if (await act(() => api.delete(`/companies/${companyId}/access/${confirm.grant.access_id}`), "Acesso retirado.", "Não foi possível tirar o acesso.")) setConfirm(null); }} />
       )}

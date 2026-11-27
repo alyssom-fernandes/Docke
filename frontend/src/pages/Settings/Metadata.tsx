@@ -897,6 +897,90 @@ function TreeTab({ companyId, initialFolderId, onGoCatalog }: { companyId: strin
   );
 }
 
+/**
+ * Matriz campo × pasta (FA-A8-07): cada pasta numa linha, cada campo numa
+ * coluna, com o que vale ali (próprio ou herdado, obrigatório ou opcional, ou
+ * desligado). Clicar na pasta abre a configuração dela na aba Por pasta.
+ */
+function MatrixTab({ companyId, onOpenFolder }: { companyId: string; onOpenFolder: (folderId: string) => void }) {
+  type Regra = { folder_path: string | null; mode: string; required: boolean; folder_id: string | null };
+  const [dados, setDados] = useState<{ folders: FolderOption[]; fields: CustomField[]; regras: Record<string, Regra[]> } | null>(null);
+  const [falhou, setFalhou] = useState(false);
+  useEffect(() => {
+    setDados(null); setFalhou(false);
+    Promise.all([
+      api.get<FolderOption[]>("/folders", { params: { company_id: companyId, flat: true } }),
+      api.get<CustomField[]>("/custom-fields", { params: { company_id: companyId } }),
+    ]).then(async ([fo, fi]) => {
+      const fields = (fi.data ?? []).slice(0, 30);
+      const regras: Record<string, Regra[]> = {};
+      await Promise.all(fields.map((f) => api.get<{ regras: Regra[] }>(`/custom-fields/${f.id}/where`).then((r) => { regras[f.id] = r.data.regras ?? []; }).catch(() => { regras[f.id] = []; })));
+      // Ordem da árvore por nome: a chave é o caminho de nomes (o path guarda ids).
+      const nomePorPath = new Map((fo.data ?? []).map((f) => [f.path, f.name]));
+      const chave = (p: string) => p.split(".").map((_, i, seg) => nomePorPath.get(seg.slice(0, i + 1).join(".")) ?? "").join("\u0000");
+      setDados({ folders: [...(fo.data ?? [])].sort((a, b) => chave(a.path).localeCompare(chave(b.path), "pt-BR")), fields, regras });
+    }).catch(() => setFalhou(true));
+  }, [companyId]);
+
+  if (falhou) return <p role="alert" className="text-mac-body text-(--text-danger)">Não foi possível montar a matriz agora.</p>;
+  if (!dados) return <div className="h-40 rounded-(--radius-control) bg-(--bg-hover) animate-pulse" aria-label="Carregando" />;
+  if (!dados.fields.length) return <p className="text-mac-body text-(--text-secondary)">Ainda não há campos no catálogo.</p>;
+
+  // A regra que vale numa pasta é a da pasta mais próxima acima dela (ou a da empresa toda).
+  function vale(fieldId: string, path: string): { r: Regra; proprio: boolean } | null {
+    let melhor: Regra | null = null;
+    for (const r of dados!.regras[fieldId] ?? []) {
+      if (r.folder_path !== null && !(path === r.folder_path || path.startsWith(r.folder_path + "."))) continue;
+      if (!melhor || (r.folder_path ?? "").length > (melhor.folder_path ?? "").length) melhor = r;
+    }
+    return melhor ? { r: melhor, proprio: melhor.folder_path === path } : null;
+  }
+  return (
+    <div className="space-y-2">
+      <p className="text-mac-caption text-(--text-secondary)">
+        <span className="font-semibold text-(--text-primary)">●</span> definido na pasta · <span className="text-(--text-secondary)">↳</span> herdado de cima · <span className="text-(--text-danger)">*</span> obrigatório · <span>—</span> não vale. Clique na pasta para mudar.
+      </p>
+      <div className="overflow-auto max-h-[65vh] rounded-(--radius-control) border border-(--border-default)">
+        <table className="border-separate border-spacing-0 text-mac-caption">
+          <caption className="sr-only">Campos de metadado por pasta</caption>
+          <thead>
+            <tr>
+              <th scope="col" className="sticky left-0 top-0 z-20 bg-(--bg-card) px-3 py-2 text-left font-semibold text-(--text-secondary) border-b border-(--border-default) min-w-48">Pasta</th>
+              {dados.fields.map((f) => (
+                <th key={f.id} scope="col" className="sticky top-0 z-10 bg-(--bg-card) px-2 py-2 text-left font-semibold text-(--text-secondary) border-b border-(--border-default) min-w-24 max-w-36">
+                  <span className="line-clamp-2">{f.label}</span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {dados.folders.map((fo) => (
+              <tr key={fo.id}>
+                <th scope="row" className="sticky left-0 z-10 bg-(--bg-card) px-3 py-1.5 text-left font-medium text-(--text-primary) border-b border-(--border-default)"
+                  style={{ paddingLeft: `${12 + Math.max(0, fo.path.split(".").length - 1) * 14}px` }}>
+                  <button type="button" onClick={() => onOpenFolder(fo.id)} className="hover:underline text-left">{fo.name}</button>
+                </th>
+                {dados.fields.map((f) => {
+                  const v = vale(f.id, fo.path);
+                  const desc = !v ? "não vale" : v.r.mode === "exclude" ? "desligado aqui" : `${v.proprio ? "definido aqui" : "herdado"}${v.r.required ? ", obrigatório" : ""}`;
+                  return (
+                    <td key={f.id} className="px-2 py-1.5 border-b border-(--border-default) text-center" title={`${f.label} em ${fo.name}: ${desc}`}>
+                      <span className="sr-only">{desc}</span>
+                      <span aria-hidden="true" className={!v || v.r.mode === "exclude" ? "text-(--text-tertiary)" : v.proprio ? "font-semibold text-(--text-primary)" : "text-(--text-secondary)"}>
+                        {!v || v.r.mode === "exclude" ? "—" : v.proprio ? "●" : "↳"}{v && v.r.mode !== "exclude" && v.r.required ? <span className="text-(--text-danger)">*</span> : null}
+                      </span>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ─── Página ────────────────────────────────────────────────────────────────────
 
 export default function Metadata() {
@@ -907,9 +991,10 @@ export default function Metadata() {
   // pasta pré-selecionada, em vez de forçar o usuário a navegar até lá.
   const [searchParams] = useSearchParams();
   const initialFolderId = searchParams.get("folder") ?? undefined;
-  const [tab, setTab] = useState<"catalog" | "tree">(searchParams.get("tab") === "tree" ? "tree" : "catalog");
+  const [tab, setTab] = useState<"catalog" | "tree" | "matrix">(searchParams.get("tab") === "tree" ? "tree" : searchParams.get("tab") === "matrix" ? "matrix" : "catalog");
+  const [pastaMatriz, setPastaMatriz] = useState<string | undefined>(undefined);
   const [, setSearchParams] = useSearchParams();
-  function changeTab(t: "catalog" | "tree") {
+  function changeTab(t: "catalog" | "tree" | "matrix") {
     setTab(t);
     setSearchParams((p) => { const n = new URLSearchParams(p); n.set("tab", t); return n; }, { replace: true });
   }
@@ -939,9 +1024,14 @@ export default function Metadata() {
           >
             <FolderTree className="w-4 h-4" aria-hidden="true" /> Por pasta
           </button>
+          <button role="tab" aria-selected={tab === "matrix"} onClick={() => changeTab("matrix")} className="mac-segment">
+            Matriz
+          </button>
         </div>
 
-        {tab === "catalog" ? <CatalogTab companyId={current.id} companies={companies} /> : <TreeTab companyId={current.id} initialFolderId={initialFolderId} onGoCatalog={() => changeTab("catalog")} />}
+        {tab === "catalog" ? <CatalogTab companyId={current.id} companies={companies} />
+          : tab === "matrix" ? <MatrixTab companyId={current.id} onOpenFolder={(id) => { setPastaMatriz(id); changeTab("tree"); }} />
+          : <TreeTab key={pastaMatriz ?? "raiz"} companyId={current.id} initialFolderId={pastaMatriz ?? initialFolderId} onGoCatalog={() => changeTab("catalog")} />}
       </div>
     </div>
   );
