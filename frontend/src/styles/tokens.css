@@ -1016,6 +1016,10 @@ html.reduce-transparency .lock-glass, html.reduce-transparency .lock-field, html
   .lock-time { color: CanvasText; background: none; }
 }
 
+/* Galho da árvore que acabou de abrir: as linhas entram deslizando de leve. */
+@keyframes tree-row-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.tree-row-in { animation: tree-row-in 180ms var(--ease-standard) both; }
+
 /* Trilha de exemplo (widget da demonstração): o trilho desce e os elos
    acendem em sequência, uma vez, no carregamento. */
 .login-chain::before {
@@ -1047,7 +1051,7 @@ html.reduce-transparency .lock-glass, html.reduce-transparency .lock-field, html
 .login-reveal, .reveal { animation: reveal 180ms var(--ease-standard) both; }
 @keyframes login-node { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
-  .login-chain::before, .login-chain > li, .lock-shake { animation: none !important; }
+  .login-chain::before, .login-chain > li, .lock-shake, .tree-row-in { animation: none !important; }
 }
 
 /* ─── PDF: camada de texto (pdf.js TextLayer) — texto selecionável, lido pelo

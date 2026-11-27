@@ -105,6 +105,14 @@ export default function FolderTree({
     return out;
   }, [roots, expandedIds]);
 
+  // Galhos que acabaram de abrir entram deslizando, como no Finder (A4-10).
+  // Só depois da primeira pintura: ao carregar, a árvore aparece parada.
+  const shownBefore = useRef<Set<string> | null>(null);
+  const appearing = shownBefore.current
+    ? new Set(visible.filter((v) => !shownBefore.current!.has(v.node.id)).map((v) => v.node.id))
+    : new Set<string>();
+  useEffect(() => { shownBefore.current = new Set(visible.map((v) => v.node.id)); }, [visible]);
+
   const tabStop = focusedId && visible.some((v) => v.node.id === focusedId)
     ? focusedId
     : activeFolderId && visible.some((v) => v.node.id === activeFolderId) ? activeFolderId : visible[0]?.node.id;
@@ -271,6 +279,7 @@ export default function FolderTree({
               style={{ paddingLeft: `${2 + depth * 14}px` }}
               className={`relative flex items-center gap-1 h-7 pointer-coarse:h-11 pr-2 text-[13px] font-medium rounded-[8px] cursor-default select-none outline-none text-(--sidebar-label)
                 focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-(--focus-ring)
+                ${appearing.has(node.id) ? "tree-row-in" : ""}
                 ${isActive ? "bg-(--sidebar-selection)" : ""}
                 ${isDragOver ? "bg-(--selection-bg) text-(--selection-text)" : ""}`}
             >
