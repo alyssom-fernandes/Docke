@@ -650,12 +650,12 @@ class BulkFieldValues(BaseModel):
     values: list[DocumentFieldValueSet]
 
 
-@router.put("/documents/field-values/batch")
 def _origem_manual() -> str:
     """Origem padrão do valor (B1.3.9): digitado no formulário."""
     return "manual"
 
 
+@router.put("/documents/field-values/batch")
 async def set_field_values_batch(
     body: BulkFieldValues,
     conn: asyncpg.Connection = Depends(get_db),
