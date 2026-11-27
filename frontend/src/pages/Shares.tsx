@@ -5,7 +5,8 @@ import { ItemIcon } from "@/lib/fileType";
 import { relativeDate, fullDate } from "@/lib/date";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
-import { useCompany } from "@/lib/CompanyContext";
+import { useCompany, useFeature } from "@/lib/CompanyContext";
+import FeatureOff from "@/components/shared/FeatureOff";
 import { useAuthContext } from "@/lib/AuthContext";
 import { useToast } from "@/lib/toast";
 import EmptyState from "@/components/shared/EmptyState";
@@ -49,7 +50,14 @@ function situacao(s: ShareLink): { ativo: boolean; texto: string } {
  * quem criou, último acesso e quantas aberturas; histórico de acessos;
  * editar validade, senha e limite; revogar com confirmação e indicador.
  */
+/** Compartilhamento por link desligado em Ajustes → Recursos: aviso no lugar da tela. */
 export default function Shares() {
+  const ligado = useFeature("links");
+  if (!ligado) return <FeatureOff title="Links" text="O compartilhamento por link está desligado nesta empresa: os links não abrem e não dá para criar novos." />;
+  return <SharesPage />;
+}
+
+function SharesPage() {
   usePageTitle("Links");
   const { current } = useCompany();
   const { user } = useAuthContext();

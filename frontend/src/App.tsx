@@ -30,6 +30,7 @@ const Preferences = lazy(() => import("@/pages/Settings/Preferences"));
 const Retention = lazy(() => import("@/pages/Settings/Retention"));
 const AdminHome = lazy(() => import("@/pages/Settings/AdminHome"));
 const Privacy = lazy(() => import("@/pages/Settings/Privacy"));
+const Features = lazy(() => import("@/pages/Settings/Features"));
 const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
 import ErrorBoundary from "@/components/shared/ErrorBoundary";
 import Onboarding, { isOnboardingComplete } from "@/components/shared/Onboarding";
@@ -136,6 +137,7 @@ function ProtectedRoutes() {
               <Route path="profile" element={<Profile />} />
               <Route path="admin" element={<AdminHome />} />
               <Route path="organization" element={<Organization />} />
+              <Route path="features" element={<Features />} />
               <Route path="users" element={<Users />} />
               <Route path="metadata" element={<Metadata />} />
               <Route path="security" element={<Security />} />

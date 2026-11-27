@@ -18,6 +18,7 @@ const RELATORIOS: { value: string; label: string }[] = [
   { value: "delete,version_delete,retention_queue_approved", label: "Exclusões e descartes" },
   { value: "download", label: "Downloads" },
   { value: "share_create,share_revoke,share_policy,upload_request", label: "Compartilhamentos" },
+  { value: "features", label: "Recursos da empresa" },
   { value: "access_grant,access_revoke,access_role_change,member_remove,account_deactivate,account_activate,account_password_reset,mfa_reset,mfa_policy,sessions_end", label: "Acessos e permissões" },
   { value: "audit_export,audit_verify,integrity_check", label: "Auditoria da trilha" },
 ];

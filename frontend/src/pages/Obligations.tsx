@@ -8,7 +8,8 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import ConformityMatrix from "@/components/obligations/ConformityMatrix";
 import AsoMatrix from "@/components/obligations/AsoMatrix";
 import api from "@/lib/api";
-import { useCompany } from "@/lib/CompanyContext";
+import { useCompany, useFeature } from "@/lib/CompanyContext";
+import FeatureOff from "@/components/shared/FeatureOff";
 import { useAuthContext } from "@/lib/AuthContext";
 import { useToast } from "@/lib/toast";
 import Button from "@/components/ui/Button";
@@ -59,7 +60,15 @@ const FILTERS: { value: string; label: string }[] = [
 const cacheInstancias = new Map<string, Instance[]>();
 const cacheModelos = new Map<string, Template[]>();
 
+/** Obrigações desligadas em Ajustes → Recursos: aviso no lugar da tela. */
 export default function Obligations() {
+  const ligado = useFeature("obrigacoes");
+  if (!ligado) return <FeatureOff title="Obrigações" text="As obrigações e os avisos de prazo estão desligados nesta empresa. O cadastro continua guardado." />;
+  return <ObligationsPage />;
+}
+
+function ObligationsPage() {
+  const examesLigados = useFeature("exames");
   const { success: exportToast, error: exportErro } = useToast();
   usePageTitle("Obrigações");
   const { current, companies } = useCompany();
@@ -199,7 +208,7 @@ export default function Obligations() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div role="tablist" aria-label="Visões de obrigações" className="mac-segmented">
           {([["pendencias", "Pendências"], ["matriz", "Matriz"], ["calendario", "Calendário"], ["configuracao", "Cadastro"], ["aso", "Exames (ASO)"]] as const)
-            .filter(([id]) => (grupo ? id === "pendencias" || id === "matriz" : id !== "matriz" && (id !== "aso" || isAdmin)))
+            .filter(([id]) => (grupo ? id === "pendencias" || id === "matriz" : id !== "matriz" && (id !== "aso" || (isAdmin && examesLigados))))
             .map(([id, label]) => (
               <button key={id} role="tab" aria-selected={tab === id} onClick={() => setParam({ aba: id === "pendencias" ? null : id })}
                 className="mac-segment">
@@ -246,7 +255,7 @@ export default function Obligations() {
         </div>
       ) : tab === "matriz" && grupo ? (
         <ConformityMatrix />
-      ) : tab === "aso" && !grupo && current && isAdmin ? (
+      ) : tab === "aso" && !grupo && current && isAdmin && examesLigados ? (
         <AsoMatrix companyId={current.id} />
       ) : tab === "pendencias" ? (
         <>

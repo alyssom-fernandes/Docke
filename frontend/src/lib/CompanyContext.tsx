@@ -1,10 +1,18 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import api from "@/lib/api";
 
+/** Recursos que a empresa liga ou desliga em Ajustes → Recursos. */
+export type FeatureKey = "links" | "pedidos" | "obrigacoes" | "exames" | "comentarios" | "ocr" | "canal_titular";
+export type Features = Record<FeatureKey, boolean>;
+export const DEFAULT_FEATURES: Features = {
+  links: true, pedidos: true, obrigacoes: true, exames: true, comentarios: true, ocr: true, canal_titular: false,
+};
+
 export interface Company {
   id: string;
   name: string;
   permission_level: string;
+  features?: Partial<Features>;
 }
 
 interface CompanyCtx {
@@ -13,6 +21,8 @@ interface CompanyCtx {
   loading: boolean;
   setCurrent: (c: Company) => void;
   reload: () => void;
+  /** Atualiza os recursos na tela logo depois de salvar (sem esperar recarregar). */
+  setFeatures: (companyId: string, features: Features) => void;
 }
 
 const Ctx = createContext<CompanyCtx | null>(null);
@@ -57,8 +67,18 @@ export function CompanyProvider({ children, enabled }: { children: ReactNode; en
     localStorage.setItem("docke_company", JSON.stringify(c));
   }
 
+  function setFeatures(companyId: string, features: Features) {
+    setCompanies((list) => list.map((c) => (c.id === companyId ? { ...c, features } : c)));
+    setCurrent((c) => {
+      if (!c || c.id !== companyId) return c;
+      const next = { ...c, features };
+      localStorage.setItem("docke_company", JSON.stringify(next));
+      return next;
+    });
+  }
+
   return (
-    <Ctx.Provider value={{ companies, current, loading, setCurrent: handleSet, reload: load }}>
+    <Ctx.Provider value={{ companies, current, loading, setCurrent: handleSet, reload: load, setFeatures }}>
       {children}
     </Ctx.Provider>
   );
@@ -68,4 +88,15 @@ export function useCompany() {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error("useCompany must be inside CompanyProvider");
   return ctx;
+}
+
+/** Todos os recursos da empresa atual, com o padrão para o que não veio. */
+export function useFeatures(): Features {
+  const { current } = useCompany();
+  return { ...DEFAULT_FEATURES, ...(current?.features ?? {}) };
+}
+
+/** Se um recurso está ligado na empresa atual. */
+export function useFeature(key: FeatureKey): boolean {
+  return useFeatures()[key];
 }

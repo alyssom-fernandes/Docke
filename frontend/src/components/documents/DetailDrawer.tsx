@@ -38,6 +38,7 @@ import {
 import { friendlyError } from "@/lib/errors";
 import IntegrityCheck from "@/components/documents/IntegrityCheck";
 import LinkAccesses from "@/components/documents/LinkAccesses";
+import { useFeatures } from "@/lib/CompanyContext";
 import {
   type Document,
   type ResolvedField,
@@ -431,6 +432,7 @@ export function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit,
   onFieldSaved: (docId: string, fieldId: string, value: string) => void;
 }) {
   const { success, error: showError } = useToast();
+  const recursos = useFeatures();
   // Resumo da atividade no cabeçalho (A5-26): quantos eventos e o último.
   const [act, setAct] = useState<{ total: number; last: string | null } | null>(null);
   useEffect(() => {
@@ -502,7 +504,7 @@ export function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit,
         </button>
         <button onClick={(e) => onMenu(e.currentTarget)} aria-haspopup="menu" className={action}><MoreHorizontal className="w-4 h-4" aria-hidden />Mais</button>
       </div>
-      {canEdit && (
+      {canEdit && recursos.links && (
         <button onClick={() => setSharing(true)} className="w-full flex items-center justify-center gap-2 h-9 pointer-coarse:h-11 rounded-full border border-(--border-control) text-mac-body text-(--text-primary) hover:bg-(--bg-hover)">
           <Share2 className="w-4 h-4" aria-hidden />{shareCount > 0 ? `Compartilhado em ${shareCount} ${shareCount === 1 ? "link" : "links"}` : "Compartilhar por link"}
         </button>
@@ -536,7 +538,7 @@ export function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit,
       <IntegrityCheck key={doc.id} documentId={doc.id} />
       <VersionsPanel documentId={doc.id} documentName={doc.name} onChanged={onChanged} />
       <DocumentRetentionSection docId={doc.id} />
-      <DocumentObligations docId={doc.id} />
+      {recursos.obrigacoes && <DocumentObligations docId={doc.id} />}
     </div>
   );
 

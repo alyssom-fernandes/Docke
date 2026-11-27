@@ -5,7 +5,7 @@ import {
   PanelLeft, Anchor, FileText, Folder, User, SlidersHorizontal, Keyboard, LogOut,
 } from "lucide-react";
 import api from "@/lib/api";
-import { useCompany } from "@/lib/CompanyContext";
+import { useCompany, useFeatures } from "@/lib/CompanyContext";
 import { useAuthContext } from "@/lib/AuthContext";
 import { prefetchRoute } from "@/lib/routePrefetch";
 import FolderTree from "@/components/documents/FolderTree";
@@ -214,6 +214,7 @@ export default function Sidebar() {
   }
 
   const obligations = badges["/obligations"];
+  const recursos = useFeatures();
 
   return (
     <aside aria-label="Barra lateral" className="sidebar relative flex h-full shrink-0 flex-col" style={{ width }}>
@@ -231,9 +232,11 @@ export default function Sidebar() {
         <SidebarItem to="/dashboard" icon={House} label="Início" />
         <SidebarItem to="/documents" icon={FolderClosed} label="Documentos" />
         <SidebarItem to="/search" icon={Search} label="Busca" />
-        <SidebarItem to="/obligations" icon={CalendarClock} label="Obrigações" count={obligations?.count} countTone={obligations?.tone} />
+        {recursos.obrigacoes && (
+          <SidebarItem to="/obligations" icon={CalendarClock} label="Obrigações" count={obligations?.count} countTone={obligations?.tone} />
+        )}
         <SidebarItem to="/activity" icon={Activity} label="Atividade" />
-        <SidebarItem to="/shares" icon={Link2} label="Links" />
+        {recursos.links && <SidebarItem to="/shares" icon={Link2} label="Links" />}
 
         <Section id="ancorados" title="Ancorados" collapsed={collapsed.has("ancorados")} onToggle={toggleSection}>
           {favorites.length === 0 ? (

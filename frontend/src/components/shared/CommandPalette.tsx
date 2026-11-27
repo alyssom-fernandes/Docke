@@ -9,7 +9,7 @@ import { openKeyboardShortcuts } from "@/components/shared/KeyboardShortcuts";
 import { getFileStyle } from "@/lib/fileType";
 import { relativeDate } from "@/lib/date";
 import api from "@/lib/api";
-import { useCompany } from "@/lib/CompanyContext";
+import { useCompany, useFeatures } from "@/lib/CompanyContext";
 import { useCommandPalette } from "@/hooks/useCommandPalette";
 import { toggleTheme } from "@/lib/theme";
 
@@ -42,6 +42,7 @@ const subseq = (q: string, t: string) => { let i = 0; for (const c of t) if (c =
 export default function CommandPalette() {
   const { isOpen, close } = useCommandPalette();
   const { current, companies, setCurrent } = useCompany() as ReturnType<typeof useCompany> & { companies: { id: string; name: string }[] };
+  const recursos = useFeatures();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<QuickResult[]>([]);
@@ -121,9 +122,9 @@ export default function CommandPalette() {
       { id: "n-docs", group: "Ir para", label: "Documentos", icon: FolderOpen, keywords: "pastas arquivos", run: () => go("/documents") },
       { id: "n-busca", group: "Ir para", label: "Busca", icon: Search, run: () => go("/search") },
       { id: "n-anc", group: "Ir para", label: "Ancorados", icon: Anchor, keywords: "favoritos", run: () => go("/favorites") },
-      { id: "n-links", group: "Ir para", label: "Links", icon: Link2, keywords: "compartilhados compartilhar", run: () => go("/shares") },
+      ...(recursos.links ? [{ id: "n-links", group: "Ir para", label: "Links", icon: Link2, keywords: "compartilhados compartilhar", run: () => go("/shares") }] : []),
       { id: "n-ativ", group: "Ir para", label: "Atividade", icon: Activity, keywords: "trilha auditoria histórico", run: () => go("/activity") },
-      { id: "n-obr", group: "Ir para", label: "Obrigações", icon: CalendarClock, keywords: "prazos vencimento", run: () => go("/obligations") },
+      ...(recursos.obrigacoes ? [{ id: "n-obr", group: "Ir para", label: "Obrigações", icon: CalendarClock, keywords: "prazos vencimento", run: () => go("/obligations") }] : []),
       { id: "n-lix", group: "Ir para", label: "Lixeira", icon: Trash2, keywords: "excluídos restaurar", run: () => go("/trash") },
       { id: "n-usu", group: "Ir para", label: "Pessoas e acessos", icon: Users, keywords: "usuários permissões acesso membros", run: () => go("/settings/users") },
       { id: "n-meta", group: "Ir para", label: "Metadados", icon: Tags, keywords: "campos", run: () => go("/settings/metadata") },
@@ -148,7 +149,7 @@ export default function CommandPalette() {
     const all = [...found, ...filtered];
     if (q.length >= 2) all.push({ id: "busca-total", group: "Busca", label: `Buscar "${query.trim()}" em todo o conteúdo`, icon: Search, run: () => go(`/search?q=${encodeURIComponent(query.trim())}`) });
     return all;
-  }, [query, results, companies, current?.id, acoesDe]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [query, results, companies, current?.id, acoesDe, recursos.links, recursos.obrigacoes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { setActiveIdx(0); }, [query, results.length]);
 

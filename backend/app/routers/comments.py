@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, model_validator
 
 from app.dependencies import get_app_role, get_current_user, get_db, get_db_admin
+from app.services import features_service
 
 router = APIRouter(tags=["comments"])
 
@@ -87,6 +88,7 @@ async def comentar(
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
     doc = await _doc_visivel(conn, document_id)
+    await features_service.require(conn, doc["company_id"], "comentarios")
     cid = await admin_conn.fetchval(
         """
         INSERT INTO public.document_comments (company_id, document_id, version_id, user_id, body, page, x, y)

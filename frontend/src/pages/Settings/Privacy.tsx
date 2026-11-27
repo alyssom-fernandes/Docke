@@ -7,7 +7,6 @@ import { useToast } from "@/lib/toast";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
-import SharePolicyCard from "@/components/shared/SharePolicyCard";
 import MfaPolicyCard from "@/components/shared/MfaPolicyCard";
 import LgpdRequests from "@/components/shared/LgpdRequests";
 import SecurityIncidents from "@/components/shared/SecurityIncidents";
@@ -121,7 +120,6 @@ export default function Privacy() {
         )}
       </section>
 
-      {current && <SharePolicyCard companyId={current.id} canEdit={["admin", "supremo"].includes(current.permission_level)} />}
       {current && ["admin", "supremo"].includes(current.permission_level) && <MfaPolicyCard companyId={current.id} />}
       {current && ["admin", "supremo"].includes(current.permission_level) && <LgpdRequests companyId={current.id} />}
       {current && ["admin", "supremo"].includes(current.permission_level) && <SecurityIncidents companyId={current.id} />}

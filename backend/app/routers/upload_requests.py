@@ -25,6 +25,7 @@ from app.config import settings
 from app.dependencies import get_current_user, get_db, get_db_admin
 from app.services import rate_limit, storage_service
 from app.services.documents_service import _MIME_MAP, DocumentsService
+from app.services import features_service
 
 router = APIRouter(tags=["upload-requests"])
 
@@ -57,6 +58,7 @@ async def create_upload_request(
 ) -> dict[str, Any]:
     from app.routers.shares import _politica
 
+    await features_service.require(conn, body.company_id, "pedidos")
     folder = await DocumentsService.find_folder_for_upload(conn, body.folder_id, body.company_id)
     if folder is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada.")
@@ -189,6 +191,8 @@ async def _pedido(admin_conn: asyncpg.Connection, token: str) -> asyncpg.Record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Este link de envio não existe.")
     if req["revoked_at"] is not None or req["folder_deleted"] is not None:
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Este pedido foi encerrado por quem o criou.")
+    if not await features_service.enabled(admin_conn, req["company_id"], "pedidos"):
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="A empresa desligou os pedidos de arquivo por link. Fale com quem pediu o arquivo.")
     if req["expires_at"] <= datetime.now(timezone.utc):
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Este link de envio venceu. Peça um novo a quem o enviou.")
     return req

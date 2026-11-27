@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { CheckCircle2, Circle, X, ChevronRight } from "lucide-react";
 import api from "@/lib/api";
+import { useFeature } from "@/lib/CompanyContext";
 
 /**
  * Primeiros passos (B4.3.2): checklist de ativação no Início, com o progresso
@@ -15,24 +16,25 @@ export default function FirstSteps({ companyId, folders, documents, isAdmin }: {
   const [oculto, setOculto] = useState(() => localStorage.getItem(chave) === "1");
   const [membros, setMembros] = useState<number | null>(null);
   const [modelos, setModelos] = useState<number | null>(null);
+  const obrigacoesLigadas = useFeature("obrigacoes");
 
   useEffect(() => {
     setOculto(localStorage.getItem(chave) === "1");
     if (!isAdmin) return;
     api.get(`/companies/${companyId}/members`).then((r) => setMembros(Array.isArray(r.data) ? r.data.length : 0)).catch(() => setMembros(null));
-    api.get(`/companies/${companyId}/obligations/templates`).then((r) => setModelos(Array.isArray(r.data) ? r.data.length : 0)).catch(() => setModelos(null));
-  }, [companyId, isAdmin, chave]);
+    if (obrigacoesLigadas) api.get(`/companies/${companyId}/obligations/templates`).then((r) => setModelos(Array.isArray(r.data) ? r.data.length : 0)).catch(() => setModelos(null));
+  }, [companyId, isAdmin, chave, obrigacoesLigadas]);
 
   const passos = [
     { feito: folders > 0, texto: "Criar as pastas da empresa", to: "/documents?acao=nova-pasta" },
     { feito: documents > 0, texto: "Enviar os primeiros documentos", to: "/documents?acao=enviar" },
     ...(isAdmin ? [
       { feito: (membros ?? 0) > 1, texto: "Dar acesso à equipe", to: "/settings/users" },
-      { feito: (modelos ?? 0) > 0, texto: "Cadastrar as obrigações com os modelos prontos", to: "/obligations" },
+      ...(obrigacoesLigadas ? [{ feito: (modelos ?? 0) > 0, texto: "Cadastrar as obrigações com os modelos prontos", to: "/obligations" }] : []),
     ] : []),
   ];
   const feitos = passos.filter((p) => p.feito).length;
-  if (oculto || feitos === passos.length || (isAdmin && (membros === null || modelos === null))) return null;
+  if (oculto || feitos === passos.length || (isAdmin && (membros === null || (obrigacoesLigadas && modelos === null)))) return null;
 
   return (
     <section aria-labelledby="primeiros-passos" className="reveal glass-panel glass-blur-card rounded-(--radius-panel) p-5">

@@ -8,6 +8,7 @@ import ErrorBoundary from "@/components/shared/ErrorBoundary";
 import TaskCenter from "@/components/shared/TaskCenter";
 import { useCommandPalette } from "@/hooks/useCommandPalette";
 import { prefetchCommonRoutes } from "@/lib/routePrefetch";
+import { watchSegmented } from "@/lib/segmented";
 import BottomTabBar from "./BottomTabBar";
 import MobileTopBar from "./MobileTopBar";
 import Sidebar from "./Sidebar";
@@ -79,6 +80,8 @@ function Shell({ children }: AppShellProps) {
 
   // Documentos e Busca pré-carregados com o navegador ocioso (A1-35).
   useEffect(() => { prefetchCommonRoutes(); }, []);
+  // Segmentados mais largos que a tela rolam de lado, com a borda esmaecida.
+  useEffect(() => watchSegmented(), []);
 
   // Ctrl/⌘ + vírgula abre os Ajustes, como em todo app do Mac.
   useEffect(() => {

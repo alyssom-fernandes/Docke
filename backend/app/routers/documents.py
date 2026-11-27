@@ -21,6 +21,7 @@ from app.services import storage_service
 from app.services.documents_service import DocumentsService, _MIME_MAP
 from app.services.file_signature import content_matches_extension, describe as describe_ext
 from app.services.notification_service import notify_folder_favoriters
+from app.services import features_service
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -651,6 +652,7 @@ async def reprocess_text(
 ) -> dict[str, Any]:
     """Põe de novo na fila de leitura de texto os documentos com falha ou sem texto (admin da empresa)."""
     await _require_company_admin(conn, claims, body.company_id)
+    await features_service.require(conn, body.company_id, "ocr")
     async with admin_conn.transaction():
         ids = [r["id"] for r in await admin_conn.fetch(
             f"SELECT id FROM public.documents WHERE {_SEM_TEXTO_SQL} FOR UPDATE", body.company_id,

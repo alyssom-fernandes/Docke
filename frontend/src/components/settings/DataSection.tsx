@@ -4,6 +4,7 @@ import api from "@/lib/api";
 import { relativeDate } from "@/lib/date";
 import { useToast } from "@/lib/toast";
 import Button from "@/components/ui/Button";
+import { useFeature } from "@/lib/CompanyContext";
 
 interface TextStatus {
   com_texto: number;
@@ -46,6 +47,7 @@ const plural = (n: number, um: string, varios: string) => `${n.toLocaleString("p
  * da empresa atual. Só aparece para o admin da empresa.
  */
 export default function DataSection({ companyId, companyName }: { companyId: string; companyName: string }) {
+  const ocrLigado = useFeature("ocr");
   const { success, error: showError } = useToast();
   const [text, setText] = useState<TextStatus | null>(null);
   const [exports, setExports] = useState<CompanyExport[] | null>(null);
@@ -144,7 +146,7 @@ export default function DataSection({ companyId, companyName }: { companyId: str
             </p>
           )}
         </div>
-        {text && text.a_reler > 0 && (
+        {text && text.a_reler > 0 && ocrLigado && (
           <Button size="sm" variant="secondary" loading={rereading} onClick={reread}>
             <RotateCw className="w-3.5 h-3.5" aria-hidden />
             Ler de novo
