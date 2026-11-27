@@ -5,6 +5,7 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 import { readView, writeView } from "@/lib/viewCache";
+import SecurityHealth from "@/components/settings/SecurityHealth";
 
 type Count = number | null | "erro";
 
@@ -83,6 +84,8 @@ export default function AdminHome() {
         )}
         {failed && <p className="text-mac-caption text-(--text-secondary)">Algumas contagens não carregaram agora; os atalhos abaixo funcionam.</p>}
       </section>
+
+      {current && <SecurityHealth companyId={current.id} />}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         {cards.map((card) => (

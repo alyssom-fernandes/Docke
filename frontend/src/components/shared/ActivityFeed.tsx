@@ -99,6 +99,8 @@ export const ACTION_LABELS: Record<string, string> = {
   share_create: "criou um link público para",
   share_revoke: "desativou o link público de",
   share_reactivate: "reativou o link público de",
+  share_access: "teve aberto por um visitante o link público de",
+  share_access_denied: "teve uma tentativa recusada no link público de",
   audit_verify: "verificou a integridade da",
   field_rules_copy: "copiou regras de metadados para a pasta",
   field_rule_exclude: "tirou de uma pasta o campo",
@@ -201,7 +203,7 @@ const META_LABEL: Record<string, string> = {
   prazo: "Prazo", prazo_antes: "Prazo antes", prazo_depois: "Prazo depois", depende_de: "Depende de",
   versao: "Versão", vencimento: "Vencimento", valido_ate: "Válido até", adiado_para: "Adiado para",
   documentos_afetados: "Documentos afetados", modelo_pronto: "Modelo pronto", policy_name: "Prazo de guarda",
-  papel: "Papel",
+  papel: "Papel", visitante: "Visitante",
 };
 
 /** Detalhe do evento em português, sem ids nem chaves internas (achado A6-25). */
@@ -233,8 +235,8 @@ function timeLabel(iso: string, relative: boolean | "dia") {
  * fica mais apagado. Antes excluir e visualizar tinham a mesma cara.
  */
 const DESTRUTIVAS = new Set(["delete", "version_delete", "access_revoke", "member_remove", "account_deactivate", "share_revoke", "retention_queue_approved", "field_archive", "obligation_cancel", "retention_policy_archive", "obligation_archive"]);
-const SENSIVEIS = new Set(["share_reactivate", "access_grant", "access_role_change", "account_password_reset", "mfa_policy", "mfa_reset", "sessions_end", "share_create", "share_policy", "privacy_set", "lgpd_titular_search", "retention_hold_create", "retention_hold_release", "features", "audit_export", "upload_request", "account_activate"]);
-const LEITURAS = new Set(["view", "download", "integrity_check", "audit_verify"]);
+const SENSIVEIS = new Set(["share_access_denied", "share_reactivate", "access_grant", "access_role_change", "account_password_reset", "mfa_policy", "mfa_reset", "sessions_end", "share_create", "share_policy", "privacy_set", "lgpd_titular_search", "retention_hold_create", "retention_hold_release", "features", "audit_export", "upload_request", "account_activate"]);
+const LEITURAS = new Set(["view", "download", "integrity_check", "audit_verify", "share_access"]);
 export function actionTone(action: string): string {
   if (DESTRUTIVAS.has(action)) return "font-medium text-(--text-danger)";
   if (SENSIVEIS.has(action)) return "font-medium text-(--text-warning)";
