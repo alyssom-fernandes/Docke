@@ -11,6 +11,7 @@ volume de uso do Docke (mesma lógica do worker de OCR).
 """
 import asyncio
 import logging
+import re
 import time
 
 import asyncpg
@@ -35,6 +36,10 @@ _STATS_REFRESH_INTERVAL_SECS = 15 * 60  # Fase 3.1/3.3 — "atualizado há X" pr
 # boot" garantido), então comparar contra 0.0 podia atrasar o primeiro reset
 # em até DEMO_RESET_INTERVAL_HOURS depois de todo deploy, sem nenhum aviso.
 _last_demo_reset_at: float | None = None
+
+# Varredura de arquivos de empresas apagadas: uma vez por dia basta.
+_VARREDURA_INTERVALO_SECS = 24 * 3600
+_last_varredura_at: float | None = None
 
 
 async def maintenance_worker_loop() -> None:
@@ -123,6 +128,10 @@ async def _run_once() -> None:
         await _notify_retention_expiring_soon(conn)
         await _scan_retention_expirations(conn)
         await _reset_demo_data_if_due(conn)
+        try:
+            await _varrer_arquivos_de_empresas_apagadas(conn)
+        except Exception as exc:  # noqa: BLE001 — melhor esforço; tenta de novo no dia seguinte
+            logger.exception("Falha na varredura de arquivos de empresas apagadas: %s", exc)
         # Partições futuras da trilha (X3-13): cria as que faltam, 24 meses à frente.
         try:
             criadas = await conn.fetchval("SELECT public.ensure_activity_log_partitions(24)")
@@ -130,6 +139,70 @@ async def _run_once() -> None:
                 logger.info("Trilha: %d partição(ões) mensal(is) criada(s).", criadas)
         except Exception as exc:  # noqa: BLE001 — não pode parar a manutenção
             logger.exception("Falha ao garantir partições da trilha: %s", exc)
+
+
+# Onde o storage guarda arquivos por empresa: o primeiro trecho depois do
+# prefixo é sempre o id da empresa.
+_PREFIXOS_POR_EMPRESA = ("documents/", "derivatives/documents/", "exports/", "company-logos/")
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+
+def chaves_de_empresas_apagadas(objetos, empresas_existentes: set[str], limite) -> list[str]:
+    """
+    Escolhe, entre (chave, data) do storage, as chaves de empresas que não
+    existem mais no banco e que não mudam desde antes de `limite`. Tudo o que
+    não tem um id de empresa reconhecível fica onde está: a varredura nunca
+    apaga um arquivo cuja dona ela não sabe dizer.
+    """
+    apagar: list[str] = []
+    for chave, alterado in objetos:
+        prefixo = next((p for p in _PREFIXOS_POR_EMPRESA if chave.startswith(p)), None)
+        if prefixo is None:
+            continue
+        m = _UUID_RE.match(chave[len(prefixo):])
+        if not m or m.group(0) in empresas_existentes:
+            continue
+        if alterado is None or alterado >= limite:
+            continue
+        apagar.append(chave)
+    return apagar
+
+
+async def _varrer_arquivos_de_empresas_apagadas(conn) -> int:
+    """
+    Recolhe do storage os arquivos de empresas apagadas do banco (o reset da
+    demo, a exclusão de uma empresa ou uma falha no meio de uma exclusão
+    deixavam objetos sem dono no R2). Só apaga o que tem mais de 1 dia, para
+    não pegar uma empresa criada agora cuja transação ainda não apareceu.
+    """
+    global _last_varredura_at
+    agora = time.monotonic()
+    if _last_varredura_at is not None and agora - _last_varredura_at < _VARREDURA_INTERVALO_SECS:
+        return 0
+    _last_varredura_at = agora
+
+    from datetime import datetime, timedelta, timezone
+
+    from app.services import storage_service
+
+    existentes = {str(r["id"]) for r in await conn.fetch("SELECT id FROM public.companies")}
+    limite = datetime.now(timezone.utc) - timedelta(days=1)
+
+    def _listar_e_apagar() -> tuple[int, int]:
+        objetos = [o for p in _PREFIXOS_POR_EMPRESA for o in storage_service.list_objects(p)]
+        chaves = chaves_de_empresas_apagadas(objetos, existentes, limite)
+        falhas = 0
+        for chave in chaves:
+            try:
+                storage_service.delete_object(chave)
+            except Exception:  # noqa: BLE001
+                falhas += 1
+        return len(chaves), falhas
+
+    apagados, falhas = await asyncio.to_thread(_listar_e_apagar)
+    if apagados:
+        logger.info("Varredura do storage: %d arquivo(s) de empresas apagadas removido(s), %d falha(s).", apagados, falhas)
+    return apagados
 
 
 async def _cleanup_old_notifications(conn) -> None:

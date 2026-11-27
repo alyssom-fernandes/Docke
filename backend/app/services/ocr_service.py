@@ -129,17 +129,24 @@ class OCRProvider:
 
             self._pyt = pytesseract
 
-    async def extract(self, file_bytes: bytes, mime_type: str, *, max_ocr_pages: int = MAX_OCR_PAGES) -> Extraction:
+    async def extract(self, file_bytes: bytes, mime_type: str, *, max_ocr_pages: int = MAX_OCR_PAGES, checkpoint=None) -> Extraction:
         return await asyncio.get_running_loop().run_in_executor(
-            None, self.extract_sync, file_bytes, mime_type, max_ocr_pages
+            None, self.extract_sync, file_bytes, mime_type, max_ocr_pages, checkpoint
         )
 
     # -- síncrono (roda numa thread) ---------------------------------------
 
-    def extract_sync(self, file_bytes: bytes, mime_type: str, max_ocr_pages: int = MAX_OCR_PAGES) -> Extraction:
+    def extract_sync(self, file_bytes: bytes, mime_type: str, max_ocr_pages: int = MAX_OCR_PAGES, checkpoint=None) -> Extraction:
+        """
+        `checkpoint` (opcional, só PDF): guarda cada página lida pelo Tesseract
+        assim que fica pronta (`save_page(i, texto, pdf)`) e devolve as já lidas
+        (`load() -> {i: (texto, pdf)}`). Um PDF escaneado longo leva dezenas de
+        minutos; se o processo reinicia no meio (deploy, máquina que desliga),
+        a próxima tentativa continua de onde parou em vez de começar do zero.
+        """
         mime = (mime_type or "").split(";")[0].strip().lower()
         if mime == "application/pdf":
-            return self._pdf(file_bytes, max_ocr_pages)
+            return self._pdf(file_bytes, max_ocr_pages, checkpoint)
         if mime in _XML_MIMES:
             return Extraction(clean_text(_xml_text(file_bytes)))
         if mime == _DOCX:
@@ -191,14 +198,24 @@ class OCRProvider:
                 binary = cv2.warpAffine(binary, m, (w, h), flags=cv2.INTER_CUBIC, borderValue=255)
         return binary
 
-    def _pdf(self, data: bytes, max_ocr_pages: int) -> Extraction:
+    def _pdf(self, data: bytes, max_ocr_pages: int, checkpoint=None) -> Extraction:
         import pypdfium2 as pdfium
 
+        prontas: dict[int, tuple[str, bytes]] = {}
+        if checkpoint is not None and self.tesseract:
+            try:
+                prontas = checkpoint.load()
+            except Exception:  # noqa: BLE001 — sem o ponto de retomada, lê tudo de novo
+                prontas = {}
         pdf = pdfium.PdfDocument(data)
         try:
             textos: list[str] = []
             ocr_pdf_pages: dict[int, bytes] = {}
             for i in range(len(pdf)):
+                if i in prontas and len(ocr_pdf_pages) < max_ocr_pages:
+                    textos.append(prontas[i][0])
+                    ocr_pdf_pages[i] = prontas[i][1]
+                    continue
                 page = pdf[i]
                 textpage = page.get_textpage()
                 nativo = textpage.get_text_bounded() or ""
@@ -211,9 +228,15 @@ class OCRProvider:
                 # página em PDF (imagem + texto invisível) para o derivado.
                 pil = page.render(scale=_OCR_SCALE, grayscale=True).to_pil()
                 page.close()
-                textos.append(self._ocr_pil(pil))
+                texto_pagina = self._ocr_pil(pil)
+                textos.append(texto_pagina)
                 ocr_pdf_pages[i] = self._pyt.image_to_pdf_or_hocr(pil, lang="por+eng", extension="pdf")
                 del pil
+                if checkpoint is not None:
+                    try:
+                        checkpoint.save_page(i, texto_pagina, ocr_pdf_pages[i])
+                    except Exception:  # noqa: BLE001 — perder o ponto de retomada não pode parar a leitura
+                        pass
             texto = clean_text("\n\n".join(textos))
             searchable = self._merge_searchable(pdf, ocr_pdf_pages) if ocr_pdf_pages else None
             return Extraction(texto, searchable_pdf=searchable, ocr_pages=len(ocr_pdf_pages))

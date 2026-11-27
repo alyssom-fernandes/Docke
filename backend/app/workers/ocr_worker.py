@@ -32,7 +32,49 @@ logger = logging.getLogger("docke.ocr_worker")
 _POLL_INTERVAL = 10
 _MAX_PROCESSING_SECS = 900  # 15 min: PDF escaneado longo leva minutos no Tesseract
 _MAX_ATTEMPTS = 3
+# Interrupções (o processo reiniciou no meio da leitura) não são culpa do
+# arquivo: com a retomada por página, cada tentativa avança. O limite só
+# impede um arquivo que derruba o processo de voltar para a fila para sempre.
+_MAX_INTERRUPTIONS = 8
 _RETRY_DELAYS_SECS = (30, 120)
+
+
+class StorageCheckpoint:
+    """
+    Ponto de retomada do OCR no próprio storage: cada página lida vira dois
+    objetos em derivatives/{chave}.ocr-parcial/ (o PDF da página e o texto).
+    Uma página só conta como pronta com os dois (o PDF é gravado antes).
+    """
+
+    def __init__(self, storage_path: str) -> None:
+        self.prefix = f"derivatives/{storage_path}.ocr-parcial/"
+
+    def load(self) -> dict[int, tuple[str, bytes]]:
+        textos: dict[int, str] = {}
+        pdfs: dict[int, bytes] = {}
+        for key, _ in storage_service.list_objects(self.prefix):
+            numero, _, ext = key[len(self.prefix):].partition(".")
+            if not numero.isdigit():
+                continue
+            data = storage_service.read_object(key)
+            if data is None:
+                continue
+            if ext == "txt":
+                textos[int(numero)] = data.decode("utf-8", errors="replace")
+            elif ext == "pdf":
+                pdfs[int(numero)] = data
+        return {i: (textos[i], pdfs[i]) for i in pdfs if i in textos}
+
+    def save_page(self, i: int, texto: str, pdf: bytes) -> None:
+        storage_service.put_object_bytes(f"{self.prefix}{i}.pdf", pdf, "application/pdf")
+        storage_service.put_object_bytes(f"{self.prefix}{i}.txt", texto.encode("utf-8"), "text/plain")
+
+    def clear(self) -> None:
+        for key, _ in list(storage_service.list_objects(self.prefix)):
+            try:
+                storage_service.delete_object(key)
+            except Exception:  # noqa: BLE001 — melhor esforço
+                pass
 
 
 class _MissingFile(Exception):
@@ -60,9 +102,11 @@ async def ocr_worker_loop() -> None:
             await asyncio.sleep(_POLL_INTERVAL)
 
 
-async def extract_document_text(provider, storage_path: str, mime_type: str, *, max_ocr_pages: int | None = None) -> Extraction:
+async def extract_document_text(provider, storage_path: str, mime_type: str, *, max_ocr_pages: int | None = None, checkpoint=None) -> Extraction:
     """Lê o objeto do storage e extrai o texto. DOC/XLS passam pelo PDF derivado do LibreOffice."""
     kwargs = {} if max_ocr_pages is None else {"max_ocr_pages": max_ocr_pages}
+    if checkpoint is not None:
+        kwargs["checkpoint"] = checkpoint
     ext = legacy_office_extension(mime_type)
     if ext:
         derivative_key = storage_service.derivative_pdf_key(storage_path)
@@ -122,15 +166,17 @@ async def _process_one_job(provider) -> bool:
                 job["document_id"],
             )
 
+    checkpoint = StorageCheckpoint(job["storage_path"])
     try:
         with busy():
-            extraction = await extract_document_text(provider, job["storage_path"], job["mime_type"])
+            extraction = await extract_document_text(provider, job["storage_path"], job["mime_type"], checkpoint=checkpoint)
     except (UnsupportedFormat, _MissingFile) as exc:
         await _mark_failed(job["id"], job["document_id"], str(exc), job["storage_path"])
         return True
     except Exception as exc:
         logger.exception("Extração de texto falhou para doc %s (tentativa %d): %s", job["document_id"], new_attempts, exc)
         if new_attempts >= _MAX_ATTEMPTS:
+            await asyncio.to_thread(checkpoint.clear)
             await _mark_failed(job["id"], job["document_id"], "Não foi possível ler o texto deste arquivo.", job["storage_path"])
         else:
             await _schedule_retry(job["id"], job["document_id"], new_attempts, str(exc))
@@ -180,6 +226,7 @@ async def _process_one_job(provider) -> bool:
                 "UPDATE public.ocr_jobs SET status = 'done', finished_at = now(), error_message = NULL WHERE id = $1",
                 job["id"],
             )
+    await asyncio.to_thread(checkpoint.clear)
 
     logger.info(
         "Texto extraído — doc=%s chars=%d paginas_ocr=%d tentativa=%d",
@@ -239,20 +286,22 @@ async def _mark_failed(job_id, document_id, error_message: str, storage_path: st
 async def _rescue_stuck_jobs(conn) -> None:
     """
     Jobs em 'processing' há mais de _MAX_PROCESSING_SECS (o processo caiu no meio):
-    - attempts < _MAX_ATTEMPTS: voltam para 'pending';
+    - attempts < _MAX_INTERRUPTIONS: voltam para 'pending' (a leitura retoma da última página pronta);
     - senão: 'failed', e o documento também.
     """
+    # O limite aqui é o de interrupções (_MAX_INTERRUPTIONS), não o de erros:
+    # a leitura retoma da última página pronta, então cada tentativa avança.
     failed = await conn.fetch(
         """
         UPDATE public.ocr_jobs
         SET status = CASE WHEN attempts < $1 THEN 'pending' ELSE 'failed' END,
-            error_message = CASE WHEN attempts >= $1 THEN 'A leitura do texto demorou demais e foi interrompida.' ELSE error_message END,
+            error_message = CASE WHEN attempts >= $1 THEN 'A leitura do texto foi interrompida várias vezes e parou.' ELSE error_message END,
             finished_at = CASE WHEN attempts >= $1 THEN now() ELSE finished_at END
         WHERE status = 'processing'
           AND started_at < now() - ($2 || ' seconds')::interval
         RETURNING document_id, status
         """,
-        _MAX_ATTEMPTS,
+        _MAX_INTERRUPTIONS,
         str(_MAX_PROCESSING_SECS),
     )
     for row in failed:

@@ -21,14 +21,23 @@ const LOGIN_MODE = (import.meta.env.VITE_LOGIN_MODE ?? "demo") as "demo" | "empr
 // na Fly desliga quando ociosa e a primeira requisição espera a máquina subir.
 const SLOW_HINT_MS = 5_000;
 
-// Exemplo com nomes e arquivos que existem no seed da demo. A cadeia é por
-// empresa e cada "anterior" repete o hash de cima (prev_hash → hash).
-const CHAIN_EXAMPLE = [
-  { what: "Operador Demo enviou", file: "NF-e_Fornecedor_3.xml", where: "pasta Fiscal, 09:12", prev: "0c4e…19aa", hash: "7a3f…c2d1" },
-  { what: "Visualizadora Demo abriu", file: "Holerite_2.pdf", where: "pasta RH, 10:47", prev: "7a3f…c2d1", hash: "e91b…04f7" },
-  { what: "Operador Demo moveu", file: "Extrato_Banco_1.pdf", where: "para Bancário, 11:05", prev: "e91b…04f7", hash: "3d08…b6e5" },
-  { what: "Visualizadora Demo ancorou", file: "Procuração_1.pdf", where: "pasta Contratos, 11:30", prev: "3d08…b6e5", hash: "5fc2…a918" },
-];
+// Na demo, o exemplo usa nomes e arquivos que existem no seed. No site da
+// empresa, nada de nome fictício: só o papel de quem fez e o tipo de arquivo.
+// A cadeia é por empresa e cada "anterior" repete o hash de cima (prev_hash → hash).
+const CHAIN_EXAMPLE = LOGIN_MODE === "empresa"
+  ? [
+      { what: "O fiscal enviou", file: "uma NF-e em XML", where: "pasta Fiscal, 09:12", prev: "0c4e…19aa", hash: "7a3f…c2d1" },
+      { what: "O RH abriu", file: "um holerite", where: "pasta RH, 10:47", prev: "7a3f…c2d1", hash: "e91b…04f7" },
+      { what: "O financeiro moveu", file: "um extrato", where: "para Bancário, 11:05", prev: "e91b…04f7", hash: "3d08…b6e5" },
+      { what: "O jurídico ancorou", file: "uma procuração", where: "pasta Contratos, 11:30", prev: "3d08…b6e5", hash: "5fc2…a918" },
+    ]
+  : [
+      { what: "Operador Demo enviou", file: "NF-e_Fornecedor_3.xml", where: "pasta Fiscal, 09:12", prev: "0c4e…19aa", hash: "7a3f…c2d1" },
+      { what: "Visualizadora Demo abriu", file: "Holerite_2.pdf", where: "pasta RH, 10:47", prev: "7a3f…c2d1", hash: "e91b…04f7" },
+      { what: "Operador Demo moveu", file: "Extrato_Banco_1.pdf", where: "para Bancário, 11:05", prev: "e91b…04f7", hash: "3d08…b6e5" },
+      { what: "Visualizadora Demo ancorou", file: "Procuração_1.pdf", where: "pasta Contratos, 11:30", prev: "3d08…b6e5", hash: "5fc2…a918" },
+    ];
+const CHAIN_COMPANY = LOGIN_MODE === "empresa" ? "Na sua empresa" : "Comércio Alfa Modelo Ltda";
 
 type DemoState = "idle" | "loading" | "slow" | "error";
 type View = "login" | "forgot" | "forgot-sent";
@@ -384,7 +393,7 @@ export default function Login() {
           </div>
         </section>
 
-        {/* Prova de integridade, com dados da demonstração */}
+        {/* Prova de integridade: dados da demonstração na demo, papéis genéricos no site da empresa */}
         <section aria-labelledby="trilha" className="login-enter login-enter-3 lg:col-start-1 lg:row-start-2">
           <h2 id="trilha" className="text-mac-footnote font-semibold uppercase tracking-[0.06em] text-(--text-secondary) mb-4">
             Cada ação fica registrada e encadeada
@@ -399,7 +408,7 @@ export default function Login() {
                   {e.what} <span className="whitespace-nowrap font-medium">{e.file}</span>
                 </span>
                 <span className="mt-0.5 text-mac-footnote leading-[17px] text-(--text-secondary) sm:col-start-1">
-                  Comércio Alfa Modelo Ltda, {e.where}
+                  {CHAIN_COMPANY}, {e.where}
                 </span>
                 <span className="mt-1 whitespace-nowrap font-mono text-[11.5px] leading-[17px] text-(--text-secondary) sm:col-start-2 sm:row-span-2 sm:row-start-1 sm:mt-0 sm:text-right">
                   anterior <span className={i === 0 ? "" : "text-(--text-accent) dark:text-teal-200"}>{e.prev}</span>
@@ -410,7 +419,7 @@ export default function Login() {
             ))}
           </ol>
           <p className="mt-1 max-w-[56ch] text-[12.5px] leading-[19px] text-(--text-secondary)">
-            Exemplo com dados fictícios. Cada registro carrega o código do anterior: se alguém alterar ou apagar um
+            {LOGIN_MODE === "empresa" ? "Exemplo ilustrativo." : "Exemplo com dados fictícios."} Cada registro carrega o código do anterior: se alguém alterar ou apagar um
             registro, a verificação mostra exatamente onde.
           </p>
         </section>
