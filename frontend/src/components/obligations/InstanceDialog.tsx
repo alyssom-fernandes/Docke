@@ -427,7 +427,7 @@ function LinkDocument({ companyId, instanceId, requiresReview, onLinked }: {
           </p>
           {state === "error" && <p className="mt-2 text-mac-caption text-(--text-danger)">A busca falhou. Confira a conexão e digite de novo.</p>}
           {open && (
-            <ul id={listId} role="listbox" aria-label="Documentos encontrados" className="mt-2 max-h-60 overflow-y-auto rounded-(--radius-control) border border-(--border-default) divide-y divide-(--border-default)">
+            <ul id={listId} role="listbox" aria-label="Documentos encontrados" className="reveal mt-2 max-h-60 overflow-y-auto rounded-(--radius-control) border border-(--border-default) divide-y divide-(--border-default)">
               {hits.length === 0 ? (
                 <li className="px-3 py-2 text-mac-body text-(--text-secondary)" role="option" aria-selected={false} aria-disabled="true">Nenhum documento com esse nome ou texto.</li>
               ) : hits.map((h, i) => (

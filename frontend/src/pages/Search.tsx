@@ -105,6 +105,7 @@ export default function Search() {
   const ordem = params.get("ordem") ?? "relevancia";
   const tipo = params.get("tipo") ?? "";
   const setor = params.get("setor") ?? "";
+  const guarda = params.get("guarda") ?? "";
   const pagina = Math.max(1, Number(params.get("pagina") ?? 1) || 1);
 
   const [text, setText] = useState(q);
@@ -204,7 +205,7 @@ export default function Search() {
         q, company_id: current.id, page: pagina, page_size: PAGE_SIZE, sort: ordem,
         folder_id: pasta || undefined, subfolders: pasta ? sub : undefined,
         date_from: dateFrom || undefined, date_to: dateTo || undefined,
-        file_type: tipo || undefined, sector: setor || undefined,
+        file_type: tipo || undefined, sector: setor || undefined, guarda: guarda || undefined,
       },
     })
       .then((r) => {
@@ -214,7 +215,7 @@ export default function Search() {
         localStorage.setItem(RECENT_KEY, JSON.stringify(next)); setRecent(next);
       })
       .catch(() => { if (id === reqId.current) setState("error"); });
-  }, [current?.id, q, pasta, sub, dateFrom, dateTo, ordem, tipo, setor, pagina, retry]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [current?.id, q, pasta, sub, dateFrom, dateTo, ordem, tipo, setor, guarda, pagina, retry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const folderOpts = useMemo(() => [{ value: "", label: "Todas as pastas" }, ...[...folders].sort((a, b) => a.path.localeCompare(b.path)).map((f) => ({ value: f.id, label: f.name, depth: f.path.split(".").length - 1 }))], [folders]);
   const total = data?.total ?? 0;
@@ -282,6 +283,17 @@ export default function Search() {
           <div>
             <label id={`${uid}-ord`} className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Ordenar por</label>
             <Dropdown ariaLabelledby={`${uid}-ord`} value={ordem} onChange={(v) => setP({ ordem: v === "relevancia" ? null : v })} options={SORTS} />
+          </div>
+          {/* Guarda (A7-108, B3.4.8): o que está sob bloqueio judicial, sem prazo ou vencido. */}
+          <div>
+            <label id={`${uid}-guarda`} className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Guarda</label>
+            <Dropdown ariaLabelledby={`${uid}-guarda`} value={guarda} onChange={(v) => setP({ guarda: v || null })}
+              options={[
+                { value: "", label: "Qualquer" },
+                { value: "bloqueio", label: "Sob bloqueio judicial" },
+                { value: "sem_prazo", label: "Sem prazo de guarda" },
+                { value: "vencido", label: "Prazo de guarda vencido" },
+              ]} />
           </div>
           {data?.facets && (data.facets.file_type.length > 0 || data.facets.sector.length > 0) && (
             <div className="space-y-2">

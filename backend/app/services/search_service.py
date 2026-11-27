@@ -109,6 +109,7 @@ class SearchService:
         sort: str = "relevancia",
         folder_path: str | None = None,
         exact_folder_id: UUID | None = None,
+        guarda: str | None = None,
     ) -> dict[str, Any]:
         """
         Busca com filtros de pasta (com subpastas), período e tipo, ordenação
@@ -150,11 +151,15 @@ class SearchService:
             WHERE {SearchService._WHERE}
               AND ($9::text IS NULL OR d.sector = $9)
               AND ($10::text IS NULL OR d.file_type = $10)
+              AND ($13::text IS NULL
+                   OR ($13 = 'bloqueio' AND public.document_is_under_hold(d.id))
+                   OR ($13 = 'sem_prazo' AND NOT EXISTS (SELECT 1 FROM public.document_retention_info(d.id) ri WHERE ri.policy_id IS NOT NULL))
+                   OR ($13 = 'vencido' AND EXISTS (SELECT 1 FROM public.document_retention_info(d.id) ri WHERE ri.expires_at < CURRENT_DATE)))
             ORDER BY {order}
             LIMIT $11 OFFSET $12
             """,
             normalized, company_id, raw_term, digits, folder_path, date_from, date_to, exact_folder_id,
-            sector, file_type, page_size, offset,
+            sector, file_type, page_size, offset, guarda,
         )
         total = rows[0]["total_count"] if rows else 0
 
@@ -185,10 +190,14 @@ class SearchService:
                   AND ($6::uuid IS NULL OR d.folder_id = $6)
                   AND ($7::text IS NULL OR d.sector = $7)
                   AND ($8::text IS NULL OR d.file_type = $8)
+                  AND ($10::text IS NULL
+                       OR ($10 = 'bloqueio' AND public.document_is_under_hold(d.id))
+                       OR ($10 = 'sem_prazo' AND NOT EXISTS (SELECT 1 FROM public.document_retention_info(d.id) ri WHERE ri.policy_id IS NOT NULL))
+                       OR ($10 = 'vencido' AND EXISTS (SELECT 1 FROM public.document_retention_info(d.id) ri WHERE ri.expires_at < CURRENT_DATE)))
                 ORDER BY rank DESC, d.created_at DESC
                 LIMIT $9
                 """,
-                raw_term, company_id, folder_path, date_from, date_to, exact_folder_id, sector, file_type, page_size,
+                raw_term, company_id, folder_path, date_from, date_to, exact_folder_id, sector, file_type, page_size, guarda,
             )
             aproximado = bool(rows)
             total = len(rows)

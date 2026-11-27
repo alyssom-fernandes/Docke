@@ -13,6 +13,12 @@ import { prefetchRoute } from "@/lib/routePrefetch";
 // viewed pane") — sem isso, /settings sempre caía em Perfil mesmo se o
 // usuário tivesse acabado de sair de Segurança, por exemplo.
 const LAST_PANE_KEY = "docke_settings_last_pane";
+// Seções usadas por último (A8-T3): atalho no topo da barra para quem volta
+// sempre às mesmas duas ou três entre as dez.
+const RECENT_KEY = "docke_settings_recentes";
+function readRecent(): string[] {
+  try { const v = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]"); return Array.isArray(v) ? v.filter((x) => typeof x === "string") : []; } catch { return []; }
+}
 
 // Ícone dentro de um "chip" colorido por categoria — padrão macOS Settings
 // (Screen Time, Family etc.): cada item tem uma cor própria, não um ícone
@@ -68,8 +74,17 @@ export default function SettingsLayout() {
   const atIndex = location.pathname === "/settings" || location.pathname === "/settings/";
   const [sidebarQuery, setSidebarQuery] = useState("");
 
+  const [recent, setRecent] = useState<string[]>(readRecent);
   useEffect(() => {
-    if (!atIndex) localStorage.setItem(LAST_PANE_KEY, location.pathname);
+    if (atIndex) return;
+    localStorage.setItem(LAST_PANE_KEY, location.pathname);
+    const pane = TABS.find((t) => location.pathname.startsWith(t.to))?.to;
+    if (!pane) return;
+    setRecent((r) => {
+      const next = [pane, ...r.filter((x) => x !== pane)].slice(0, 4);
+      localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+      return next;
+    });
   }, [location.pathname, atIndex]);
 
   // Nome do pane atual — mostrado uma única vez (na moldura, não duplicado
@@ -159,7 +174,27 @@ export default function SettingsLayout() {
               </p>
             );
             const groups = Array.from(new Set(filtered.map((t) => t.group)));
-            return groups.map((group, gi) => (
+            // "Recentes": as três últimas além da atual, só sem busca e quando
+            // há seções o bastante para valer o atalho.
+            const recentes = q || visibleTabs.length < 7 ? [] : recent
+              .filter((to) => !location.pathname.startsWith(to))
+              .map((to) => visibleTabs.find((t) => t.to === to))
+              .filter((t): t is (typeof visibleTabs)[number] => !!t)
+              .slice(0, 3);
+            const recentBlock = recentes.length >= 2 ? (
+              <div key="recentes" className="mb-3">
+                <p className="px-1.5 pt-1.5 pb-1 text-[11px] font-bold text-(--sidebar-header)">Recentes</p>
+                {recentes.map((tab) => (
+                  <NavLink key={`r-${tab.to}`} to={tab.to} onMouseEnter={() => prefetchRoute(tab.to)} className="sidebar-item">
+                    <span className={`w-5 h-5 rounded-[5px] flex items-center justify-center shrink-0 ${tab.color}`}>
+                      <tab.icon className="w-3 h-3 text-white" strokeWidth={2.4} aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate pl-0.5">{tab.label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            ) : null;
+            return [recentBlock, ...groups.map((group, gi) => (
               <div key={group} className={gi > 0 ? "mt-3" : ""}>
                 <p className="px-1.5 pt-1.5 pb-1 text-[11px] font-bold text-(--sidebar-header)">{group}</p>
                 {filtered.filter((t) => t.group === group).map((tab) => (
@@ -185,7 +220,7 @@ export default function SettingsLayout() {
                   </NavLink>
                 ))}
               </div>
-            ));
+            ))];
           })()}
         </nav>
       </aside>

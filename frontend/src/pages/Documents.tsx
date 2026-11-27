@@ -63,7 +63,7 @@ import Dialog from "@/components/ui/Dialog";
 import Input from "@/components/ui/Input";
 import Menu, { type MenuItem } from "@/components/ui/Menu";
 import FolderPickerDialog, { type PickedFolder } from "@/components/documents/FolderPickerDialog";
-import { useUndo } from "@/lib/undo";
+import { pushUndo, useUndo } from "@/lib/undo";
 import { SkeletonTableRow, SkeletonGridItem } from "@/components/shared/Skeleton";
 import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 import { prefetchPdfViewer } from "@/lib/prefetch";
@@ -678,6 +678,33 @@ export default function Documents() {
     return () => window.removeEventListener("docke:desfeito", onUndone);
   });
 
+  /**
+   * Nova pasta como no Finder (A4-41): cria "Nova pasta" (ou "Nova pasta 2"…)
+   * na hora e já abre o nome para editar. Esc mantém o nome sugerido; Ctrl+Z
+   * desfaz a criação.
+   */
+  const creatingFolder = useRef(false);
+  async function createFolderInline() {
+    if (!current || currentFolderId === undefined || !canWrite || creatingFolder.current) return;
+    creatingFolder.current = true;
+    const usados = new Set(folders.map((f) => f.name.toLowerCase()));
+    let nome = "Nova pasta";
+    for (let n = 2; usados.has(nome.toLowerCase()); n++) nome = `Nova pasta ${n}`;
+    try {
+      const { data } = await api.post<Folder>("/folders", { name: nome, company_id: current.id, parent_id: currentFolderId });
+      setFolders((prev) => [...prev, data]);
+      setFolderTreeVersion((v) => v + 1);
+      pushUndo(`criar a pasta "${data.name}"`, async () => { await api.delete(`/folders/${data.id}`); });
+      setFocusedId(data.id);
+      setRenaming({ kind: "folder", id: data.id, value: data.name });
+      window.setTimeout(() => rowRefs.current.get(data.id)?.scrollIntoView({ block: "nearest" }), 30);
+    } catch (e: any) {
+      showError(friendlyError(e, "Não foi possível criar a pasta."));
+    } finally {
+      creatingFolder.current = false;
+    }
+  }
+
   // Renomear grava na hora (antes esperava 5 s e se perdia ao recarregar — A4-45).
   async function confirmRename() {
     if (!renaming) return;
@@ -741,7 +768,7 @@ export default function Documents() {
       if (target.closest('aside, [role="tree"], header, nav, [data-dock]')) return;
 
       const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.shiftKey && e.key.toLowerCase() === "n") { e.preventDefault(); if (currentFolderId !== undefined && canWrite) setShowNewFolder(true); return; }
+      if (mod && e.shiftKey && e.key.toLowerCase() === "n") { e.preventDefault(); createFolderInline(); return; }
       if (mod && e.key.toLowerCase() === "a") {
         e.preventDefault();
         setSelected(new Set(items.map((it) => it.data.id)));
@@ -1839,7 +1866,7 @@ export default function Documents() {
               <ToolbarButton inGroup label="Ordenação, colunas e densidade" aria-haspopup="menu" onClick={(e) => setViewMenu(e.currentTarget)}>
                 {density === "compact" ? <Rows4 aria-hidden /> : <Rows3 aria-hidden />}
               </ToolbarButton>
-              <ToolbarButton inGroup label="Nova pasta (Ctrl+Shift+N)" onClick={() => setShowNewFolder(true)} disabled={!canWrite}>
+              <ToolbarButton inGroup label="Nova pasta (Ctrl+Shift+N)" onClick={createFolderInline} disabled={!canWrite}>
                 <FolderPlus aria-hidden />
               </ToolbarButton>
             </ToolbarGroup>
@@ -1877,7 +1904,7 @@ export default function Documents() {
               onClose={() => setMobileMenu(null)}
               items={[
                 { label: selectionMode ? "Sair da seleção" : "Selecionar vários", icon: <ListChecks />, onSelect: () => setSelectionMode((v) => !v) },
-                { label: "Nova pasta", icon: <FolderPlus />, disabled: !canWrite, onSelect: () => setShowNewFolder(true) },
+                { label: "Nova pasta", icon: <FolderPlus />, disabled: !canWrite, onSelect: createFolderInline },
                 { label: viewMode === "list" ? "Ver em ícones" : "Ver em lista", icon: viewMode === "list" ? <LayoutGrid /> : <List />, onSelect: () => setView(viewMode === "list" ? "grid" : "list") },
                 { label: density === "comfortable" ? "Linhas compactas" : "Linhas confortáveis", icon: density === "comfortable" ? <Rows4 /> : <Rows3 />, onSelect: () => toggleDensity() },
               ]}

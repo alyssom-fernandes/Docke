@@ -31,6 +31,7 @@ async def search(
     date_to: date | None = Query(None, description="Enviados até (inclusive)."),
     sort: str = Query("relevancia", pattern="^(relevancia|recentes|antigos|nome)$"),
     subfolders: bool = Query(True, description="Com folder_id, inclui as subpastas."),
+    guarda: str | None = Query(None, pattern="^(bloqueio|sem_prazo|vencido)$", description="Retenção: sob bloqueio judicial, sem prazo de guarda ou com o prazo vencido."),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> dict[str, Any]:
     """
@@ -60,6 +61,7 @@ async def search(
         sector=sector, file_type=file_type, page=page, page_size=page_size,
         date_from=date_from, date_to=date_to, sort=sort,
         folder_path=folder_path if subfolders else None, exact_folder_id=None if subfolders else folder_id,
+        guarda=guarda,
     )
     return result
 
