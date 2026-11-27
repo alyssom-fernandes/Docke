@@ -17,7 +17,9 @@ async def test_pacote_de_configuracao_entre_empresas(api, admin, empresa):  # no
     r = await api.post(API + f"/companies/{co}/retention/policies",
                        json={"company_id": co, "name": "RH após desligamento", "duration_months": 60}, headers=h)
     assert r.status_code == 201, r.text
-    pacote = (await api.get(API + f"/companies/{co}/config-package", headers=h)).json()
+    r = await api.get(API + f"/companies/{co}/config-package", headers=h)
+    assert r.status_code == 200, r.text
+    pacote = r.json()
     assert pacote["docke_pacote"] == 1
     assert any(c["label"] == "Data de desligamento" for c in pacote["campos"])
     assert any(p["name"] == "RH após desligamento" for p in pacote["politicas"])
