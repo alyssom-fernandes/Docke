@@ -15,6 +15,7 @@ import { openKeyboardShortcuts } from "@/components/shared/KeyboardShortcuts";
 import CompanySwitcher from "./CompanySwitcher";
 import { useNavBadges } from "./navItems";
 import { useWindow, ToolbarButton } from "./window";
+import type { Ancorado } from "@/lib/api-types";
 
 /**
  * Barra lateral da janela, como a do Finder no macOS 27: cinza #E6E6E6
@@ -24,14 +25,8 @@ import { useWindow, ToolbarButton } from "./window";
  * conversa com a tela de Documentos pelo endereço (?pasta=) e por eventos.
  */
 
-interface Favorite {
-  id: string;
-  item_type: "document" | "folder";
-  document_id: string | null;
-  folder_id: string | null;
-  document_folder_id: string | null;
-  item_name: string;
-}
+/** Ancorado como a API devolve (tipo gerado do contrato, X3-16). */
+type Favorite = Ancorado;
 
 const FAV_LIMIT = 8;
 const COLLAPSE_KEY = "docke_secoes_recolhidas";

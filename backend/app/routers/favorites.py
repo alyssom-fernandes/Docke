@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from app.dependencies import get_current_user, get_db
 from app.services.favorites_service import FavoritesService
+from app.schemas.favorite import Ancorado
 
 router = APIRouter(prefix="/favorites", tags=["favorites"])
 
@@ -20,7 +21,7 @@ class FavoriteCreate(BaseModel):
 # GET /favorites — lista favoritos do usuário autenticado
 # ---------------------------------------------------------------------------
 
-@router.get("")
+@router.get("", response_model=list[Ancorado])
 async def list_favorites(
     company_id: UUID | None = Query(None),
     conn: asyncpg.Connection = Depends(get_db),

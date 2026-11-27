@@ -22,6 +22,7 @@ from app.services.documents_service import DocumentsService, _MIME_MAP
 from app.services.file_signature import content_matches_extension, describe as describe_ext
 from app.services.notification_service import notify_folder_favoriters
 from app.services import features_service
+from app.schemas.document import DocumentoDetalhe, DocumentoNaPasta, DocumentoRecente, TextoDocumento
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -1419,7 +1420,7 @@ async def get_documents_ocr_status(
     return [dict(r) for r in rows]
 
 
-@router.get("/recent")
+@router.get("/recent", response_model=list[DocumentoRecente])
 async def list_recent_documents(
     company_id: UUID = Query(...),
     limit: int = Query(10, ge=1, le=50),
@@ -1435,7 +1436,7 @@ async def list_recent_documents(
 # GET /documents — lista documentos de uma pasta (RLS filtra automaticamente)
 # ---------------------------------------------------------------------------
 
-@router.get("")
+@router.get("", response_model=list[DocumentoNaPasta])
 async def list_documents(
     response: Response,
     folder_id: UUID = Query(...),
@@ -1484,7 +1485,7 @@ async def list_documents(
 # GET /documents/:id — detalhes de um documento
 # ---------------------------------------------------------------------------
 
-@router.get("/{document_id}")
+@router.get("/{document_id}", response_model=DocumentoDetalhe)
 async def get_document(
     document_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
@@ -1521,7 +1522,7 @@ async def get_document(
 # GET /documents/:id/text — texto lido do documento, sob demanda (A5-64)
 # ---------------------------------------------------------------------------
 
-@router.get("/{document_id}/text")
+@router.get("/{document_id}/text", response_model=TextoDocumento)
 async def get_document_text(
     document_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),

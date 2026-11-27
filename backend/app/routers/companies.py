@@ -15,6 +15,7 @@ from app.services import features_service, rate_limit, storage_service
 from app.services.access_explain_service import AccessExplainService
 from app.services.companies_service import CompaniesService
 from app.services.groups_service import GroupsService
+from app.schemas.company import ConcessaoDaEmpresa, Empresa, EmpresaDaPessoa, PessoaDaEmpresa
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -81,7 +82,7 @@ def _cnpj_ok(d: str) -> bool:
     return calc(12) == int(d[12]) and calc(13) == int(d[13])
 
 
-@router.get("")
+@router.get("", response_model=list[EmpresaDaPessoa])
 async def list_companies(
     conn: asyncpg.Connection = Depends(get_db),
 ) -> list[dict[str, Any]]:
@@ -129,7 +130,7 @@ async def list_organizations(
     return [dict(r) for r in rows]
 
 
-@router.get("/{company_id}")
+@router.get("/{company_id}", response_model=Empresa)
 async def get_company(
     company_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
@@ -175,7 +176,7 @@ async def create_company(
 # GET /companies/{company_id}/stats — contadores da empresa
 # ---------------------------------------------------------------------------
 
-@router.get("/{company_id}/members")
+@router.get("/{company_id}/members", response_model=list[ConcessaoDaEmpresa])
 async def company_members(
     company_id: UUID,  # noqa
     conn: asyncpg.Connection = Depends(get_db),
@@ -607,7 +608,7 @@ async def update_access_grant(
     return {"id": str(access_id), "permission_level": body.permission_level}
 
 
-@router.get("/{company_id}/people")
+@router.get("/{company_id}/people", response_model=list[PessoaDaEmpresa])
 async def list_people(
     company_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),

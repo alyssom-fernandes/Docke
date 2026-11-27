@@ -17,6 +17,8 @@ import pytest_asyncio
 from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+# Contrato da API (X3-16): nos testes, resposta fora do modelo declarado é erro.
+os.environ.setdefault("CONTRATO_ESTRITO", "true")
 
 DB_URL: str = os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://")
 SERVICE_ROLE_KEY: str = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")

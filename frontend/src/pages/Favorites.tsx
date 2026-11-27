@@ -11,17 +11,10 @@ import EmptyState from "@/components/shared/EmptyState";
 import Button from "@/components/ui/Button";
 import { PageHeader } from "@/components/layout/window";
 import { InspectorLayout, useInspectorTarget, useLargo } from "@/components/shared/ListInspector";
+import type { Ancorado } from "@/lib/api-types";
 
-interface Favorite {
-  id: string;
-  item_type: "document" | "folder";
-  document_id: string | null;
-  folder_id: string | null;
-  document_folder_id: string | null;
-  item_name: string;
-  location?: string | null;
-  created_at: string;
-}
+/** Ancorado como a API devolve (tipo gerado do contrato, X3-16). */
+type Favorite = Ancorado;
 
 type Tipo = "todos" | "folder" | "document";
 
