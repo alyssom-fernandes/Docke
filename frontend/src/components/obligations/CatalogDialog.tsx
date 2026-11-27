@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { Link } from "react-router-dom";
+import { AlertTriangle, RefreshCw, Sparkles } from "lucide-react";
 import api from "@/lib/api";
 import { useToast } from "@/lib/toast";
 import Dialog from "@/components/ui/Dialog";
@@ -22,7 +23,16 @@ interface CatalogItem {
   due_month_offset?: number;
   validity_months?: number;
   ja_existe: boolean;
+  situacao: "recomendado" | "nao_se_aplica" | "falta_perfil";
+  motivos: string[];
 }
+
+const CAMPO_PERFIL: Record<string, string> = {
+  regime_tributario: "regime tributário",
+  faixa_funcionarios: "quantidade de funcionários",
+  tipo_juridico: "tipo jurídico",
+  cnae_principal: "atividade principal (CNAE)",
+};
 
 /**
  * Modelos prontos (A7-36): o gestor escolhe o segmento, marca o que vale para
@@ -33,9 +43,9 @@ export default function CatalogDialog({ companyId, companyName, members, onClose
   companyId: string; companyName: string; members: Member[]; onClose: () => void; onApplied: () => void;
 }) {
   const { success, error: showError } = useToast();
-  const [data, setData] = useState<{ segmentos: { id: string; label: string }[]; itens: CatalogItem[] } | null>(null);
+  const [data, setData] = useState<{ segmentos: { id: string; label: string }[]; itens: CatalogItem[]; perfil_incompleto?: string[] } | null>(null);
   const [failed, setFailed] = useState(false);
-  const [segmento, setSegmento] = useState("geral");
+  const [segmento, setSegmento] = useState("perfil");
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [owner, setOwner] = useState("");
   const [saving, setSaving] = useState(false);
@@ -46,8 +56,13 @@ export default function CatalogDialog({ companyId, companyName, members, onClose
   }
   useEffect(load, [companyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const itens = useMemo(() => (data?.itens ?? []).filter((i) => i.segmentos.includes(segmento)), [data, segmento]);
-  const novosNoSegmento = itens.filter((i) => !i.ja_existe);
+  // Na aba do perfil, o recomendado vem antes do que depende de dado que falta.
+  const itens = useMemo(() => {
+    const lista = (data?.itens ?? []).filter((i) => i.segmentos.includes(segmento));
+    return segmento === "perfil" ? [...lista].sort((a, b) => Number(b.situacao === "recomendado") - Number(a.situacao === "recomendado")) : lista;
+  }, [data, segmento]);
+  const novosNoSegmento = itens.filter((i) => !i.ja_existe && (segmento !== "perfil" || i.situacao === "recomendado"));
+  const faltam = (data?.perfil_incompleto ?? []).map((c) => CAMPO_PERFIL[c] ?? c);
 
   function toggle(key: string) {
     setChosen((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
@@ -105,12 +120,22 @@ export default function CatalogDialog({ companyId, companyName, members, onClose
               </button>
             ))}
           </div>
+          {segmento === "perfil" && faltam.length > 0 && (
+            <p className="flex items-start gap-2 rounded-(--radius-control) bg-(--tint-accent) px-3 py-2 text-mac-caption text-(--text-primary)">
+              <Sparkles className="w-4 h-4 shrink-0 mt-0.5 text-(--text-accent)" aria-hidden="true" />
+              <span>
+                Para recomendar com precisão, complete o perfil fiscal ({faltam.join(", ")}) em{" "}
+                <Link to="/settings/organization" className="font-medium text-(--text-accent) underline underline-offset-2">Ajustes → Organização</Link>.
+                Até lá, o que depende desses dados aparece aqui marcado como “confira”.
+              </span>
+            </p>
+          )}
           <div className="flex items-center justify-between gap-2">
-            <p className="text-mac-caption text-(--text-secondary)">{itens.length} modelos · {itens.length - novosNoSegmento.length} já cadastrados</p>
+            <p className="text-mac-caption text-(--text-secondary)">{itens.length} modelos · {itens.filter((i) => i.ja_existe).length} já cadastrados</p>
             {novosNoSegmento.length > 0 && (
               <button className="text-mac-caption font-medium text-(--text-accent) hover:underline"
                 onClick={() => setChosen((s) => { const n = new Set(s); novosNoSegmento.forEach((i) => n.add(i.key)); return n; })}>
-                Marcar todos deste segmento
+                {segmento === "perfil" ? "Marcar os recomendados" : "Marcar todos deste segmento"}
               </button>
             )}
           </div>
@@ -121,6 +146,15 @@ export default function CatalogDialog({ companyId, companyName, members, onClose
                   <Checkbox checked={i.ja_existe || chosen.has(i.key)} disabled={i.ja_existe} onChange={() => toggle(i.key)} className="mt-1" />
                   <span className="flex-1 min-w-0">
                     <span className="block text-mac-body font-medium text-(--text-primary)">{i.name}{i.ja_existe && <span className="font-normal text-(--text-secondary)"> · já cadastrada</span>}</span>
+                    {i.motivos?.length > 0 && (i.situacao !== "recomendado" || segmento === "perfil") ? (
+                      <span className="my-0.5 inline-flex flex-wrap gap-1">
+                        {i.motivos.map((m) => (
+                          <span key={m} className={`rounded-full px-2 py-px text-mac-caption ${i.situacao === "recomendado" ? "bg-(--tint-success) text-(--text-success)" : i.situacao === "falta_perfil" ? "bg-(--tint-warning) text-(--text-warning)" : "bg-(--bg-hover) text-(--text-secondary)"}`}>
+                            {i.situacao === "falta_perfil" ? `Confira: ${m}` : i.situacao === "nao_se_aplica" ? `Provavelmente não: ${m}` : m}
+                          </span>
+                        ))}
+                      </span>
+                    ) : null}
                     <span className="block text-mac-caption text-(--text-secondary)">{i.description}</span>
                     <span className="block text-mac-caption text-(--text-secondary)">
                       {scheduleText({ frequency: i.frequency, due_day: i.due_day ?? null, due_month: i.due_month ?? null, due_month_offset: i.due_month_offset ?? 1, validity_months: i.validity_months ?? null })}

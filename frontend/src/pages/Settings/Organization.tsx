@@ -128,6 +128,15 @@ interface FiscalProfile {
   faixa_funcionarios: string | null;
   uf: string | null;
   tipo_juridico: string | null;
+  cnae_principal: string | null;
+}
+
+/** 4731800 → 4731-8/00 enquanto digita. */
+function formatCnae(v: string): string {
+  const d = v.replace(/\D/g, "").slice(0, 7);
+  if (d.length <= 4) return d;
+  if (d.length === 5) return `${d.slice(0, 4)}-${d[4]}`;
+  return `${d.slice(0, 4)}-${d[4]}/${d.slice(5)}`;
 }
 
 const REGIME_LABEL: Record<string, string> = {
@@ -154,12 +163,14 @@ function FiscalProfileSection({ companyId, companyName, isAdmin }: { companyId: 
   const [saving, setSaving] = useState<keyof FiscalProfile | null>(null);
   const [failed, setFailed] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [cnae, setCnae] = useState("");
+  const [cnaeTocado, setCnaeTocado] = useState(false);
 
   function load() {
     setLoading(true);
     setFailed(false);
     api.get<FiscalProfile>(`/companies/${companyId}/fiscal-profile`)
-      .then((r) => setProfile(r.data))
+      .then((r) => { setProfile(r.data); setCnae(formatCnae(r.data.cnae_principal ?? "")); setCnaeTocado(false); })
       .catch(() => { setProfile(null); setFailed(true); })
       .finally(() => setLoading(false));
   }
@@ -180,6 +191,14 @@ function FiscalProfileSection({ companyId, companyName, isAdmin }: { companyId: 
     } finally {
       setSaving(null);
     }
+  }
+
+  const cnaeDigitos = cnae.replace(/\D/g, "");
+  const cnaeErro = cnaeDigitos.length > 0 && cnaeDigitos.length !== 7 ? "O CNAE tem 7 dígitos (ex.: 4731-8/00)." : null;
+  function salvarCnae() {
+    setCnaeTocado(true);
+    if (!profile || cnaeErro || (profile.cnae_principal ?? "") === cnaeDigitos) return;
+    update("cnae_principal", cnaeDigitos);
   }
 
   if (failed) {
@@ -252,6 +271,23 @@ function FiscalProfileSection({ companyId, companyName, isAdmin }: { companyId: 
             disabled={!isAdmin || !!saving}
             options={[{ value: "", label: "Não informado" }, ...Object.entries(TIPO_JURIDICO_LABEL).map(([value, label]) => ({ value, label }))]}
           />
+        </div>
+        <div className="sm:col-span-2">
+          <Input
+            label="Atividade principal (CNAE)"
+            inputMode="numeric"
+            placeholder="0000-0/00"
+            value={cnae}
+            maxLength={9}
+            disabled={!isAdmin || !!saving}
+            onChange={(e) => setCnae(formatCnae(e.target.value))}
+            onBlur={salvarCnae}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); salvarCnae(); } }}
+            error={cnaeTocado && cnaeErro ? cnaeErro : undefined}
+          />
+          <p className="mt-1 text-mac-caption text-(--text-secondary)">
+            Está no cartão do CNPJ. Com ele, os modelos prontos de obrigações mostram o que vale para esta atividade (ex.: licenças de posto, DIMOB).
+          </p>
         </div>
       </div>
     </div>
