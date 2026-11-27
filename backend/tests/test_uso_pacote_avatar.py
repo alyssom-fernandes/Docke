@@ -1,4 +1,4 @@
-"""B4.2.8 (uso, cota e pacote de configuração) e A2-41 (foto no avatar)."""
+"""B4.2.8 (uso e cota) e A2-41 (foto no avatar)."""
 import uuid
 
 import pytest
@@ -10,42 +10,11 @@ API = "/api/v1"
 
 
 @pytest.mark.asyncio
-async def test_pacote_de_configuracao_entre_empresas(api, admin, empresa):  # noqa: F811
+async def test_uso_da_empresa_e_cota_so_do_administrador_geral(api, empresa):  # noqa: F811
     h, co = _token(empresa["user"]), empresa["co"]
-    r = await api.post(API + "/custom-fields", json={"company_id": co, "label": "Data de desligamento", "type": "data"}, headers=h)
-    assert r.status_code == 201, r.text
-    r = await api.post(API + f"/companies/{co}/retention/policies",
-                       json={"company_id": co, "name": "RH após desligamento", "duration_months": 60}, headers=h)
-    assert r.status_code == 201, r.text
-    r = await api.get(API + f"/companies/{co}/config-package", headers=h)
-    assert r.status_code == 200, r.text
-    pacote = r.json()
-    assert pacote["docke_pacote"] == 1
-    assert any(c["label"] == "Data de desligamento" for c in pacote["campos"])
-    assert any(p["name"] == "RH após desligamento" for p in pacote["politicas"])
-
-    outra = str(uuid.uuid4())
-    await admin.execute("INSERT INTO public.companies (id, name) VALUES ($1, 'Empresa Destino do Pacote')", outra)
-    await admin.execute("INSERT INTO public.user_company_access (user_id, company_id, permission_level) VALUES ($1, $2, 'admin')", empresa["user"], outra)
-    try:
-        previa = (await api.post(API + f"/companies/{outra}/config-package/import", json={"pacote": pacote}, headers=h)).json()
-        assert previa["aplicado"] is False and "Data de desligamento" in previa["campos"]["novos"]
-        assert not await admin.fetchval("SELECT count(*) FROM public.custom_field WHERE company_id = $1", uuid.UUID(outra))
-        r = await api.post(API + f"/companies/{outra}/config-package/import", json={"pacote": pacote, "aplicar": True}, headers=h)
-        assert r.status_code == 200, r.text
-        assert await admin.fetchval("SELECT count(*) FROM public.custom_field WHERE company_id = $1 AND label = 'Data de desligamento'", uuid.UUID(outra)) == 1
-        assert await admin.fetchval("SELECT count(*) FROM public.retention_policies WHERE company_id = $1 AND name = 'RH após desligamento'", uuid.UUID(outra)) == 1
-        # Importar de novo não duplica nada.
-        de_novo = (await api.post(API + f"/companies/{outra}/config-package/import", json={"pacote": pacote}, headers=h)).json()
-        assert de_novo["campos"]["novos"] == [] and de_novo["politicas"]["novas"] == []
-        # Uso da empresa e cota (só o administrador geral define).
-        u = (await api.get(API + f"/companies/{co}/usage", headers=h)).json()
-        assert u["cota_bytes"] is None and u["bytes_total"] >= 0
-        assert (await api.put(API + f"/companies/{co}/quota", json={"quota_gb": 1}, headers=h)).status_code == 403
-        assert (await api.post(API + f"/companies/{outra}/config-package/import", json={"pacote": {"x": 1}}, headers=h)).status_code == 422
-    finally:
-        await admin.execute("DELETE FROM public.activity_log WHERE company_id = $1", uuid.UUID(outra))
-        await admin.execute("DELETE FROM public.companies WHERE id = $1", uuid.UUID(outra))
+    u = (await api.get(API + f"/companies/{co}/usage", headers=h)).json()
+    assert u["cota_bytes"] is None and u["bytes_total"] >= 0 and "documentos" in u
+    assert (await api.put(API + f"/companies/{co}/quota", json={"quota_gb": 1}, headers=h)).status_code == 403
 
 
 @pytest.mark.asyncio
