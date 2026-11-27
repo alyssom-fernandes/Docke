@@ -1,7 +1,7 @@
 {
-  "name": "Docke — documentos do grupo",
+  "name": "Docke",
   "short_name": "Docke",
-  "description": "Documentos, obrigações e prazos de guarda das empresas do grupo, num lugar só.",
+  "description": "Documentos, obrigações e prazos de guarda de várias empresas, num lugar só.",
   "lang": "pt-BR",
   "start_url": "/dashboard",
   "scope": "/",
