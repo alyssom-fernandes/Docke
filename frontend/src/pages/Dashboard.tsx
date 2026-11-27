@@ -19,6 +19,7 @@ import FirstSteps from "@/components/dashboard/FirstSteps";
 import Dialog from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
 import Checkbox from "@/components/ui/Checkbox";
+import Dropdown from "@/components/ui/Dropdown";
 import {
   UploadsLineChart, FolderBarChart, FolderChartBreadcrumb,
   type DailyUpload, type FolderBreakdown, type FolderCrumb,
@@ -47,6 +48,15 @@ type SectionId = (typeof SECTIONS)[number]["id"];
 const hiddenKey = (userId: string) => `docke_inicio_ocultas_${userId}`;
 const orderKey = (userId: string) => `docke_inicio_ordem_${userId}`;
 const DEFAULT_ORDER: SectionId[] = SECTIONS.map((s) => s.id);
+const escopoKey = (userId: string, companyId: string) => `docke_inicio_escopo_${userId}_${companyId}`;
+
+// Visão por perfil (B4.1.5): pontos de partida prontos; depois dá para ajustar.
+const PERFIS: { id: string; label: string; ordem: SectionId[]; ocultas: SectionId[] }[] = [
+  { id: "fiscal", label: "Fiscal", ordem: ["numeros", "graficos", "recentes", "atividade"], ocultas: [] },
+  { id: "pessoal", label: "Pessoal (RH)", ordem: ["recentes", "atividade", "numeros", "graficos"], ocultas: ["graficos"] },
+  { id: "admin", label: "Administração", ordem: ["numeros", "atividade", "graficos", "recentes"], ocultas: [] },
+  { id: "tudo", label: "Tudo", ordem: DEFAULT_ORDER, ocultas: [] },
+];
 
 // ─── Cache entre visitas (A3-09): mostra o último dado na hora e atualiza ───
 
@@ -272,7 +282,32 @@ export default function Dashboard() {
   const [recentTab, setRecentTab] = useState<"abertos" | "enviados">(() => (localStorage.getItem("docke_inicio_recentes") === "abertos" ? "abertos" : "enviados"));
   const [activityKey, setActivityKey] = useState(0);
 
-  const stats = useSection<Stats>(cid && `${cid}:stats`, () => api.get(`/companies/${cid}/stats`).then((r) => r.data));
+  // Escopo "minha área" (B4.1.5): números e gráfico por pasta só de uma pasta.
+  const [escopo, setEscopo] = useState<{ id: string; name: string } | null>(null);
+  const [pastasEscopo, setPastasEscopo] = useState<{ id: string; name: string; path: string }[] | null>(null);
+  useEffect(() => {
+    if (!user || !cid) return;
+    try { setEscopo(JSON.parse(localStorage.getItem(escopoKey(user.id, cid)) ?? "null")); } catch { setEscopo(null); }
+  }, [user?.id, cid]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!customizing || !cid || pastasEscopo) return;
+    api.get("/folders", { params: { company_id: cid, flat: true } }).then((r) => setPastasEscopo(Array.isArray(r.data) ? r.data : [])).catch(() => setPastasEscopo([]));
+  }, [customizing, cid, pastasEscopo]);
+  function mudarEscopo(id: string) {
+    const p = pastasEscopo?.find((f) => f.id === id);
+    const novo = p ? { id: p.id, name: p.name } : null;
+    setEscopo(novo);
+    if (user && cid) localStorage.setItem(escopoKey(user.id, cid), JSON.stringify(novo));
+  }
+  function aplicarPerfil(id: string) {
+    const p = PERFIS.find((x) => x.id === id);
+    if (!p) return;
+    setOrder(p.ordem); setHidden(p.ocultas);
+    if (user) { localStorage.setItem(orderKey(user.id), JSON.stringify(p.ordem)); localStorage.setItem(hiddenKey(user.id), JSON.stringify(p.ocultas)); }
+  }
+
+  const stats = useSection<Stats>(cid && `${cid}:stats:${escopo?.id ?? "empresa"}`, () =>
+    api.get(`/companies/${cid}/stats`, { params: escopo ? { folder_id: escopo.id } : {} }).then((r) => r.data));
   const recent = useSection<RecentDoc[]>(cid && `${cid}:recent:${recentTab}`, () =>
     api.get("/documents/recent", { params: { company_id: cid, limit: 6, mine: recentTab === "abertos" || undefined } }).then((r) => (Array.isArray(r.data) ? r.data : [])),
   );
@@ -283,8 +318,9 @@ export default function Dashboard() {
   const daily = useSection<DailyUpload[]>(cid && shows("graficos") ? `${cid}:daily:${period}` : null, () =>
     api.get(`/companies/${cid}/stats/charts`, { params: { days: period, only: "daily" } }).then((r) => r.data?.daily_uploads ?? []), true,
   );
-  const byFolder = useSection<FolderBreakdown[]>(cid && shows("graficos") ? `${cid}:folders:${folderId ?? "raiz"}` : null, () =>
-    api.get(`/companies/${cid}/stats/charts`, { params: { only: "folders", ...(folderId ? { folder_id: folderId } : {}) } }).then((r) => r.data?.by_folder ?? []), true,
+  const pastaGrafico = folderId ?? escopo?.id ?? null;
+  const byFolder = useSection<FolderBreakdown[]>(cid && shows("graficos") ? `${cid}:folders:${pastaGrafico ?? "raiz"}` : null, () =>
+    api.get(`/companies/${cid}/stats/charts`, { params: { only: "folders", ...(pastaGrafico ? { folder_id: pastaGrafico } : {}) } }).then((r) => r.data?.by_folder ?? []), true,
   );
 
   // Atualizar sob demanda, com o motivo quando não dá (A3-13).
@@ -389,7 +425,9 @@ export default function Dashboard() {
       {cid && s && <FirstSteps companyId={cid} folders={s.total_folders} documents={s.total_documents} isAdmin={["admin", "supremo"].includes(current?.permission_level ?? "")} />}
 
       {/* 2. Números, cada um leva à lista que conta. */}
-      {shows("numeros") && (<div style={{ order: ordem("numeros") }} className="flex flex-col gap-4 sm:gap-6">{
+      {shows("numeros") && (<div style={{ order: ordem("numeros") }} className="flex flex-col gap-4 sm:gap-6">{escopo && (
+        <p className="-mb-2 text-mac-caption text-(--text-secondary)">Números só de “{escopo.name}” e subpastas. <button type="button" onClick={() => setCustomizing(true)} className="font-medium text-(--text-accent) hover:underline">Mudar</button></p>
+      )}{
         stats.status === "error" ? (
           <div className="glass-panel glass-blur-card rounded-(--radius-panel)"><SectionError what="os números da empresa" onRetry={stats.reload} /></div>
         ) : !s ? (
@@ -609,6 +647,18 @@ export default function Dashboard() {
           size="sm"
           footer={<Button onClick={() => setCustomizing(false)}>Pronto</Button>}
         >
+          <div className="space-y-2 mb-4">
+            <p id="perfil-inicio" className="text-mac-caption font-medium text-(--text-secondary)">Começar de um perfil</p>
+            <div role="group" aria-labelledby="perfil-inicio" className="flex flex-wrap gap-1.5">
+              {PERFIS.map((p) => (
+                <button key={p.id} type="button" onClick={() => aplicarPerfil(p.id)}
+                  className="px-3 h-8 pointer-coarse:h-11 rounded-full text-mac-caption font-medium border border-(--border-control) text-(--text-primary) hover:bg-(--bg-hover) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)">{p.label}</button>
+              ))}
+            </div>
+            <label id="escopo-inicio" className="block pt-2 text-mac-caption font-medium text-(--text-secondary)">Números e gráfico por pasta de</label>
+            <Dropdown ariaLabelledby="escopo-inicio" value={escopo?.id ?? ""} onChange={mudarEscopo}
+              options={[{ value: "", label: "A empresa toda" }, ...[...(pastasEscopo ?? [])].sort((a, b) => a.path.localeCompare(b.path)).map((f) => ({ value: f.id, label: f.name, depth: f.path.split(".").length - 1 }))]} />
+          </div>
           <ul className="space-y-1">
             {order.map((id, idx) => {
               const sec = SECTIONS.find((x) => x.id === id)!;

@@ -632,7 +632,15 @@ export default function VersionsPanel({ documentId, documentName, onChanged }: {
           )}
 
           {loading && versions.length === 0 ? (
-            <div className="h-16 bg-(--bg-hover) rounded-(--radius-control) animate-pulse" aria-label="Carregando versões" />
+            <ul className="space-y-2" role="status" aria-label="Carregando versões">
+              {[0, 1, 2].map((i) => (
+                <li key={i} className="flex items-center gap-3 rounded-(--radius-control) border border-(--border-default) px-3 py-2.5">
+                  <div className="h-7 w-7 rounded-full bg-(--bg-hover) animate-pulse" />
+                  <div className="flex-1 space-y-1.5"><div className="h-3.5 w-24 rounded bg-(--bg-hover) animate-pulse" /><div className="h-3 w-40 rounded bg-(--bg-hover) animate-pulse" /></div>
+                  <div className="h-7 w-16 rounded-(--radius-control) bg-(--bg-hover) animate-pulse" />
+                </li>
+              ))}
+            </ul>
           ) : failed ? (
             <p role="alert" className="text-mac-caption text-(--text-secondary)">Não foi possível carregar as versões. <button onClick={load} className="text-(--text-accent) font-medium hover:underline">Tentar de novo</button></p>
           ) : versions.length === 0 ? (

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { Building2, KeyRound, SlidersHorizontal, ChevronRight } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
@@ -6,6 +6,9 @@ import { useAuthContext } from "@/lib/AuthContext";
 import { useCompany } from "@/lib/CompanyContext";
 import { useToast } from "@/lib/toast";
 import Input from "@/components/ui/Input";
+import Avatar from "@/components/ui/Avatar";
+import api from "@/lib/api";
+import { friendlyError } from "@/lib/errors";
 import SaveBar from "@/components/shared/SaveBar";
 import { useUnsavedGuard } from "@/hooks/useUnsavedGuard";
 
@@ -19,7 +22,34 @@ const ROLE_LABEL: Record<string, string> = { visualizador: "Visualizador", opera
  */
 export default function Profile() {
   usePageTitle("Perfil");
-  const { user, updateProfile } = useAuthContext();
+  const { user, updateProfile, setAvatar } = useAuthContext();
+  const [enviandoFoto, setEnviandoFoto] = useState(false);
+  const fotoRef = useRef<HTMLInputElement>(null);
+  async function trocarFoto(file: File | undefined) {
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) { showError("Use uma imagem PNG, JPEG ou WebP."); return; }
+    if (file.size > 2 * 1024 * 1024) { showError("A foto pode ter até 2 MB."); return; }
+    setEnviandoFoto(true);
+    try {
+      const { data } = await api.post("/auth/avatar/upload-url", { content_type: file.type, size_bytes: file.size });
+      const put = await fetch(data.upload_url, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      if (!put.ok) throw new Error("O armazenamento recusou a foto.");
+      const r = await api.put("/auth/avatar", { avatar_key: data.avatar_key });
+      setAvatar(r.data.avatar_url ?? null);
+      success("Foto atualizada.");
+    } catch (e) {
+      showError(friendlyError(e, "Não foi possível trocar a foto."));
+    } finally {
+      setEnviandoFoto(false);
+      if (fotoRef.current) fotoRef.current.value = "";
+    }
+  }
+  async function tirarFoto() {
+    setEnviandoFoto(true);
+    try { await api.put("/auth/avatar", { avatar_key: null }); setAvatar(null); success("Foto removida."); }
+    catch (e) { showError(friendlyError(e, "Não foi possível tirar a foto.")); }
+    finally { setEnviandoFoto(false); }
+  }
   const { companies } = useCompany();
   const { success, error: showError } = useToast();
   const [saving, setSaving] = useState(false);
@@ -60,7 +90,18 @@ export default function Profile() {
       <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-5 sm:p-6">
         <form className="max-w-[560px] space-y-6" onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-(--accent) flex items-center justify-center text-white text-mac-title3 font-semibold shrink-0" aria-hidden="true">{initials}</div>
+            <div className="flex flex-col items-center gap-1 shrink-0">
+              {user?.avatar_url
+                ? <Avatar name={user.full_name} src={user.avatar_url} size="lg" />
+                : <div className="w-14 h-14 rounded-full bg-(--accent) flex items-center justify-center text-white text-mac-title3 font-semibold" aria-hidden="true">{initials}</div>}
+              {user?.username !== "demo" && (
+                <span className="flex gap-2 text-mac-caption">
+                  <button type="button" disabled={enviandoFoto} onClick={() => fotoRef.current?.click()} className="font-medium text-(--text-accent) hover:underline disabled:opacity-(--opacity-disabled)">{user?.avatar_url ? "Trocar" : "Pôr foto"}</button>
+                  {user?.avatar_url && <button type="button" disabled={enviandoFoto} onClick={tirarFoto} className="text-(--text-secondary) hover:underline">Tirar</button>}
+                </span>
+              )}
+              <input ref={fotoRef} type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" aria-label="Escolher foto" onChange={(e) => trocarFoto(e.target.files?.[0])} />
+            </div>
             <div className="min-w-0">
               <p className="text-mac-callout font-semibold text-(--text-primary) truncate">{user?.full_name}</p>
               <p className="text-mac-body text-(--text-secondary) truncate">{user?.email ?? `@${user?.username}`}</p>

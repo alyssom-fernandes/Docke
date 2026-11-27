@@ -193,6 +193,7 @@ async def company_members(
 @router.get("/{company_id}/stats")
 async def company_stats(
     company_id: UUID,
+    folder_id: UUID | None = Query(None),
     conn: asyncpg.Connection = Depends(get_db),
     claims: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
@@ -204,6 +205,13 @@ async def company_stats(
     """
     if not await CompaniesService.is_member(conn, claims["sub"], company_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem acesso a esta empresa.")
+    if folder_id is not None:
+        # Escopo "minha área" (B4.1.5): só a pasta escolhida e subpastas.
+        row = await CompaniesService.get_stats_folder(conn, company_id, folder_id)
+        if row is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasta não encontrada.")
+        caminho = await conn.fetchval("SELECT path::text FROM public.folders WHERE id = $1", folder_id)
+        return {**dict(row), **await CompaniesService.stats_context(conn, company_id, caminho), "escopo_pasta": str(folder_id)}
     if await CompaniesService.has_unscoped_access(conn, claims["sub"], company_id):
         row = await CompaniesService.get_stats(conn, company_id)
         if row is not None and _stats_stale(row["refreshed_at"]) and rate_limit.check_and_record(
@@ -610,7 +618,16 @@ async def list_people(
     role = await get_app_role(conn, claims)
     if not await _can_manage_company(conn, claims["sub"], company_id, role):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Você não administra esta empresa.")
-    return await CompaniesService.list_people(admin_conn, company_id)
+    pessoas = await CompaniesService.list_people(admin_conn, company_id)
+    # Foto no avatar (A2-41): URL assinada para quem pôs foto.
+    from app.routers.auth import avatar_url_da_chave
+    chaves = {str(r["id"]): r["avatar_key"] for r in await admin_conn.fetch(
+        "SELECT id, avatar_key FROM public.users WHERE id = ANY($1::uuid[]) AND avatar_key IS NOT NULL",
+        [p["user_id"] for p in pessoas],
+    )}
+    for p in pessoas:
+        p["avatar_url"] = avatar_url_da_chave(chaves.get(p["user_id"]))
+    return pessoas
 
 
 async def _require_account_control(conn, admin_conn, actor_id: str, company_id: UUID, role: str, target_id: UUID) -> str:

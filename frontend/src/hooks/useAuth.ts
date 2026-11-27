@@ -12,6 +12,8 @@ export interface AuthUser {
   must_change_password?: boolean;
   /** Verificação em duas etapas: falta o código nesta sessão ou o cadastro do app. */
   mfa_pendente?: "verificar" | "cadastrar" | null;
+  /** Foto da conta (A2-41): URL assinada por 1 h; sem foto, monograma. */
+  avatar_url?: string | null;
 }
 
 interface AuthState {
@@ -21,6 +23,7 @@ interface AuthState {
   loginDemo: () => Promise<void>;
   logout: () => void;
   updateProfile: (fullName: string) => Promise<void>;
+  setAvatar: (url: string | null) => void;
   passwordChanged: () => void;
   completeMfa: (tokens: SessionTokens) => Promise<void>;
   loginWithSession: (tokens: SessionTokens, remember?: boolean) => Promise<void>;
@@ -38,6 +41,7 @@ function toUser(data: any): AuthUser {
     role: data.role,
     must_change_password: !!data.must_change_password,
     mfa_pendente: data.mfa_pendente ?? null,
+    avatar_url: data.avatar_url ?? null,
   };
 }
 
@@ -153,6 +157,15 @@ export function useAuth(): AuthState {
     });
   }
 
+  function setAvatar(url: string | null) {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, avatar_url: url };
+      localStorage.setItem("docke_user", JSON.stringify(next));
+      return next;
+    });
+  }
+
   // Código conferido: guarda a sessão verificada no mesmo lugar da atual
   // ("manter conectado" ou não) e relê quem sou.
   async function completeMfa(tokens: SessionTokens) {
@@ -174,5 +187,5 @@ export function useAuth(): AuthState {
     });
   }
 
-  return { user, isLoading, login, loginDemo, logout, updateProfile, passwordChanged, completeMfa, loginWithSession };
+  return { user, isLoading, login, loginDemo, logout, updateProfile, setAvatar, passwordChanged, completeMfa, loginWithSession };
 }

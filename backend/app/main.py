@@ -45,6 +45,8 @@ from app.routers import (
     security_incidents,
     features,
     access_reviews,
+    upload_batches,
+    config_package,
 )
 
 # Sem configuração, o Python descarta tudo abaixo de WARNING, e o que passa sai
@@ -212,6 +214,8 @@ app.include_router(push.router, prefix=PREFIX)
 app.include_router(passkeys.router, prefix=PREFIX)
 app.include_router(features.router, prefix=PREFIX)
 app.include_router(access_reviews.router, prefix=PREFIX)
+app.include_router(upload_batches.router, prefix=PREFIX)
+app.include_router(config_package.router, prefix=PREFIX)
 
 
 class ErroDoNavegador(BaseModel):

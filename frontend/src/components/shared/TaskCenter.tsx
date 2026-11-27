@@ -2,6 +2,53 @@ import { useRef, useState, useEffect, useCallback, type ElementType } from "reac
 import { useNavigate } from "react-router-dom";
 import { Bell, Upload, FileSearch, Archive, Download, Copy, X, CheckCircle2, AlertCircle, Loader2, RotateCcw, RefreshCw, ChevronRight, Pause, Play, Clock } from "lucide-react";
 import { useTaskCenter, type Task, type TaskKind } from "@/lib/TaskContext";
+
+/**
+ * Envios anteriores (B1.1.9, B4.3.7): os lotes ficam no servidor, então dá
+ * para ver depois de fechar a aba quantos entraram, quais falharam (com o
+ * motivo) e baixar o relatório. Lote sem notícia há 2 h aparece interrompido.
+ */
+function EnviosAnteriores({ companyId }: { companyId: string }) {
+  type Lote = { id: string; folder_name: string | null; total: number; ok: number; n_falhas: number; started_at: string; situacao: "concluido" | "interrompido" | "em_andamento" };
+  const [lotes, setLotes] = useState<Lote[] | null>(null);
+  const [aberto, setAberto] = useState(false);
+  useEffect(() => {
+    if (!aberto) return;
+    api.get<Lote[]>("/upload-batches", { params: { company_id: companyId } }).then((r) => setLotes(r.data ?? [])).catch(() => setLotes([]));
+  }, [aberto, companyId]);
+  async function baixar(id: string) {
+    const r = await api.get(`/upload-batches/${id}/relatorio`, { responseType: "blob" });
+    const url = URL.createObjectURL(r.data as Blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "relatorio-do-envio.csv"; a.click();
+    URL.revokeObjectURL(url);
+  }
+  return (
+    <section aria-labelledby="ct-envios" className="border-t border-(--border-default)">
+      <button id="ct-envios" type="button" aria-expanded={aberto} onClick={() => setAberto((v) => !v)}
+        className="w-full flex items-center gap-1.5 px-4 py-2.5 text-mac-caption font-semibold text-(--text-primary) hover:bg-(--bg-hover)">
+        <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-fast ${aberto ? "rotate-90" : ""}`} aria-hidden="true" /> Envios anteriores
+      </button>
+      {aberto && (lotes === null ? <div className="mx-4 mb-3 h-10 rounded-(--radius-control) bg-(--bg-hover) animate-pulse" /> : lotes.length === 0 ? (
+        <p className="px-4 pb-3 text-mac-caption text-(--text-secondary)">Nenhum envio de vários arquivos ainda.</p>
+      ) : (
+        <ul className="divide-y divide-(--border-default)">
+          {lotes.map((l) => (
+            <li key={l.id} className="flex items-center gap-3 px-4 py-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-mac-body text-(--text-primary) truncate">{l.folder_name ?? "Envio"} · {l.ok} de {l.total}</p>
+                <p className={`text-mac-caption ${l.n_falhas || l.situacao === "interrompido" ? "text-(--text-warning)" : "text-(--text-secondary)"}`}>
+                  {relativeDate(l.started_at)} · {l.situacao === "interrompido" ? "interrompido (a aba fechou no meio)" : l.situacao === "em_andamento" ? "em andamento" : l.n_falhas ? `${l.n_falhas} com problema` : "tudo entrou"}
+                </p>
+              </div>
+              <button type="button" onClick={() => baixar(l.id)} className="shrink-0 text-mac-caption font-medium text-(--text-accent) hover:underline min-h-6 pointer-coarse:min-h-11">Relatório</button>
+            </li>
+          ))}
+        </ul>
+      ))}
+    </section>
+  );
+}
 import { useCompany } from "@/lib/CompanyContext";
 import api from "@/lib/api";
 import { relativeDate, fullDate } from "@/lib/date";
@@ -72,6 +119,16 @@ function TaskRow({ task, onRemove, onRetry, onCancel, onPause }: { task: Task; o
         )}
         {task.status === "failed" && task.error && (
           <p className={`text-mac-caption mt-0.5 ${task.paused ? "text-(--text-secondary)" : "text-(--text-danger)"}`}>{task.error}</p>
+        )}
+        {task.aviso && (
+          <div className="mt-1 space-y-1">
+            <p className="text-mac-caption text-(--text-warning)">{task.aviso.texto}</p>
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              {task.aviso.acoes.map((a) => (
+                <button key={a.label} type="button" onClick={() => a.run()} className="text-mac-caption font-medium text-(--text-accent) hover:underline min-h-6 pointer-coarse:min-h-11">{a.label}</button>
+              ))}
+            </div>
+          </div>
         )}
       </div>
       <div className="flex items-center gap-0.5 shrink-0">
@@ -295,6 +352,8 @@ export default function TaskCenter() {
                 </ul>
               </section>
             )}
+
+            {current && <EnviosAnteriores companyId={current.id} />}
 
             <section aria-labelledby="ct-caixa">
               <div className="sticky top-0 z-[1] glass-dialog flex items-center justify-between px-4 py-2.5 border-y border-(--border-default) -mt-px">

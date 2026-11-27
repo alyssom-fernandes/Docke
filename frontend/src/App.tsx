@@ -50,12 +50,52 @@ function isAppRoute(pathname: string) {
 }
 
 // Esqueleto de página no lugar do spinner solto (A1-35).
+// Esqueleto com a forma da tela que vai abrir (B4.6.3, A2-41): lista,
+// ajustes ou painel, para a página não pular quando o conteúdo chega.
+const sk = "rounded-(--radius-control) bg-(--bg-hover) animate-pulse";
 function PageFallback() {
+  const path = typeof window !== "undefined" ? window.location.pathname : "";
+  const linhas = (n: number, h = "h-12") => (
+    <div className="glass-panel rounded-(--radius-panel) divide-y divide-(--border-default) overflow-hidden">
+      {Array.from({ length: n }).map((_, i) => (
+        <div key={i} className={`flex items-center gap-3 px-4 ${h}`}>
+          <div className={`w-8 h-8 shrink-0 ${sk}`} />
+          <div className="flex-1 space-y-1.5"><div className={`h-3.5 ${sk}`} style={{ width: `${55 - (i % 3) * 12}%` }} /><div className={`h-3 w-1/3 ${sk}`} /></div>
+        </div>
+      ))}
+    </div>
+  );
+  if (path.startsWith("/documents")) {
+    return (
+      <div className="space-y-3 w-full" role="status" aria-label="Carregando">
+        <div className="flex items-center gap-2"><div className={`h-8 w-40 ${sk}`} /><div className="flex-1" /><div className={`h-8 w-24 ${sk}`} /><div className={`h-8 w-8 ${sk}`} /></div>
+        <div className={`h-9 ${sk}`} />
+        {linhas(10, "h-12")}
+      </div>
+    );
+  }
+  if (path.startsWith("/settings")) {
+    return (
+      <div className="flex gap-6 w-full max-w-[1100px] mx-auto" role="status" aria-label="Carregando">
+        <div className="hidden md:block w-56 shrink-0 space-y-2">{Array.from({ length: 9 }).map((_, i) => <div key={i} className={`h-7 ${sk}`} />)}</div>
+        <div className="flex-1 space-y-4"><div className={`h-7 w-48 ${sk}`} /><div className={`h-40 rounded-(--radius-panel) ${sk}`} /><div className={`h-40 rounded-(--radius-panel) ${sk}`} /></div>
+      </div>
+    );
+  }
+  if (["/search", "/activity", "/shares", "/favorites", "/trash"].some((p) => path.startsWith(p))) {
+    return (
+      <div className="space-y-4 max-w-[1100px] w-full mx-auto" role="status" aria-label="Carregando">
+        <div className={`h-7 w-48 ${sk}`} />
+        <div className={`h-9 ${sk}`} />
+        {linhas(8, "h-14")}
+      </div>
+    );
+  }
   return (
     <div className="space-y-4 max-w-[1100px] w-full mx-auto" role="status" aria-label="Carregando">
-      <div className="h-7 w-48 rounded-(--radius-control) bg-(--bg-hover) animate-pulse" />
-      <div className="h-4 w-72 max-w-full rounded-(--radius-control) bg-(--bg-hover) animate-pulse" />
-      <div className="grid gap-3 sm:grid-cols-3">{[0, 1, 2].map((i) => <div key={i} className="h-24 rounded-(--radius-panel) bg-(--bg-hover) animate-pulse" />)}</div>
+      <div className={`h-7 w-48 ${sk}`} />
+      <div className={`h-4 w-72 max-w-full ${sk}`} />
+      <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">{[0, 1, 2, 3].map((i) => <div key={i} className="min-h-[68px] sm:min-h-[96px] rounded-(--radius-panel) bg-(--bg-hover) animate-pulse" />)}</div>
       <div className="h-64 rounded-(--radius-panel) bg-(--bg-hover) animate-pulse" />
     </div>
   );
@@ -64,8 +104,14 @@ function PageFallback() {
 /** Carregando uma página pública: o papel de parede já aparece, sem o esqueleto do app. */
 function PublicFallback() {
   return (
-    <div className="wallpaper-screen relative isolate min-h-dvh" role="status" aria-label="Carregando">
+    <div className="wallpaper-screen relative isolate min-h-dvh flex items-center justify-center p-4" role="status" aria-label="Carregando">
       <Wallpaper fixed />
+      <div className="glass-panel w-full max-w-[440px] rounded-(--radius-panel) p-6 space-y-3">
+        <div className={`h-12 w-12 mx-auto ${sk}`} />
+        <div className={`h-4 w-2/3 mx-auto ${sk}`} />
+        <div className={`h-3 w-1/2 mx-auto ${sk}`} />
+        <div className={`h-10 mt-4 ${sk}`} />
+      </div>
     </div>
   );
 }
