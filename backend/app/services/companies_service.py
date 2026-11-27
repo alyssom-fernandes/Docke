@@ -278,7 +278,7 @@ class CompaniesService:
         )
 
     @staticmethod
-    async def stats_context(conn: asyncpg.Connection, company_id: UUID) -> dict[str, int]:
+    async def stats_context(conn: asyncpg.Connection, company_id: UUID, folder_path: str | None = None) -> dict[str, int]:
         """
         Contexto dos contadores, ao vivo e pela conexão do usuário (RLS):
         envios desde a meia-noite de Brasília (não "últimas 24 h", achado
@@ -289,14 +289,16 @@ class CompaniesService:
             SELECT
               (SELECT count(*) FROM public.documents d
                 WHERE d.company_id = $1 AND d.deleted_at IS NULL
+                  AND ($2::ltree IS NULL OR EXISTS (SELECT 1 FROM public.folders f WHERE f.id = d.folder_id AND f.path <@ $2::ltree))
                   AND d.created_at >= (date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo')
                                        AT TIME ZONE 'America/Sao_Paulo')) AS documents_today,
               (SELECT count(*) FROM public.documents d
                 WHERE d.company_id = $1 AND d.deleted_at IS NULL
+                  AND ($2::ltree IS NULL OR EXISTS (SELECT 1 FROM public.folders f WHERE f.id = d.folder_id AND f.path <@ $2::ltree))
                   AND d.created_at >= now() - interval '14 days'
                   AND d.created_at <  now() - interval '7 days') AS previous_uploads
             """,
-            company_id,
+            company_id, folder_path,
         )
         return {k: int(v or 0) for k, v in dict(row).items()}
 
