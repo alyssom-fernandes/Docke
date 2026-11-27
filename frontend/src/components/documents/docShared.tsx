@@ -33,7 +33,8 @@ export interface Document {
 
 // Metadados personalizados (ADENDO-08) — campo resolvido pra pasta atual
 // (já com herança/override aplicados pelo backend) e valor preenchido por documento.
-export type CustomFieldType = "texto" | "cpf" | "cnpj" | "data" | "competencia" | "numero" | "selecao" | "moeda" | "email" | "telefone" | "cep" | "booleano";
+export type CustomFieldType = "texto" | "cpf" | "cnpj" | "data" | "competencia" | "numero" | "selecao" | "moeda" | "email" | "telefone" | "cep" | "booleano"
+  | "texto_longo" | "data_hora" | "multipla" | "url";
 
 export interface ResolvedField {
   custom_field_id: string;

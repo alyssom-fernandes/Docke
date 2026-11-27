@@ -227,6 +227,43 @@ export function MetadataSection({ doc, companyId, canEdit, onSaved }: { doc: Doc
                 ariaLabel={f.label}
                 options={fieldOptions(f.type, f.format_config?.options).map((o) => ({ value: o, label: o }))}
               />
+            ) : f.type === "multipla" ? (
+              // Múltipla escolha (B1.3.2): botões que ligam e desligam cada opção.
+              <div id={fid} role="group" aria-label={f.label} className="flex flex-wrap gap-1.5">
+                {fieldOptions("selecao", f.format_config?.options).map((o) => {
+                  const atuais = (values[f.custom_field_id] ?? "").split(";").map((x) => x.trim()).filter(Boolean);
+                  const on = atuais.includes(o);
+                  return (
+                    <button key={o} type="button" aria-pressed={on} disabled={!canEdit}
+                      onClick={() => {
+                        const prox = on ? atuais.filter((x) => x !== o) : [...atuais, o];
+                        const v = prox.join("; ");
+                        setValues((st) => ({ ...st, [f.custom_field_id]: v }));
+                        saveField(f, v);
+                      }}
+                      className={`px-2.5 h-7 pointer-coarse:h-10 rounded-full text-mac-caption font-medium border transition-colors duration-fast disabled:opacity-(--opacity-disabled) ${on ? "bg-(--accent) text-white border-(--accent)" : "border-(--border-control) text-(--text-primary) hover:bg-(--bg-hover)"}`}>
+                      {o}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : f.type === "texto_longo" ? (
+              <textarea
+                id={fid}
+                rows={3}
+                maxLength={2000}
+                value={values[f.custom_field_id] ?? ""}
+                readOnly={!canEdit}
+                aria-invalid={err ? true : undefined}
+                aria-describedby={err ? `${fid}-erro` : undefined}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setValues((st) => ({ ...st, [f.custom_field_id]: v }));
+                  setFieldStatus((st) => ({ ...st, [f.custom_field_id]: "idle" }));
+                }}
+                onBlur={(e) => saveField(f, e.target.value)}
+                className={`w-full px-3 py-2 text-mac-body pointer-coarse:text-[16px] bg-(--bg-card) border rounded-(--radius-control) text-(--text-primary) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring) read-only:bg-(--bg-hover) ${err ? "border-red-500" : "border-(--border-control)"}`}
+              />
             ) : (
               <input
                 id={fid}
