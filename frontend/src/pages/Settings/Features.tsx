@@ -98,6 +98,8 @@ export default function Features() {
   const [busy, setBusy] = useState<FeatureKey | null>(null);
   const [confirm, setConfirm] = useState<Recurso | null>(null);
   const [pol, setPol] = useState<{ require_password: boolean; max_days: number | null } | null>(null);
+  // B4.2.7: motivo opcional, enviado junto com cada mudança e guardado na trilha.
+  const [motivo, setMotivo] = useState("");
   const canEdit = user?.role === "supremo" || current?.permission_level === "admin";
 
   // Recursos frescos do servidor (outra pessoa pode ter mudado desde o login).
@@ -114,7 +116,7 @@ export default function Features() {
     const antes = recursos;
     setFeatures(current.id, { ...recursos, [item.key]: ligado } as FeatureMap);
     try {
-      const r = await api.put(`/companies/${current.id}/features`, { features: { [item.key]: ligado } });
+      const r = await api.put(`/companies/${current.id}/features`, { features: { [item.key]: ligado }, motivo: motivo.trim() || null });
       setFeatures(current.id, { ...DEFAULT_FEATURES, ...r.data.features });
       success(`${item.title}: ${ligado ? "ligado" : "desligado"}.`);
     } catch (e) {
@@ -130,7 +132,7 @@ export default function Features() {
     const antes = pol;
     setPol(next);
     try {
-      await api.put(`/companies/${current.id}/share-policy`, next);
+      await api.put(`/companies/${current.id}/share-policy`, { ...next, motivo: motivo.trim() || null });
       success("Regras dos links salvas.");
     } catch (e) {
       setPol(antes);
@@ -146,6 +148,15 @@ export default function Features() {
         Ligue só o que {current.name} usa. Desligar esconde o recurso de todos e não apaga nada: ao ligar de novo, tudo volta como estava.
         {!canEdit && " Só quem administra a empresa muda estes ajustes."}
       </p>
+      {canEdit && (
+        <div>
+          <label htmlFor="rec-motivo" className="block text-[12px] font-medium text-(--text-secondary) mb-1">Motivo da mudança (opcional)</label>
+          <input id="rec-motivo" value={motivo} onChange={(e) => setMotivo(e.target.value)} maxLength={300}
+            placeholder="Ex.: a empresa não usa links públicos; pedido da diretoria"
+            className="mac-field w-full max-w-[520px] h-8 pointer-coarse:h-11 px-2.5 text-[13px] text-(--text-primary)" />
+          <p className="mt-1 text-[12px] text-(--text-secondary)">Vai para a Atividade junto com o que você ligar ou desligar.</p>
+        </div>
+      )}
 
       {GRUPOS.map((g) => (
         <section key={g.title} aria-labelledby={`rec-${g.title}`}>

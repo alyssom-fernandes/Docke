@@ -108,6 +108,45 @@ async def sensitive_folders(
     return [dict(r) for r in rows]
 
 
+@router.get("/companies/{company_id}/privacy/suggestions")
+async def detect_personal_data(
+    company_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """
+    B3.7.1: sugere classificar as pastas ainda "normais" onde o texto lido dos
+    documentos tem CPF ou termos de saúde ocupacional (ASO, atestado, CID,
+    exame admissional/periódico/demissional). Só sugere: quem decide é a
+    pessoa, no menu da pasta. RLS limita ao que ela vê.
+    """
+    rows = await conn.fetch(
+        r"""
+        WITH achados AS (
+          SELECT d.folder_id,
+                 (d.ocr_text ~ '\m\d{3}\.\d{3}\.\d{3}-\d{2}\M' OR d.name ~* '\mcpf\M') AS cpf,
+                 (d.ocr_text ~* '\m(atestado|aso|cid[- ]?10|prontu[aá]rio|exame (admissional|peri[oó]dico|demissional)|pcmso)\M'
+                  OR d.name ~* '\m(aso|atestado|exame)\M') AS saude
+          FROM public.documents d
+          WHERE d.company_id = $1 AND d.deleted_at IS NULL AND d.content_hash IS NOT NULL
+        )
+        SELECT f.id::text, f.name,
+               (SELECT string_agg(anc.name, ' / ' ORDER BY nlevel(anc.path)) FROM public.folders anc
+                 WHERE anc.company_id = f.company_id AND anc.path @> f.path) AS caminho,
+               count(*) FILTER (WHERE a.cpf) AS com_cpf,
+               count(*) FILTER (WHERE a.saude) AS com_saude
+        FROM achados a
+        JOIN public.folders f ON f.id = a.folder_id
+        WHERE (a.cpf OR a.saude)
+          AND public.folder_effective_sensitivity(f.id) = 'normal'
+        GROUP BY f.id, f.name, f.company_id, f.path
+        ORDER BY count(*) FILTER (WHERE a.saude) DESC, count(*) DESC
+        LIMIT 30
+        """,
+        company_id,
+    )
+    return [{**dict(r), "sugestao": "sensivel" if r["com_saude"] else "pessoal"} for r in rows]
+
+
 @router.get("/companies/{company_id}/privacy/titular")
 async def titular_search(
     company_id: UUID,
