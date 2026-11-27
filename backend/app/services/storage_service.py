@@ -320,6 +320,23 @@ def is_mock() -> bool:
     return not _r2_configured
 
 
+def list_objects(prefix: str):
+    """
+    Lista (chave, data da última alteração em UTC) de todos os objetos sob o
+    prefixo, página por página. Uso interno da manutenção (varredura de órfãos).
+    """
+    if _r2_configured:
+        paginator = _s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=settings.R2_BUCKET_NAME, Prefix=prefix):
+            for obj in page.get("Contents", []) or []:
+                yield obj["Key"], obj["LastModified"]
+        return
+    mock_prefix = prefix.replace("/", "__")
+    for f in MOCK_DIR.iterdir():
+        if f.is_file() and f.name.startswith(mock_prefix):
+            yield f.name.replace("__", "/"), datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc)
+
+
 # ---------------------------------------------------------------------------
 # Fase 12.1 — pipeline de derivados: DOCX/XLSX (e variantes .doc/.xls) não têm
 # preview nativo no navegador, então convertemos pra PDF uma vez (via
