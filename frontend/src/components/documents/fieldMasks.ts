@@ -3,7 +3,8 @@
  * A5-11): CPF e CNPJ com dígito verificador, data e competência válidas.
  * A mesma regra continua no backend; aqui o erro aparece antes de salvar.
  */
-export type FieldType = "texto" | "cpf" | "cnpj" | "data" | "competencia" | "numero" | "selecao" | "moeda" | "email" | "telefone" | "cep" | "booleano";
+export type FieldType = "texto" | "cpf" | "cnpj" | "data" | "competencia" | "numero" | "selecao" | "moeda" | "email" | "telefone" | "cep" | "booleano"
+  | "texto_longo" | "data_hora" | "multipla" | "url";
 
 /** Opções fixas de quem escolhe numa lista (seleção e sim/não). */
 export function fieldOptions(type: string, options?: unknown): string[] {
@@ -35,6 +36,8 @@ export function maskValue(type: FieldType, raw: string): string {
     }
     case "cep":
       return d.slice(0, 8).replace(/^(\d{5})(\d)/, "$1-$2");
+    case "data_hora":
+      return d.slice(0, 12).replace(/(\d{2})(\d)/, "$1/$2").replace(/(\d{2})\/(\d{2})(\d)/, "$1/$2/$3").replace(/(\d{4})(\d{2})(\d)/, "$1 $2:$3");
     default:
       return raw;
   }
@@ -94,6 +97,15 @@ export function validateValue(type: FieldType, value: string): string | null {
       return [10, 11].includes(digits(v).length) ? null : "Telefone com DDD: (11) 98765-4321.";
     case "cep":
       return digits(v).length === 8 ? null : "CEP tem 8 dígitos.";
+    case "data_hora": {
+      const m = v.match(/^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})$/);
+      if (!m) return "Use dd/mm/aaaa hh:mm.";
+      return Number(m[4]) < 24 && Number(m[5]) < 60 ? null : "Hora inválida.";
+    }
+    case "url":
+      return /^(https?:\/\/)?[^\s/$.?#][^\s]*\.[^\s]+$/i.test(v) ? null : "Endereço inválido: use site.com.br/página.";
+    case "texto_longo":
+      return v.length <= 2000 ? null : "Até 2.000 caracteres.";
     default:
       return null;
   }
@@ -102,8 +114,10 @@ export function validateValue(type: FieldType, value: string): string | null {
 export const PLACEHOLDER: Record<FieldType, string> = {
   texto: "", cpf: "000.000.000-00", cnpj: "00.000.000/0000-00", data: "dd/mm/aaaa", competencia: "mm/aaaa", numero: "0", selecao: "",
   moeda: "R$ 0,00", email: "nome@empresa.com.br", telefone: "(11) 98765-4321", cep: "00000-000", booleano: "",
+  texto_longo: "", data_hora: "dd/mm/aaaa hh:mm", multipla: "", url: "https://",
 };
 
 export const INPUT_MODE: Partial<Record<FieldType, "numeric" | "decimal">> = {
   cpf: "numeric", cnpj: "numeric", data: "numeric", competencia: "numeric", numero: "decimal", moeda: "decimal", telefone: "numeric", cep: "numeric",
+  data_hora: "numeric",
 };

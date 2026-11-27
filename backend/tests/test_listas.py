@@ -238,3 +238,51 @@ async def test_busca_por_competencia_e_filtros_de_texto_e_metadado(api, admin, e
     assert [x["id"] for x in r.json()["results"]] == [a]
     await admin.execute("DELETE FROM public.document_field_value WHERE custom_field_id = $1", campo)
     await admin.execute("DELETE FROM public.custom_field WHERE id = $1", campo)
+
+
+@pytest.mark.asyncio
+async def test_valor_vazio_apaga_o_metadado(api, admin, empresa):  # noqa: F811
+    """B1.3.7: o desfazer do lote volta ao vazio; apagar fica na trilha."""
+    h, co = _token(empresa["user"]), empresa["co"]
+    doc = await _doc(admin, empresa, empresa["raiz"], "Recibo banco.pdf", "recibo")
+    campo = await admin.fetchval(
+        "INSERT INTO public.custom_field (company_id, label, field_key, type) VALUES ($1, 'Banco', 'banco_apagar', 'texto') RETURNING id", uuid.UUID(co))
+    url = API + f"/documents/{doc}/field-values"
+    assert (await api.put(url, json=[{"custom_field_id": str(campo), "value": "Itaú"}], params={"company_id": co}, headers=h)).status_code == 200
+    r = await api.put(url, json=[{"custom_field_id": str(campo), "value": ""}], params={"company_id": co}, headers=h)
+    assert r.status_code == 200, r.text
+    assert await admin.fetchval("SELECT count(*) FROM public.document_field_value WHERE custom_field_id = $1", campo) == 0
+    ev = await admin.fetchval(
+        "SELECT metadata->>'old_value' FROM public.activity_log WHERE item_id = $1 AND action = 'update_metadata' AND metadata->>'new_value' IS NULL",
+        uuid.UUID(doc))
+    assert ev == "Itaú"
+    await admin.execute("DELETE FROM public.custom_field WHERE id = $1", campo)
+
+
+@pytest.mark.asyncio
+async def test_tipos_de_campo_extras(api, admin, empresa):  # noqa: F811
+    """B1.3.2: texto longo, data e hora, múltipla escolha e URL."""
+    h, co = _token(empresa["user"]), empresa["co"]
+    doc = await _doc(admin, empresa, empresa["raiz"], "Contrato extras.pdf", "contrato")
+    ids = {}
+    for tipo, cfg in (("url", {}), ("data_hora", {}), ("multipla", {"options": ["Itaú", "Caixa", "Bradesco"]}), ("texto_longo", {})):
+        r = await api.post(API + "/custom-fields", json={"company_id": co, "label": f"Campo {tipo}", "type": tipo, "format_config": cfg}, headers=h)
+        assert r.status_code in (200, 201), r.text
+        ids[tipo] = r.json()["id"]
+    url = API + f"/documents/{doc}/field-values"
+    r = await api.put(url, params={"company_id": co}, headers=h, json=[
+        {"custom_field_id": ids["url"], "value": "docke.com.br/contrato"},
+        {"custom_field_id": ids["data_hora"], "value": "05/03/2026 14:30"},
+        {"custom_field_id": ids["multipla"], "value": "Caixa; Itaú"},
+        {"custom_field_id": ids["texto_longo"], "value": "Observação longa\ncom duas linhas"},
+    ])
+    assert r.status_code == 200, r.text
+    vals = {x["custom_field_id"]: x["value_text"] for x in (await api.get(url, headers=h)).json()}
+    assert vals[ids["url"]] == "https://docke.com.br/contrato"
+    assert vals[ids["multipla"]] == "Itaú; Caixa"
+    r = await api.put(url, params={"company_id": co}, headers=h, json=[{"custom_field_id": ids["multipla"], "value": "Nubank"}])
+    assert r.status_code == 400
+    await admin.execute("DELETE FROM public.document_field_value WHERE document_id = $1", uuid.UUID(doc))
+    await admin.execute("DELETE FROM public.activity_log WHERE company_id = $1", uuid.UUID(co))
+    for i in ids.values():
+        await admin.execute("DELETE FROM public.custom_field WHERE id = $1", uuid.UUID(i))

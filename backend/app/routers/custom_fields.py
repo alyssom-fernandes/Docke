@@ -98,9 +98,18 @@ def _value_error(field: Any, raw: str) -> str | None:
             Decimal(v.replace(".", "").replace(",", ".") if "," in v else v)
         except InvalidOperation:
             return "Número inválido."
-    if t in ("moeda", "email", "telefone", "cep", "booleano"):
+    if t in _EXTRAS:
         try:
             _normalize_extra(t, v)
+        except ValueError as exc:
+            return str(exc)
+    if t == "multipla":
+        cfg = field["format_config"]
+        if isinstance(cfg, str):
+            import json as _json
+            cfg = _json.loads(cfg or "{}")
+        try:
+            _multipla(v, (cfg or {}).get("options", []))
         except ValueError as exc:
             return str(exc)
     if t == "selecao":
@@ -111,6 +120,20 @@ def _value_error(field: Any, raw: str) -> str | None:
         if v not in (cfg or {}).get("options", []):
             return "O valor padrão precisa ser uma das opções do campo."
     return None
+
+
+# Tipos validados por _normalize_extra (B1.3.2).
+_EXTRAS = ("moeda", "email", "telefone", "cep", "booleano", "texto_longo", "data_hora", "url")
+
+
+def _multipla(v: str, options: list[str]) -> str:
+    """Múltipla escolha: "A; B" com cada item entre as opções, na ordem das opções."""
+    escolhidas = [x.strip() for x in re.split(r"[;\n]", v) if x.strip()]
+    fora = [x for x in escolhidas if options and x not in options]
+    if fora:
+        raise ValueError(f"Fora das opções: {', '.join(fora)}")
+    ordem = [o for o in options if o in escolhidas] if options else escolhidas
+    return "; ".join(dict.fromkeys(ordem))
 
 
 def _normalize_extra(t: str, v: str):
@@ -150,6 +173,23 @@ def _normalize_extra(t: str, v: str):
         if len(d) != 8:
             raise ValueError("CEP inválido: são 8 dígitos.")
         return f"{d[:5]}-{d[5:]}", None
+    if t == "texto_longo":
+        if len(v) > 2000:
+            raise ValueError("Texto longo tem até 2.000 caracteres.")
+        return v, None
+    if t == "url":
+        u = v if re.match(r"^https?://", v, re.I) else f"https://{v}"
+        if not re.fullmatch(r"https?://[^\s/$.?#][^\s]*\.[^\s]+", u, re.I):
+            raise ValueError("Endereço inválido: use algo como https://site.com.br/página.")
+        return u, None
+    if t == "data_hora":
+        import datetime as _dth
+        for fmt in ("%d/%m/%Y %H:%M", "%d/%m/%Y %Hh%M", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M"):
+            try:
+                return _dth.datetime.strptime(v, fmt).strftime("%d/%m/%Y %H:%M"), None
+            except ValueError:
+                continue
+        raise ValueError("Data e hora inválidas: use dd/mm/aaaa hh:mm.")
     if t == "booleano":
         low = v.lower()
         if low in ("sim", "s", "true", "1", "yes"):
@@ -666,6 +706,25 @@ async def set_document_field_values(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campo não encontrado.")
 
         value_text = item.value.strip()
+        if not value_text:
+            # Valor vazio apaga o preenchimento (B1.3.7: o desfazer do lote
+            # volta o documento ao vazio que era). Fica na trilha.
+            old_value = await conn.fetchval(
+                "DELETE FROM public.document_field_value WHERE document_id = $1 AND custom_field_id = $2 RETURNING value_text",
+                document_id, item.custom_field_id,
+            )
+            if old_value is not None:
+                await conn.execute(
+                    """
+                    INSERT INTO public.activity_log
+                      (user_id, company_id, action, item_type, item_id, item_name_snapshot, event_category, metadata)
+                    VALUES ($1::uuid, $2::uuid, 'update_metadata', 'document', $3::uuid, $4, 'metadata', $5::jsonb)
+                    """,
+                    user_id, str(company_id), str(document_id), doc["name"],
+                    json.dumps({"field_label": field["label"], "custom_field_id": str(item.custom_field_id), "old_value": old_value, "new_value": None}),
+                )
+            results.append({"custom_field_id": str(item.custom_field_id), "value_text": None, "cleared": True})
+            continue
         value_date = None
         value_number = None
         # CustomFieldsService.get_fields_bulk já decodifica format_config pra
@@ -721,7 +780,12 @@ async def set_document_field_values(
             options = format_config.get("options", [])
             if options and value_text not in options:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Valor fora das opções permitidas em '{field['label']}'.")
-        elif field["type"] in ("moeda", "email", "telefone", "cep", "booleano") and value_text:
+        elif field["type"] == "multipla":
+            try:
+                value_text = _multipla(value_text, format_config.get("options", []))
+            except ValueError as exc:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{exc} ({field['label']})")
+        elif field["type"] in _EXTRAS and value_text:
             try:
                 value_text, value_number = _normalize_extra(field["type"], value_text)
             except ValueError as exc:
@@ -807,7 +871,9 @@ def _normalizar(tipo: str, cfg: dict[str, Any], bruto: str):
         if v not in cfg.get("options", []):
             raise ValueError("fora das opções")
         return v, None, None
-    if tipo in ("moeda", "email", "telefone", "cep", "booleano"):
+    if tipo == "multipla":
+        return _multipla(v, cfg.get("options", [])), None, None
+    if tipo in _EXTRAS:
         texto, numero = _normalize_extra(tipo, v)
         return texto, None, numero
     raise ValueError("tipo desconhecido")
@@ -854,7 +920,7 @@ async def change_field_type(
     if isinstance(cfg_antigo, str):
         cfg_antigo = _json.loads(cfg_antigo or "{}")
     cfg_novo: dict[str, Any] = {}
-    if body.new_type == "selecao":
+    if body.new_type in ("selecao", "multipla"):
         opcoes = sorted({(v["value_text"] or "").strip() for v in valores if (v["value_text"] or "").strip()})[:100]
         cfg_novo = {"options": opcoes}
     elif body.new_type == "numero" and "decimals" in cfg_antigo:

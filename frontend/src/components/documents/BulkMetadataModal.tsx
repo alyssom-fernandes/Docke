@@ -14,6 +14,7 @@ import {
   type FieldType,
 } from "@/components/documents/fieldMasks";
 import { friendlyError } from "@/lib/errors";
+import { useUndo } from "@/lib/undo";
 import { type ResolvedField, plural } from "@/components/documents/docShared";
 
 // Fase 8.2: edição de metadados em lote — abre a partir da barra de seleção
@@ -28,11 +29,25 @@ export function BulkMetadataModal({
   documentIds: string[]; fields: ResolvedField[]; fieldValues: Record<string, Record<string, string>>;
   companyId: string; onClose: () => void; onSaved: (applied: Record<string, string>) => void;
 }) {
-  const { success, error: showError } = useToast();
+  const { error: showError } = useToast();
+  const { offer: offerUndo } = useUndo();
   const [edited, setEdited] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const uid = useId();
+
+  // Prévia de impacto (B1.3.7): quantos documentos mudam em cada campo editado.
+  const impacto = Object.entries(edited).filter(([, v]) => v.trim()).map(([fid, v]) => {
+    const novo = v.trim();
+    const f = fields.find((x) => x.custom_field_id === fid);
+    let muda = 0, vazios = 0, iguais = 0;
+    for (const id of documentIds) {
+      const atual = fieldValues[id]?.[fid] ?? "";
+      if (atual === novo) iguais++;
+      else { muda++; if (!atual) vazios++; }
+    }
+    return { label: f?.label ?? "Campo", muda, vazios, iguais };
+  });
 
   function summary(fieldId: string): { varies: boolean; common: string } {
     const distinct = new Set(documentIds.map((id) => fieldValues[id]?.[fieldId] ?? "").filter((v) => v !== ""));
@@ -51,14 +66,25 @@ export function BulkMetadataModal({
       if (e) errs[fid] = e;
     }
     setErrors(errs);
-    if (Object.keys(errs).length) return;
+    if (Object.keys(errs).length) {
+      // Foco no primeiro campo com erro (B1.3.3), na ordem do formulário.
+      const primeiro = fields.find((f) => errs[f.custom_field_id]);
+      if (primeiro) window.setTimeout(() => document.getElementById(`${uid}-${primeiro.custom_field_id}`)?.focus(), 0);
+      return;
+    }
     setSaving(true);
     try {
       await api.put("/documents/field-values/batch", {
         document_ids: documentIds,
         values: changed.map(([custom_field_id, value]) => ({ custom_field_id, value: value.trim() })),
       }, { params: { company_id: companyId } });
-      success(`Metadados aplicados em ${plural(documentIds.length, "documento", "documentos")}.`);
+      // Desfazer do lote (B1.3.7): cada documento volta ao valor que tinha,
+      // inclusive ao vazio (valor vazio apaga o preenchimento).
+      const antes = documentIds.map((id) => ({ id, valores: changed.map(([fid]) => ({ custom_field_id: fid, value: fieldValues[id]?.[fid] ?? "" })) }));
+      offerUndo(`Metadados aplicados em ${plural(documentIds.length, "documento", "documentos")}.`, `editar metadados de ${plural(documentIds.length, "documento", "documentos")}`, async () => {
+        // A lista recarrega com o evento "docke:desfeito" do desfazer.
+        for (const d of antes) await api.put(`/documents/${d.id}/field-values`, d.valores, { params: { company_id: companyId } });
+      });
       onSaved(Object.fromEntries(changed.map(([k, v]) => [k, v.trim()])));
       onClose();
     } catch (e: any) {
@@ -84,6 +110,19 @@ export function BulkMetadataModal({
         </>
       }
     >
+      {impacto.length > 0 && (
+        <div role="status" aria-live="polite" className="mb-4 rounded-(--radius-control) bg-(--tint-accent) px-3 py-2 text-mac-caption text-(--text-primary) space-y-0.5">
+          <p className="font-medium">O que vai mudar</p>
+          {impacto.map((i) => (
+            <p key={i.label}>
+              {i.label}: {i.muda ? `${plural(i.muda, "documento muda", "documentos mudam")}` : "nenhum documento muda"}
+              {i.vazios ? ` (${plural(i.vazios, "estava vazio", "estavam vazios")})` : ""}
+              {i.iguais ? `; ${plural(i.iguais, "já tem", "já têm")} esse valor` : ""}.
+            </p>
+          ))}
+          <p className="text-(--text-secondary)">Dá para desfazer logo depois, no aviso ou com Ctrl+Z.</p>
+        </div>
+      )}
       {fields.length === 0 ? (
         <p className="text-mac-body text-(--text-secondary)">Esta pasta não tem campos de metadados. Crie em Ajustes → Metadados.</p>
       ) : (

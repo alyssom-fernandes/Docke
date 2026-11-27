@@ -17,7 +17,8 @@ import Dropdown from "@/components/ui/Dropdown";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type FieldType = "texto" | "cpf" | "cnpj" | "data" | "competencia" | "numero" | "selecao" | "moeda" | "email" | "telefone" | "cep" | "booleano";
+type FieldType = "texto" | "cpf" | "cnpj" | "data" | "competencia" | "numero" | "selecao" | "moeda" | "email" | "telefone" | "cep" | "booleano"
+  | "texto_longo" | "data_hora" | "multipla" | "url";
 
 interface CustomField {
   id: string;
@@ -73,6 +74,10 @@ const TYPE_LABEL: Record<FieldType, string> = {
   email: "E-mail",
   telefone: "Telefone",
   cep: "CEP",
+  texto_longo: "Texto longo (observações)",
+  data_hora: "Data e hora",
+  multipla: "Múltipla escolha",
+  url: "Endereço de site (URL)",
 };
 
 function folderDepth(path: string) {
@@ -106,7 +111,7 @@ function NewFieldModal({ companyId, existingFields, onClose, onCreated }: {
     try {
       const format_config: Record<string, unknown> =
         type === "numero" ? (limitDecimals ? { decimals } : {}) :
-        type === "selecao" ? { options: [...options, ...(optionDraft.trim() ? [optionDraft.trim()] : [])] } :
+        type === "selecao" || type === "multipla" ? { options: [...options, ...(optionDraft.trim() ? [optionDraft.trim()] : [])] } :
         {};
       await api.post("/custom-fields", {
         company_id: companyId, label: label.trim(), type, format_config,
@@ -149,7 +154,7 @@ function NewFieldModal({ companyId, existingFields, onClose, onCreated }: {
             )}
           </div>
         )}
-        {type === "selecao" && (
+        {(type === "selecao" || type === "multipla") && (
           <OptionsEditor options={options} setOptions={setOptions} draft={optionDraft} setDraft={setOptionDraft} />
         )}
         {existingFields.length > 0 && (
