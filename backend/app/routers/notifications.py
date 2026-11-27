@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from app.dependencies import get_current_user, get_db, get_db_admin
 from app.services import notification_service
+from app.schemas.notification import ListaAvisos
 
 # Só os avisos de rotina podem ser silenciados (o gatilho do banco repete a
 # regra): segurança, atraso, conferência e pedidos chegam sempre.
@@ -19,7 +20,7 @@ SILENCIAVEIS = (
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
-@router.get("")
+@router.get("", response_model=ListaAvisos)
 async def list_notifications(
     unread_only: bool = Query(False),
     limit: int = Query(20, ge=1, le=100),

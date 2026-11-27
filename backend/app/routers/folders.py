@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.dependencies import get_current_user, get_db, get_db_admin
 from app.services.folders_service import FoldersService
+from app.schemas.folder import Pasta, PastaFrequente, ResumoPasta
 
 router = APIRouter(prefix="/folders", tags=["folders"])
 
@@ -51,7 +52,7 @@ class FolderCopyDocuments(BaseModel):
 # GET /folders — lista pastas de uma empresa (filtra por parent_id opcional)
 # ---------------------------------------------------------------------------
 
-@router.get("")
+@router.get("", response_model=list[Pasta])
 async def list_folders(
     company_id: UUID = Query(...),
     parent_id: UUID | None = Query(None),
@@ -71,7 +72,7 @@ async def list_folders(
 # GET /folders/frequent — pastas mais acessadas recentemente pelo usuário
 # ---------------------------------------------------------------------------
 
-@router.get("/frequent")
+@router.get("/frequent", response_model=list[PastaFrequente])
 async def frequent_folders(
     company_id: UUID = Query(...),
     limit: int = Query(5, ge=1, le=20),
@@ -186,7 +187,7 @@ async def rename_folder(
     return dict(row)
 
 
-@router.get("/{folder_id}/summary")
+@router.get("/{folder_id}/summary", response_model=ResumoPasta)
 async def folder_summary(
     folder_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),

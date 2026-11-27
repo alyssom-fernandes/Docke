@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from app.dependencies import get_app_role, get_current_user, get_db, get_db_admin
 from app.services.activity_service import ActivityService, REVERSIBLE_ACTIONS
 from app.services.companies_service import CompaniesService
+from app.schemas.activity import PaginaAtividade
 
 router = APIRouter(prefix="/activity", tags=["activity"])
 
@@ -19,7 +20,7 @@ _PAGE_SIZE_MAX = 200
 # GET /activity — lista eventos com filtros
 # ---------------------------------------------------------------------------
 
-@router.get("")
+@router.get("", response_model=PaginaAtividade)
 async def list_activity(
     company_id: UUID = Query(...),
     user_id: UUID | None = Query(None),

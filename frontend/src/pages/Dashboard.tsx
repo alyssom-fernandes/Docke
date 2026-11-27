@@ -25,6 +25,7 @@ import {
   type DailyUpload, type FolderBreakdown, type FolderCrumb,
 } from "@/components/dashboard/StatsCharts";
 import { PageHeader, ToolbarGroup, ToolbarButton } from "@/components/layout/window";
+import type { Ancorado } from "@/lib/api-types";
 
 // ─── Período do gráfico de envios (fica por empresa, entre visitas) ──────────
 
@@ -120,14 +121,8 @@ interface RecentDoc {
   opened_at?: string;
 }
 
-interface Favorite {
-  id: string;
-  item_type: "document" | "folder";
-  document_id: string | null;
-  folder_id: string | null;
-  document_folder_id: string | null;
-  item_name: string;
-}
+/** Ancorado como a API devolve (tipo gerado do contrato, X3-16). */
+type Favorite = Ancorado;
 
 const plural = (n: number, um: string, varios: string) => `${n.toLocaleString("pt-BR")} ${n === 1 ? um : varios}`;
 

@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     VAPID_PRIVATE_KEY: str = ""
     # Rastreio de erros (X3-11): DSN do projeto no Sentry (Fly secret). Vazio = desligado.
     SENTRY_DSN: str = ""
+    # Contrato da API (X3-16): com True (os testes ligam), resposta fora do modelo
+    # declarado (campo a mais ou tipo errado) é erro; em produção só vira alerta.
+    CONTRATO_ESTRITO: bool = False
     DEMO_PASSWORD: str = ""
     # A demo volta ao padrão quando a última restauração tem mais que isso
     # (conferido no banco a cada hora; ver maintenance_worker._reset_demo_data_if_due).

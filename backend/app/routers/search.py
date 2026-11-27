@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.dependencies import get_db
 from app.services.search_service import SearchService
+from app.schemas.search import RespostaBusca, ResultadoRapido
 
 router = APIRouter(prefix="/search", tags=["search"])
 
@@ -18,7 +19,7 @@ _PAGE_SIZE_MAX = 100
 # GET /search — busca full-text paginada com ts_headline para snippets
 # ---------------------------------------------------------------------------
 
-@router.get("")
+@router.get("", response_model=RespostaBusca)
 async def search(
     q: str = Query("", max_length=500),
     company_id: UUID = Query(...),
@@ -76,7 +77,7 @@ async def search(
 # GET /search/quick — busca rápida para command palette (máx 10 resultados)
 # ---------------------------------------------------------------------------
 
-@router.get("/quick")
+@router.get("/quick", response_model=list[ResultadoRapido])
 async def quick_search(
     q: str = Query(..., min_length=1, max_length=200),
     company_id: UUID = Query(...),

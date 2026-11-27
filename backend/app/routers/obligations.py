@@ -24,6 +24,7 @@ from app.services.fiscal_profile_service import VALID_FAIXAS, VALID_REGIMES, VAL
 from app.services.obligation_catalog import BY_KEY, CATALOG, SEGMENTOS, avaliar
 from app.services.obligations_service import ObligationsService, period_label
 from app.services import features_service
+from app.schemas.obligation import DocumentoDaObrigacao, Obrigacao, ObrigacaoDetalhe
 
 router = APIRouter(tags=["obligations"])
 
@@ -432,7 +433,7 @@ async def generate_now(
 # Competências
 # ---------------------------------------------------------------------------
 
-@router.get("/companies/{company_id}/obligations/instances")
+@router.get("/companies/{company_id}/obligations/instances", response_model=list[Obrigacao])
 async def list_instances(
     company_id: UUID,
     obligation_status: str | None = Query(None, alias="status"),
@@ -502,7 +503,7 @@ async def create_instance(
     return _instance_out(await ObligationsService.get_instance(conn, row["id"]))
 
 
-@router.get("/obligations/instances/{instance_id}")
+@router.get("/obligations/instances/{instance_id}", response_model=ObrigacaoDetalhe)
 async def get_instance(
     instance_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
@@ -637,7 +638,7 @@ async def instance_history(
 # Documentos comprobatórios
 # ---------------------------------------------------------------------------
 
-@router.get("/obligations/instances/{instance_id}/documents")
+@router.get("/obligations/instances/{instance_id}/documents", response_model=list[DocumentoDaObrigacao])
 async def list_instance_documents(
     instance_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
@@ -646,7 +647,7 @@ async def list_instance_documents(
     return [dict(r) for r in rows]
 
 
-@router.get("/documents/{document_id}/obligations")
+@router.get("/documents/{document_id}/obligations", response_model=list[Obrigacao])
 async def list_document_obligations(
     document_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),

@@ -11,6 +11,7 @@ from app.dependencies import get_current_user, get_db, get_db_admin
 from app.routers.shares import expire_shares_for_resource
 from app.services import storage_service
 from app.services.trash_service import TrashService
+from app.schemas.trash import Lixeira
 
 router = APIRouter(prefix="/trash", tags=["trash"])
 logger = logging.getLogger("docke.trash")
@@ -20,7 +21,7 @@ logger = logging.getLogger("docke.trash")
 # GET /trash — lista itens na lixeira (documentos e pastas deletadas)
 # ---------------------------------------------------------------------------
 
-@router.get("")
+@router.get("", response_model=Lixeira)
 async def list_trash(
     company_id: UUID = Query(...),
     admin_conn: asyncpg.Connection = Depends(get_db_admin),

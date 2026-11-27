@@ -23,6 +23,7 @@ from app.services import rate_limit, storage_service
 from app.services.notification_service import notify_share_accessed, notify_share_blocked
 from app.services.shares_service import SharesService
 from app.services import features_service
+from app.schemas.share import LinkCompartilhado
 
 
 _BRT = timezone(timedelta(hours=-3))  # datas mostradas ao destinatário no horário de Brasília
@@ -225,7 +226,7 @@ async def create_share(
 # GET /shares — lista links (próprios, ou todos se admin da empresa)
 # ---------------------------------------------------------------------------
 
-@router.get("/shares")
+@router.get("/shares", response_model=list[LinkCompartilhado])
 async def list_shares(
     response: Response,
     resource_type: str | None = Query(None),
