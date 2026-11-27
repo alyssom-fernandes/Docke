@@ -163,7 +163,7 @@ function Danfe({ fields, docName }: { fields: XmlFields; docName: string }) {
     <div>
       <div className="flex items-center justify-end mb-3 gap-2">
         <button onClick={() => printNode(ref.current)}
-          className="inline-flex items-center gap-1.5 h-8 pointer-coarse:h-11 px-3 rounded-full text-mac-body bg-teal-600 text-white hover:bg-teal-700">
+          className="inline-flex items-center gap-1.5 h-8 pointer-coarse:h-11 px-3 rounded-full text-mac-body bg-(--accent) text-white hover:bg-(--accent-hover)">
           <Printer className="w-3.5 h-3.5" aria-hidden /> Imprimir DANFE
         </button>
       </div>
@@ -559,14 +559,14 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
           <div role="alert" className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-8">
             <AlertCircle className="w-10 h-10 text-(--text-tertiary)" aria-hidden />
             <p className="text-mac-body text-(--text-secondary) max-w-sm">{error}</p>
-            <button onClick={download} className="inline-flex items-center gap-1.5 h-9 pointer-coarse:h-11 px-4 rounded-full bg-teal-600 text-white text-mac-body hover:bg-teal-700"><Download className="w-4 h-4" aria-hidden /> Baixar o arquivo</button>
+            <button onClick={download} className="inline-flex items-center gap-1.5 h-9 pointer-coarse:h-11 px-4 rounded-full bg-(--accent) text-white text-mac-body hover:bg-(--accent-hover)"><Download className="w-4 h-4" aria-hidden /> Baixar o arquivo</button>
           </div>
         )}
         {!loading && !error && type === "unsupported" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-8">
             <Icon className={`w-12 h-12 ${iconColor}`} aria-hidden />
             <p className="text-mac-body text-(--text-secondary)">Este tipo de arquivo não tem pré-visualização. Baixe para abrir no programa certo.</p>
-            <button onClick={download} className="inline-flex items-center gap-1.5 h-9 pointer-coarse:h-11 px-4 rounded-full bg-teal-600 text-white text-mac-body hover:bg-teal-700"><Download className="w-4 h-4" aria-hidden /> Baixar</button>
+            <button onClick={download} className="inline-flex items-center gap-1.5 h-9 pointer-coarse:h-11 px-4 rounded-full bg-(--accent) text-white text-mac-body hover:bg-(--accent-hover)"><Download className="w-4 h-4" aria-hidden /> Baixar</button>
           </div>
         )}
         {!loading && !error && (type === "pdf" || type === "image") && <PreviewWatermark label={watermarkLabel} />}
@@ -624,11 +624,12 @@ export default function PreviewModal({ doc: initialDoc, docs, onClose, origin = 
         {!loading && !error && type === "text" && textContent !== null && (
           <div className="w-full h-full overflow-auto">
             {isXml && xmlFields?.recognized && (
-              <div className="sticky top-0 z-10 flex items-center gap-1 bg-(--bg-card) border-b border-(--border-default) px-4 py-2" role="tablist" aria-label="Como ver a nota">
-                {([["danfe", "DANFE"], ["campos", "Campos"], ["xml", "XML"]] as const).map(([k, label]) => (
-                  <button key={k} role="tab" aria-selected={view === k} onClick={() => setView(k)}
-                    className={`h-8 pointer-coarse:h-11 px-3 rounded-full text-mac-body ${view === k ? "bg-teal-600 text-white" : "text-(--text-secondary) hover:bg-(--bg-hover)"}`}>{label}</button>
-                ))}
+              <div className="sticky top-0 z-10 flex justify-center bg-(--bg-card) border-b border-(--separator) px-4 py-2">
+                <div className="mac-segmented" role="tablist" aria-label="Como ver a nota">
+                  {([["danfe", "DANFE"], ["campos", "Campos"], ["xml", "XML"]] as const).map(([k, label]) => (
+                    <button key={k} role="tab" aria-selected={view === k} onClick={() => setView(k)} className="mac-segment">{label}</button>
+                  ))}
+                </div>
               </div>
             )}
             {isXml && xmlFieldsFailed && (

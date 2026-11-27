@@ -290,7 +290,7 @@ export default function Search() {
                   <div className="flex flex-wrap gap-1.5">
                     {data.facets.file_type.map((f) => (
                       <button key={f.value} type="button" aria-pressed={tipo === f.value} onClick={() => setP({ tipo: tipo === f.value ? null : f.value })}
-                        className={`h-8 pointer-coarse:h-10 px-3 text-mac-caption font-medium rounded-full border transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${tipo === f.value ? "bg-teal-600 border-teal-600 text-white" : "border-(--border-control) text-(--text-primary) hover:bg-(--bg-hover)"}`}>
+                        className={`h-8 pointer-coarse:h-10 px-3 text-mac-caption font-medium rounded-full border transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${tipo === f.value ? "bg-(--accent) border-(--accent) text-white" : "border-(--border-control) text-(--text-primary) hover:bg-(--bg-hover)"}`}>
                         {f.value.toUpperCase()} <span className="opacity-75">{f.count}</span>
                       </button>
                     ))}
@@ -303,7 +303,7 @@ export default function Search() {
                   <div className="flex flex-wrap gap-1.5">
                     {data.facets.sector.map((f) => (
                       <button key={f.value} type="button" aria-pressed={setor === f.value} onClick={() => setP({ setor: setor === f.value ? null : f.value })}
-                        className={`h-8 pointer-coarse:h-10 px-3 text-mac-caption font-medium rounded-full border transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${setor === f.value ? "bg-teal-600 border-teal-600 text-white" : "border-(--border-control) text-(--text-primary) hover:bg-(--bg-hover)"}`}>
+                        className={`h-8 pointer-coarse:h-10 px-3 text-mac-caption font-medium rounded-full border transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${setor === f.value ? "bg-(--accent) border-(--accent) text-white" : "border-(--border-control) text-(--text-primary) hover:bg-(--bg-hover)"}`}>
                         {f.value} <span className="opacity-75">{f.count}</span>
                       </button>
                     ))}
@@ -431,9 +431,7 @@ export default function Search() {
                         onMouseEnter={() => setAtivo(r)} onFocus={() => setAtivo(r)}
                         aria-current={ativo?.id === r.id ? "true" : undefined}
                         className="flex items-start gap-3 px-4 sm:px-5 py-3 hover:bg-(--bg-hover) transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-(--focus-ring)">
-                        <span className={`w-7 h-7 rounded-badge flex items-center justify-center shrink-0 ${s.bgColor}`} aria-hidden="true">
-                          <Icon className={`w-4 h-4 ${s.iconColor} ${s.fillColor}`} />
-                        </span>
+                        <Icon className="w-8 h-8 shrink-0" />
                         <span className="flex-1 min-w-0 max-w-[75ch]">
                           <span className="block text-mac-body font-medium text-(--text-primary) break-words">{r.name}</span>
                           {r.snippet && highlightSnippet(r.snippet).map((fragment, i) => (
@@ -471,7 +469,7 @@ export default function Search() {
               return (
                 <div key={ativo.id} className="reveal space-y-3">
                   <div className="flex items-start gap-2.5">
-                    <span className={`w-8 h-8 rounded-badge flex items-center justify-center shrink-0 ${st.bgColor}`} aria-hidden="true"><Ic className={`w-4 h-4 ${st.iconColor} ${st.fillColor}`} /></span>
+                    <Ic className="w-9 h-9 shrink-0" />
                     <div className="min-w-0">
                       <p className="text-mac-body font-semibold text-(--text-primary) break-words">{ativo.name}</p>
                       <p className="text-mac-caption text-(--text-secondary)">{ativo.folder_path_label ?? ativo.folder_name ?? "Sem pasta"} · {fmtDate(ativo.created_at)}</p>
@@ -485,7 +483,7 @@ export default function Search() {
                     <p className="text-mac-caption text-(--text-secondary)">{ativo.ocr_status === "failed" ? "O texto deste documento não pôde ser lido." : "Sem texto lido neste documento."}</p>
                   )}
                   <Link to={`/documents?folder_id=${ativo.folder_id ?? ""}&doc=${ativo.id}`}
-                    className="inline-flex items-center gap-1 h-8 px-3 rounded-full bg-teal-600 text-white text-mac-caption font-medium hover:bg-teal-700">
+                    className="inline-flex items-center gap-1 h-8 px-3 rounded-full bg-(--accent) text-white text-mac-caption font-medium hover:bg-(--accent-hover)">
                     Abrir na pasta <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
                   </Link>
                 </div>

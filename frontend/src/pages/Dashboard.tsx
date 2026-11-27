@@ -164,9 +164,7 @@ function FileBadge({ name }: { name: string }) {
   const s = getFileStyle(name);
   const Icon = s.icon;
   return (
-    <span className={`w-7 h-7 rounded-badge flex items-center justify-center shrink-0 ${s.bgColor}`} aria-hidden="true">
-      <Icon className={`w-4 h-4 ${s.iconColor} ${s.fillColor}`} />
-    </span>
+    <Icon className="w-7 h-7 shrink-0" />
   );
 }
 
@@ -397,12 +395,12 @@ export default function Dashboard() {
           <Panel
             id="inicio-recentes" title="Recentes" className="lg:col-span-2"
             action={
-              <div role="tablist" aria-label="Quais recentes" className="flex items-center gap-0.5 p-0.5 rounded-full bg-(--bg-hover)">
+              <div role="tablist" aria-label="Quais recentes" className="mac-segmented is-small">
                 {([["abertos", "Abertos por você", "Abertos"], ["enviados", "Enviados na empresa", "Enviados"]] as const).map(([v, label, curto]) => (
                   <button
                     key={v} role="tab" aria-selected={recentTab === v}
                     onClick={() => { setRecentTab(v); localStorage.setItem("docke_inicio_recentes", v); }}
-                    className={`px-2.5 h-7 pointer-coarse:h-10 rounded-full text-mac-caption font-medium transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${recentTab === v ? "bg-(--bg-card) text-(--text-primary) shadow-sm" : "text-(--text-secondary) hover:text-(--text-primary)"}`}
+                    className="mac-segment"
                   >
                     <span className="sm:hidden">{curto}</span><span className="hidden sm:inline">{label}</span>
                   </button>
@@ -420,7 +418,7 @@ export default function Dashboard() {
               ) : (
                 <div className="px-5 py-6 flex flex-wrap items-center gap-3">
                   <p className="flex-1 text-mac-body text-(--text-secondary)">Nenhum documento nesta empresa ainda.</p>
-                  <Link to="/documents?acao=enviar" className="inline-flex items-center gap-1.5 h-8 pointer-coarse:h-11 px-4 rounded-full bg-teal-600 text-white text-mac-body font-medium hover:bg-teal-700">
+                  <Link to="/documents?acao=enviar" className="inline-flex items-center gap-1.5 h-8 pointer-coarse:h-11 px-4 rounded-full bg-(--accent) text-white text-mac-body font-medium hover:bg-(--accent-hover)">
                     <Upload className="w-3.5 h-3.5" aria-hidden="true" /> Enviar documentos
                   </Link>
                 </div>
@@ -502,11 +500,11 @@ export default function Dashboard() {
             id="inicio-envios" title="Envios por dia"
             action={
               <div className="flex items-center gap-2">
-                <div role="radiogroup" aria-label="Período do gráfico de envios" className="flex items-center gap-0.5 p-0.5 rounded-full bg-(--bg-hover)">
+                <div role="radiogroup" aria-label="Período do gráfico de envios" className="mac-segmented is-small">
                   {PERIOD_OPTIONS.map((p) => (
                     <button
                       key={p} role="radio" aria-checked={period === p} onClick={() => changePeriod(p)}
-                      className={`px-2 h-6 pointer-coarse:h-9 rounded-full text-mac-caption font-medium transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${period === p ? "bg-teal-600 text-white" : "text-(--text-secondary) hover:text-(--text-primary)"}`}
+                      className="mac-segment"
                     >
                       {p}d
                     </button>

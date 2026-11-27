@@ -73,7 +73,7 @@ export default function Tooltip({ label, children, side = "top" }: TooltipProps)
           style={pos ? { left: pos.left, top: pos.top } : { left: -9999, top: -9999 }}
           className={`pointer-events-none fixed z-[90] whitespace-nowrap ${pos ? "menu-in" : ""}`}
         >
-          <span className="block rounded-[6px] bg-(--bg-elevated) border border-(--border-default) shadow-dropdown px-2 py-1 text-mac-caption text-(--text-primary)">
+          <span className="block rounded-[6px] glass-dialog px-2 py-[3px] text-[11px] leading-[14px] text-(--text-primary) shadow-[0_0_0_0.5px_rgba(0,0,0,0.12),0_4px_12px_rgba(0,0,0,0.14)]">
             {label}
           </span>
           {pos && (

@@ -249,11 +249,12 @@ function DiffModal({ documentId, documentName, versionA, versionB, onClose }: {
         </div>
       )}
       {imagens && (
-        <div role="tablist" aria-label="Modo de comparação" className="flex gap-1 px-4 pt-2">
-          {([["sobrepor", "Sobrepor imagens"], ["texto", "Texto lido"]] as const).map(([v, l]) => (
-            <button key={v} role="tab" aria-selected={modo === v} onClick={() => setModo(v)}
-              className={`px-3 h-8 rounded-full text-mac-caption font-medium ${modo === v ? "bg-teal-600 text-white" : "text-(--text-secondary) hover:bg-(--bg-hover)"}`}>{l}</button>
-          ))}
+        <div className="px-4 pt-2">
+          <div role="tablist" aria-label="Modo de comparação" className="mac-segmented">
+            {([["sobrepor", "Sobrepor imagens"], ["texto", "Texto lido"]] as const).map(([v, l]) => (
+              <button key={v} role="tab" aria-selected={modo === v} onClick={() => setModo(v)} className="mac-segment">{l}</button>
+            ))}
+          </div>
         </div>
       )}
       <div ref={bodyRef} className="h-[min(62vh,560px)] overflow-auto">

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Trash2, Folder, RotateCcw, AlertTriangle, RefreshCw, Lock } from "lucide-react";
-import { getFileStyle } from "@/lib/fileType";
+import { Trash2, RotateCcw, AlertTriangle, RefreshCw, Lock } from "lucide-react";
+import { ItemIcon } from "@/lib/fileType";
 import { relativeDate, fullDate } from "@/lib/date";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
@@ -118,7 +118,7 @@ export default function Trash() {
   return (
     <div className="space-y-6 max-w-[1100px] w-full mx-auto">
       <PageHeader title="Lixeira" subtitle={items ? `${list.length} ${list.length === 1 ? "item" : "itens"}` : undefined} />
-      <p className="text-mac-footnote text-(--text-secondary) -mb-2">O que foi excluído fica aqui por um tempo e volta para o lugar de origem ao restaurar. Depois do prazo, sai sozinho.</p>
+      <p className="text-mac-footnote text-(--text-secondary) mb-3!">O que foi excluído fica aqui por um tempo e volta para o lugar de origem ao restaurar. Depois do prazo, sai sozinho.</p>
 
       {failed ? (
         <div role="alert" className="glass-panel glass-blur-card rounded-(--radius-panel) flex flex-wrap items-center gap-3 px-5 py-4">
@@ -146,16 +146,12 @@ export default function Trash() {
           </div>
           <ul className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
             {list.map((item) => {
-              const fs = getFileStyle(item.name);
-              const Icon = item.item_type === "folder" ? Folder : fs.icon;
               const k = key(item);
               const bloqueio = item.bloqueio === "legal_hold" ? "Bloqueio judicial: não pode ser apagado" : item.bloqueio === "retencao" ? "Prazo de guarda travado: não pode ser apagado ainda" : null;
               return (
                 <li key={k} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 sm:px-5 py-3 border-b border-(--border-default) last:border-0">
                   <Checkbox aria-label={`Selecionar ${item.name}`} checked={sel.has(k)} onChange={() => setSel((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; })} />
-                  <span className={`w-8 h-8 rounded-badge flex items-center justify-center shrink-0 ${item.item_type === "folder" ? "bg-(--tint-accent)" : fs.bgColor}`} aria-hidden="true">
-                    <Icon className={`w-4 h-4 ${item.item_type === "folder" ? "text-(--text-accent)" : `${fs.iconColor} ${fs.fillColor}`}`} />
-                  </span>
+                  <ItemIcon name={item.name} folder={item.item_type === "folder"} className="w-8 h-8 shrink-0" />
                   <div className="flex-1 min-w-[14rem]">
                     <p className="text-mac-body text-(--text-primary) truncate">{item.name}{item.item_type === "folder" && item.document_count ? <span className="text-(--text-secondary)"> · {item.document_count} documentos</span> : null}</p>
                     <p className="text-mac-caption text-(--text-secondary)">

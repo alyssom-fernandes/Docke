@@ -6,9 +6,9 @@ const EVENT = "docke:tema";
 export function getTheme(): "light" | "dark" {
   const stored = localStorage.getItem(KEY);
   if (stored === "dark" || stored === "light") return stored;
-  // ADR-021: primeira sessão (sem preferência salva) sempre abre em modo
-  // escuro — prefers-color-scheme do sistema não sobrepõe esse padrão.
-  if (stored === null && localStorage.getItem(KEY + "-system") !== "1") return "dark";
+  // Sem escolha salva, segue o sistema, como fazem os apps do Mac com a
+  // aparência "Automático" (revisão do ADR-021 em 27/11/2026: antes, a
+  // primeira sessão abria sempre no escuro).
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
@@ -44,7 +44,7 @@ export function setThemePreference(pref: "light" | "dark" | "system") {
     // Antes, "seguir o sistema" voltava a gravar o tema resolvido e na próxima
     // visita a preferência aparecia como explícita.
     localStorage.removeItem(KEY);
-    localStorage.setItem(KEY + "-system", "1");
+    localStorage.removeItem(KEY + "-system");
     applyTheme(window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light", false);
   } else {
     applyTheme(pref);

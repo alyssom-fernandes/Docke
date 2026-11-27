@@ -134,8 +134,14 @@ export default function Sidebar() {
     };
   }, [loadFavorites]);
 
-  // No tablet a barra lateral flutua sobre o conteúdo: fecha ao navegar.
+  // No tablet a barra lateral flutua sobre o conteúdo: fecha ao navegar. Só
+  // depois de uma navegação de verdade: ao abrir, ela monta com o endereço de
+  // agora e não pode se fechar sozinha.
+  const lastPlace = useRef(`${location.pathname}${location.search}`);
   useEffect(() => {
+    const place = `${location.pathname}${location.search}`;
+    if (place === lastPlace.current) return;
+    lastPlace.current = place;
     if (!window.matchMedia("(min-width: 1024px)").matches) setSidebarOpen(false);
   }, [location.pathname, location.search, setSidebarOpen]);
 

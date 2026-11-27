@@ -161,7 +161,7 @@ export default function InstanceDialog({
 
             {/* Conferência (A7-53) */}
             {data.status === "reviewing" && (
-              <section aria-labelledby={`${uid}-conf`} className="rounded-(--radius-panel) border border-teal-500/40 bg-teal-500/5 p-4 space-y-3">
+              <section aria-labelledby={`${uid}-conf`} className="rounded-(--radius-panel) border border-teal-500/40 bg-(--accent)/5 p-4 space-y-3">
                 <h3 id={`${uid}-conf`} className="text-mac-body font-semibold text-(--text-primary)">Esperando conferência</h3>
                 <p className="text-mac-body text-(--text-secondary)">
                   Abra o documento abaixo e confira se ele comprova esta obrigação.{!canAdmin && " Quem administra a empresa faz a conferência."}

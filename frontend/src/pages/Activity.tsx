@@ -154,7 +154,7 @@ export default function Activity() {
           </ToolbarButton>
         </ToolbarGroup>
       </PageHeader>
-      <p className="text-mac-footnote text-(--text-secondary) -mb-2">Cada registro fica encadeado ao anterior e não pode ser alterado.</p>
+      <p className="text-mac-footnote text-(--text-secondary) mb-3!">Cada registro fica encadeado ao anterior e não pode ser alterado.</p>
       {menuAnchor && (
         <Menu
           anchor={menuAnchor} label="Exportar atividade" align="end" onClose={() => setMenuAnchor(null)}
@@ -178,7 +178,7 @@ export default function Activity() {
         <span className="text-mac-caption font-medium text-(--text-secondary) mr-1">Relatórios prontos:</span>
         {RELATORIOS.map((r) => (
           <button key={r.value} type="button" aria-pressed={acao === r.value} onClick={() => setP({ acao: acao === r.value ? null : r.value })}
-            className={`h-8 pointer-coarse:h-10 px-3 text-mac-caption font-medium rounded-full border transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${acao === r.value ? "bg-teal-600 border-teal-600 text-white" : "border-(--border-control) text-(--text-primary) hover:bg-(--bg-hover)"}`}>
+            className={`h-8 pointer-coarse:h-10 px-3 text-mac-caption font-medium rounded-full border transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${acao === r.value ? "bg-(--accent) border-(--accent) text-white" : "border-(--border-control) text-(--text-primary) hover:bg-(--bg-hover)"}`}>
             {r.label}
           </button>
         ))}

@@ -1,5 +1,5 @@
 import { test, expect, Page } from "@playwright/test";
-import { loginAsDemo } from "./helpers";
+import { expectCompanySelected, loginAsDemo } from "./helpers";
 
 // A API na Fly desliga quando ociosa. Ao religar, a primeira chamada pode não
 // chegar ao uvicorn, e o navegador a recebe sem resposta nenhuma. Aqui essa
@@ -31,7 +31,7 @@ test("sessão salva continua se a primeira chamada não chegar à API", async ({
   // Sem a nova tentativa, o /auth/me que falhava apagava o token e mandava para o login.
   await expect.poll(() => calls.count, { timeout: 15_000 }).toBe(2);
   await expect(page).toHaveURL(/\/dashboard/);
-  await expect(page.locator("header button").first()).not.toHaveText("Selecionar empresa", { timeout: 15_000 });
+  await expectCompanySelected(page);
   // A demo guarda a sessão só nesta aba (sessionStorage); conta real com "manter conectado", no localStorage.
   expect(await page.evaluate(() => sessionStorage.getItem("docke_token") ?? localStorage.getItem("docke_token"))).not.toBeNull();
 });

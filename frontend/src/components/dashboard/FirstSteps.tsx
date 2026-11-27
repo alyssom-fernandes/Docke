@@ -47,7 +47,7 @@ export default function FirstSteps({ companyId, folders, documents, isAdmin }: {
         </button>
       </div>
       <div className="mt-2 h-1 rounded-full bg-(--bg-hover) overflow-hidden" aria-hidden="true">
-        <div className="h-full bg-teal-600 transition-[width] duration-200" style={{ width: `${(feitos / passos.length) * 100}%` }} />
+        <div className="h-full bg-(--accent) transition-[width] duration-200" style={{ width: `${(feitos / passos.length) * 100}%` }} />
       </div>
       <ul className="mt-3 space-y-1">
         {passos.map((p) => (

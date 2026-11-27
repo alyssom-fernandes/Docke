@@ -1,6 +1,7 @@
 import { reportError } from "@/lib/reportError";
 import { Component, ReactNode, createRef } from "react";
 import { RefreshCw, WifiOff } from "lucide-react";
+import Wallpaper from "@/components/layout/Wallpaper";
 
 interface Props {
   children: ReactNode;
@@ -73,14 +74,14 @@ export default class ErrorBoundary extends Component<Props, State> {
         <div className="mt-2 flex flex-wrap gap-2">
           <button
             onClick={() => window.location.reload()}
-            className="inline-flex h-9 pointer-coarse:h-11 items-center gap-2 rounded-full bg-teal-600 px-5 text-mac-body font-medium text-white hover:bg-teal-700 focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) focus-visible:ring-offset-1"
+            className="inline-flex h-8 pointer-coarse:h-11 items-center gap-2 rounded-full bg-(--accent) px-4 text-[13px] font-medium text-white hover:bg-(--accent-hover) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) focus-visible:ring-offset-1"
           >
             <RefreshCw className="w-3.5 h-3.5" aria-hidden />
             Recarregar
           </button>
           <a
             href="/dashboard"
-            className="inline-flex h-9 pointer-coarse:h-11 items-center rounded-full border border-(--border-control) px-5 text-mac-body font-medium text-(--text-primary) hover:bg-(--bg-hover) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
+            className="inline-flex h-8 pointer-coarse:h-11 items-center rounded-full bg-(--control-fill) px-4 text-[13px] font-medium text-(--text-primary) hover:bg-(--control-fill-hover) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
           >
             Ir para o início
           </a>
@@ -90,8 +91,9 @@ export default class ErrorBoundary extends Component<Props, State> {
 
     if (!this.props.root) return body;
     return (
-      <main className="flex min-h-screen items-center justify-center" style={{ background: "var(--wallpaper)" }}>
-        {body}
+      <main className="wallpaper-screen relative isolate flex min-h-dvh items-center justify-center px-5 py-10">
+        <Wallpaper fixed />
+        <div className="mac-window relative w-full max-w-[460px]">{body}</div>
       </main>
     );
   }

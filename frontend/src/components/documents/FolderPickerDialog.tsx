@@ -123,7 +123,7 @@ export default function FolderPickerDialog({
 
   const optionClass = (active: boolean, disabled: boolean) =>
     `flex items-center gap-2 h-8 pointer-coarse:h-11 pr-3 rounded-[6px] text-mac-body select-none ${
-      disabled ? "text-(--text-tertiary) cursor-not-allowed" : active ? "bg-teal-600 text-white" : "text-(--text-primary) hover:bg-(--bg-hover) cursor-pointer"
+      disabled ? "text-(--text-tertiary) cursor-not-allowed" : active ? "bg-(--accent) text-white" : "text-(--text-primary) hover:bg-(--bg-hover) cursor-pointer"
     }`;
 
   return (

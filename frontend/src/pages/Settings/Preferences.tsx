@@ -12,10 +12,11 @@ import PushPreference from "@/components/shared/PushPreference";
 import { getReduceTransparency, setReduceTransparency } from "@/lib/theme";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 
+// Mesma ordem e nomes da Aparência do macOS: Automático segue o sistema.
 const THEME_OPTIONS = [
+  { value: "system" as const, label: "Automático", icon: Monitor },
   { value: "light" as const, label: "Claro", icon: Sun },
   { value: "dark" as const, label: "Escuro", icon: Moon },
-  { value: "system" as const, label: "Sistema", icon: Monitor },
 ];
 
 type Density = "compact" | "comfortable" | "spacious";
@@ -114,7 +115,7 @@ export default function Preferences() {
               >
                 <span
                   className={`relative w-full aspect-4/3 rounded-[10px] border-2 overflow-hidden transition-[border-color,transform] duration-fast group-active:scale-[0.98] ${
-                    theme === opt.value ? "border-teal-500" : "border-transparent group-hover:border-(--border-default)"
+                    theme === opt.value ? "border-(--accent)" : "border-transparent group-hover:border-(--border-default)"
                   }`}
                 >
                   {opt.value === "system" ? (
@@ -127,10 +128,7 @@ export default function Preferences() {
                     <opt.icon className="w-3 h-3 text-white" />
                   </span>
                 </span>
-                <span className="flex items-center gap-1.5 text-mac-caption text-(--text-secondary)">
-                  <span className={`w-3 h-3 rounded-full border flex items-center justify-center shrink-0 ${theme === opt.value ? "border-teal-500" : "border-(--border-default)"}`}>
-                    {theme === opt.value && <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />}
-                  </span>
+                <span className={`text-[11px] ${theme === opt.value ? "font-semibold text-(--text-primary)" : "text-(--text-secondary)"}`}>
                   {opt.label}
                 </span>
               </button>

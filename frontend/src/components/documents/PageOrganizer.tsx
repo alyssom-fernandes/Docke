@@ -97,7 +97,7 @@ export default function PageOrganizer({ docId, docName, url, onClose, onDone }: 
           <div className="space-y-3">
             <ol className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3" aria-label="Páginas">
               {itens.map((it, pos) => (
-                <li key={`${it.indice}`} className={`rounded-(--radius-control) border p-2 flex flex-col items-center gap-2 ${it.removida ? "opacity-40 border-dashed border-(--border-default)" : it.marcada ? "border-teal-600 bg-(--tint-accent)" : "border-(--border-default)"}`}>
+                <li key={`${it.indice}`} className={`rounded-(--radius-control) border p-2 flex flex-col items-center gap-2 ${it.removida ? "opacity-40 border-dashed border-(--border-default)" : it.marcada ? "border-(--accent) bg-(--tint-accent)" : "border-(--border-default)"}`}>
                   <div className="h-[130px] flex items-center justify-center"><Miniatura pdf={pdf} indice={it.indice} rotacao={it.rotacao} /></div>
                   <span className="text-mac-caption text-(--text-secondary)">Página {it.indice + 1}{pos !== it.indice ? ` → ${pos + 1}ª` : ""}{it.removida ? " · sai" : ""}</span>
                   <div className="flex items-center gap-0.5">

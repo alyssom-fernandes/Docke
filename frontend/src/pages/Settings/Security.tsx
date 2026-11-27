@@ -218,7 +218,7 @@ function IntegritySection() {
   if (!current || (current.permission_level !== "admin" && current.permission_level !== "supremo")) return null;
 
   return (
-    <Cartao icon={ShieldCheck} cor="bg-teal-600" titulo="Integridade da trilha de auditoria" className="mt-4"
+    <Cartao icon={ShieldCheck} cor="bg-(--accent)" titulo="Integridade da trilha de auditoria" className="mt-4"
       descricao="Cada evento registrado em Atividade carrega um hash encadeado ao anterior. Um evento alterado fora do fluxo normal aparece como adulterado, e um evento apagado quebra a cadeia a partir dele, inclusive quando é o mais recente.">
       <Button size="sm" variant="secondary" onClick={verify} loading={checking}>
         Verificar agora

@@ -135,7 +135,7 @@ export default function Menu({ items, onClose, anchor, label, align = "start" }:
       style={sheet ? undefined : pos ? { top: pos.top, left: pos.left } : { top: -9999, left: -9999 }}
       className={sheet
         ? `${leaving ? "sheet-out" : "sheet-in"} fixed z-[80] inset-x-0 bottom-0 max-h-[80dvh] overflow-y-auto pt-2 pb-[calc(8px+env(safe-area-inset-bottom))] glass-dialog glass-blur-strong rounded-t-(--radius-dialog) shadow-modal`
-        : `fixed z-[80] min-w-[220px] max-w-[300px] py-1.5 glass-dialog glass-blur-strong rounded-(--radius-popover) shadow-dropdown ${leaving ? "menu-out" : pos ? "menu-in" : ""}`}
+        : `fixed z-[80] min-w-[220px] max-w-[300px] p-[5px] glass-dialog glass-blur-strong rounded-(--radius-popover) shadow-dropdown ${leaving ? "menu-out" : pos ? "menu-in" : ""}`}
     >
       {sheet && (
         <div className="px-5 pt-1 pb-2" aria-hidden="true">
@@ -145,7 +145,7 @@ export default function Menu({ items, onClose, anchor, label, align = "start" }:
       )}
       {items.map((it, i) => (
         <div key={`${it.label}-${i}`}>
-          {it.separatorBefore && <div role="separator" className="my-1 mx-2.5 h-px bg-(--border-default)" />}
+          {it.separatorBefore && <div role="separator" className="my-[5px] mx-2.5 h-px bg-(--separator)" />}
           <button
             ref={(el) => { itemRefs.current[i] = el; }}
             type="button"
@@ -156,10 +156,10 @@ export default function Menu({ items, onClose, anchor, label, align = "start" }:
             aria-disabled={it.disabled || undefined}
             onMouseEnter={() => !it.disabled && setActive(i)}
             onClick={() => { if (it.disabled) return; close(false); it.onSelect(); }}
-            className={`mx-1.5 flex w-[calc(100%-12px)] items-center gap-2.5 rounded-[6px] px-2.5 text-left text-mac-body outline-hidden
-              ${sheet ? "h-12 px-3.5 active:bg-(--bg-hover) focus-visible:bg-(--bg-hover)" : "h-7 pointer-coarse:h-11"}
+            className={`flex w-full items-center gap-2 rounded-[6px] px-2 text-left text-[13px] outline-hidden
+              ${sheet ? "h-12 px-3.5 text-[17px] active:bg-(--bg-hover) focus-visible:bg-(--bg-hover)" : "h-6 pointer-coarse:h-11"}
               ${it.danger ? "text-(--text-danger)" : "text-(--text-primary)"}
-              ${!sheet && i === active ? (it.danger ? "bg-red-600 text-white" : "bg-teal-600 text-white") : ""}
+              ${!sheet && i === active ? (it.danger ? "bg-(--text-danger) text-white" : "bg-(--selection-bg) text-(--selection-text)") : ""}
               disabled:opacity-(--opacity-disabled) disabled:cursor-not-allowed`}
           >
             {it.checked !== undefined

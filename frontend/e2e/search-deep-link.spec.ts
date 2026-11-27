@@ -14,9 +14,9 @@ test("Ctrl+K a partir da própria tela de Documentos navega para o documento cer
   await page.getByRole("link", { name: "Documentos", exact: true }).click();
   await expect(page).toHaveURL(/\/documents/);
 
-  // Abre o Command Palette (botão "Buscar documentos..." no TopBar, não o
-  // ícone de busca mobile-only escondido em telas largas).
-  await page.getByRole("button", { name: /Buscar documentos/ }).click();
+  // Abre a busca rápida pelo atalho: em Documentos, o campo da barra de
+  // ferramentas filtra a pasta, e a busca global fica no Ctrl+K.
+  await page.keyboard.press("Control+K");
 
   const searchInput = page.getByRole("combobox", { name: /Digite um comando/ });
   await expect(searchInput).toBeVisible();

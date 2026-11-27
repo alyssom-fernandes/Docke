@@ -6,7 +6,7 @@ import { useNavBadges } from "./navItems";
 import { usePresence } from "@/hooks/usePresence";
 
 /**
- * Barra de abas do iOS 26: cápsula de vidro flutuante com quatro abas e
+ * Barra de abas do iOS 26: cápsula de vidro flutuante com três abas e
  * "Mais", e a busca num círculo de vidro separado à direita. A aba ativa
  * ganha a lente (cápsula clara por trás) e a cor do acento.
  */
@@ -15,9 +15,9 @@ const TABS: Tab[] = [
   { to: "/dashboard", icon: House, label: "Início", match: "/dashboard" },
   { to: "/documents", icon: FolderClosed, label: "Documentos", match: "/documents" },
   { to: "/obligations", icon: CalendarClock, label: "Obrigações", match: "/obligations" },
-  { to: "/favorites", icon: Anchor, label: "Ancorados", match: "/favorites" },
 ];
 const MORE: Tab[] = [
+  { to: "/favorites", icon: Anchor, label: "Ancorados", match: "/favorites" },
   { to: "/activity", icon: Activity, label: "Atividade", match: "/activity" },
   { to: "/shares", icon: Link2, label: "Links", match: "/shares" },
   { to: "/trash", icon: Trash2, label: "Lixeira", match: "/trash" },

@@ -15,7 +15,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="flex flex-col gap-1">
         {label && (
-          <label htmlFor={inputId} className="text-mac-body font-medium text-(--text-secondary)">
+          <label htmlFor={inputId} className="text-[13px] font-medium text-(--text-primary)">
             {label}
           </label>
         )}
@@ -24,12 +24,10 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
           id={inputId}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? errorId : undefined}
-          className={`h-9 pointer-coarse:h-11 w-full rounded-(--radius-control) border px-3 text-mac-body pointer-coarse:text-[16px]
-            bg-(--bg-card) text-(--text-primary) placeholder:text-(--text-placeholder)
-            border-(--border-control) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring) focus:border-transparent
-            disabled:bg-(--bg-hover) disabled:text-(--text-tertiary) disabled:cursor-not-allowed disabled:select-none
-            transition-all duration-fast
-            ${error ? "border-red-500 focus:ring-red-400" : ""}
+          className={`mac-field h-7 pointer-coarse:h-11 w-full px-2 text-[13px] pointer-coarse:text-[16px]
+            text-(--text-primary) placeholder:text-(--text-placeholder)
+            disabled:opacity-60 disabled:cursor-not-allowed disabled:select-none
+            ${error ? "mac-field-error" : ""}
             ${className}`}
           {...props}
         />

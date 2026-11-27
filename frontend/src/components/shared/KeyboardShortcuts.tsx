@@ -74,7 +74,7 @@ export default function KeyboardShortcuts() {
       <div className="space-y-5">
         {GRUPOS.map((g) => (
           <section key={g.titulo} aria-labelledby={`atalhos-${g.titulo}`}>
-            <h3 id={`atalhos-${g.titulo}`} className="text-mac-caption font-semibold uppercase tracking-[0.06em] text-(--text-secondary) mb-2">{g.titulo}</h3>
+            <h3 id={`atalhos-${g.titulo}`} className="text-[11px] font-bold text-(--text-secondary) mb-2">{g.titulo}</h3>
             <dl className="divide-y divide-(--border-default)">
               {g.itens.map(([tecla, acao]) => (
                 <div key={tecla} className="flex items-center justify-between gap-4 py-2">

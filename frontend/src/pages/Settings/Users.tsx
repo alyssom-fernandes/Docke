@@ -142,10 +142,10 @@ export default function Users() {
 
       <AccessRequestsPanel companyId={current.id} onChanged={load} />
 
-      <div role="tablist" aria-label="Pessoas ou grupos" className="flex items-center gap-0.5 p-0.5 rounded-full bg-(--bg-hover) w-fit">
+      <div role="tablist" aria-label="Pessoas ou grupos" className="mac-segmented">
         {([["pessoas", "Pessoas"], ["grupos", "Grupos"]] as const).map(([v, l]) => (
           <button key={v} role="tab" aria-selected={aba === v} onClick={() => setAba(v)}
-            className={`px-3 h-8 pointer-coarse:h-10 rounded-full text-mac-body font-medium transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${aba === v ? "bg-(--bg-card) text-(--text-primary) shadow-sm" : "text-(--text-secondary) hover:text-(--text-primary)"}`}>{l}</button>
+            className="mac-segment">{l}</button>
         ))}
       </div>
 

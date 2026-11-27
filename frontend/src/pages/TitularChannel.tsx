@@ -4,6 +4,7 @@ import { ShieldCheck, Copy, Search as SearchIcon } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Dropdown from "@/components/ui/Dropdown";
+import Wallpaper from "@/components/layout/Wallpaper";
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? "http://localhost:8000") + "/api/v1";
 
@@ -75,12 +76,13 @@ export default function TitularChannel() {
   const dataBr = (d: string) => new Date(d + (d.length === 10 ? "T12:00:00" : "")).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
 
   return (
-    <main className="relative min-h-screen overflow-hidden flex flex-col items-center px-4 py-10" style={{ background: "var(--wallpaper)" }}>
+    <main className="wallpaper-screen relative isolate min-h-dvh overflow-x-hidden flex flex-col items-center px-4 py-10">
+      <Wallpaper fixed />
       <div className="relative w-full max-w-[560px]">
         <div className="flex items-center justify-center mb-8">
-          <div className="brand-wordmark w-[130px] h-[37px]" role="img" aria-label="Docke" />
+          <div className="brand-wordmark w-[130px] h-[37px] bg-white!" role="img" aria-label="Docke" />
         </div>
-        <div className="glass-dialog glass-blur-strong rounded-(--radius-dialog) p-6 shadow-modal">
+        <div className="mac-window p-6">
           {erroCanal ? (
             <p role="alert" className="text-mac-body text-(--text-primary)">{erroCanal}</p>
           ) : !info ? (
@@ -94,10 +96,10 @@ export default function TitularChannel() {
                   <p className="text-mac-caption text-(--text-secondary)">{info.company_name} · Lei Geral de Proteção de Dados (art. 18). Prazo de referência para a resposta: {info.prazo_dias} dias.</p>
                 </div>
               </div>
-              <div role="tablist" aria-label="O que você quer fazer" className="mb-4 grid grid-cols-2 gap-1 rounded-(--radius-control) bg-(--bg-hover) p-1">
+              <div role="tablist" aria-label="O que você quer fazer" className="mac-segmented is-fill mb-4">
                 {([["pedir", "Fazer um pedido"], ["acompanhar", "Acompanhar"]] as const).map(([v, t]) => (
                   <button key={v} role="tab" aria-selected={aba === v} onClick={() => { setAba(v); setErro(null); }}
-                    className={`min-h-9 rounded-[6px] text-mac-body transition-colors focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${aba === v ? "bg-(--bg-card) text-(--text-primary) shadow-sm" : "text-(--text-secondary)"}`}>{t}</button>
+                    className="mac-segment">{t}</button>
                 ))}
               </div>
               {erro && <p role="alert" className="mb-3 rounded-(--radius-control) bg-(--tint-danger) px-3 py-2 text-mac-caption text-(--text-primary)">{erro}</p>}
@@ -149,7 +151,7 @@ export default function TitularChannel() {
             </>
           )}
         </div>
-        <p className="mt-6 text-center text-mac-caption text-(--text-tertiary)">Canal mantido pelo Docke para {info?.company_name ?? "a empresa"}.</p>
+        <p className="wallpaper-note mt-6 text-center text-mac-caption">Canal mantido pelo Docke para {info?.company_name ?? "a empresa"}.</p>
       </div>
     </main>
   );

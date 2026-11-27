@@ -22,7 +22,7 @@ const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigat
 
 /** Telas que ocupam a janela inteira e rolam por dentro (como o Finder). */
 function isFullBleed(pathname: string) {
-  return pathname.startsWith("/documents");
+  return pathname.startsWith("/documents") || (pathname.startsWith("/settings") && window.matchMedia("(min-width: 768px)").matches);
 }
 
 function GlobalSearchPill() {
@@ -147,7 +147,7 @@ function Shell({ children }: AppShellProps) {
           className={`min-h-0 flex-1 flex flex-col focus:outline-hidden ${fullBleed ? "overflow-hidden" : "overflow-y-auto px-6 pt-2 pb-10"}`}
         >
           {page}
-          {location.pathname.startsWith("/settings") && <Footer />}
+          {location.pathname.startsWith("/settings") && !fullBleed && <Footer />}
         </main>
       </div>
       <CommandPalette />

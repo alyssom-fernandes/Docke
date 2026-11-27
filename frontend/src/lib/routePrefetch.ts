@@ -1,6 +1,6 @@
 /**
  * Pré-carga do código das telas (A1-35, A2-14): ao passar o mouse num item
- * do Dock e, depois de entrar, com o navegador ocioso para as mais usadas.
+ * da barra lateral e, depois de entrar, com o navegador ocioso para as mais usadas.
  * O import() é o mesmo dos lazy() do App, então o navegador reaproveita.
  */
 const LOADERS: Record<string, () => Promise<unknown>> = {

@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Folder, Anchor, X, AlertTriangle, RefreshCw, Search } from "lucide-react";
-import { getFileStyle } from "@/lib/fileType";
+import { Anchor, X, AlertTriangle, RefreshCw, Search } from "lucide-react";
+import { ItemIcon } from "@/lib/fileType";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
@@ -80,7 +80,7 @@ export default function Favorites() {
   return (
     <div className="space-y-6 max-w-[1100px] w-full mx-auto">
       <PageHeader title="Ancorados" subtitle={items ? `${items.length} ${items.length === 1 ? "item" : "itens"}` : undefined} />
-      <p className="text-mac-footnote text-(--text-secondary) -mb-2">Os documentos e pastas que você usa todo dia, a um clique. Só você vê os seus.</p>
+      <p className="text-mac-footnote text-(--text-secondary) mb-3!">Os documentos e pastas que você usa todo dia, a um clique. Só você vê os seus.</p>
 
       {failed ? (
         <div role="alert" className="glass-panel glass-blur-card rounded-(--radius-panel) flex flex-wrap items-center gap-3 px-5 py-4">
@@ -95,15 +95,15 @@ export default function Favorites() {
           title="Nada ancorado ainda"
           description="No menu de qualquer documento ou pasta, escolha “Ancorar” para trazê-lo para cá e para o Início."
           icon={<Anchor className="w-6 h-6" />}
-          action={<Link to="/documents" className="inline-flex items-center h-9 pointer-coarse:h-11 px-4 text-mac-body font-medium text-white bg-teal-600 rounded-full hover:bg-teal-700">Ir para Documentos</Link>}
+          action={<Link to="/documents" className="inline-flex items-center h-9 pointer-coarse:h-11 px-4 text-mac-body font-medium text-white bg-(--accent) rounded-full hover:bg-(--accent-hover)">Ir para Documentos</Link>}
         />
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2">
-            <div role="group" aria-label="Tipo" className="flex items-center gap-0.5 p-0.5 rounded-full bg-(--bg-hover)">
+            <div role="group" aria-label="Tipo" className="mac-segmented">
               {([["todos", "Tudo"], ["folder", "Pastas"], ["document", "Documentos"]] as const).map(([v, l]) => (
                 <button key={v} aria-pressed={tipo === v} onClick={() => setTipo(v)}
-                  className={`px-3 h-8 pointer-coarse:h-10 rounded-full text-mac-body font-medium transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${tipo === v ? "bg-(--bg-card) text-(--text-primary) shadow-sm" : "text-(--text-secondary) hover:text-(--text-primary)"}`}>
+                  className="mac-segment">
                   {l} <span className="text-(--text-secondary)">{counts[v]}</span>
                 </button>
               ))}
@@ -124,14 +124,10 @@ export default function Favorites() {
           ) : (
             <ul className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
               {visible.map((fav) => {
-                const s = getFileStyle(fav.item_name);
-                const Icon = fav.item_type === "folder" ? Folder : s.icon;
                 return (
                   <li key={fav.id} className="group flex items-center border-b border-(--border-default) last:border-0">
                     <Link to={href(fav)} className="flex-1 min-w-0 flex items-center gap-3 px-4 sm:px-5 py-2.5 min-h-14 hover:bg-(--bg-hover) transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-(--focus-ring)">
-                      <span className={`w-8 h-8 rounded-badge flex items-center justify-center shrink-0 ${fav.item_type === "folder" ? "bg-(--tint-accent)" : s.bgColor}`} aria-hidden="true">
-                        <Icon className={`w-4 h-4 ${fav.item_type === "folder" ? "text-(--text-accent) fill-teal-500/25" : `${s.iconColor} ${s.fillColor}`}`} />
-                      </span>
+                      <ItemIcon name={fav.item_name} folder={fav.item_type === "folder"} className="w-8 h-8 shrink-0" />
                       <span className="flex-1 min-w-0">
                         <span className="block text-mac-body text-(--text-primary) truncate">{fav.item_name}</span>
                         <span className="block text-mac-caption text-(--text-secondary) truncate">

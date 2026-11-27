@@ -5,6 +5,8 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-route
 import { useAuthContext } from "@/lib/AuthContext";
 import { CompanyProvider, useCompany } from "@/lib/CompanyContext";
 import AppShell from "@/components/layout/AppShell";
+import Wallpaper from "@/components/layout/Wallpaper";
+import { Loader } from "lucide-react";
 import Login from "@/pages/Login";
 // Code splitting por rota: só o login entra no bundle inicial. Cada página
 // interna vira um chunk próprio, baixado quando a rota é visitada — antes era
@@ -57,14 +59,23 @@ function PageFallback() {
   );
 }
 
+/** Carregando uma página pública: o papel de parede já aparece, sem o esqueleto do app. */
+function PublicFallback() {
+  return (
+    <div className="wallpaper-screen relative isolate min-h-dvh" role="status" aria-label="Carregando">
+      <Wallpaper fixed />
+    </div>
+  );
+}
+
 /** Validação da sessão: depois de 3 s explica a espera (partida a frio do servidor). */
 function SessionCheck() {
   const [slow, setSlow] = useState(false);
   useEffect(() => { const t = window.setTimeout(() => setSlow(true), 3000); return () => window.clearTimeout(t); }, []);
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-(--bg-page) px-6 text-center" role="status">
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-(--window-bg) px-6 text-center" role="status">
       <div className="brand-wordmark w-[150px] h-[43px]" role="img" aria-label="Docke" />
-      <div className="w-5 h-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+      <Loader className="w-5 h-5 animate-spin text-(--text-secondary)" aria-hidden="true" />
       <p className={`text-mac-caption text-(--text-secondary) transition-opacity duration-300 ${slow ? "opacity-100" : "opacity-0"}`}>
         Conectando ao servidor… depois de um tempo parado ele leva alguns segundos para acordar.
       </p>
@@ -157,10 +168,10 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/redefinir-senha" element={<Suspense fallback={<PageFallback />}><ResetPassword /></Suspense>} />
-          <Route path="/s/:token" element={<Suspense fallback={<PageFallback />}><PublicShare /></Suspense>} />
-          <Route path="/titular/:companyId" element={<Suspense fallback={<PageFallback />}><TitularChannel /></Suspense>} />
-          <Route path="/enviar/:token" element={<Suspense fallback={<PageFallback />}><PublicUpload /></Suspense>} />
+          <Route path="/redefinir-senha" element={<Suspense fallback={<PublicFallback />}><ResetPassword /></Suspense>} />
+          <Route path="/s/:token" element={<Suspense fallback={<PublicFallback />}><PublicShare /></Suspense>} />
+          <Route path="/titular/:companyId" element={<Suspense fallback={<PublicFallback />}><TitularChannel /></Suspense>} />
+          <Route path="/enviar/:token" element={<Suspense fallback={<PublicFallback />}><PublicUpload /></Suspense>} />
           <Route path="/*" element={<ProtectedRoutes />} />
         </Routes>
       </BrowserRouter>

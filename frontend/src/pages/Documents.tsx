@@ -162,20 +162,25 @@ function SaveViewDialog({ folderName, onClose, onSave }: { folderName: string; o
   const [scope, setScope] = useState<"pasta" | "todas">("pasta");
   const [shared, setShared] = useState(true);
   const [busy, setBusy] = useState(false);
-  const opcao = (ativo: boolean) => `text-left rounded-(--radius-control) border px-3 py-2 text-mac-body transition-colors focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${ativo ? "border-teal-600 bg-(--tint-accent) text-(--text-primary)" : "border-(--border-control) text-(--text-secondary) hover:bg-(--bg-hover)"}`;
   return (
     <Dialog onClose={onClose} size="sm" busy={busy} title="Salvar vista"
       description="Guarda a ordenação, as colunas, o agrupamento e o filtro por metadado de agora."
       footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!name.trim()} onClick={async () => { setBusy(true); await onSave(name.trim(), scope, shared); setBusy(false); }}>Salvar</Button></>}>
       <div className="space-y-3">
         <Input label="Nome da vista" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Holerites por competência" autoFocus />
-        <div role="radiogroup" aria-label="Onde vale" className="grid grid-cols-2 gap-2">
-          <button type="button" role="radio" aria-checked={scope === "pasta"} onClick={() => setScope("pasta")} className={opcao(scope === "pasta")}>Só em “{folderName}”</button>
-          <button type="button" role="radio" aria-checked={scope === "todas"} onClick={() => setScope("todas")} className={opcao(scope === "todas")}>Em todas as pastas</button>
+        <div>
+          <p id="vista-onde" className="mb-1.5 text-[13px] text-(--text-secondary)">Onde vale</p>
+          <div role="radiogroup" aria-labelledby="vista-onde" className="mac-segmented is-fill">
+            <button type="button" role="radio" aria-checked={scope === "pasta"} onClick={() => setScope("pasta")} className="mac-segment min-w-0"><span className="truncate">Só em “{folderName}”</span></button>
+            <button type="button" role="radio" aria-checked={scope === "todas"} onClick={() => setScope("todas")} className="mac-segment">Em todas as pastas</button>
+          </div>
         </div>
-        <div role="radiogroup" aria-label="Quem vê" className="grid grid-cols-2 gap-2">
-          <button type="button" role="radio" aria-checked={shared} onClick={() => setShared(true)} className={opcao(shared)}>Todos da empresa</button>
-          <button type="button" role="radio" aria-checked={!shared} onClick={() => setShared(false)} className={opcao(!shared)}>Só eu</button>
+        <div>
+          <p id="vista-quem" className="mb-1.5 text-[13px] text-(--text-secondary)">Quem vê</p>
+          <div role="radiogroup" aria-labelledby="vista-quem" className="mac-segmented is-fill">
+            <button type="button" role="radio" aria-checked={shared} onClick={() => setShared(true)} className="mac-segment">Todos da empresa</button>
+            <button type="button" role="radio" aria-checked={!shared} onClick={() => setShared(false)} className="mac-segment">Só eu</button>
+          </div>
         </div>
       </div>
     </Dialog>
@@ -266,7 +271,7 @@ function ColumnResizeHandle({ label, width, onMouseDown, onReset, onNudge }: {
         else if (e.key === "ArrowLeft") { e.preventDefault(); onNudge(-step); }
         else if (e.key === "Home") { e.preventDefault(); onReset(); }
       }}
-      className="absolute top-0 right-0 h-full w-2 cursor-col-resize select-none hover:bg-teal-400/40 active:bg-teal-400/60 focus-visible:outline-hidden focus-visible:bg-teal-500/60"
+      className="absolute top-0 right-0 h-full w-2 cursor-col-resize select-none hover:bg-teal-400/40 active:bg-teal-400/60 focus-visible:outline-hidden focus-visible:bg-(--accent)/60"
     />
   );
 }
@@ -1873,7 +1878,7 @@ export default function Documents() {
 
         {/* File list — pb extra no mobile e no desktop (lg+): essa página cancela o
             padding vertical do AppShell (-my-6), então precisa da própria folga pra não
-            ficar atrás da barra inferior mobile nem do Dock flutuante desktop */}
+            ficar atrás da barra inferior mobile nem da borda da janela no desktop */}
         <div
           ref={scrollBodyRef}
           className="flex-1 overflow-y-auto pb-6 relative"
@@ -2422,11 +2427,7 @@ export default function Documents() {
                       )}
                       <td className="px-3 py-2" data-col="name">
                         <div className="flex items-center gap-2">
-                          {(() => { const s = getFileStyle(d.name); const Icon = s.icon; return (
-                            <div className={`w-6 h-6 rounded-badge flex items-center justify-center shrink-0 ${isSelected ? "bg-white/20" : s.bgColor}`}>
-                              <Icon className={`w-3.5 h-3.5 ${isSelected ? "text-white" : `${s.iconColor} ${s.fillColor}`}`} aria-hidden />
-                            </div>
-                          ); })()}
+                          {(() => { const Icon = getFileStyle(d.name).icon; return <Icon className="w-[18px] h-[18px] shrink-0" aria-hidden />; })()}
                           {isRenaming ? (
                             <div className="flex items-center gap-0.5 flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
                               <input
@@ -2604,7 +2605,7 @@ export default function Documents() {
           {/* Metadado navegável (B1.2.7): clicar num valor da coluna filtra; aqui limpa. */}
           {fieldFilter && (
             <button onClick={() => setFieldFilter(null)} aria-label={`Tirar o filtro ${fieldFilter.label} = ${fieldFilter.value}`}
-              className="shrink-0 ml-2 inline-flex items-center gap-1 rounded-full px-2 min-h-6 pointer-coarse:min-h-9 bg-(--tint-accent) text-(--text-primary) hover:bg-teal-500/25">
+              className="shrink-0 ml-2 inline-flex items-center gap-1 rounded-full px-2 min-h-6 pointer-coarse:min-h-9 bg-(--tint-accent) text-(--text-primary) hover:bg-(--accent)/25">
               {fieldFilter.label} = {fieldFilter.value} <X className="w-3 h-3" aria-hidden />
             </button>
           )}

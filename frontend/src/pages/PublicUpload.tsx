@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { AlertCircle, Building2, CalendarClock, CheckCircle2, FolderOpen, Lock, RefreshCw, UploadCloud, X } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
+import Wallpaper from "@/components/layout/Wallpaper";
 
 const API_ORIGIN = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 const API_BASE = API_ORIGIN + "/api/v1";
@@ -126,12 +127,11 @@ export default function PublicUpload() {
   const tudoCerto = itens.length > 0 && itens.every((i) => i.estado === "recebido");
 
   return (
-    <main className="relative min-h-screen overflow-hidden flex flex-col items-center px-4 py-10" style={{ background: "var(--wallpaper)" }}>
-      <div aria-hidden className="pointer-events-none absolute inset-0 opacity-80 dark:opacity-100"
-        style={{ background: "radial-gradient(680px circle at 16% 12%, rgba(13,148,136,0.20), transparent 55%), radial-gradient(620px circle at 84% 82%, rgba(20,184,166,0.16), transparent 55%)" }} />
+    <main className="wallpaper-screen relative isolate min-h-dvh overflow-x-hidden flex flex-col items-center px-4 py-10">
+      <Wallpaper fixed />
       <div className="relative w-full max-w-[560px]">
-        <div className="flex items-center justify-center mb-8"><div className="brand-wordmark w-[130px] h-[37px]" role="img" aria-label="Docke" /></div>
-        <div className="glass-dialog glass-blur-strong rounded-(--radius-dialog) p-6 shadow-modal">
+        <div className="flex items-center justify-center mb-8"><div className="brand-wordmark w-[130px] h-[37px] bg-white!" role="img" aria-label="Docke" /></div>
+        <div className="mac-window p-6">
           {erro ? (
             <div role="alert" className="flex flex-col items-center text-center gap-3 py-8">
               <AlertCircle className="w-10 h-10 text-(--text-secondary)" aria-hidden="true" />

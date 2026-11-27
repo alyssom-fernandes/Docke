@@ -30,18 +30,19 @@ const icons: Record<ToastType, typeof CheckCircle2> = {
   info: Info,
 };
 
+// Ícone em bloco colorido, como o ícone de app numa notificação do macOS.
 const iconBg: Record<ToastType, string> = {
-  success: "bg-(--tint-success)",
-  error: "bg-(--tint-danger)",
-  warning: "bg-(--tint-warning)",
-  info: "bg-(--tint-accent)",
+  success: "bg-[#30B158]",
+  error: "bg-[#E5352B]",
+  warning: "bg-[#F08A00]",
+  info: "bg-(--accent)",
 };
 
 const iconColors: Record<ToastType, string> = {
-  success: "text-(--text-success)",
-  error: "text-(--text-danger)",
-  warning: "text-(--text-warning)",
-  info: "text-(--text-accent)",
+  success: "text-white",
+  error: "text-white",
+  warning: "text-white",
+  info: "text-white",
 };
 
 /**
@@ -82,13 +83,14 @@ function Toast({ t, onDone }: { t: ToastItem; onDone: () => void }) {
       onMouseLeave={resume}
       onFocus={pause}
       onBlur={resume}
-      className={`${leaving ? "toast-out" : "toast-in"} pointer-events-auto glass-panel glass-blur-strong flex items-start gap-3 rounded-(--radius-dialog) shadow-dropdown p-3`}
+      className={`${leaving ? "toast-out" : "toast-in"} pointer-events-auto mac-sheet flex items-start gap-3 rounded-[18px] p-3`}
     >
-      <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${iconBg[t.type]}`}>
+      <div className={`w-8 h-8 rounded-[8px] flex items-center justify-center shrink-0 ${iconBg[t.type]}`}>
         <Icon className={`w-4 h-4 ${iconColors[t.type]}`} aria-hidden />
       </div>
-      <div className="flex-1 min-w-0 pt-1">
-        <p className="text-mac-body leading-[18px] text-(--text-primary)">{t.message}</p>
+      <div className="flex-1 min-w-0">
+        <p className="text-[13px] leading-4 font-bold text-(--text-primary)">Docke</p>
+        <p className="mt-0.5 text-[13px] leading-[17px] text-(--text-primary)">{t.message}</p>
         {t.action && (
           <button
             onClick={() => { t.action!.onClick(); close(); }}
@@ -138,7 +140,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         // mesmo com um diálogo aberto. Celular: centralizado acima da barra inferior.
         <div
           data-no-inert
-          className="pointer-events-none fixed z-[70] flex flex-col gap-2 left-3 right-3 bottom-[calc(76px+env(safe-area-inset-bottom))] sm:left-auto sm:right-4 sm:bottom-4 sm:w-[340px]"
+          className="pointer-events-none fixed z-[70] flex flex-col gap-2 left-3 right-3 top-[calc(10px+env(safe-area-inset-top))] sm:left-auto sm:right-4 sm:top-4 sm:w-[356px]"
         >
           <div role="status" aria-live="polite" aria-atomic="false" className="flex flex-col gap-2">
             {polite.map((t) => <Toast key={t.id} t={t} onDone={() => remove(t.id)} />)}

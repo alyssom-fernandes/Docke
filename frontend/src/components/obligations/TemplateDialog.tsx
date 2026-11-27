@@ -225,7 +225,7 @@ export default function TemplateDialog({ companyId, template, members, onClose, 
                   return (
                     <button key={opt.value} type="button" aria-pressed={on}
                       onClick={() => setCondValues((p) => (on ? p.filter((v) => v !== opt.value) : [...p, opt.value]))}
-                      className={`px-2.5 h-8 pointer-coarse:h-10 rounded-full text-mac-caption font-medium border transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${on ? "bg-teal-600 text-white border-teal-600" : "border-(--border-control) text-(--text-primary) hover:bg-(--bg-hover)"}`}>
+                      className={`px-2.5 h-8 pointer-coarse:h-10 rounded-full text-mac-caption font-medium border transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${on ? "bg-(--accent) text-white border-(--accent)" : "border-(--border-control) text-(--text-primary) hover:bg-(--bg-hover)"}`}>
                       {opt.label}
                     </button>
                   );

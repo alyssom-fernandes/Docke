@@ -1,6 +1,6 @@
 import {
   createContext, forwardRef, useCallback, useContext, useEffect, useMemo, useState,
-  type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode,
+  type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import { Search, X } from "lucide-react";
@@ -131,18 +131,18 @@ export function PageHeader({ title, subtitle, leading, titleAccessory, children,
     );
   }
 
+  // Como na barra de navegação do iOS: os botões ficam na linha de cima, à
+  // direita, e o título grande ocupa a largura toda embaixo (sem cortar).
   const actions = mobileActions ?? children;
   return (
     <header className="mb-4 pt-1">
-      <div className="flex items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="ios-large-title truncate">{title}</h1>
-          {subtitle && <p className="mt-0.5 text-[15px] leading-5 text-(--text-secondary) truncate">{subtitle}</p>}
-        </div>
-        {actions && <div className="flex shrink-0 items-center gap-2 pb-1">{actions}</div>}
-      </div>
+      {actions && (
+        <div className="-mx-1 mb-1.5 flex items-center justify-end gap-2 overflow-x-auto px-1 py-0.5 [scrollbar-width:none]">{actions}</div>
+      )}
+      <h1 className="ios-large-title" style={{ textWrap: "balance" } as CSSProperties}>{title}</h1>
+      {subtitle && <p className="mt-0.5 text-[15px] leading-5 text-(--text-secondary) truncate">{subtitle}</p>}
       {titleAccessory && <div className="mt-2">{titleAccessory}</div>}
-      {search && <div className="mt-3">{search}</div>}
+      {search && <div className="mt-3 [&>*]:w-full! [&>*]:max-w-none!">{search}</div>}
       {mobileBelow}
     </header>
   );

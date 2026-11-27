@@ -41,6 +41,8 @@ export interface DialogProps {
   bodyClassName?: string;
   /** Ponto da tela de onde o diálogo cresce e para onde volta (Quick Look, A5-38). */
   origin?: { x: number; y: number } | null;
+  /** "alert": alerta do macOS 27 (260 px, cantos 26, botões em cápsula lado a lado). */
+  variant?: "sheet" | "alert";
 }
 
 // Fechar com a saída animada a partir de qualquer ponto de dentro do diálogo
@@ -59,8 +61,9 @@ const WIDTH = {
 
 export default function Dialog({
   onClose, title, description, children, footer, size = "md", initialFocusRef, busy = false,
-  hideTitle = false, showClose = true, className = "", bodyClassName = "", header, origin = null,
+  hideTitle = false, showClose = true, className = "", bodyClassName = "", header, origin = null, variant = "sheet",
 }: DialogProps) {
+  const alert = variant === "alert";
   // Deslocamento do centro da tela até o item de origem, lido uma vez ao abrir.
   const [qo] = useState(() => (origin && window.matchMedia("(min-width: 640px)").matches && !reducedMotion()
     ? { "--qo-x": `${Math.round(origin.x - window.innerWidth / 2)}px`, "--qo-y": `${Math.round(origin.y - window.innerHeight / 2)}px` } as CSSProperties
@@ -158,38 +161,42 @@ export default function Dialog({
           aria-labelledby={titleId}
           aria-describedby={description ? descId : undefined}
           tabIndex={-1}
-          className={`pointer-events-auto relative flex w-full max-h-[92dvh] flex-col glass-dialog glass-blur-strong shadow-modal
-            rounded-t-[18px] sm:rounded-(--radius-dialog) pb-[env(safe-area-inset-bottom)] sm:pb-0 focus:outline-hidden
-            ${WIDTH[size]} ${qo ? (leaving ? "quicklook-out" : "quicklook-in") : leaving ? "dialog-panel-out" : "dialog-panel-in"} ${className}`}
+          className={`pointer-events-auto relative flex w-full max-h-[92dvh] flex-col mac-sheet
+            ${alert ? "rounded-t-[26px] sm:rounded-[26px] sm:max-w-[300px]" : `rounded-t-[22px] sm:rounded-(--radius-dialog) ${WIDTH[size]}`} pb-[env(safe-area-inset-bottom)] sm:pb-0 focus:outline-hidden
+            ${qo ? (leaving ? "quicklook-out" : "quicklook-in") : leaving ? "dialog-panel-out" : "dialog-panel-in"} ${className}`}
           style={qo ?? undefined}
         >
           <div className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-(--border-control) sm:hidden" aria-hidden />
           {header && <h2 id={titleId} className="sr-only">{title}</h2>}
           {header}
-          <div className={`flex items-start gap-3 px-5 pt-4 sm:pt-5 ${hideTitle || header ? "sr-only" : ""}`}>
+          <div className={`flex items-start gap-3 ${alert ? "px-5 pt-5" : "px-5 pt-4 sm:pt-5"} ${hideTitle || header ? "sr-only" : ""}`}>
             <div className="min-w-0 flex-1">
-              {!header && <h2 id={titleId} className="text-mac-title3 text-(--text-primary)">{title}</h2>}
+              {!header && <h2 id={titleId} className={alert ? "text-[13px] leading-4 font-bold text-(--text-primary)" : "text-[15px] leading-5 font-bold text-(--text-primary)"}>{title}</h2>}
               {description && (
-                <div id={descId} className="mt-1.5 text-mac-body leading-[19px] text-(--text-secondary)">{description}</div>
+                <div id={descId} className={alert ? "mt-2.5 text-[12px] leading-[16px] text-(--text-primary)" : "mt-1 text-[13px] leading-[18px] text-(--text-secondary)"}>{description}</div>
               )}
             </div>
-            {showClose && !hideTitle && (
+            {showClose && !hideTitle && !alert && (
               <button
                 type="button"
                 onClick={requestClose}
                 disabled={busy}
                 aria-label="Fechar"
-                className="-mr-2 -mt-1 flex h-8 w-8 pointer-coarse:h-11 pointer-coarse:w-11 shrink-0 items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) disabled:opacity-(--opacity-disabled)"
+                className="-mr-1.5 -mt-0.5 flex h-7 w-7 pointer-coarse:h-11 pointer-coarse:w-11 shrink-0 items-center justify-center rounded-full bg-(--control-fill) text-(--text-secondary) hover:bg-(--control-fill-hover) hover:text-(--text-primary) disabled:opacity-(--opacity-disabled)"
               >
-                <X className="h-4 w-4" aria-hidden />
+                <X className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
               </button>
             )}
           </div>
           {children !== undefined && (
-            <div className={`min-h-0 flex-1 overflow-y-auto px-5 py-4 ${bodyClassName}`}>{children}</div>
+            <div className={`min-h-0 flex-1 overflow-y-auto ${alert ? "px-5 pt-3" : "px-5 py-4"} ${bodyClassName}`}>{children}</div>
           )}
           {footer && (
-            <div className="flex flex-col-reverse gap-2 border-t border-(--border-default) px-5 py-3.5 sm:flex-row sm:items-center sm:justify-end">
+            // No alerta, os botões ficam lado a lado; se um nome não cabe, eles
+            // empilham com o principal em cima, como nos alertas do macOS.
+            <div className={alert
+              ? "flex flex-wrap-reverse gap-2 px-4 pb-4 pt-4 [&>*]:flex-[1_1_112px] [&>*]:whitespace-nowrap"
+              : "flex flex-col-reverse gap-2 px-5 pb-5 pt-2 sm:flex-row sm:items-center sm:justify-end"}>
               {footer}
             </div>
           )}

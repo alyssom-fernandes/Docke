@@ -4,6 +4,9 @@ import { User, Building2, Users as UsersIcon, Lock, Sliders, Archive, Tags, Chev
 import { useAuthContext } from "@/lib/AuthContext";
 import { useCompany } from "@/lib/CompanyContext";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { PageHeader } from "@/components/layout/window";
+import Avatar from "@/components/ui/Avatar";
+import Footer from "@/components/layout/Footer";
 
 // Lembra o último painel visitado (regra do HIG: "Restore the most recently
 // viewed pane") — sem isso, /settings sempre caía em Perfil mesmo se o
@@ -20,7 +23,7 @@ const LAST_PANE_KEY = "docke_settings_last_pane";
 const TABS = [
   { to: "/settings/profile", icon: User, label: "Perfil", color: "bg-blue-500", adminOnly: false, supremoOnly: false, group: "Conta", keywords: ["nome", "avatar", "username", "e-mail", "email", "conta", "minhas empresas"] },
   { to: "/settings/security", icon: Lock, label: "Segurança", color: "bg-red-500", adminOnly: false, supremoOnly: false, group: "Conta", keywords: ["senha", "trocar senha", "password", "mfa", "duas etapas", "2fa", "autenticação", "segurança da conta"] },
-  { to: "/settings/admin", icon: LayoutGrid, label: "Visão geral", color: "bg-teal-600", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["administração", "resumo", "painel", "overview"] },
+  { to: "/settings/admin", icon: LayoutGrid, label: "Visão geral", color: "bg-(--accent)", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["administração", "resumo", "painel", "overview"] },
   { to: "/settings/organization", icon: Building2, label: "Organização", color: "bg-slate-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["empresa", "cnpj", "desativar", "reativar", "perfil fiscal", "logo", "regime", "segmento", "exportar", "exportação", "backup", "ler de novo", "ocr"] },
   { to: "/settings/users", icon: UsersIcon, label: "Pessoas e acessos", color: "bg-indigo-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["usuário", "membro", "grupo", "grupos", "permissão", "acesso", "operador", "visualizador", "admin", "explain access"] },
   { to: "/settings/metadata", icon: Tags, label: "Metadados", color: "bg-orange-500", adminOnly: true, supremoOnly: false, group: "Organização", keywords: ["campo", "campos", "cpf", "cnpj", "catálogo", "aplicação na árvore", "herança", "obrigatório"] },
@@ -72,81 +75,49 @@ export default function SettingsLayout() {
   const activeTab = TABS.find((t) => location.pathname.startsWith(t.to));
 
   if (!isDesktop) {
-    // Mobile: master-detail estilo iOS Settings. A lista (master) e o
-    // conteúdo de uma seção (detail) nunca aparecem juntos — só um dos dois
-    // ocupa a tela inteira por vez, com um botão "Voltar" no detalhe.
+    // Celular: lista agrupada do iOS (Ajustes do iPhone). A lista e o conteúdo
+    // de uma seção nunca aparecem juntos; a seção tem o voltar em círculo.
     if (atIndex) {
-      // "Perfil" some da lista de linhas — vira o cartão de identidade no
-      // topo (igual ao cartão "Apple Account" do iOS), não uma linha comum.
       const listTabs = visibleTabs.filter((t) => t.to !== "/settings/profile");
-      const initials = (user?.full_name ?? user?.username ?? "?").split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase();
       return (
-        <div key={location.pathname} className="panel-in flex flex-col h-[calc(100%+3rem)] -mt-6 py-2">
-          <div className="px-1 pb-3 shrink-0">
-            <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Configurações</h1>
-          </div>
-          {/* No iOS real o conteúdo fica sempre no topo, mesmo quando é
-              curto — o fundo simplesmente continua vazio até o fim da tela,
-              sem nada tentando "preencher" o espaço. flex-1 aqui só garante
-              que essa área ocupe a altura disponível (pro scroll funcionar
-              quando o conteúdo crescer), sem centralizar nada. */}
-          <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-4">
-            {/* Cartão de identidade — mesmo padrão do topo do Settings do
-                iOS real (avatar + nome + subtítulo + chevron, cartão próprio
-                separado da lista abaixo). */}
-            <NavLink
-              to="/settings/profile"
-              className="glass-panel glass-highlight-line rounded-(--radius-panel) glass-shadow flex items-center gap-3.5 px-4 py-3.5 active:bg-(--bg-hover) transition-colors duration-fast"
-            >
-              <div className="w-14 h-14 rounded-full bg-teal-600 flex items-center justify-center text-white text-mac-title3 font-semibold shrink-0">
-                {initials}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-mac-callout font-semibold text-(--text-primary) truncate">{user?.full_name}</p>
-                <p className="text-mac-caption text-(--text-tertiary) truncate">@{user?.username}{user?.role ? ` · ${user.role}` : ""}</p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-(--text-tertiary) shrink-0" />
-            </NavLink>
-
-            <nav className="glass-panel glass-highlight-line rounded-(--radius-panel) glass-shadow overflow-hidden divide-y divide-(--border-default) shrink-0">
-              {listTabs.map((tab) => (
-                <NavLink
-                  key={tab.to}
-                  to={tab.to}
-                  className="flex items-center gap-3 h-14 px-3.5 text-mac-body text-(--text-primary) active:bg-(--bg-hover) transition-colors duration-fast"
-                >
-                  <span className={`w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0 ${tab.color}`}>
-                    <tab.icon className="w-5 h-5 text-white" strokeWidth={2.25} />
-                  </span>
-                  <span className="flex-1 min-w-0 truncate">{tab.label}</span>
-                  <ChevronRight className="w-4 h-4 text-(--text-tertiary) shrink-0" />
-                </NavLink>
-              ))}
-            </nav>
-          </div>
+        <div key={location.pathname} className="panel-in flex flex-col gap-5">
+          <PageHeader title="Ajustes" />
+          <NavLink to="/settings/profile" className="mac-group flex items-center gap-3.5 px-4 py-3 active:bg-(--control-fill)">
+            <Avatar name={user?.full_name ?? user?.username ?? "?"} size="lg" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[17px] font-semibold text-(--text-primary) truncate">{user?.full_name}</p>
+              <p className="text-[13px] text-(--text-secondary) truncate">Perfil, senha e empresas</p>
+            </div>
+            <ChevronRight className="w-4 h-4 text-(--text-tertiary) shrink-0" aria-hidden />
+          </NavLink>
+          <nav aria-label="Seções dos ajustes" className="mac-group overflow-hidden">
+            {listTabs.map((tab, i) => (
+              <NavLink key={tab.to} to={tab.to} className="flex items-center gap-3 pl-3.5 min-h-12 text-[17px] text-(--text-primary) active:bg-(--control-fill)">
+                <span className={`w-[30px] h-[30px] rounded-[7px] flex items-center justify-center shrink-0 ${tab.color}`}>
+                  <tab.icon className="w-[18px] h-[18px] text-white" strokeWidth={2} aria-hidden />
+                </span>
+                <span className={`flex flex-1 min-w-0 items-center self-stretch pr-3.5 ${i > 0 ? "border-t border-(--separator-subtle)" : ""}`}>
+                  <span className="flex-1 truncate">{tab.label}</span>
+                  <ChevronRight className="w-4 h-4 text-(--text-tertiary) shrink-0" aria-hidden />
+                </span>
+              </NavLink>
+            ))}
+          </nav>
         </div>
       );
     }
 
     return (
-      <div className="flex flex-col h-[calc(100%+3rem)] -mt-6 py-2">
-        {/* Botão voltar só com ícone, circular e translúcido — o iOS atual
-            não usa mais botão de texto ("‹ Configurações") na barra de
-            navegação, só a seta dentro de um círculo. */}
+      <div className="flex flex-col">
         <button
           onClick={() => navigate("/settings")}
           aria-label="Voltar para Ajustes"
-          className="flex items-center justify-center w-11 h-11 -ml-1 mb-2 rounded-full bg-(--bg-hover) text-(--text-primary) shrink-0 self-start active:scale-95"
+          className="glass-capsule flex items-center justify-center size-9 mb-2 rounded-full text-(--text-primary) self-start active:scale-95"
         >
           <ChevronLeft className="w-4 h-4" aria-hidden="true" />
         </button>
-        {/* Título do pane mora só aqui — as sub-páginas não repetem o nome
-            (evita duplicar "Perfil"/"Segurança" tanto no header quanto no
-            corpo). Conteúdo fica no topo (como no iOS real) — não centraliza. */}
-        {activeTab && (
-          <h2 className="px-1 pb-3 text-mac-title1 font-bold tracking-[-0.01em] text-(--text-primary) shrink-0">{activeTab.label}</h2>
-        )}
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        {activeTab && <PageHeader title={activeTab.label} />}
+        <div key={location.pathname} className="page-enter space-y-6">
           <Outlet />
         </div>
       </div>
@@ -154,31 +125,26 @@ export default function SettingsLayout() {
   }
 
   return (
-    // Janela única (sidebar + conteúdo no MESMO cartão de vidro, separados só
-    // por uma linha divisória) — igual ao System Settings real do macOS, que
-    // vive dentro de um único frame de janela. A versão anterior usava dois
-    // glass-panel flutuantes lado a lado com gap-4, o que lia como "duas
-    // caixas" em vez de uma janela coesa. calc(100%+3rem)/-mt-6 é o mesmo
-    // ajuste de Documents.tsx pra cancelar o padding vertical do AppShell.
-    <div className="flex h-[calc(100%+3rem)] -mt-6 py-2 glass-panel glass-highlight-line rounded-(--radius-panel) glass-shadow overflow-hidden">
-      <aside className="flex flex-col w-[200px] lg:w-[240px] shrink-0 border-r border-(--border-default)">
-        <div className="px-4 py-3 border-b border-(--border-default) shrink-0 space-y-2">
-          <h1 className="text-mac-body font-semibold text-(--text-secondary)">Configurações</h1>
-          {/* Campo de busca no topo da sidebar — presente em toda referência
-              real de System Settings, ausente até agora no Docke. */}
+    // Ajustes do Sistema do macOS 27: coluna de seções com a busca no topo,
+    // ícone em bloco colorido e a seleção em cápsula; o nome da seção vai para
+    // a barra de ferramentas da janela.
+    <div className="flex h-full min-h-0">
+      {activeTab && <PageHeader title={activeTab.label} subtitle="Ajustes" />}
+      <aside className="flex flex-col w-[232px] shrink-0 border-r border-(--separator)">
+        <div className="px-3 pt-1 pb-2 shrink-0">
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-(--text-placeholder) pointer-events-none" />
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-(--text-secondary) pointer-events-none" aria-hidden />
             <input
               type="search"
               aria-label="Buscar nos ajustes"
               value={sidebarQuery}
               onChange={(e) => setSidebarQuery(e.target.value)}
-              placeholder="Buscar (ex.: senha, CNPJ, campos)"
-              className="w-full h-7 pl-8 pr-2 text-mac-caption bg-(--bg-hover) rounded-[6px] text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-2 focus:ring-teal-500/70"
+              placeholder="Buscar"
+              className="mac-field w-full h-7 pl-7 pr-2 text-[13px] text-(--text-primary) placeholder:text-(--text-secondary)"
             />
           </div>
         </div>
-        <nav aria-label="Seções dos ajustes" className="flex-1 overflow-y-auto p-1.5">
+        <nav aria-label="Seções dos ajustes" className="flex-1 overflow-y-auto px-2.5 pb-3">
           {(() => {
             const q = sidebarQuery.trim().toLowerCase();
             const filtered = visibleTabs.filter((tab) =>
@@ -186,67 +152,46 @@ export default function SettingsLayout() {
             );
             // Busca sem resultado diz o que tentar (A8-01), em vez de lista em branco.
             if (!filtered.length) return (
-              <p role="status" className="px-2.5 py-3 text-mac-caption text-(--text-secondary)">
+              <p role="status" className="px-2 py-3 text-[12px] text-(--text-secondary)">
                 Nada nos ajustes com “{sidebarQuery.trim()}”. Tente senha, CNPJ, campos, prazos ou tema.
               </p>
             );
             const groups = Array.from(new Set(filtered.map((t) => t.group)));
             return groups.map((group, gi) => (
               <div key={group} className={gi > 0 ? "mt-3" : ""}>
-                {/* Cabeçalho de seção — mesmo estilo caption/uppercase usado
-                    nos agrupamentos da sidebar de pastas (Ancorados/Locais em
-                    Documents.tsx), só que sem disclosure: System Settings
-                    real não recolhe grupos, só separa visualmente. */}
-                <p className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-(--text-secondary)">{group}</p>
-                <div className="space-y-0.5">
-                  {filtered.filter((t) => t.group === group).map((tab) => (
-                    <NavLink
-                      key={tab.to}
-                      to={tab.to}
-                      className={({ isActive }) =>
-                        // Preenchimento sólido no item selecionado (não um tint sutil)
-                        // — igual ao destaque de seleção real do System Settings.
-                        // teal-700 dá 5,4:1 com o branco (o 500 dava 3,2:1 — J1-11).
-                        `group flex items-center gap-2.5 h-9 pointer-coarse:h-11 px-2.5 rounded-sm text-mac-body whitespace-nowrap transition-colors duration-fast ${
-                          isActive
-                            ? "bg-teal-700 text-white font-medium"
-                            : "text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)"
-                        }`
-                      }
-                    >
-                      <span className={`w-5 h-5 rounded-[6px] flex items-center justify-center shrink-0 group-aria-[current=page]:ring-1 group-aria-[current=page]:ring-white/80 ${tab.color}`}>
-                        <tab.icon className="w-3 h-3 text-white" strokeWidth={2.25} aria-hidden="true" />
-                      </span>
-                      <span className="min-w-0 flex-1 truncate">
-                        {tab.label}
-                        {/* Fase 10.4: quando o match veio de um termo interno
-                            (não do rótulo da aba), mostra qual foi — mesma
-                            transparência do "found in" do System Settings. */}
-                        {q && !tab.label.toLowerCase().includes(q) && (
-                          <span className="block text-[10px] opacity-70 truncate font-normal">
-                            em "{tab.keywords.find((k) => k.includes(q))}"
-                          </span>
-                        )}
-                      </span>
-                    </NavLink>
-                  ))}
-                </div>
+                <p className="px-1.5 pt-1.5 pb-1 text-[11px] font-bold text-(--sidebar-header)">{group}</p>
+                {filtered.filter((t) => t.group === group).map((tab) => (
+                  <NavLink
+                    key={tab.to}
+                    to={tab.to}
+                    className={({ isActive }) => `sidebar-item ${isActive ? "is-selected" : ""}`}
+                  >
+                    <span className={`w-5 h-5 rounded-[5px] flex items-center justify-center shrink-0 ${tab.color}`}>
+                      <tab.icon className="w-3 h-3 text-white" strokeWidth={2.4} aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate pl-0.5">
+                      {tab.label}
+                      {/* Quando o achado veio de um termo interno, mostra qual foi. */}
+                      {q && !tab.label.toLowerCase().includes(q) && (
+                        <span className="block text-[10px] leading-3 text-(--text-secondary) truncate font-normal">
+                          em "{tab.keywords.find((k) => k.includes(q))}"
+                        </span>
+                      )}
+                    </span>
+                  </NavLink>
+                ))}
               </div>
             ));
           })()}
         </nav>
       </aside>
 
-      <div className="flex-1 min-w-0 overflow-y-auto p-6">
-        {/* Título do pane mora só aqui, e o conteúdo tem largura máxima —
-            System Settings nunca estica formulários/group boxes pra ocupar
-            uma janela larga inteira, mantém foco e legibilidade. */}
-        {/* Troca de painel com transição (A8-04); em telas largas o conteúdo
-            cresce até 960 px em vez de deixar meia janela vazia (A8-05). */}
-        <div key={location.pathname} className="page-enter max-w-[720px] 2xl:max-w-[960px] space-y-6">
-          {activeTab && <h2 className="text-mac-title3 font-semibold text-(--text-primary)">{activeTab.label}</h2>}
+      <div className="flex-1 min-w-0 overflow-y-auto px-8 pt-4 pb-10">
+        {/* O conteúdo não estica numa janela larga, como nos Ajustes do Sistema. */}
+        <div key={location.pathname} className="page-enter mx-auto max-w-[680px] space-y-6">
           <Outlet />
         </div>
+        <div className="mx-auto max-w-[680px]"><Footer /></div>
       </div>
     </div>
   );

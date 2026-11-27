@@ -1,5 +1,5 @@
 import { createElement, type ElementType } from "react";
-import { MacDocumentIcon } from "@/components/ui/MacIcons";
+import { MacDocumentIcon, MacFolderIcon } from "@/components/ui/MacIcons";
 
 export interface FileStyle {
   icon: ElementType;
@@ -47,4 +47,14 @@ const DEFAULT: FileStyle = { icon: docIcon(GRAY, ""), iconColor: "", bgColor: ""
 export function getFileStyle(filename: string): FileStyle {
   const ext = filename.split(".").pop()?.toLowerCase() ?? "";
   return EXT_MAP[ext] ?? DEFAULT;
+}
+
+/**
+ * Ícone de um item nas listas: a pasta do Finder ou a folha do documento com a
+ * faixa do tipo. Sem quadrado colorido por trás, como no macOS.
+ */
+export function ItemIcon({ name, folder = false, className = "w-8 h-8" }: { name: string; folder?: boolean; className?: string }) {
+  return folder
+    ? createElement(MacFolderIcon, { className })
+    : createElement(getFileStyle(name).icon, { className });
 }

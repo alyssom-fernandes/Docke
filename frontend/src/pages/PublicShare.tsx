@@ -4,6 +4,7 @@ import { Lock, Download, FolderOpen, AlertCircle, ChevronRight, Building2, Calen
 import { getFileStyle } from "@/lib/fileType";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
+import Wallpaper from "@/components/layout/Wallpaper";
 
 const PdfViewer = lazy(() => import("@/components/documents/PdfViewer"));
 
@@ -142,24 +143,15 @@ export default function PublicShare() {
   const validade = info?.expires_at ? new Date(info.expires_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }) : null;
 
   return (
-    <main className="relative min-h-screen overflow-hidden flex flex-col items-center px-4 py-10" style={{ background: "var(--wallpaper)" }}>
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-80 dark:opacity-100"
-        style={{
-          background:
-            "radial-gradient(680px circle at 16% 12%, rgba(13,148,136,0.20), transparent 55%)," +
-            "radial-gradient(620px circle at 84% 82%, rgba(20,184,166,0.16), transparent 55%)," +
-            "radial-gradient(900px circle at 50% 118%, rgba(13,148,136,0.12), transparent 60%)",
-        }}
-      />
+    <main className="wallpaper-screen relative isolate min-h-dvh overflow-x-hidden flex flex-col items-center px-4 py-10">
+      <Wallpaper fixed />
 
       <div className="relative w-full max-w-[560px]">
         <div className="flex items-center justify-center mb-8">
-          <div className="brand-wordmark w-[130px] h-[37px]" role="img" aria-label="Docke" />
+          <div className="brand-wordmark w-[130px] h-[37px] bg-white!" role="img" aria-label="Docke" />
         </div>
 
-        <div className="glass-dialog glass-blur-strong rounded-(--radius-dialog) p-6 shadow-modal">
+        <div className="mac-window p-6">
           {/* Quem enviou e até quando vale (A1-11) */}
           {info && !error && (info.company_name || info.sender_name || validade) && (
             <div className="reveal mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-(--border-default) pb-4 text-mac-caption text-(--text-secondary)">
@@ -242,7 +234,7 @@ export default function PublicShare() {
           {!error && content?.type === "document" && (
             <div className="reveal text-center py-2">
               {(() => { const s = getFileStyle(content.name); const Icon = s.icon; return (
-                <Icon className={`w-12 h-12 mx-auto mb-3 ${s.iconColor}`} strokeWidth={1.5} aria-hidden="true" />
+                <Icon className="w-16 h-16 mx-auto mb-3" />
               ); })()}
               <h1 className="text-mac-body font-medium text-(--text-primary) wrap-break-word">{content.name}</h1>
               {info?.size_bytes != null && <p className="text-mac-caption text-(--text-secondary) mb-4">{fmtSize(info.size_bytes)}</p>}
@@ -302,9 +294,7 @@ export default function PublicShare() {
                     const s = getFileStyle(d.name); const Icon = s.icon;
                     return (
                       <li key={d.id} className="flex items-center gap-2 px-3 min-h-11 text-mac-body">
-                        <div className={`w-6 h-6 rounded-badge flex items-center justify-center shrink-0 ${s.bgColor}`} aria-hidden="true">
-                          <Icon className={`w-3.5 h-3.5 ${s.iconColor} ${s.fillColor}`} />
-                        </div>
+                        <Icon className="w-6 h-6 shrink-0" />
                         <span className="flex-1 truncate text-(--text-primary)" title={d.name}>{d.name}</span>
                         <span className="text-mac-caption text-(--text-secondary) tabular-nums">{fmtSize(d.size_bytes)}</span>
                         {canDownload && (
@@ -325,8 +315,8 @@ export default function PublicShare() {
           )}
         </div>
 
-        <p className="text-center text-mac-caption text-(--text-secondary) mt-6">
-          Compartilhado com segurança pelo <span className="font-medium">Docke</span>
+        <p className="wallpaper-note text-center text-mac-caption mt-6">
+          Compartilhado com segurança pelo <span className="font-semibold">Docke</span>
         </p>
       </div>
     </main>

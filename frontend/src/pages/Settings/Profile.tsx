@@ -56,11 +56,11 @@ export default function Profile() {
       <div className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-5 sm:p-6">
         <form className="max-w-[560px] space-y-6" onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-teal-600 flex items-center justify-center text-white text-mac-title3 font-semibold shrink-0" aria-hidden="true">{initials}</div>
+            <div className="w-14 h-14 rounded-full bg-(--accent) flex items-center justify-center text-white text-mac-title3 font-semibold shrink-0" aria-hidden="true">{initials}</div>
             <div className="min-w-0">
               <p className="text-mac-callout font-semibold text-(--text-primary) truncate">{user?.full_name}</p>
               <p className="text-mac-body text-(--text-secondary) truncate">{user?.email ?? `@${user?.username}`}</p>
-              {user?.role === "supremo" && <span className="inline-block mt-1 text-mac-caption px-2 py-0.5 rounded-full bg-teal-600 text-white font-medium">Administrador geral</span>}
+              {user?.role === "supremo" && <span className="inline-block mt-1 text-mac-caption px-2 py-0.5 rounded-full bg-(--accent) text-white font-medium">Administrador geral</span>}
             </div>
           </div>
           <div className="space-y-4">

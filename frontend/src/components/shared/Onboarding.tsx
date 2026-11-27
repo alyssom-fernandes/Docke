@@ -127,7 +127,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
         // Progresso em pontos (A1-26), com o texto para leitor de tela.
         <span className="flex items-center gap-2">
           <span className="flex gap-1.5" aria-hidden="true">
-            {titles.map((_, i) => <span key={i} className={`h-1.5 rounded-full transition-all duration-200 ${i === step ? "w-5 bg-teal-600" : i < step ? "w-1.5 bg-teal-600/60" : "w-1.5 bg-(--border-control)"}`} />)}
+            {titles.map((_, i) => <span key={i} className={`h-1.5 rounded-full transition-all duration-200 ${i === step ? "w-5 bg-(--accent)" : i < step ? "w-1.5 bg-(--accent)/60" : "w-1.5 bg-(--border-control)"}`} />)}
           </span>
           <span className="text-mac-caption">Passo {step + 1} de 4</span>
         </span>
@@ -152,7 +152,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
               return (
                 <button key={t.id} type="button" role="checkbox" aria-checked={on}
                   onClick={() => setTemplateIds((ids) => (on ? ids.filter((x) => x !== t.id) : [...ids, t.id]))}
-                  className={`text-left rounded-(--radius-control) border p-3 min-h-16 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${on ? "border-teal-600 bg-(--tint-accent)" : "border-(--border-control) hover:bg-(--bg-hover)"}`}>
+                  className={`text-left rounded-(--radius-control) border p-3 min-h-16 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${on ? "border-(--accent) bg-(--tint-accent)" : "border-(--border-control) hover:bg-(--bg-hover)"}`}>
                   <span className="flex items-center gap-2 text-mac-body font-medium text-(--text-primary)">
                     {on ? <Check className="w-4 h-4 text-(--text-accent)" aria-hidden="true" /> : <FolderOpen className="w-4 h-4 text-(--text-secondary)" aria-hidden="true" />}{t.label}
                   </span>
