@@ -16,7 +16,7 @@ function readRecent(): string[] {
  * por último ficam no topo; setas, Home/End, Enter e Esc. Sem empresa
  * liberada, diz isso em vez de sumir.
  */
-export default function CompanySwitcher() {
+export default function CompanySwitcher({ variant = "default" }: { variant?: "default" | "sidebar" | "mobile" }) {
   const { companies, current, setCurrent } = useCompany();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -88,22 +88,28 @@ export default function CompanySwitcher() {
   let lastGroup: string | null = null;
 
   return (
-    <div className="relative min-w-0 shrink" ref={rootRef}>
+    <div className={`relative min-w-0 ${variant === "default" ? "shrink" : "w-full"}`} ref={rootRef}>
       <button
         ref={buttonRef}
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={`Empresa: ${current?.name ?? "nenhuma selecionada"}. Trocar de empresa`}
-        className="flex items-center gap-1.5 h-7 pointer-coarse:h-10 px-3 rounded-[6px] text-mac-body font-medium text-(--text-primary) bg-black/3 dark:bg-white/4 hover:bg-black/6 dark:hover:bg-white/8 transition-colors duration-fast min-w-0 max-w-[clamp(100px,calc(100vw-236px),280px)] md:max-w-[320px]"
+        title={current?.name}
+        className={variant === "sidebar"
+          // Barra lateral: botão pop-up do macOS, só texto e ⌃⌄ (o nome é o título da barra).
+          ? "flex w-full items-center gap-1 h-7 px-1.5 rounded-[6px] text-[13px] font-semibold text-(--sidebar-label) hover:bg-(--control-fill) transition-colors duration-fast min-w-0"
+          : variant === "mobile"
+            ? "glass-capsule flex items-center gap-1.5 h-9 pl-3 pr-2.5 text-[15px] font-semibold text-(--text-primary) min-w-0 max-w-[min(60vw,260px)]"
+            : "flex items-center gap-1.5 h-7 pointer-coarse:h-10 px-3 rounded-[6px] text-mac-body font-medium text-(--text-primary) bg-black/3 dark:bg-white/4 hover:bg-black/6 dark:hover:bg-white/8 transition-colors duration-fast min-w-0 max-w-[clamp(100px,calc(100vw-236px),280px)] md:max-w-[320px]"}
       >
-        <Building2 className="w-3.5 h-3.5 shrink-0 text-(--text-secondary)" aria-hidden="true" />
+        {variant === "default" && <Building2 className="w-3.5 h-3.5 shrink-0 text-(--text-secondary)" aria-hidden="true" />}
         <span className="truncate">{current?.name ?? "Selecionar empresa"}</span>
-        <ChevronsUpDown className="w-3.5 h-3.5 shrink-0 text-(--text-secondary)" aria-hidden="true" />
+        <ChevronsUpDown className={`${variant === "mobile" ? "w-4 h-4" : "w-3 h-3"} shrink-0 text-(--text-secondary)`} aria-hidden="true" />
       </button>
 
       {presence.mounted && (
-        <div className={`${presence.leaving ? "menu-out" : "menu-in"} absolute top-full left-0 mt-1.5 w-[min(320px,calc(100vw-24px))] glass-dialog glass-blur-strong rounded-(--radius-popover) shadow-dropdown z-50 overflow-hidden`}>
+        <div className={`${presence.leaving ? "menu-out" : "menu-in"} absolute top-full left-0 mt-1.5 w-[min(300px,calc(100vw-24px))] glass-dialog glass-blur-strong rounded-(--radius-popover) shadow-dropdown z-50 overflow-hidden`}>
           {withSearch && (
             <div className="flex items-center gap-2 px-3 border-b border-(--border-default)">
               <Search className="w-3.5 h-3.5 text-(--text-secondary) shrink-0" aria-hidden="true" />
@@ -143,7 +149,7 @@ export default function CompanySwitcher() {
               const selected = current?.id === c.id;
               return (
                 <li key={c.id} role="presentation">
-                  {header && <p aria-hidden="true" className="px-3 pt-2 pb-1 text-mac-caption font-semibold uppercase tracking-[0.06em] text-(--text-secondary)">{header}</p>}
+                  {header && <p aria-hidden="true" className="px-3 pt-2 pb-1 text-[11px] font-bold text-(--text-secondary)">{header}</p>}
                   <div
                     id={`empresa-op-${c.id}`}
                     role="option"
@@ -151,8 +157,8 @@ export default function CompanySwitcher() {
                     data-idx={idx}
                     onMouseEnter={() => setActive(idx)}
                     onClick={() => choose(c.id)}
-                    className={`mx-1 flex items-center gap-2 px-2.5 min-h-8 pointer-coarse:min-h-11 rounded-[6px] cursor-default text-mac-body transition-colors duration-fast ${
-                      idx === active ? "bg-teal-600 text-white" : selected ? "text-(--text-accent)" : "text-(--text-primary)"
+                    className={`mx-1.5 flex items-center gap-2 px-2.5 min-h-7 pointer-coarse:min-h-11 rounded-[8px] cursor-default text-[13px] font-medium transition-colors duration-fast ${
+                      idx === active ? "bg-(--selection-bg) text-(--selection-text)" : "text-(--text-primary)"
                     }`}
                   >
                     <span className="flex-1 truncate">{c.name}</span>

@@ -216,18 +216,18 @@ export default function TaskCenter() {
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-controls={open ? "central-tarefas" : undefined}
-        className="relative w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) transition-colors duration-fast"
+        className="glass-capsule relative size-9 shrink-0 flex items-center justify-center rounded-full text-(--text-primary) hover:brightness-[0.97] dark:hover:brightness-125 transition-[filter] duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
         title="Tarefas e avisos"
         aria-label={resumo ? `Tarefas e avisos: ${resumo}` : "Tarefas e avisos"}
       >
-        <Bell className="w-4 h-4" aria-hidden="true" />
+        <Bell className="size-[15px]" aria-hidden="true" />
         {(badgeCount > 0 || failed > 0) && (
-          <span aria-hidden="true" className={`absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-0.5 rounded-full text-[10px] font-bold text-white flex items-center justify-center ${failed > 0 ? "bg-red-600" : "bg-teal-600"}`}>
+          <span aria-hidden="true" className={`absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold text-white flex items-center justify-center ${failed > 0 ? "bg-[#FF3B30]" : "bg-[#FF3B30]"}`}>
             {failed > 0 ? failed : badgeCount > 99 ? "99+" : badgeCount}
           </span>
         )}
         {!everSeen && badgeCount === 0 && failed === 0 && (
-          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-teal-500 ring-2 ring-(--bg-card)" aria-hidden="true" />
+          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-(--accent) ring-2 ring-(--window-bg)" aria-hidden="true" />
         )}
       </button>
 

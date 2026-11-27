@@ -24,6 +24,7 @@ import {
   type Template, type Instance, type Dependency, type Member,
   STATUS, StatusChip, URGENCY, OPEN_STATUSES, CRIT_LABEL, MESES, dueText, scheduleText, friendly,
 } from "@/components/obligations/shared";
+import { PageHeader, ToolbarGroup, ToolbarButton } from "@/components/layout/window";
 
 type Tab = "pendencias" | "calendario" | "configuracao" | "matriz" | "aso";
 type Load<T> = { state: "loading" | "ok" | "error"; data: T };
@@ -179,25 +180,20 @@ export default function Obligations() {
 
   return (
     <div className="space-y-6 sm:space-y-6 max-w-[1440px] w-full mx-auto">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Obrigações</h1>
-          <p className="text-mac-caption text-(--text-secondary) mt-0.5">
-            {grupo ? `Todas as ${companies.length} empresas que você acessa` : current.name} · o que precisa ser comprovado, até quando e por quem.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {/* Calendário e exportação (B3.5.10): as abertas para a agenda do celular ou planilha. */}
-          <Button variant="ghost" size="sm" onClick={() => exportar("ics")}><CalendarDays className="w-4 h-4" aria-hidden="true" /> Para a agenda</Button>
-          <Button variant="ghost" size="sm" onClick={() => exportar("csv")}><FileSpreadsheet className="w-4 h-4" aria-hidden="true" /> Planilha</Button>
-        </div>
+      <PageHeader title="Obrigações" subtitle={grupo ? `Todas as ${companies.length} empresas que você acessa` : current.name}>
+        {/* Calendário e exportação (B3.5.10): as abertas para a agenda do celular ou planilha. */}
+        <ToolbarGroup label="Exportar">
+          <ToolbarButton inGroup label="Para a agenda (.ics)" onClick={() => exportar("ics")}><CalendarDays aria-hidden="true" /></ToolbarButton>
+          <ToolbarButton inGroup label="Planilha (CSV)" onClick={() => exportar("csv")}><FileSpreadsheet aria-hidden="true" /></ToolbarButton>
+        </ToolbarGroup>
         {isAdmin && !grupo && (
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={() => setShowCatalog(true)}><Sparkles className="w-4 h-4" aria-hidden="true" /> Modelos prontos</Button>
-            <Button onClick={() => setShowTemplate("nova")}><Plus className="w-4 h-4" aria-hidden="true" /> Nova obrigação</Button>
-          </div>
+          <>
+            <ToolbarButton showLabel label="Modelos prontos" onClick={() => setShowCatalog(true)}><Sparkles aria-hidden="true" /></ToolbarButton>
+            <ToolbarButton prominent label="Nova obrigação" onClick={() => setShowTemplate("nova")}><Plus aria-hidden="true" /></ToolbarButton>
+          </>
         )}
-      </div>
+      </PageHeader>
+      <p className="text-mac-footnote text-(--text-secondary) -mb-2">O que precisa ser comprovado, até quando e por quem.</p>
 
       {/* Abas e escopo */}
       <div className="flex flex-wrap items-center justify-between gap-3">

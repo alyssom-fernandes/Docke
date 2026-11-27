@@ -12,6 +12,7 @@ import Dialog from "@/components/ui/Dialog";
 import Input from "@/components/ui/Input";
 import { useToast } from "@/lib/toast";
 import { friendlyError } from "@/lib/errors";
+import { PageHeader } from "@/components/layout/window";
 
 interface SavedSearch { id: string; name: string; query: string }
 
@@ -231,7 +232,7 @@ export default function Search() {
 
   return (
     <div className="space-y-6 max-w-[1280px] w-full mx-auto">
-      <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Busca</h1>
+      <PageHeader title="Busca" subtitle={current?.name} search={<></>} />
 
       <form role="search" onSubmit={(e) => { e.preventDefault(); setP({ q: text.trim() || null }); }} className="relative">
         <label htmlFor={`${uid}-q`} className="sr-only">Buscar no nome, no texto e nos metadados dos documentos</label>

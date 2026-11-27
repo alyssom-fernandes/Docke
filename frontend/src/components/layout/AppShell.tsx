@@ -1,109 +1,165 @@
-import { ReactNode, useRef, useEffect } from "react";
+import { ReactNode, useCallback, useRef, useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import TopBar from "./TopBar";
-import Dock from "./Dock";
+import { PanelLeft, Search } from "lucide-react";
 import Footer from "./Footer";
 import CommandPalette from "@/components/shared/CommandPalette";
 import KeyboardShortcuts from "@/components/shared/KeyboardShortcuts";
 import ErrorBoundary from "@/components/shared/ErrorBoundary";
-import BottomTabBar from "./BottomTabBar";
+import TaskCenter from "@/components/shared/TaskCenter";
+import { useCommandPalette } from "@/hooks/useCommandPalette";
 import { prefetchCommonRoutes } from "@/lib/routePrefetch";
+import BottomTabBar from "./BottomTabBar";
+import MobileTopBar from "./MobileTopBar";
+import Sidebar from "./Sidebar";
+import { NAV_ITEMS } from "./navItems";
+import { WindowProvider, useWindow, ToolbarButton } from "./window";
 
 interface AppShellProps {
   children: ReactNode;
 }
 
-export default function AppShell({ children }: AppShellProps) {
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+
+/** Telas que ocupam a janela inteira e rolam por dentro (como o Finder). */
+function isFullBleed(pathname: string) {
+  return pathname.startsWith("/documents");
+}
+
+function GlobalSearchPill() {
+  const { open } = useCommandPalette();
+  return (
+    <button
+      type="button"
+      onClick={open}
+      aria-keyshortcuts={isMac ? "Meta+K" : "Control+K"}
+      title={isMac ? "Buscar (⌘K)" : "Buscar (Ctrl+K)"}
+      className="glass-capsule flex h-9 w-[200px] shrink-0 items-center gap-1.5 px-2.5 text-left hover:brightness-[0.98] dark:hover:brightness-125 focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
+    >
+      <Search className="size-[14px] shrink-0 text-(--text-secondary)" aria-hidden />
+      <span className="truncate text-[13px] font-medium text-(--text-secondary)">Buscar</span>
+    </button>
+  );
+}
+
+function WindowToolbar({ scrolled }: { scrolled: boolean }) {
+  const { setSlot, sidebarOpen, setSidebarOpen, headers, customSearch } = useWindow();
+  const location = useLocation();
+  const fallback = NAV_ITEMS.find((i) => location.pathname.startsWith(i.match))?.label ?? "Docke";
+  // Callbacks estáveis: um ref novo a cada renderização soltava e prendia o espaço de novo (laço).
+  const toolbarRef = useCallback((el: HTMLDivElement | null) => setSlot("toolbar", el), [setSlot]);
+  const searchRef = useCallback((el: HTMLDivElement | null) => setSlot("search", el), [setSlot]);
+  return (
+    <header className={`window-toolbar ${scrolled ? "is-scrolled" : ""}`}>
+      {!sidebarOpen && (
+        <ToolbarButton label="Mostrar a barra lateral" onClick={() => setSidebarOpen(true)}>
+          <PanelLeft aria-hidden />
+        </ToolbarButton>
+      )}
+      {headers === 0 && <h1 className="toolbar-title truncate pl-1">{fallback}</h1>}
+      <div ref={toolbarRef} className="flex min-w-0 flex-1 items-center gap-2" />
+      <TaskCenter />
+      <div ref={searchRef} className="contents" />
+      {customSearch === 0 && <GlobalSearchPill />}
+    </header>
+  );
+}
+
+function Shell({ children }: AppShellProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { desktop, sidebarOpen, setSidebarOpen } = useWindow();
   const mainRef = useRef<HTMLElement>(null);
+  const [scrolled, setScrolled] = useState(false);
+  const fullBleed = isFullBleed(location.pathname);
 
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0 });
+    setScrolled(false);
   }, [location.pathname]);
 
   // Documentos e Busca pré-carregados com o navegador ocioso (A1-35).
   useEffect(() => { prefetchCommonRoutes(); }, []);
 
-  // Mede a largura REAL reservada pela barra de rolagem (não necessariamente
-  // igual ao width:7px do ::-webkit-scrollbar em tokens.css — varia com
-  // DPI/zoom do navegador) via um probe real, e expõe como --sbw pra
-  // .scroll-compensate compensar exatamente o que <main> perde de largura em
-  // relação à TopBar/Dock (fixed, fora do fluxo de scroll).
+  // Ctrl/⌘ + vírgula abre os Ajustes, como em todo app do Mac.
   useEffect(() => {
-    const probe = document.createElement("div");
-    probe.style.cssText = "position:absolute;top:-9999px;left:-9999px;width:100px;height:100px;overflow:scroll;";
-    document.body.appendChild(probe);
-    const width = probe.offsetWidth - probe.clientWidth;
-    document.body.removeChild(probe);
-    document.documentElement.style.setProperty("--sbw", `${width}px`);
-  }, []);
-
-  // .scroll-compensate só entra quando <main> TEM de fato barra de rolagem —
-  // páginas como Documentos gerenciam o próprio scroll interno e nunca deixam
-  // <main> transbordar, então aplicar a compensação ali faria o conteúdo
-  // ultrapassar a TopBar em vez de bater com ela (o problema oposto).
-  // ResizeObserver nos filhos diretos (não no próprio <main>, que tem altura
-  // fixa via h-full e nunca muda de caixa) pega tanto troca de rota quanto
-  // conteúdo assíncrono que cresce depois do mount (ex: lista carregando).
-  useEffect(() => {
-    const el = mainRef.current;
-    if (!el) return;
-    function check() {
-      el!.classList.toggle("scroll-compensate", el!.scrollHeight > el!.clientHeight + 1);
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === ",") { e.preventDefault(); navigate("/settings"); }
+      if ((e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === "s") { e.preventDefault(); setSidebarOpen(!sidebarOpen); }
     }
-    check();
-    const ro = new ResizeObserver(check);
-    ro.observe(el);
-    Array.from(el.children).forEach((child) => ro.observe(child));
-    window.addEventListener("resize", check);
-    return () => { ro.disconnect(); window.removeEventListener("resize", check); };
-  }, [location.pathname]);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [navigate, sidebarOpen, setSidebarOpen]);
+
+  const skipLink = (
+    <a href="#conteudo" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[90] focus:rounded-full focus:bg-(--accent) focus:px-4 focus:py-2 focus:text-mac-body focus:text-white">
+      Pular para o conteúdo
+    </a>
+  );
+
+  const page = (
+    <ErrorBoundary key={location.pathname}>
+      <div className={fullBleed ? "page-enter flex h-full min-h-0 flex-col" : "page-enter flex-1"}>
+        {children}
+      </div>
+    </ErrorBoundary>
+  );
+
+  if (!desktop) {
+    return (
+      <div className="relative h-dvh overflow-hidden bg-(--window-bg)">
+        {skipLink}
+        <MobileTopBar />
+        <BottomTabBar />
+        <main
+          ref={mainRef}
+          id="conteudo"
+          tabIndex={-1}
+          className={`h-full flex flex-col focus:outline-hidden ${fullBleed ? "overflow-hidden pt-[calc(60px+env(safe-area-inset-top))] pb-[calc(84px+env(safe-area-inset-bottom))]" : "overflow-y-auto px-4 pt-[calc(64px+env(safe-area-inset-top))] pb-[calc(104px+env(safe-area-inset-bottom))]"}`}
+        >
+          {page}
+          {location.pathname.startsWith("/settings") && <Footer />}
+        </main>
+        <CommandPalette />
+        <KeyboardShortcuts />
+      </div>
+    );
+  }
 
   return (
-    <div className="h-dvh overflow-hidden relative" style={{ background: 'var(--wallpaper)' }}>
-      {/* Pular direto para o conteúdo (achado A2-04). */}
-      <a href="#conteudo" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[90] focus:rounded-full focus:bg-teal-600 focus:px-4 focus:py-2 focus:text-mac-body focus:text-white">
-        Pular para o conteúdo
-      </a>
-      {/* TopBar flutua fixa sobre o conteúdo — mesmo comportamento do Dock,
-          não mais um bloco em fluxo normal acima do <main> */}
-      <TopBar onUploadClick={() => navigate("/documents?acao=enviar")} />
-
-      {/* Navegação (barra inferior no celular, Dock a partir de 768 px) antes do
-          conteúdo na ordem do Tab (A2-15); a posição na tela é fixa. */}
-      <BottomTabBar />
-      <Dock />
-      {/* Degradê sob a navegação inferior (A2-02): o conteúdo que rola some
-          aos poucos em vez de passar nítido por trás do vidro do Dock. */}
-      <div aria-hidden="true" className="pointer-events-none fixed inset-x-0 bottom-0 z-20 h-24 md:h-28 bg-linear-to-t from-(--bg-page) via-(--bg-page)/70 to-transparent" />
-
-      {/* pt: espaço pra TopBar fixa (56px + respiro). pb: espaço pro Dock/barra inferior flutuantes */}
-      <main
-        ref={mainRef}
-        id="conteudo"
-        tabIndex={-1}
-        className="h-full overlay-scroll px-3 md:px-5 pt-[84px] md:pt-[92px] pb-28 flex flex-col focus:outline-hidden"
-      >
-        <ErrorBoundary key={location.pathname}>
-          {/* Só padding vertical aqui — o horizontal já vem do px-3/md:px-5 do
-              <main>, que é exatamente o mesmo inset da TopBar/Dock. Isso é o
-              que faz o conteúdo (tabelas, cards) alinhar com a borda da
-              TopBar em vez de ficar mais estreito que ela.
-              flex-1: quando o conteúdo é curto (Busca vazia, Segurança,
-              Preferências), empurra o Footer pro fim da viewport em vez de
-              deixá-lo grudado logo depois do conteúdo, no meio da tela. */}
-          <div className="page-enter py-6 flex-1">
-            {children}
+    <div className="mac-window relative flex h-dvh overflow-hidden bg-(--window-bg)">
+      {skipLink}
+      {sidebarOpen && (
+        <>
+          {/* No tablet (768–1023 px) a barra lateral flutua sobre o conteúdo. */}
+          <div aria-hidden onClick={() => setSidebarOpen(false)} className="fixed inset-0 z-30 bg-black/20 lg:hidden" />
+          <div className="sidebar-shell fixed inset-y-0 left-0 z-40 lg:static lg:z-auto">
+            <Sidebar />
           </div>
-        </ErrorBoundary>
-        {/* A assinatura fica em Ajustes (J1-10, A2-06): nas telas de trabalho ela
-            competia com o teal e tirava altura útil no celular. */}
-        {location.pathname.startsWith("/settings") && <Footer />}
-      </main>
-
+        </>
+      )}
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <WindowToolbar scrolled={scrolled || fullBleed} />
+        <main
+          ref={mainRef}
+          id="conteudo"
+          tabIndex={-1}
+          onScroll={fullBleed ? undefined : (e) => setScrolled(e.currentTarget.scrollTop > 2)}
+          className={`min-h-0 flex-1 flex flex-col focus:outline-hidden ${fullBleed ? "overflow-hidden" : "overflow-y-auto px-6 pt-2 pb-10"}`}
+        >
+          {page}
+          {location.pathname.startsWith("/settings") && <Footer />}
+        </main>
+      </div>
       <CommandPalette />
       <KeyboardShortcuts />
     </div>
+  );
+}
+
+export default function AppShell({ children }: AppShellProps) {
+  return (
+    <WindowProvider>
+      <Shell>{children}</Shell>
+    </WindowProvider>
   );
 }

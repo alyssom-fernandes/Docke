@@ -175,7 +175,8 @@ export function GridThumb({ doc, selected }: { doc: Document; selected: boolean 
   const s = getFileStyle(doc.name);
   const Icon = s.icon;
   return (
-    <div className="h-[76px] w-full flex items-end justify-center shrink-0" aria-hidden>
+    // Como no Finder: selecionado, o ícone ganha um fundo cinza arredondado.
+    <div className={`h-[80px] flex items-end justify-center shrink-0 rounded-[6px] px-1.5 pb-1 ${selected ? "bg-(--control-fill)" : ""}`} aria-hidden>
       {doc.thumb_url && !falhou ? (
         <img
           src={doc.thumb_url}
@@ -184,12 +185,10 @@ export function GridThumb({ doc, selected }: { doc: Document; selected: boolean 
           decoding="async"
           draggable={false}
           onError={() => setFalhou(true)}
-          className={`max-h-[76px] max-w-[70px] rounded-[3px] bg-white object-contain shadow-[0_1px_3px_rgb(0_0_0/0.25)] ring-1 ${selected ? "ring-white/60" : "ring-black/10 dark:ring-white/10"}`}
+          className="max-h-[72px] max-w-[64px] rounded-[2px] bg-white object-contain shadow-[0_0_0_0.5px_rgba(0,0,0,0.2),0_1px_3px_rgba(0,0,0,0.18)]"
         />
       ) : (
-        <div className={`w-12 h-14 rounded-[6px] flex items-center justify-center ${selected ? "bg-white/20" : s.bgColor}`}>
-          <Icon className={`w-6 h-6 ${selected ? "text-white" : `${s.iconColor} ${s.fillColor}`}`} />
-        </div>
+        <Icon className="w-16 h-16" />
       )}
     </div>
   );

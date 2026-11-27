@@ -13,6 +13,7 @@ import ConfirmModal from "@/components/ui/ConfirmModal";
 import Dialog from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
 import ShareModal from "@/components/documents/ShareModal";
+import { PageHeader } from "@/components/layout/window";
 
 interface ShareLink {
   id: string;
@@ -96,10 +97,8 @@ export default function Shares() {
 
   return (
     <div className="space-y-6 max-w-[1100px] w-full mx-auto">
-      <div>
-        <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Links</h1>
-        <p className="text-mac-caption text-(--text-secondary) mt-0.5">Links que levam documentos e pastas para fora do Docke. Admins veem os de toda a empresa.</p>
-      </div>
+      <PageHeader title="Links" subtitle={shares ? `${ativos} ${ativos === 1 ? "ativo" : "ativos"}` : undefined} />
+      <p className="text-mac-footnote text-(--text-secondary) -mb-2">Links que levam documentos e pastas para fora do Docke. Admins veem os de toda a empresa.</p>
 
       {failed ? (
         <div role="alert" className="glass-panel glass-blur-card rounded-(--radius-panel) flex flex-wrap items-center gap-3 px-5 py-4">

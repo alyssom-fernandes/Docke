@@ -208,7 +208,7 @@ export default function FolderTree({
     return (
       <div className="py-1 space-y-1" aria-label="Carregando pastas">
         {[72, 58, 64, 50].map((w, i) => (
-          <div key={i} className="h-7 rounded-[6px] bg-(--bg-hover) animate-pulse" style={{ width: `${w}%`, marginLeft: 12 + (i % 2) * 12 }} />
+          <div key={i} className="h-5 my-1 rounded-[6px] bg-(--control-fill) animate-pulse" style={{ width: `${w}%`, marginLeft: 8 + (i % 2) * 14 }} />
         ))}
       </div>
     );
@@ -268,21 +268,21 @@ export default function FolderTree({
                 else if (dragSrcId) moveFolder(dragSrcId, node.id);
                 setDragSrcId(null);
               }}
-              style={{ paddingLeft: `${8 + depth * 16}px` }}
-              className={`relative flex items-center gap-1.5 h-8 pointer-coarse:h-11 pr-2 text-mac-body rounded-[6px] cursor-pointer select-none outline-none transition-colors duration-fast
+              style={{ paddingLeft: `${2 + depth * 14}px` }}
+              className={`relative flex items-center gap-1 h-7 pointer-coarse:h-11 pr-2 text-[13px] font-medium rounded-[8px] cursor-default select-none outline-none text-(--sidebar-label)
                 focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-(--focus-ring)
-                ${isActive ? "bg-(--tint-accent) text-(--text-accent) font-medium" : "text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)"}
-                ${isDragOver ? "ring-2 ring-inset ring-teal-500 bg-(--tint-accent)" : ""}`}
+                ${isActive ? "bg-(--sidebar-selection)" : ""}
+                ${isDragOver ? "bg-(--selection-bg) text-(--selection-text)" : ""}`}
             >
               <span
-                className="w-4 h-4 shrink-0 flex items-center justify-center"
+                className="w-3.5 h-4 shrink-0 flex items-center justify-center text-(--text-secondary)"
                 onClick={(e) => { if (hasChildren) { e.stopPropagation(); toggle(node.id); } }}
                 aria-hidden
               >
-                {hasChildren && <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`} />}
+                {hasChildren && <ChevronRight className={`w-3 h-3 transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`} strokeWidth={2.5} />}
               </span>
-              <Icon className="w-4 h-4 shrink-0 text-(--text-accent) fill-teal-500/20" aria-hidden />
-              <span className="truncate flex-1">{node.name}</span>
+              <Icon className={`w-4 h-4 shrink-0 ${isDragOver ? "text-white" : "text-(--accent-vibrant)"}`} aria-hidden />
+              <span className="truncate flex-1 pl-0.5">{node.name}</span>
             </div>
           );
         })}

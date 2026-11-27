@@ -1,47 +1,48 @@
-import {
-  FileText,
-  Sheet,
-  FileCode,
-  Image,
-  FileType,
-  File,
-} from "lucide-react";
-import type { ElementType } from "react";
+import { createElement, type ElementType } from "react";
+import { MacDocumentIcon } from "@/components/ui/MacIcons";
 
 export interface FileStyle {
   icon: ElementType;
   iconColor: string;
   bgColor: string;
-  /** Preenchimento translúcido do próprio glifo (classe Tailwind fill-*), pra dar
-   *  leve volume ao ícone de contorno sem virar bitmap dimensional — o traço
-   *  continua carregando a cor principal. */
+  /** Mantido por compatibilidade com quem ainda passa a classe; o ícone novo tem cores próprias. */
   fillColor: string;
 }
 
-// bgColor vazio de propósito — macOS não usa "tile" colorido atrás de ícone de
-// arquivo. A cor mora no traço do ícone; fillColor adiciona um preenchimento
-// suave da mesma cor pra aproximar do volume dos ícones do Finder.
+/**
+ * Ícone de documento no estilo do Finder (macOS 27): folha branca com o canto
+ * dobrado e uma faixa na cor do tipo. As classes de cor antigas (iconColor,
+ * fillColor) deixam de pintar o ícone: ele tem cores próprias, como no macOS.
+ */
+function docIcon(color: string, label: string): ElementType {
+  const Icon = ({ className }: { className?: string }) => createElement(MacDocumentIcon, { className, color, label });
+  Icon.displayName = `Doc${label}`;
+  return Icon;
+}
+
+const RED = "#E5483B";
+const GREEN = "#2FA45B";
+const BLUE = "#2F7BEA";
+const PURPLE = "#8E5BD9";
+const ORANGE = "#E8912D";
+const GRAY = "#8E8E93";
+
 const EXT_MAP: Record<string, FileStyle> = {
-  pdf:  { icon: FileType, iconColor: "text-red-600 dark:text-red-400",     bgColor: "", fillColor: "fill-red-500/15 dark:fill-red-400/15" },
-  xlsx: { icon: Sheet,    iconColor: "text-emerald-600 dark:text-emerald-400", bgColor: "", fillColor: "fill-emerald-500/15 dark:fill-emerald-400/15" },
-  xls:  { icon: Sheet,    iconColor: "text-emerald-600 dark:text-emerald-400", bgColor: "", fillColor: "fill-emerald-500/15 dark:fill-emerald-400/15" },
-  csv:  { icon: Sheet,    iconColor: "text-emerald-600 dark:text-emerald-400", bgColor: "", fillColor: "fill-emerald-500/15 dark:fill-emerald-400/15" },
-  docx: { icon: FileText, iconColor: "text-blue-600 dark:text-blue-400",    bgColor: "", fillColor: "fill-blue-500/15 dark:fill-blue-400/15" },
-  doc:  { icon: FileText, iconColor: "text-blue-600 dark:text-blue-400",    bgColor: "", fillColor: "fill-blue-500/15 dark:fill-blue-400/15" },
-  xml:  { icon: FileCode, iconColor: "text-violet-600 dark:text-violet-400", bgColor: "", fillColor: "fill-violet-500/15 dark:fill-violet-400/15" },
-  jpg:  { icon: Image,    iconColor: "text-amber-600 dark:text-amber-400",  bgColor: "", fillColor: "fill-amber-500/15 dark:fill-amber-400/15" },
-  jpeg: { icon: Image,    iconColor: "text-amber-600 dark:text-amber-400",  bgColor: "", fillColor: "fill-amber-500/15 dark:fill-amber-400/15" },
-  png:  { icon: Image,    iconColor: "text-amber-600 dark:text-amber-400",  bgColor: "", fillColor: "fill-amber-500/15 dark:fill-amber-400/15" },
-  gif:  { icon: Image,    iconColor: "text-amber-600 dark:text-amber-400",  bgColor: "", fillColor: "fill-amber-500/15 dark:fill-amber-400/15" },
-  txt:  { icon: FileText, iconColor: "text-gray-600 dark:text-gray-400",   bgColor: "", fillColor: "fill-gray-500/15 dark:fill-gray-400/15" },
+  pdf:  { icon: docIcon(RED, "PDF"), iconColor: "", bgColor: "", fillColor: "" },
+  xlsx: { icon: docIcon(GREEN, "XLSX"), iconColor: "", bgColor: "", fillColor: "" },
+  xls:  { icon: docIcon(GREEN, "XLS"), iconColor: "", bgColor: "", fillColor: "" },
+  csv:  { icon: docIcon(GREEN, "CSV"), iconColor: "", bgColor: "", fillColor: "" },
+  docx: { icon: docIcon(BLUE, "DOCX"), iconColor: "", bgColor: "", fillColor: "" },
+  doc:  { icon: docIcon(BLUE, "DOC"), iconColor: "", bgColor: "", fillColor: "" },
+  xml:  { icon: docIcon(PURPLE, "XML"), iconColor: "", bgColor: "", fillColor: "" },
+  jpg:  { icon: docIcon(ORANGE, "JPG"), iconColor: "", bgColor: "", fillColor: "" },
+  jpeg: { icon: docIcon(ORANGE, "JPEG"), iconColor: "", bgColor: "", fillColor: "" },
+  png:  { icon: docIcon(ORANGE, "PNG"), iconColor: "", bgColor: "", fillColor: "" },
+  gif:  { icon: docIcon(ORANGE, "GIF"), iconColor: "", bgColor: "", fillColor: "" },
+  txt:  { icon: docIcon(GRAY, "TXT"), iconColor: "", bgColor: "", fillColor: "" },
 };
 
-const DEFAULT: FileStyle = {
-  icon: File,
-  iconColor: "text-gray-500 dark:text-gray-400",
-  bgColor: "",
-  fillColor: "fill-gray-500/15 dark:fill-gray-400/15",
-};
+const DEFAULT: FileStyle = { icon: docIcon(GRAY, ""), iconColor: "", bgColor: "", fillColor: "" };
 
 export function getFileStyle(filename: string): FileStyle {
   const ext = filename.split(".").pop()?.toLowerCase() ?? "";

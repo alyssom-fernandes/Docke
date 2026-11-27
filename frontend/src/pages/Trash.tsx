@@ -11,6 +11,7 @@ import EmptyState from "@/components/shared/EmptyState";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import Button from "@/components/ui/Button";
 import Checkbox from "@/components/ui/Checkbox";
+import { PageHeader } from "@/components/layout/window";
 
 interface TrashItem {
   id: string;
@@ -116,10 +117,8 @@ export default function Trash() {
 
   return (
     <div className="space-y-6 max-w-[1100px] w-full mx-auto">
-      <div>
-        <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Lixeira</h1>
-        <p className="text-mac-caption text-(--text-secondary) mt-0.5">O que foi excluído fica aqui por um tempo e volta para o lugar de origem ao restaurar. Depois do prazo, sai sozinho.</p>
-      </div>
+      <PageHeader title="Lixeira" subtitle={items ? `${list.length} ${list.length === 1 ? "item" : "itens"}` : undefined} />
+      <p className="text-mac-footnote text-(--text-secondary) -mb-2">O que foi excluído fica aqui por um tempo e volta para o lugar de origem ao restaurar. Depois do prazo, sai sozinho.</p>
 
       {failed ? (
         <div role="alert" className="glass-panel glass-blur-card rounded-(--radius-panel) flex flex-wrap items-center gap-3 px-5 py-4">

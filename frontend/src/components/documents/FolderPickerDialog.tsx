@@ -112,7 +112,7 @@ export default function FolderPickerDialog({
 
   async function confirm() {
     if (selected === undefined) return;
-    const name = selected === null ? "Início" : folders?.find((f) => f.id === selected)?.name ?? "";
+    const name = selected === null ? "Documentos" : folders?.find((f) => f.id === selected)?.name ?? "";
     setBusy(true);
     try {
       await onPick({ id: selected, name });
@@ -184,7 +184,7 @@ export default function FolderPickerDialog({
               className={`${optionClass(selected === null, false)} pl-2`}
             >
               <Home className="w-4 h-4 shrink-0" aria-hidden />
-              Início (raiz da empresa)
+              Documentos (raiz da empresa)
             </li>
           )}
           {rows.length === 0 && (

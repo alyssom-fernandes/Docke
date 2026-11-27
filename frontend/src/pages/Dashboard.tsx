@@ -1,5 +1,5 @@
 import { useEffect, useState, type ElementType, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   FileText, FolderOpen, Anchor, Upload, Download, RefreshCw, AlertTriangle, ChevronRight, SlidersHorizontal,
   ArrowUpRight, ArrowDownRight, Minus,
@@ -22,6 +22,7 @@ import {
   UploadsLineChart, FolderBarChart, FolderChartBreadcrumb,
   type DailyUpload, type FolderBreakdown, type FolderCrumb,
 } from "@/components/dashboard/StatsCharts";
+import { PageHeader, ToolbarGroup, ToolbarButton } from "@/components/layout/window";
 
 // ─── Período do gráfico de envios (fica por empresa, entre visitas) ──────────
 
@@ -223,6 +224,7 @@ function StatCard({ to, label, value, icon: Icon, context, trend, ariaLabel }: {
 
 export default function Dashboard() {
   usePageTitle("Início");
+  const navigate = useNavigate();
   const { current } = useCompany();
   const { user } = useAuthContext();
   const { error: showError, success } = useToast();
@@ -342,28 +344,23 @@ export default function Dashboard() {
 
   return (
     <div className="cascade flex flex-col gap-4 sm:gap-6 max-w-[1440px] w-full mx-auto">
-      <div className="flex items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Início</h1>
-          <p className="text-mac-caption text-(--text-secondary) truncate">{current.name}</p>
-        </div>
-        {/* No celular, só os ícones ao lado do título (estética P4): a faixa de botões ocupava uma linha inteira. */}
-        <div className="flex items-center gap-1 shrink-0">
-          {s && (
-            <span className="hidden sm:inline text-mac-caption text-(--text-secondary) mr-1" title={s.refreshed_at ? fullDate(s.refreshed_at) : undefined}>
-              {s.refreshed_at ? `Atualizado ${relativeDate(s.refreshed_at)}` : "Números ao vivo"}
-            </span>
-          )}
-          <Button variant="ghost" size="sm" onClick={refreshAll} disabled={refreshing || cooldown > 0}
-            aria-label={cooldown > 0 ? `Atualizar o Início: aguarde ${cooldown} segundos` : "Atualizar o Início"} title="Atualizar">
-            <RefreshCw className={`w-4 h-4 sm:w-3.5 sm:h-3.5 ${refreshing ? "animate-spin" : ""}`} aria-hidden="true" />
-            <span className="hidden sm:inline">{cooldown > 0 ? `Aguarde ${cooldown}s` : "Atualizar"}</span>
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setCustomizing(true)} aria-label="Personalizar o Início" title="Personalizar">
-            <SlidersHorizontal className="w-4 h-4 sm:w-3.5 sm:h-3.5" aria-hidden="true" /> <span className="hidden sm:inline">Personalizar</span>
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Início"
+        subtitle={s?.refreshed_at ? `${current.name} · atualizado ${relativeDate(s.refreshed_at)}` : current.name}
+      >
+        <ToolbarGroup label="Início">
+          <ToolbarButton inGroup onClick={refreshAll} disabled={refreshing || cooldown > 0}
+            label={cooldown > 0 ? `Atualizar: aguarde ${cooldown} s` : "Atualizar"} title={s?.refreshed_at ? `Atualizado em ${fullDate(s.refreshed_at)}` : "Atualizar"}>
+            <RefreshCw className={refreshing ? "animate-spin" : ""} aria-hidden="true" />
+          </ToolbarButton>
+          <ToolbarButton inGroup label="Personalizar o Início" onClick={() => setCustomizing(true)}>
+            <SlidersHorizontal aria-hidden="true" />
+          </ToolbarButton>
+        </ToolbarGroup>
+        <ToolbarButton prominent label="Enviar documentos" onClick={() => navigate("/documents?acao=enviar")}>
+          <Upload aria-hidden="true" />
+        </ToolbarButton>
+      </PageHeader>
 
       {/* 1. O que fazer hoje — primeira coisa da tela (A3-01, A3-02). */}
       <TodayPanel />

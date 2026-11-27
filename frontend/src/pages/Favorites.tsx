@@ -9,6 +9,7 @@ import { useToast } from "@/lib/toast";
 import { pushUndo, takeUndo } from "@/lib/undo";
 import EmptyState from "@/components/shared/EmptyState";
 import Button from "@/components/ui/Button";
+import { PageHeader } from "@/components/layout/window";
 
 interface Favorite {
   id: string;
@@ -78,10 +79,8 @@ export default function Favorites() {
 
   return (
     <div className="space-y-6 max-w-[1100px] w-full mx-auto">
-      <div>
-        <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Ancorados</h1>
-        <p className="text-mac-caption text-(--text-secondary) mt-0.5">Os documentos e pastas que você usa todo dia, a um clique. Só você vê os seus.</p>
-      </div>
+      <PageHeader title="Ancorados" subtitle={items ? `${items.length} ${items.length === 1 ? "item" : "itens"}` : undefined} />
+      <p className="text-mac-footnote text-(--text-secondary) -mb-2">Os documentos e pastas que você usa todo dia, a um clique. Só você vê os seus.</p>
 
       {failed ? (
         <div role="alert" className="glass-panel glass-blur-card rounded-(--radius-panel) flex flex-wrap items-center gap-3 px-5 py-4">
