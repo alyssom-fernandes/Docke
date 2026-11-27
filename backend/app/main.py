@@ -42,6 +42,7 @@ from app.routers import (
     inbox,
     push,
     passkeys,
+    security_incidents,
 )
 
 # Sem configuração, o Python descarta tudo abaixo de WARNING, e o que passa sai
@@ -198,6 +199,7 @@ app.include_router(today.router, prefix=PREFIX)
 app.include_router(privacy.router, prefix=PREFIX)
 app.include_router(templates.router, prefix=PREFIX)
 app.include_router(lgpd_requests.router, prefix=PREFIX)
+app.include_router(security_incidents.router, prefix=PREFIX)
 app.include_router(views.router, prefix=PREFIX)
 app.include_router(pages.router, prefix=PREFIX)
 app.include_router(comments.router, prefix=PREFIX)
