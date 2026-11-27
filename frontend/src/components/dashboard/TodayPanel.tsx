@@ -166,7 +166,7 @@ export default function TodayPanel() {
       })()}
       {outras.length > 0 && (
         <div className="border-t border-(--border-default) pt-3">
-          <h3 className="text-mac-caption font-semibold uppercase tracking-[0.06em] text-(--text-secondary) mb-2">No grupo</h3>
+          <h3 className="text-[11px] font-bold text-(--text-secondary) mb-2">No grupo</h3>
           <ul className="flex flex-wrap gap-2">
             {outras.map((g) => (
               <li key={g.company_id}>

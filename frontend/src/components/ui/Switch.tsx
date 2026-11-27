@@ -21,13 +21,13 @@ export default function Switch({
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-[26px] w-[46px] shrink-0 items-center rounded-full transition-colors duration-normal disabled:opacity-(--opacity-disabled) disabled:pointer-events-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-card) ${
-        checked ? "bg-teal-500" : "bg-(--bg-hover) border border-(--border-default)"
+      className={`group relative inline-flex h-4 w-9 pointer-coarse:h-[31px] pointer-coarse:w-[51px] shrink-0 items-center rounded-full transition-colors duration-normal disabled:opacity-(--opacity-disabled) disabled:pointer-events-none focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${
+        checked ? "bg-(--accent)" : "bg-(--control-fill-hover)"
       }`}
     >
       <span
-        className={`inline-block h-[22px] w-[22px] transform rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.3)] transition-transform duration-normal ${
-          checked ? "translate-x-[22px]" : "translate-x-[2px]"
+        className={`absolute top-1/2 -translate-y-1/2 h-[13px] w-[21px] pointer-coarse:h-[27px] pointer-coarse:w-[27px] rounded-full bg-white shadow-[0_0.5px_1.5px_rgba(0,0,0,0.25),0_3px_8px_rgba(0,0,0,0.08)] transition-[left] duration-normal ${
+          checked ? "left-[13px] pointer-coarse:left-[22px]" : "left-[2px]"
         }`}
       />
     </button>

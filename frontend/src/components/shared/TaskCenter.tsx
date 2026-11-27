@@ -61,9 +61,9 @@ function TaskRow({ task, onRemove, onRetry, onCancel }: { task: Task; onRemove: 
           <div className="mt-1 h-1 bg-(--bg-hover) rounded-full overflow-hidden" role="progressbar" aria-label={`Progresso de ${task.label}`}
             aria-valuemin={0} aria-valuemax={100} aria-valuenow={task.progress}>
             {task.progress !== undefined ? (
-              <div className="h-full bg-teal-500 rounded-full transition-[width] duration-normal" style={{ width: `${task.progress}%` }} />
+              <div className="h-full bg-(--accent) rounded-full transition-[width] duration-normal" style={{ width: `${task.progress}%` }} />
             ) : (
-              <div className="h-full w-1/3 bg-teal-500 rounded-full animate-pulse" />
+              <div className="h-full w-1/3 bg-(--accent) rounded-full animate-pulse" />
             )}
           </div>
         )}
@@ -82,7 +82,7 @@ function TaskRow({ task, onRemove, onRetry, onCancel }: { task: Task; onRemove: 
         {/* Tentar de novo: só o envio sabe refazer com o arquivo original. */}
         {task.status === "failed" && task.kind === "upload" && (
           <button onClick={onRetry} aria-label={`Tentar enviar ${task.label} de novo`} title="Tentar de novo"
-            className="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-accent) hover:bg-teal-500/10 transition-colors duration-fast">
+            className="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-accent) hover:bg-(--accent)/10 transition-colors duration-fast">
             <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
           </button>
         )}
@@ -216,18 +216,18 @@ export default function TaskCenter() {
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-controls={open ? "central-tarefas" : undefined}
-        className="relative w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) transition-colors duration-fast"
+        className="glass-capsule relative size-9 shrink-0 flex items-center justify-center rounded-full text-(--text-primary) hover:brightness-[0.97] dark:hover:brightness-125 transition-[filter] duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)"
         title="Tarefas e avisos"
         aria-label={resumo ? `Tarefas e avisos: ${resumo}` : "Tarefas e avisos"}
       >
-        <Bell className="w-4 h-4" aria-hidden="true" />
+        <Bell className="size-[15px]" aria-hidden="true" />
         {(badgeCount > 0 || failed > 0) && (
-          <span aria-hidden="true" className={`absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-0.5 rounded-full text-[10px] font-bold text-white flex items-center justify-center ${failed > 0 ? "bg-red-600" : "bg-teal-600"}`}>
+          <span aria-hidden="true" className={`absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold text-white flex items-center justify-center ${failed > 0 ? "bg-[#FF3B30]" : "bg-[#FF3B30]"}`}>
             {failed > 0 ? failed : badgeCount > 99 ? "99+" : badgeCount}
           </span>
         )}
         {!everSeen && badgeCount === 0 && failed === 0 && (
-          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-teal-500 ring-2 ring-(--bg-card)" aria-hidden="true" />
+          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-(--accent) ring-2 ring-(--window-bg)" aria-hidden="true" />
         )}
       </button>
 
@@ -301,9 +301,9 @@ export default function TaskCenter() {
                         <button
                           type="button"
                           onClick={() => openNotification(n)}
-                          className={`w-full text-left flex items-start gap-2.5 px-4 py-3 hover:bg-(--bg-hover) focus-visible:bg-(--bg-hover) focus-visible:outline-hidden transition-colors duration-fast ${unread ? "bg-teal-500/6" : ""}`}
+                          className={`w-full text-left flex items-start gap-2.5 px-4 py-3 hover:bg-(--bg-hover) focus-visible:bg-(--bg-hover) focus-visible:outline-hidden transition-colors duration-fast ${unread ? "bg-(--accent)/6" : ""}`}
                         >
-                          <span aria-hidden="true" className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${unread ? "bg-teal-600" : "bg-transparent"}`} />
+                          <span aria-hidden="true" className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${unread ? "bg-(--accent)" : "bg-transparent"}`} />
                           <span className="flex-1 min-w-0">
                             <span className="sr-only">{unread ? "Não lido: " : ""}</span>
                             <span className={`block text-mac-body text-(--text-primary) ${unread ? "font-medium" : ""}`}>{n.message}</span>

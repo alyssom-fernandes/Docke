@@ -5,6 +5,7 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import Button from "@/components/ui/Button";
 import { MfaCodeForm } from "@/components/shared/MfaSetup";
+import Wallpaper from "@/components/layout/Wallpaper";
 
 /** Lê o que o link do e-mail de recuperação traz depois do # (fluxo do Supabase Auth). */
 function readRecoveryHash() {
@@ -58,11 +59,12 @@ export default function ResetPassword() {
   }
 
   const fieldClass =
-    "w-full h-11 sm:h-10 rounded-(--radius-control) border border-(--border-control) bg-(--bg-card) pl-3 pr-11 text-mac-callout sm:text-mac-body text-(--text-primary) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring) focus:border-transparent";
+    "mac-field w-full h-8 pointer-coarse:h-11 pl-2.5 pr-11 text-[13px] text-(--text-primary)";
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-5" style={{ background: "var(--wallpaper)" }}>
-      <div className="login-enter glass-panel glass-blur-panel glass-shadow rounded-(--radius-dialog) w-full max-w-[420px] px-6 py-7 sm:p-8">
+    <main className="wallpaper-screen relative isolate flex min-h-dvh items-center justify-center px-5 py-10">
+      <Wallpaper fixed />
+      <div className="login-enter mac-window relative w-full max-w-[420px] px-6 py-7 sm:p-8">
         <div className="brand-wordmark mb-6 block h-[30px] w-[104px]" role="img" aria-label="Docke" />
         {pedirCodigo && !done ? (
           <div className="flex flex-col gap-3">
@@ -76,7 +78,7 @@ export default function ResetPassword() {
             <CheckCircle2 className="w-7 h-7 text-(--text-success)" aria-hidden />
             <h1 className="text-mac-title2 font-bold text-(--text-primary)">Senha nova criada.</h1>
             <p className="text-mac-body leading-[19px] text-(--text-secondary)">Entre com o seu e-mail e a senha nova.</p>
-            <Link to="/login" className="mt-2 inline-flex h-11 sm:h-10 items-center justify-center rounded-full bg-teal-600 px-5 text-[14px] font-semibold text-white hover:bg-teal-700 focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) focus-visible:ring-offset-1">
+            <Link to="/login" className="mt-2 inline-flex h-8 pointer-coarse:h-11 items-center justify-center rounded-full bg-(--accent) px-5 text-[13px] font-semibold text-white hover:bg-(--accent-hover) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) focus-visible:ring-offset-1">
               Ir para o acesso
             </Link>
           </div>
@@ -87,7 +89,7 @@ export default function ResetPassword() {
               {linkError ? "O link venceu ou já foi usado. " : "Abra esta página pelo link do e-mail de recuperação. "}
               Peça um novo na tela de acesso, em "Esqueci a senha".
             </p>
-            <Link to="/login" className="mt-2 inline-flex h-11 sm:h-10 items-center justify-center rounded-full border border-(--border-control) px-5 text-[14px] font-medium text-(--text-primary) hover:bg-(--bg-hover) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)">
+            <Link to="/login" className="mt-2 inline-flex h-8 pointer-coarse:h-11 items-center justify-center rounded-full bg-(--control-fill) px-5 text-[13px] font-medium text-(--text-primary) hover:bg-(--control-fill-hover) focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring)">
               Ir para o acesso
             </Link>
           </div>
@@ -102,7 +104,7 @@ export default function ResetPassword() {
                   onChange={(e) => setPassword(e.target.value)} aria-invalid={tooShort || undefined}
                   aria-describedby="rs-dica" className={fieldClass} />
                 <button type="button" onClick={() => setShow((v) => !v)} aria-label={show ? "Ocultar senha" : "Mostrar senha"} aria-pressed={show}
-                  className="absolute right-0.5 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center rounded-(--radius-control) text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-hover)">
+                  className="absolute right-0.5 top-1/2 -translate-y-1/2 size-7 pointer-coarse:size-10 flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--control-fill)">
                   {show ? <EyeOff className="w-4 h-4" aria-hidden /> : <Eye className="w-4 h-4" aria-hidden />}
                 </button>
               </div>
@@ -118,7 +120,7 @@ export default function ResetPassword() {
               {mismatch && <p id="rs-diferente" className="text-mac-caption text-(--text-danger)">As duas senhas ainda não são iguais.</p>}
             </div>
             {error && <div role="alert" className="reveal rounded-(--radius-control) border border-red-500/30 bg-(--tint-danger) px-3 py-2.5 text-mac-body text-(--text-primary)">{error}</div>}
-            <Button type="submit" loading={loading} className="w-full h-11! sm:h-10! text-[14px]! font-semibold mt-1">Gravar senha nova</Button>
+            <Button type="submit" loading={loading} className="w-full mt-1">Gravar senha nova</Button>
           </form>
         )}
       </div>

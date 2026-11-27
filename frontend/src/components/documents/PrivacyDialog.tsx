@@ -61,7 +61,7 @@ export default function PrivacyDialog({ folderId, folderName, onClose, onSaved }
       <div role="radiogroup" aria-label="Classificação" className="space-y-2">
         {OPCOES.map((o) => (
           <button key={o.v} type="button" role="radio" aria-checked={escolha === o.v} onClick={() => setEscolha(o.v)}
-            className={`w-full text-left rounded-(--radius-control) border p-3 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${escolha === o.v ? "border-teal-600 bg-(--tint-accent)" : "border-(--border-control) hover:bg-(--bg-hover)"}`}>
+            className={`w-full text-left rounded-(--radius-control) border p-3 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${escolha === o.v ? "border-(--accent) bg-(--tint-accent)" : "border-(--border-control) hover:bg-(--bg-hover)"}`}>
             <span className="block text-mac-body font-medium text-(--text-primary)">{o.titulo}</span>
             <span className="block text-mac-caption text-(--text-secondary)">{o.texto}</span>
           </button>

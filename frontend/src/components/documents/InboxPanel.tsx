@@ -56,7 +56,7 @@ export default function InboxPanel({ companyId, folderId, onMoved }: { companyId
   }
 
   return (
-    <section aria-labelledby="triagem-titulo" className="mx-3 mt-3 rounded-(--radius-panel) border border-teal-500/30 bg-teal-500/5 p-3 space-y-2">
+    <section aria-labelledby="triagem-titulo" className="mx-3 mt-3 rounded-(--radius-panel) border border-teal-500/30 bg-(--accent)/5 p-3 space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         <h2 id="triagem-titulo" className="flex-1 flex items-center gap-2 text-mac-body font-semibold text-(--text-primary)"><Inbox className="w-4 h-4 text-(--text-accent)" aria-hidden />Triagem · {itens.length} {itens.length === 1 ? "documento" : "documentos"}</h2>
         <Button size="sm" loading={busy} disabled={!marcados.size} onClick={confirmar}><Check className="w-3.5 h-3.5" aria-hidden />Mover os marcados ({marcados.size})</Button>

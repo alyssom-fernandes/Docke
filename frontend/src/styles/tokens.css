@@ -27,7 +27,7 @@
   --color-text-tertiary: var(--text-tertiary);
   --color-text-placeholder: var(--text-placeholder);
 
-  --font-sans: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Segoe UI", system-ui, sans-serif;
   --font-mono: JetBrains Mono, Consolas, monospace;
 
   --radius-badge: 4px;
@@ -90,23 +90,59 @@
    frente) mesmo após config corrigida e cache limpo. CSS puro elimina a
    dependência desse pipeline pra essa propriedade específica. */
 html, body {
-  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
+  background: var(--window-bg);
+  -webkit-font-smoothing: antialiased;
 }
 
-/* ─── Light mode (padrão) ─── */
+/* ─── Light mode (padrão) ───
+   Cores do kit oficial do macOS 27 (docs/avaliacao-2026-11/ESPEC-MACOS-27.md):
+   janela branca, barra lateral #E6E6E6, seleção da barra lateral #D9D9D9,
+   linhas alternadas a 5%, grupos de formulário a 3%. O acento é o teal da
+   marca no tom que deixa o texto branco com contraste AA (4,9:1). */
 :root {
-  --bg-page: #E9E9E3;
+  --window-bg: #FFFFFF;
+  --sidebar-bg: #E6E6E6;
+  --sidebar-selection: #D9D9D9;
+  --sidebar-label: #1A1A1A;
+  --sidebar-header: #666666;
+  --accent: #0A7F73;
+  --accent-hover: #086B61;
+  --accent-vibrant: #0A8C7E;
+  --selection-bg: #0A7F73;
+  --selection-text: #FFFFFF;
+  --row-alt: rgba(0,0,0,0.05);
+  --separator: rgba(0,0,0,0.10);
+  --separator-subtle: rgba(0,0,0,0.05);
+  --group-bg: rgba(0,0,0,0.03);
+  --control-fill: rgba(0,0,0,0.08);
+  --control-fill-hover: rgba(0,0,0,0.12);
+  --control-fill-selected: #E6E6E6;
+  --segment-selected: #FFFFFF;
+  --segment-shadow: 0 0 0 0.5px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.16), 0 2px 6px rgba(0,0,0,0.05);
+  --capsule-bg: rgba(246,246,246,0.82);
+  --capsule-shadow: 0 0 0 0.5px rgba(0,0,0,0.12), 0 1px 1px rgba(0,0,0,0.04), 0 8px 15px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.9);
+  --capsule-divider: #D9D9D9;
+  --toolbar-edge: rgba(255,255,255,0.85);
+  --window-shadow: 0 0 1px rgba(0,0,0,0.8), 0 36px 100px rgba(0,0,0,0.4);
+  --field-bg: #FFFFFF;
+  --field-border: rgba(0,0,0,0.14);
+  --check-off-bg: rgba(0,0,0,0.04);
+  --check-off-border: rgba(0,0,0,0.24);
+  --sheet-bg: rgba(250,250,250,0.94);
+  --sheet-border: rgba(0,0,0,0.16);
+  --bg-page: #FFFFFF;
   --bg-card: #FFFFFF;
   --bg-elevated: #FFFFFF;
-  --bg-hover: rgba(0,0,0,0.04);
+  --bg-hover: rgba(0,0,0,0.05);
   /* 0.08 parecia "ok" isolado, mas contra um card branco puro isso derrete
      pra uma diferença de luminância de ~8% — quase invisível — enquanto a
      borda branca do modo escuro em 0.10-0.14 sobre um fundo #282828 dá um
      salto de ~70%+. Opacidade igual não é contraste igual: precisa ser mais
      forte no claro pra bater a mesma legibilidade percebida do escuro
      (mesmo princípio do systemGray4 do macOS/iOS, que também não é sutil). */
-  --border-default: rgba(0,0,0,0.15);
-  --text-primary: rgba(0,0,0,0.84);
+  --border-default: rgba(0,0,0,0.10);
+  --text-primary: rgba(0,0,0,0.85);
   /* Contraste medido (WCAG 2.2 AA, texto pequeno ≥ 4,5:1) sobre o card
      branco e sobre o fundo #E9E9E3: secundário 6,2/5,8; terciário 5,3/5,0;
      placeholder 4,8/4,5. Antes o terciário dava 3,7:1 e o placeholder 1,6:1. */
@@ -115,10 +151,10 @@ html, body {
   --text-placeholder: rgba(0,0,0,0.55);
   /* Borda de campo e de controle (1.4.11: ≥ 3:1 contra o fundo): 3,4:1.
      --border-default segue sutil, só para divisórias e painéis. */
-  --border-control: rgba(0,0,0,0.45);
-  /* Anel de foco: teal-600, 4,5:1 sobre o branco e 3,7:1 sobre o fundo. */
-  --focus-ring: #0B8578;
-  --text-danger: #DC2626;
+  --border-control: rgba(0,0,0,0.22);
+  /* Anel de foco: o brilho do acento do macOS (teal a 50%). */
+  --focus-ring: rgba(10,140,126,0.5);
+  --text-danger: #D70015;
   --text-warning: #B45309;
   --text-success: #15803D;
   --text-accent: #086B61;
@@ -188,8 +224,8 @@ html, body {
 
   /* Corner radii */
   --radius-panel: 12px;
-  --radius-dialog: 14px;
-  --radius-popover: 10px;
+  --radius-dialog: 20px;
+  --radius-popover: 12px;
   --radius-control: 6px;
   --radius-pill: 9999px;
 
@@ -197,24 +233,54 @@ html, body {
      ter opacidades diferentes (40/50/60) espalhadas pelo código torcendo o
      escurecimento do fundo de tela pra tela. Mesmo valor em light/dark —
      dim de fundo é tipicamente theme-invariant no macOS. */
-  --overlay-scrim: rgba(0,0,0,0.45);
+  --overlay-scrim: rgba(0,0,0,0.22);
 }
 
 /* ─── Dark mode ─── */
 .dark {
+  --window-bg: #1E1E1E;
+  --sidebar-bg: #161616;
+  --sidebar-selection: #262626;
+  --sidebar-label: #F5F5F5;
+  --sidebar-header: #8A8A8A;
+  --accent: #0B8A7D;
+  --accent-hover: #0A7F73;
+  --accent-vibrant: #2FC4AE;
+  --selection-bg: #0B7A6E;
+  --selection-text: #FFFFFF;
+  --row-alt: rgba(255,255,255,0.05);
+  --separator: rgba(255,255,255,0.10);
+  --separator-subtle: rgba(255,255,255,0.06);
+  --group-bg: rgba(255,255,255,0.05);
+  --control-fill: rgba(255,255,255,0.10);
+  --control-fill-hover: rgba(255,255,255,0.15);
+  --control-fill-selected: rgba(255,255,255,0.16);
+  --segment-selected: rgba(255,255,255,0.24);
+  --segment-shadow: 0 1px 2px rgba(0,0,0,0.35), inset 0 0.5px 0 rgba(255,255,255,0.14);
+  --capsule-bg: rgba(46,46,46,0.78);
+  --capsule-shadow: 0 0 0 0.5px rgba(255,255,255,0.12), 0 1px 1px rgba(0,0,0,0.3), 0 8px 15px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.08);
+  --capsule-divider: rgba(255,255,255,0.14);
+  --toolbar-edge: rgba(30,30,30,0.85);
+  --window-shadow: 0 0 1px rgba(0,0,0,0.9), 0 36px 100px rgba(0,0,0,0.6);
+  --field-bg: rgba(255,255,255,0.05);
+  --field-border: rgba(255,255,255,0.14);
+  --check-off-bg: rgba(255,255,255,0.08);
+  --check-off-border: rgba(255,255,255,0.22);
+  --sheet-bg: rgba(40,40,40,0.92);
+  --sheet-border: rgba(255,255,255,0.14);
   --bg-page: #1E1E1E;
   --bg-card: #282828;
   --bg-elevated: #323232;
-  --bg-hover: rgba(255,255,255,0.06);
+  --bg-hover: rgba(255,255,255,0.07);
   --border-default: rgba(255,255,255,0.10);
-  --text-primary: rgba(255,255,255,0.84);
+  --text-primary: rgba(255,255,255,0.85);
   /* Medido sobre #282828 / #1E1E1E / #323232: secundário 6,6/7,2/6,0;
      terciário 5,5/5,9/5,1; placeholder 4,9/5,2/4,5. */
   --text-secondary: rgba(255,255,255,0.62);
   --text-tertiary: rgba(255,255,255,0.55);
   --text-placeholder: rgba(255,255,255,0.50);
-  --border-control: rgba(255,255,255,0.38);
-  --focus-ring: #3FBFA8;
+  --border-control: rgba(255,255,255,0.22);
+  --focus-ring: rgba(47,196,174,0.5);
   --text-danger: #F87171;
   --text-warning: #FBBF24;
   --text-success: #4ADE80;
@@ -440,10 +506,132 @@ html, body {
    Dock, menus, diálogos). Cartões de CONTEÚDO dentro da página usam material
    sólido: sem desfoque próprio, para não empilhar vidro sobre vidro. */
 .glass-panel.glass-blur-card {
-  background: var(--material-content);
+  background: var(--group-bg);
+  border-color: transparent;
+  box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
+.glass-panel.glass-blur-card.glass-highlight-line::before { display: none; }
+
+/* ─── macOS 27: cápsulas de vidro da barra de ferramentas e da barra de abas ─── */
+.glass-capsule {
+  background: var(--capsule-bg);
+  box-shadow: var(--capsule-shadow);
+  border-radius: 9999px;
+  -webkit-backdrop-filter: blur(14px) saturate(180%);
+  backdrop-filter: blur(14px) saturate(180%);
+}
+/* ─── Janela do macOS 27 ─── */
+.window-toolbar {
+  position: relative; z-index: 20; flex-shrink: 0;
+  display: flex; align-items: center; gap: 8px;
+  height: 52px; padding: 8px 8px 8px 18px;
+  background: var(--window-bg);
+}
+/* Borda de rolagem (Scroll Edge Effect - Hard do kit): o conteúdo passa por
+   baixo e a barra ganha vidro claro e a linha fina embaixo. */
+.window-toolbar.is-scrolled {
+  background: var(--toolbar-edge);
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+  box-shadow: 0 0.67px 0 var(--separator-subtle);
+}
+.toolbar-title { font-size: 13px; line-height: 15px; font-weight: 700; color: var(--text-primary); }
+.toolbar-subtitle { font-size: 11px; line-height: 13px; font-weight: 500; color: var(--text-secondary); }
+.ios-large-title { font-size: 34px; line-height: 41px; font-weight: 700; letter-spacing: 0.012em; color: var(--text-primary); }
+
+.sidebar { background: var(--sidebar-bg); color: var(--sidebar-label); }
+.sidebar-shell { box-shadow: none; }
+@media (max-width: 1023px) {
+  .sidebar-shell { box-shadow: 0 0 1px rgba(0,0,0,0.4), 0 24px 64px rgba(0,0,0,0.28); }
+}
+.sidebar-item {
+  position: relative; display: flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 8px 0 4px; border-radius: 8px;
+  font-size: 13px; line-height: 16px; font-weight: 500; color: var(--sidebar-label);
+  outline: none; cursor: default; user-select: none;
+}
+.sidebar-item.is-selected { background: var(--sidebar-selection); }
+.sidebar-item:focus-visible { box-shadow: inset 0 0 0 3px var(--focus-ring); }
+.sidebar-icon { display: flex; width: 22px; flex-shrink: 0; justify-content: center; color: var(--accent-vibrant); }
+.sidebar-icon svg { width: 16px; height: 16px; stroke-width: 1.75; }
+@media (pointer: coarse) { .sidebar-item { height: 40px; } }
+
+/* ─── Lista do Finder (macOS 27) ───
+   Fundo por célula: linhas alternadas e seleção viram cápsulas com cantos de 8
+   e 10 px de folga nas laterais, como no kit. */
+.finder-table { border-collapse: separate; border-spacing: 0; width: calc(100% - 20px); margin: 0 10px; }
+.finder-table > tbody > tr > td { background: transparent; }
+.finder-table > tbody > tr:not(.finder-group):nth-child(even) > td { background: var(--row-alt); }
+.finder-table > tbody > tr > td:first-child { border-top-left-radius: 8px; border-bottom-left-radius: 8px; }
+.finder-table > tbody > tr > td:last-child { border-top-right-radius: 8px; border-bottom-right-radius: 8px; }
+.finder-table > tbody > tr[aria-selected="true"]:nth-child(n) > td { background: var(--selection-bg); color: var(--selection-text); }
+.finder-table > tbody > tr[data-drop]:nth-child(n) > td { background: var(--selection-bg); color: var(--selection-text); }
+.finder-table > tbody > tr:focus-visible > td:first-child { box-shadow: inset 3px 0 0 var(--focus-ring); }
+.finder-table > thead .finder-th + .finder-th { box-shadow: inset 1px 0 0 var(--separator); }
+.finder-table > thead th { font-weight: inherit; }
+
+/* ─── Controles do macOS 27 ─── */
+/* Campo de texto: fundo branco, contorno fino, foco com o brilho do acento. */
+.mac-field {
+  background: var(--field-bg);
+  border: 0; border-radius: 6px;
+  box-shadow: 0 0 0 1px var(--field-border), 0 0.5px 1px rgba(0,0,0,0.05);
+  transition: box-shadow 120ms ease-out;
+}
+.mac-field:focus, .mac-field:focus-visible { outline: none; box-shadow: 0 0 0 1px var(--accent), 0 0 0 4px var(--focus-ring); }
+.mac-field-error { box-shadow: 0 0 0 1px var(--text-danger), 0 0.5px 1px rgba(0,0,0,0.05); }
+/* Caixa de seleção desmarcada: preenchimento leve com contorno fino. */
+.mac-check-off { background: var(--check-off-bg); box-shadow: inset 0 0 0 1px var(--check-off-border); }
+/* Botão pop-up (seletor): cápsula de controle com o ⌃⌄ no acento. */
+.mac-popup { background: var(--field-bg); border-radius: 6px; box-shadow: 0 0 0 1px var(--field-border), 0 0.5px 1px rgba(0,0,0,0.06); }
+/* Controle segmentado: trilho em cápsula com o preenchimento de controle; o
+   segmento escolhido sobe numa cápsula clara com sombra leve (no escuro, um
+   cinza mais claro). Serve para abas (aria-selected), opções (aria-checked)
+   e filtros (aria-pressed). No toque, cresce para a altura do iOS. */
+.mac-segmented {
+  display: inline-flex; align-items: center; gap: 2px; padding: 2px;
+  max-width: 100%; overflow-x: auto; scrollbar-width: none;
+  border-radius: 9999px; background: var(--control-fill);
+}
+.mac-segmented::-webkit-scrollbar { display: none; }
+.mac-segment {
+  display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 6px;
+  height: 24px; padding: 0 12px; border-radius: 9999px; white-space: nowrap;
+  font-size: 13px; line-height: 16px; font-weight: 500; color: var(--text-primary);
+  transition: background-color 120ms ease-out, box-shadow 120ms ease-out;
+}
+.mac-segment:hover:not([aria-selected="true"]):not([aria-checked="true"]):not([aria-pressed="true"]) { background: var(--control-fill); }
+.mac-segment[aria-selected="true"], .mac-segment[aria-checked="true"], .mac-segment[aria-pressed="true"] {
+  background: var(--segment-selected); box-shadow: var(--segment-shadow);
+}
+.mac-segment:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 1px; }
+.mac-segment > svg { width: 14px; height: 14px; }
+.mac-segmented.is-small .mac-segment { height: 20px; padding: 0 9px; font-size: 11px; line-height: 14px; }
+.mac-segmented.is-fill { display: flex; width: 100%; }
+.mac-segmented.is-fill .mac-segment { flex: 1 1 0; }
+@media (pointer: coarse) {
+  .mac-segment, .mac-segmented.is-small .mac-segment { height: 32px; padding: 0 14px; font-size: 13px; }
+}
+/* Folha e diálogo: material da janela, contorno fino e a sombra grande do macOS. */
+.mac-sheet {
+  background: var(--sheet-bg);
+  box-shadow: 0 0 0 0.5px var(--sheet-border), 0 24px 64px rgba(0,0,0,0.28), 0 8px 24px rgba(0,0,0,0.12);
+  -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
+}
+
+/* Grupo de formulário/lista do macOS 27 (Form Group). */
+.mac-group {
+  background: var(--group-bg);
+  border-radius: 12px;
+}
+/* Linha alternada de lista (Finder): fundo com 10 px de folga nas laterais e cantos de 8. */
+.mac-row-alt { position: relative; }
+.mac-row-alt::before {
+  content: ""; position: absolute; inset: 0 10px; border-radius: 8px;
+  background: var(--row-alt); pointer-events: none; z-index: 0;
+}
+.mac-row-alt > * { position: relative; z-index: 1; }
 
 /* ─── Glass hover — subtle, no translation (macOS style) ─── */
 .glass-interactive {
@@ -697,13 +885,130 @@ input[type="number"] {
   }
 }
 
-/* ─── Login: trilha de auditoria de exemplo ───
-   Único movimento automático da tela: o trilho desce e os elos acendem em
-   sequência, uma vez, no carregamento. */
+/* ─── Tela de bloqueio (login) e papel de parede ───
+   Como a tela de bloqueio do macOS 27: papel de parede de folhas de vidro
+   curvas (desenho próprio, nas cores do Docke), relógio grande no topo e os
+   campos em cápsulas de vidro. O texto é sempre branco, nos dois temas; o
+   tema só troca o papel de parede entre a versão de dia e a de noite. */
+.lock-screen, .wallpaper-screen {
+  --wp-top: #0B5F66;
+  --wp-mid: #0A4656;
+  --wp-bottom: #062A3A;
+  --wp-glow-a: #2BB8A6;
+  --wp-glow-b: #2D5FB0;
+  --wp-sheet: #FFFFFF;
+  --wp-sheet-op: 0.13;
+  --wp-rim: #FFFFFF;
+  --lock-glass: rgba(255,255,255,0.17);
+  --lock-glass-hover: rgba(255,255,255,0.26);
+  background: var(--wp-bottom);
+}
+.lock-screen { color: #fff; }
+.dark .lock-screen, .dark .wallpaper-screen {
+  --wp-top: #07323A;
+  --wp-mid: #052430;
+  --wp-bottom: #020F16;
+  --wp-glow-a: #0F7F73;
+  --wp-glow-b: #22448F;
+  --wp-sheet: #8FF5E4;
+  --wp-sheet-op: 0.08;
+  --wp-rim: #B8FFF2;
+  --lock-glass: rgba(255,255,255,0.12);
+  --lock-glass-hover: rgba(255,255,255,0.2);
+}
+.lock-glass {
+  background: var(--lock-glass);
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+  backdrop-filter: blur(28px) saturate(170%);
+  box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.38), inset 0 1px 0 rgba(255,255,255,0.18), 0 10px 30px -12px rgba(0,0,0,0.45);
+}
+.lock-shadow { text-shadow: 0 1px 3px rgba(0,0,0,0.28); }
+.lock-time {
+  font-family: ui-rounded, "SF Pro Rounded", var(--font-sans, system-ui);
+  font-size: clamp(88px, 13vw, 148px);
+  font-weight: 700;
+  line-height: 0.95;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(180deg, rgba(255,255,255,0.97) 0%, rgba(255,255,255,0.78) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 14px rgba(0,0,0,0.22));
+}
+@media (max-height: 760px) { .lock-time { font-size: clamp(72px, 9vw, 112px); } }
+.lock-field {
+  width: 100%;
+  height: 36px;
+  border-radius: 9999px;
+  padding: 0 16px;
+  font-size: 13px;
+  color: #fff;
+  background: var(--lock-glass);
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+  backdrop-filter: blur(28px) saturate(170%);
+  box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.4), 0 6px 20px -10px rgba(0,0,0,0.5);
+  caret-color: #fff;
+}
+.lock-field::placeholder { color: rgba(255,255,255,0.72); }
+.lock-field:focus { outline: none; box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.55), 0 0 0 3px rgba(255,255,255,0.38); }
+.lock-field[aria-invalid="true"] { box-shadow: inset 0 0 0 1px rgba(255,138,128,0.95); }
+.lock-field:-webkit-autofill,
+.lock-field:-webkit-autofill:hover,
+.lock-field:-webkit-autofill:focus {
+  -webkit-text-fill-color: #fff;
+  -webkit-box-shadow: 0 0 0 40px rgba(16,70,80,0.92) inset;
+  transition: background-color 9999s ease-out 0s;
+}
+.lock-circle {
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 9999px; color: #fff;
+  background: var(--lock-glass);
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+  backdrop-filter: blur(28px) saturate(170%);
+  box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.38), 0 8px 22px -12px rgba(0,0,0,0.5);
+}
+.lock-circle:hover:not(:disabled) { background: var(--lock-glass-hover); }
+.lock-circle:active:not(:disabled) { transform: scale(0.96); }
+.lock-screen :focus-visible { outline: 3px solid rgba(255,255,255,0.75); outline-offset: 2px; }
+/* Caixa de seleção sobre o papel de parede: vidro quando desmarcada, branca com
+   o visto em teal quando marcada (a cor de acento sumiria no teal do fundo). */
+.lock-screen input[type="checkbox"] + span { background: rgba(255,255,255,0.2); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.7); }
+.lock-screen input[type="checkbox"]:checked + span { background: #fff; box-shadow: none; }
+.lock-screen input[type="checkbox"] + span svg { color: #0B6B63; }
+/* Janela do macOS sobre o papel de parede (páginas públicas): material da
+   janela, cantos de 16 e a sombra grande. */
+.mac-window {
+  color: var(--text-primary);
+  background: var(--window-bg);
+  border-radius: 16px;
+  box-shadow: var(--window-shadow);
+}
+.wallpaper-note { color: rgba(255,255,255,0.85); text-shadow: 0 1px 3px rgba(0,0,0,0.28); }
+/* O Mac sacode a senha errada. */
+@keyframes lock-shake {
+  0%, 100% { transform: none; }
+  15%, 55% { transform: translateX(-9px); }
+  35%, 75% { transform: translateX(9px); }
+}
+.lock-shake { animation: lock-shake 420ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
+html.reduce-transparency .lock-glass, html.reduce-transparency .lock-field, html.reduce-transparency .lock-circle {
+  background: rgba(8,52,62,0.94) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .lock-glass, .lock-field, .lock-circle { background: rgba(8,52,62,0.94) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+}
+@media (forced-colors: active) {
+  .lock-glass, .lock-field, .lock-circle { border: 1px solid CanvasText; }
+  .lock-time { color: CanvasText; background: none; }
+}
+
+/* Trilha de exemplo (widget da demonstração): o trilho desce e os elos
+   acendem em sequência, uma vez, no carregamento. */
 .login-chain::before {
   content: "";
-  position: absolute; left: 5px; top: 10px; bottom: 28px; width: 1px;
-  background: linear-gradient(#15A18E, rgba(21,161,142,0.25));
+  position: absolute; left: 4px; top: 8px; bottom: 22px; width: 1px;
+  background: linear-gradient(rgba(255,255,255,0.85), rgba(255,255,255,0.2));
   transform-origin: top;
   animation: login-rail 900ms cubic-bezier(0, 0, 0.2, 1) both;
 }
@@ -714,10 +1019,10 @@ input[type="number"] {
 .login-chain > li:nth-child(4) { animation-delay: 720ms; }
 .login-chain > li::before {
   content: "";
-  position: absolute; left: 0; top: 5px; width: 11px; height: 11px; border-radius: 9999px;
-  background: var(--bg-page); border: 1.5px solid #15A18E;
+  position: absolute; left: 0; top: 4px; width: 9px; height: 9px; border-radius: 9999px;
+  background: rgba(10,60,70,0.9); border: 1.5px solid rgba(255,255,255,0.9);
 }
-.login-chain > li:last-child::before { background: #15A18E; box-shadow: 0 0 0 4px rgba(21,161,142,0.18); }
+.login-chain > li:last-child::before { background: #5EEAD4; border-color: #fff; box-shadow: 0 0 0 4px rgba(94,234,212,0.25); }
 @keyframes login-rail { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 /* Entrada da tela de login: apresentação, cartão e trilha em sequência curta
    (até 300 ms cada); mensagens que surgem no cartão deslizam 4 px. */
@@ -729,7 +1034,7 @@ input[type="number"] {
 .login-reveal, .reveal { animation: reveal 180ms var(--ease-standard) both; }
 @keyframes login-node { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
-  .login-chain::before, .login-chain > li { animation: none !important; }
+  .login-chain::before, .login-chain > li, .lock-shake { animation: none !important; }
 }
 
 /* ─── PDF: camada de texto (pdf.js TextLayer) — texto selecionável, lido pelo
@@ -787,6 +1092,7 @@ input[type="number"] {
     -webkit-backdrop-filter: none !important;
   }
 }
+html.reduce-transparency .glass-capsule { background: var(--bg-card) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
 html.reduce-transparency .glass-panel, html.reduce-transparency .glass-dialog, html.reduce-transparency .glass-blur-panel,
 html.reduce-transparency .glass-blur-strong, html.reduce-transparency .glass-blur-card, html.reduce-transparency .glass-blur-pill,
 html.reduce-transparency .glass-blur-table {

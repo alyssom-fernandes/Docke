@@ -8,24 +8,23 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode;
 }
 
+// Botões do kit do macOS 27: cápsula, texto 13 em peso médio; o secundário é
+// o preenchimento de controle (8%) sem borda, o principal leva o acento.
 const base =
-  "inline-flex items-center justify-center font-medium rounded-full transition-all duration-fast select-none focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) focus-visible:ring-offset-1 focus-visible:ring-offset-(--bg-card) disabled:opacity-(--opacity-disabled) disabled:pointer-events-none active:scale-[0.97] motion-reduce:active:scale-100";
+  "inline-flex items-center justify-center font-medium rounded-full transition-[background-color,color,transform,filter] duration-fast select-none focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) disabled:opacity-(--opacity-disabled) disabled:pointer-events-none active:scale-[0.97] motion-reduce:active:scale-100 [&_svg]:shrink-0";
 
 const variants: Record<string, string> = {
-  // Texto branco sobre teal-600 dá 4,5:1; o hover escurece (teal-700) em vez
-  // de clarear — o teal-500 derrubava o contraste para 3,2:1.
-  primary: "bg-teal-600 text-white hover:bg-teal-700",
-  secondary:
-    "bg-transparent text-(--text-primary) border border-(--border-control) hover:bg-(--bg-hover)",
-  ghost: "bg-transparent text-(--text-secondary) hover:bg-(--bg-hover)",
-  danger: "bg-red-600 text-white hover:bg-red-700",
-  icon: "bg-transparent text-(--text-placeholder) hover:bg-(--bg-hover) hover:text-(--text-secondary)",
+  primary: "bg-(--accent) text-white hover:bg-(--accent-hover) shadow-[0_0.5px_1px_rgba(0,0,0,0.12)]",
+  secondary: "bg-(--control-fill) text-(--text-primary) hover:bg-(--control-fill-hover)",
+  ghost: "bg-transparent text-(--text-primary) hover:bg-(--control-fill)",
+  danger: "bg-(--text-danger) text-white hover:brightness-95 shadow-[0_0.5px_1px_rgba(0,0,0,0.12)]",
+  icon: "bg-transparent text-(--text-secondary) hover:bg-(--control-fill) hover:text-(--text-primary)",
 };
 
 // Em tela de toque (pointer: coarse) todo botão chega a 44 px de altura.
 const sizes: Record<string, string> = {
-  sm: "h-7 px-3 text-mac-body gap-1.5 pointer-coarse:h-11 pointer-coarse:px-4",
-  md: "h-8 px-4 text-mac-body gap-2 pointer-coarse:h-11",
+  sm: "h-7 px-3 text-[13px] gap-1.5 pointer-coarse:h-11 pointer-coarse:px-4 [&_svg]:size-3.5",
+  md: "h-8 px-4 text-[13px] gap-1.5 pointer-coarse:h-11 [&_svg]:size-4",
 };
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(

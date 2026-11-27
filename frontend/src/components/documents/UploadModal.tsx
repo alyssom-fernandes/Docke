@@ -440,7 +440,7 @@ export function UploadModal({ folderId, folderName, companyId, onClose, onDone, 
                 const label = p.relativePath ? `${p.relativePath}/${p.file.name}` : p.file.name;
                 return (
                   <li key={`${label}-${i}`} className="flex items-center gap-2 px-2.5 h-9 pointer-coarse:h-11 text-mac-caption text-(--text-secondary)">
-                    <Icon className={`w-3.5 h-3.5 shrink-0 ${st.iconColor} ${st.fillColor}`} aria-hidden />
+                    <Icon className="w-5 h-5 shrink-0" aria-hidden />
                     <span className="flex-1 truncate text-(--text-primary)" title={label}>{label}</span>
                     <span className="shrink-0 tabular-nums">{fmtSize(p.file.size)}</span>
                     <button type="button" onClick={() => setPending((prev) => prev.filter((_, j) => j !== i))} disabled={uploading}

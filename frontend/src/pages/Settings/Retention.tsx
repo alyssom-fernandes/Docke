@@ -150,12 +150,12 @@ export default function Retention() {
         ))}
       </section>
 
-      <div role="tablist" aria-label="Seções de retenção" className="flex flex-wrap gap-1 border-b border-(--border-default)">
+      <div role="tablist" aria-label="Seções de retenção" className="mac-segmented">
         {tabs.map((t) => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
-            className={`relative -mb-px px-3 h-10 pointer-coarse:h-11 text-mac-body font-medium border-b-2 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) rounded-t-[6px] ${tab === t.id ? "border-teal-600 text-(--text-primary)" : "border-transparent text-(--text-secondary) hover:text-(--text-primary)"}`}>
+            className="mac-segment">
             {t.label}
-            {!!t.badge && <span className="ml-1.5 rounded-full bg-teal-600 px-1.5 text-mac-caption2 font-semibold text-white">{t.badge}</span>}
+            {!!t.badge && <span className="rounded-full bg-(--accent) px-1.5 text-[11px] leading-4 font-semibold text-white">{t.badge}</span>}
           </button>
         ))}
       </div>
@@ -805,7 +805,7 @@ function HoldDialog({ companyId, folders, onClose, onCreated }: { companyId: str
         <div role="group" aria-label="O que bloquear" className="flex gap-1.5">
           {([["folder", "Uma pasta inteira"], ["document", "Um documento"]] as const).map(([v, l]) => (
             <button key={v} type="button" aria-pressed={type === v} onClick={() => { setType(v); setDoc(null); }}
-              className={`px-3 h-9 pointer-coarse:h-11 rounded-full text-mac-body font-medium border transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${type === v ? "bg-teal-600 text-white border-teal-600" : "border-(--border-control) text-(--text-primary) hover:bg-(--bg-hover)"}`}>{l}</button>
+              className={`px-3 h-9 pointer-coarse:h-11 rounded-full text-mac-body font-medium border transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${type === v ? "bg-(--accent) text-white border-(--accent)" : "border-(--border-control) text-(--text-primary) hover:bg-(--bg-hover)"}`}>{l}</button>
           ))}
         </div>
         {type === "folder" ? (

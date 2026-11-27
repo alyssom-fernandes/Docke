@@ -48,6 +48,7 @@ export default function ConfirmModal({
       title={title}
       description={description}
       size="sm"
+      variant="alert"
       busy={loading}
       showClose={false}
       initialFocusRef={requireTypedConfirmation ? undefined : cancelRef}
@@ -82,7 +83,7 @@ export default function ConfirmModal({
                 value={typedValue}
                 onChange={(e) => setTypedValue(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && !blocked && !loading) onConfirm(typedValue); }}
-                className="w-full h-9 pointer-coarse:h-11 px-3 text-mac-body pointer-coarse:text-[16px] bg-(--bg-card) border border-(--border-control) rounded-(--radius-control) text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:ring-[3px] focus:ring-(--focus-ring)"
+                className="mac-field w-full h-7 pointer-coarse:h-11 px-2 text-[13px] pointer-coarse:text-[16px] text-(--text-primary) placeholder:text-(--text-placeholder)"
               />
             </div>
           )}

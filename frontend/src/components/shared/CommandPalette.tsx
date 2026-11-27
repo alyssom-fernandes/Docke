@@ -186,17 +186,18 @@ export default function CommandPalette() {
 
   return createPortal(
     <div className="fixed inset-0 z-[75]" data-no-inert>
-      <div aria-hidden className="dialog-scrim-in absolute inset-0 bg-(--overlay-scrim)" onClick={close} />
-      {/* No celular, tela cheia (A2-24); a partir de sm, caixa a 8vh do topo. */}
-      <div className="pointer-events-none absolute inset-0 sm:bottom-auto sm:top-[8vh] flex justify-center sm:px-3">
+      {/* Como o Spotlight: sem escurecer a janela; clicar fora fecha. */}
+      <div aria-hidden className="absolute inset-0" onClick={close} />
+      {/* No celular, tela cheia (A2-24); a partir de sm, a 16vh do topo, como o Spotlight. */}
+      <div className="pointer-events-none absolute inset-0 sm:bottom-auto sm:top-[16vh] flex justify-center sm:px-3">
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Comandos e busca rápida"
-        className="dialog-panel-in pointer-events-auto w-full h-full sm:h-auto max-w-[860px] flex flex-col glass-dialog glass-blur-strong shadow-modal rounded-none sm:rounded-(--radius-dialog) overflow-hidden pt-[env(safe-area-inset-top)] sm:pt-0"
+        className="dialog-panel-in pointer-events-auto w-full h-full sm:h-auto max-w-[760px] flex flex-col mac-sheet rounded-none sm:rounded-[26px] overflow-hidden pt-[env(safe-area-inset-top)] sm:pt-0"
       >
-        <div className="flex items-center gap-2.5 px-4 border-b border-(--border-default)">
-          <Search className="w-4 h-4 text-(--text-secondary) shrink-0" aria-hidden />
+        <div className="flex items-center gap-3 px-5 border-b border-(--separator-subtle)">
+          <Search className="w-5 h-5 text-(--text-secondary) shrink-0" aria-hidden />
           <input
             ref={inputRef}
             role="combobox"
@@ -209,9 +210,8 @@ export default function CommandPalette() {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder={acoesDe ? `Ações de “${acoesDe.name}”… (← volta)` : "Ações, telas, empresas ou documentos…"}
-            className="flex-1 h-12 pointer-coarse:h-14 bg-transparent text-mac-callout text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden"
+            className="flex-1 h-14 pointer-coarse:h-14 bg-transparent text-[20px] text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-hidden"
           />
-          <kbd className="hidden sm:inline text-mac-caption text-(--text-secondary) border border-(--border-default) rounded px-1.5">Esc</kbd>
           <button type="button" onClick={close} className="sm:hidden -mr-2 min-h-11 px-3 text-mac-body font-medium text-(--text-accent)">Fechar</button>
         </div>
         <div className="flex flex-1 min-h-0 sm:flex-none sm:h-[min(60vh,440px)]">
@@ -237,7 +237,7 @@ export default function CommandPalette() {
               const Icon = it.icon;
               return (
                 <li key={it.id} role="presentation">
-                  {header && <p className="px-3 pt-2.5 pb-1 text-mac-caption font-semibold uppercase tracking-[0.06em] text-(--text-secondary)" aria-hidden>{header}</p>}
+                  {header && <p className="px-3 pt-2.5 pb-1 text-[11px] font-bold text-(--text-secondary)" aria-hidden>{header}</p>}
                   <div
                     id={`cmdk-${it.id}`}
                     data-idx={idx}
@@ -245,7 +245,7 @@ export default function CommandPalette() {
                     aria-selected={idx === activeIdx}
                     onMouseMove={() => setActiveIdx(idx)}
                     onClick={() => it.run()}
-                    className={`flex items-center gap-2.5 h-9 pointer-coarse:h-11 px-3 rounded-[8px] cursor-pointer select-none ${idx === activeIdx ? "bg-teal-600 text-white" : "text-(--text-primary)"}`}
+                    className={`flex items-center gap-2.5 h-8 pointer-coarse:h-11 px-2.5 rounded-[8px] cursor-default select-none ${idx === activeIdx ? "bg-(--selection-bg) text-(--selection-text)" : "text-(--text-primary)"}`}
                   >
                     <Icon className={`w-4 h-4 shrink-0 ${idx === activeIdx ? "text-white" : it.iconClass ?? "text-(--text-secondary)"}`} aria-hidden />
                     <span className="flex-1 truncate text-mac-body">{it.label}</span>

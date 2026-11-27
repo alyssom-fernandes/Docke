@@ -4,7 +4,7 @@ import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
 
 /**
- * Uma lista só para as três navegações (Dock, barra inferior, ⌘K): mesmos
+ * Uma lista só para as três navegações (barra lateral, barra inferior, ⌘K): mesmos
  * nomes e ícones para o mesmo destino (A2-18, A2-50). Obrigações com
  * calendário em vez do escudo com interrogação (A2-46).
  */

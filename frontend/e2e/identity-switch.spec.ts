@@ -13,8 +13,9 @@ test("trocar para o modo demo com uma empresa antiga em cache não deixa a UI pr
 
   await loginAsDemo(page);
 
-  // O nome da empresa antiga jamais deveria aparecer.
-  await expect(page.locator("header")).not.toContainText("Empresa obsoleta");
+  // O nome da empresa antiga jamais deveria aparecer (nem na barra lateral,
+  // nem no título da barra de ferramentas).
+  await expect(page.locator("body")).not.toContainText("Empresa obsoleta");
 
   // E a tela de Documentos precisa mostrar conteúdo real, não "Pasta vazia"
   // (o que aconteceria se a empresa errada continuasse selecionada).

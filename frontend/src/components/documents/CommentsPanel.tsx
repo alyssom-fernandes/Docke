@@ -93,7 +93,7 @@ export default function CommentsPanel({ docId, comentarios, setComentarios, pont
         {podeAnotar && (
           <div className="flex items-center gap-2 text-mac-caption">
             <button type="button" onClick={() => { setAnnotating(!annotating); setPonto(null); }} aria-pressed={annotating}
-              className={`inline-flex items-center gap-1 rounded-full px-2.5 min-h-7 pointer-coarse:min-h-11 border ${annotating || ponto ? "border-teal-600 bg-(--tint-accent) text-(--text-primary)" : "border-(--border-control) text-(--text-secondary) hover:bg-(--bg-hover)"}`}>
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 min-h-7 pointer-coarse:min-h-11 border ${annotating || ponto ? "border-(--accent) bg-(--tint-accent) text-(--text-primary)" : "border-(--border-control) text-(--text-secondary) hover:bg-(--bg-hover)"}`}>
               <MapPin className="w-3.5 h-3.5" aria-hidden />{ponto ? `Na página ${ponto.page}` : annotating ? "Clique na página…" : "Marcar na página"}
             </button>
             {ponto && <button type="button" onClick={() => setPonto(null)} className="text-(--text-secondary) hover:underline">tirar o ponto</button>}

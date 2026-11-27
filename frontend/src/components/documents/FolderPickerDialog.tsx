@@ -112,7 +112,7 @@ export default function FolderPickerDialog({
 
   async function confirm() {
     if (selected === undefined) return;
-    const name = selected === null ? "Início" : folders?.find((f) => f.id === selected)?.name ?? "";
+    const name = selected === null ? "Documentos" : folders?.find((f) => f.id === selected)?.name ?? "";
     setBusy(true);
     try {
       await onPick({ id: selected, name });
@@ -123,7 +123,7 @@ export default function FolderPickerDialog({
 
   const optionClass = (active: boolean, disabled: boolean) =>
     `flex items-center gap-2 h-8 pointer-coarse:h-11 pr-3 rounded-[6px] text-mac-body select-none ${
-      disabled ? "text-(--text-tertiary) cursor-not-allowed" : active ? "bg-teal-600 text-white" : "text-(--text-primary) hover:bg-(--bg-hover) cursor-pointer"
+      disabled ? "text-(--text-tertiary) cursor-not-allowed" : active ? "bg-(--accent) text-white" : "text-(--text-primary) hover:bg-(--bg-hover) cursor-pointer"
     }`;
 
   return (
@@ -184,7 +184,7 @@ export default function FolderPickerDialog({
               className={`${optionClass(selected === null, false)} pl-2`}
             >
               <Home className="w-4 h-4 shrink-0" aria-hidden />
-              Início (raiz da empresa)
+              Documentos (raiz da empresa)
             </li>
           )}
           {rows.length === 0 && (

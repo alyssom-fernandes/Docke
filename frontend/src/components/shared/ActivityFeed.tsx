@@ -410,7 +410,7 @@ export default function ActivityFeed({
       {groups.map((group) => (
         <section key={group.label || "all"} aria-label={group.label || undefined}>
           {group.label && (
-            <h2 className="px-1 pb-1.5 text-mac-caption font-semibold text-(--text-secondary) uppercase tracking-wide">
+            <h2 className="px-1 pb-1.5 text-[11px] font-bold text-(--text-secondary)">
               {group.label}
             </h2>
           )}

@@ -814,16 +814,12 @@ export default function Metadata() {
         {/* Controle segmentado (cápsula com o segmento ativo em destaque) —
             a Apple nunca usa abas sublinhadas de texto dentro de um painel
             de Settings, o padrão nativo é esse pill de segmentos. */}
-        <div role="tablist" aria-label="Metadados" className="inline-flex items-center gap-0.5 p-1 mb-6 rounded-full bg-(--bg-hover)">
+        <div role="tablist" aria-label="Metadados" className="mac-segmented mb-6">
           <button
             role="tab"
             aria-selected={tab === "catalog"}
             onClick={() => changeTab("catalog")}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-mac-body transition-colors duration-fast ${
-              tab === "catalog"
-                ? "bg-(--bg-card) text-(--text-primary) font-medium shadow-xs"
-                : "text-(--text-secondary) hover:text-(--text-primary)"
-            }`}
+            className="mac-segment"
           >
             <Tags className="w-4 h-4" /> Catálogo
           </button>
@@ -831,11 +827,7 @@ export default function Metadata() {
             role="tab"
             aria-selected={tab === "tree"}
             onClick={() => changeTab("tree")}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-mac-body transition-colors duration-fast ${
-              tab === "tree"
-                ? "bg-(--bg-card) text-(--text-primary) font-medium shadow-xs"
-                : "text-(--text-secondary) hover:text-(--text-primary)"
-            }`}
+            className="mac-segment"
           >
             <FolderTree className="w-4 h-4" aria-hidden="true" /> Por pasta
           </button>

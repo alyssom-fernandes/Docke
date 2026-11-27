@@ -9,6 +9,7 @@ import ActivityFeed, { ACTION_LABELS } from "@/components/shared/ActivityFeed";
 import Dropdown from "@/components/ui/Dropdown";
 import Button from "@/components/ui/Button";
 import Menu from "@/components/ui/Menu";
+import { PageHeader, ToolbarGroup, ToolbarButton } from "@/components/layout/window";
 
 interface Member { user_id: string; full_name: string }
 
@@ -140,32 +141,29 @@ export default function Activity() {
 
   return (
     <div className="space-y-6 max-w-[1100px] w-full mx-auto">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Atividade</h1>
-          <p className="text-mac-caption text-(--text-secondary) mt-0.5">Quem fez o quê, quando. Cada registro fica encadeado ao anterior e não pode ser alterado.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      <PageHeader title="Atividade" subtitle="Quem fez o quê, quando">
+        <ToolbarGroup label="Atividade">
           {isAdmin && (
-            <Button variant="secondary" size="sm" loading={checking} onClick={verify}>
-              <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" /> Verificar integridade
-            </Button>
+            <ToolbarButton inGroup label="Verificar integridade da trilha" onClick={verify} disabled={checking}>
+              <ShieldCheck className={checking ? "animate-pulse" : ""} aria-hidden="true" />
+            </ToolbarButton>
           )}
-          <Button variant="secondary" size="sm" loading={exporting} aria-haspopup="menu" aria-expanded={!!menuAnchor}
-            onClick={(e) => setMenuAnchor(e.currentTarget)}>
-            <Download className="w-3.5 h-3.5" aria-hidden="true" /> Exportar{filtrado ? " filtrado" : ""}
-          </Button>
-          {menuAnchor && (
-            <Menu
-              anchor={menuAnchor} label="Exportar atividade" align="end" onClose={() => setMenuAnchor(null)}
-              items={[
-                { label: "Planilha CSV", onSelect: () => exportActivity("csv") },
-                { label: "Excel (.xlsx)", onSelect: () => exportActivity("xlsx") },
-              ]}
-            />
-          )}
-        </div>
-      </div>
+          <ToolbarButton inGroup label={filtrado ? "Exportar o que está filtrado" : "Exportar"} disabled={exporting}
+            aria-haspopup="menu" aria-expanded={!!menuAnchor} onClick={(e) => setMenuAnchor(e.currentTarget)}>
+            <Download aria-hidden="true" />
+          </ToolbarButton>
+        </ToolbarGroup>
+      </PageHeader>
+      <p className="text-mac-footnote text-(--text-secondary) mb-3!">Cada registro fica encadeado ao anterior e não pode ser alterado.</p>
+      {menuAnchor && (
+        <Menu
+          anchor={menuAnchor} label="Exportar atividade" align="end" onClose={() => setMenuAnchor(null)}
+          items={[
+            { label: "Planilha CSV", onSelect: () => exportActivity("csv") },
+            { label: "Excel (.xlsx)", onSelect: () => exportActivity("xlsx") },
+          ]}
+        />
+      )}
 
       {integrity && (
         <p role="status" className={`flex items-center gap-2 rounded-(--radius-control) px-3 py-2 text-mac-body ${integrity.intact ? "bg-green-600/10 text-(--text-primary)" : "bg-(--tint-danger) text-(--text-primary)"}`}>
@@ -180,7 +178,7 @@ export default function Activity() {
         <span className="text-mac-caption font-medium text-(--text-secondary) mr-1">Relatórios prontos:</span>
         {RELATORIOS.map((r) => (
           <button key={r.value} type="button" aria-pressed={acao === r.value} onClick={() => setP({ acao: acao === r.value ? null : r.value })}
-            className={`h-8 pointer-coarse:h-10 px-3 text-mac-caption font-medium rounded-full border transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${acao === r.value ? "bg-teal-600 border-teal-600 text-white" : "border-(--border-control) text-(--text-primary) hover:bg-(--bg-hover)"}`}>
+            className={`h-8 pointer-coarse:h-10 px-3 text-mac-caption font-medium rounded-full border transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${acao === r.value ? "bg-(--accent) border-(--accent) text-white" : "border-(--border-control) text-(--text-primary) hover:bg-(--bg-hover)"}`}>
             {r.label}
           </button>
         ))}

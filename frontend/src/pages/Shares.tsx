@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Link2, Lock, Folder, AlertTriangle, RefreshCw, Eye, Pencil, Ban, History } from "lucide-react";
-import { getFileStyle } from "@/lib/fileType";
+import { Link2, Lock, AlertTriangle, RefreshCw, Eye, Pencil, Ban, History } from "lucide-react";
+import { ItemIcon } from "@/lib/fileType";
 import { relativeDate, fullDate } from "@/lib/date";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
@@ -13,6 +13,7 @@ import ConfirmModal from "@/components/ui/ConfirmModal";
 import Dialog from "@/components/ui/Dialog";
 import Button from "@/components/ui/Button";
 import ShareModal from "@/components/documents/ShareModal";
+import { PageHeader } from "@/components/layout/window";
 
 interface ShareLink {
   id: string;
@@ -44,7 +45,7 @@ function situacao(s: ShareLink): { ativo: boolean; texto: string } {
 }
 
 /**
- * Links (A6-16..A6-21): mesmo nome do Dock; ativos, encerrados e "meus";
+ * Links (A6-16..A6-21): mesmo nome da barra lateral; ativos, encerrados e "meus";
  * quem criou, último acesso e quantas aberturas; histórico de acessos;
  * editar validade, senha e limite; revogar com confirmação e indicador.
  */
@@ -96,10 +97,8 @@ export default function Shares() {
 
   return (
     <div className="space-y-6 max-w-[1100px] w-full mx-auto">
-      <div>
-        <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Links</h1>
-        <p className="text-mac-caption text-(--text-secondary) mt-0.5">Links que levam documentos e pastas para fora do Docke. Admins veem os de toda a empresa.</p>
-      </div>
+      <PageHeader title="Links" subtitle={shares ? `${ativos} ${ativos === 1 ? "ativo" : "ativos"}` : undefined} />
+      <p className="text-mac-footnote text-(--text-secondary) mb-3!">Links que levam documentos e pastas para fora do Docke. Admins veem os de toda a empresa.</p>
 
       {failed ? (
         <div role="alert" className="glass-panel glass-blur-card rounded-(--radius-panel) flex flex-wrap items-center gap-3 px-5 py-4">
@@ -114,10 +113,10 @@ export default function Shares() {
           description="No menu de um documento ou pasta, escolha “Compartilhar por link” para mandar a quem não usa o Docke, com prazo e senha se quiser." />
       ) : (
         <>
-          <div role="group" aria-label="Quais links" className="flex flex-wrap items-center gap-0.5 p-0.5 rounded-full bg-(--bg-hover) w-fit">
+          <div role="group" aria-label="Quais links" className="mac-segmented">
             {([["ativos", `Ativos (${ativos})`], ["meus", "Criados por mim"], ["encerrados", "Expirados e revogados"]] as const).map(([v, l]) => (
               <button key={v} aria-pressed={filtro === v} onClick={() => setFiltro(v)}
-                className={`px-3 h-8 pointer-coarse:h-10 rounded-full text-mac-body font-medium transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${filtro === v ? "bg-(--bg-card) text-(--text-primary) shadow-sm" : "text-(--text-secondary) hover:text-(--text-primary)"}`}>{l}</button>
+                className="mac-segment">{l}</button>
             ))}
           </div>
           {visible.length === 0 ? (
@@ -126,13 +125,9 @@ export default function Shares() {
             <ul className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
               {visible.map((s) => {
                 const st = situacao(s);
-                const fs = getFileStyle(s.resource_name ?? "");
-                const Icon = s.resource_type === "folder" ? Folder : fs.icon;
                 return (
                   <li key={s.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 sm:px-5 py-3 border-b border-(--border-default) last:border-0">
-                    <span className={`w-8 h-8 rounded-badge flex items-center justify-center shrink-0 ${s.resource_type === "folder" ? "bg-(--tint-accent)" : fs.bgColor}`} aria-hidden="true">
-                      <Icon className={`w-4 h-4 ${s.resource_type === "folder" ? "text-(--text-accent)" : `${fs.iconColor} ${fs.fillColor}`}`} />
-                    </span>
+                    <ItemIcon name={s.resource_name ?? ""} folder={s.resource_type === "folder"} className="w-8 h-8 shrink-0" />
                     <div className="flex-1 min-w-[14rem]">
                       <Link to={href(s)} className="block truncate text-mac-body text-(--text-primary) hover:underline">{s.resource_name ?? "Item excluído"}</Link>
                       <p className="text-mac-caption text-(--text-secondary)">

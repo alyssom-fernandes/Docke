@@ -112,10 +112,10 @@ export default function CatalogDialog({ companyId, companyName, members, onClose
         <div className="space-y-2" aria-label="Carregando">{[0, 1, 2, 3].map((i) => <div key={i} className="h-12 rounded bg-(--bg-hover) animate-pulse" />)}</div>
       ) : (
         <div className="space-y-4">
-          <div role="tablist" aria-label="Segmento" className="flex flex-wrap gap-1.5">
+          <div role="tablist" aria-label="Segmento" className="mac-segmented">
             {data.segmentos.map((s) => (
               <button key={s.id} role="tab" aria-selected={segmento === s.id} onClick={() => setSegmento(s.id)}
-                className={`px-3 h-8 pointer-coarse:h-10 rounded-full text-mac-body font-medium border transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${segmento === s.id ? "bg-teal-600 text-white border-teal-600" : "border-(--border-control) text-(--text-primary) hover:bg-(--bg-hover)"}`}>
+                className="mac-segment">
                 {s.label}
               </button>
             ))}

@@ -15,7 +15,6 @@ import {
   ChevronLeft,
   ChevronUp,
   ChevronDown,
-  ChevronsUpDown,
   X,
   MoreHorizontal,
   Home,
@@ -49,7 +48,6 @@ import { useToast } from "@/lib/toast";
 import { useNavigation } from "@/lib/NavigationContext";
 import Button from "@/components/ui/Button";
 import Checkbox from "@/components/ui/Checkbox";
-import Tooltip from "@/components/ui/Tooltip";
 import EmptyState from "@/components/shared/EmptyState";
 import TruncatedFileName from "@/components/ui/TruncatedFileName";
 import ConfirmModal from "@/components/ui/ConfirmModal";
@@ -89,6 +87,8 @@ import {
 import { UploadModal } from "@/components/documents/UploadModal";
 import { CreateFolderModal } from "@/components/documents/CreateFolderModal";
 import { DetailDrawer } from "@/components/documents/DetailDrawer";
+import { PageHeader, ToolbarGroup, ToolbarButton, ToolbarSearchField } from "@/components/layout/window";
+import { MacFolderIcon } from "@/components/ui/MacIcons";
 import { BulkMetadataModal } from "@/components/documents/BulkMetadataModal";
 import type { DocFolder } from "@/components/documents/docShared";
 
@@ -122,7 +122,7 @@ const OPT_COLS: { key: OptCol; label: string; menu: string; sortKey: SortKey; al
 const DEFAULT_VISIBLE_COLS: OptCol[] = ["created", "size", "kind", "ocr"];
 const OCR_ORDER: Record<string, number> = { failed: 0, pending: 1, processing: 2, skipped: 3, done: 4 };
 type Density = "compact" | "comfortable" | "spacious";
-const DENSITY_PAD: Record<Density, string> = { compact: "[&_td]:py-1!", comfortable: "[&_td]:py-1.5!", spacious: "[&_td]:py-2.5!" };
+const DENSITY_PAD: Record<Density, string> = { compact: "[&_td]:py-px!", comfortable: "[&_td]:py-[3px]!", spacious: "[&_td]:py-1.5!" };
 
 // ─── Preferência de view/sort por pasta ─────────────────────────────────────
 // Finder/Explorer lembram como cada pasta foi deixada (ordenação, modo de
@@ -162,20 +162,25 @@ function SaveViewDialog({ folderName, onClose, onSave }: { folderName: string; o
   const [scope, setScope] = useState<"pasta" | "todas">("pasta");
   const [shared, setShared] = useState(true);
   const [busy, setBusy] = useState(false);
-  const opcao = (ativo: boolean) => `text-left rounded-(--radius-control) border px-3 py-2 text-mac-body transition-colors focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${ativo ? "border-teal-600 bg-(--tint-accent) text-(--text-primary)" : "border-(--border-control) text-(--text-secondary) hover:bg-(--bg-hover)"}`;
   return (
     <Dialog onClose={onClose} size="sm" busy={busy} title="Salvar vista"
       description="Guarda a ordenação, as colunas, o agrupamento e o filtro por metadado de agora."
       footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={busy} disabled={!name.trim()} onClick={async () => { setBusy(true); await onSave(name.trim(), scope, shared); setBusy(false); }}>Salvar</Button></>}>
       <div className="space-y-3">
         <Input label="Nome da vista" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Holerites por competência" autoFocus />
-        <div role="radiogroup" aria-label="Onde vale" className="grid grid-cols-2 gap-2">
-          <button type="button" role="radio" aria-checked={scope === "pasta"} onClick={() => setScope("pasta")} className={opcao(scope === "pasta")}>Só em “{folderName}”</button>
-          <button type="button" role="radio" aria-checked={scope === "todas"} onClick={() => setScope("todas")} className={opcao(scope === "todas")}>Em todas as pastas</button>
+        <div>
+          <p id="vista-onde" className="mb-1.5 text-[13px] text-(--text-secondary)">Onde vale</p>
+          <div role="radiogroup" aria-labelledby="vista-onde" className="mac-segmented is-fill">
+            <button type="button" role="radio" aria-checked={scope === "pasta"} onClick={() => setScope("pasta")} className="mac-segment min-w-0"><span className="truncate">Só em “{folderName}”</span></button>
+            <button type="button" role="radio" aria-checked={scope === "todas"} onClick={() => setScope("todas")} className="mac-segment">Em todas as pastas</button>
+          </div>
         </div>
-        <div role="radiogroup" aria-label="Quem vê" className="grid grid-cols-2 gap-2">
-          <button type="button" role="radio" aria-checked={shared} onClick={() => setShared(true)} className={opcao(shared)}>Todos da empresa</button>
-          <button type="button" role="radio" aria-checked={!shared} onClick={() => setShared(false)} className={opcao(!shared)}>Só eu</button>
+        <div>
+          <p id="vista-quem" className="mb-1.5 text-[13px] text-(--text-secondary)">Quem vê</p>
+          <div role="radiogroup" aria-labelledby="vista-quem" className="mac-segmented is-fill">
+            <button type="button" role="radio" aria-checked={shared} onClick={() => setShared(true)} className="mac-segment">Todos da empresa</button>
+            <button type="button" role="radio" aria-checked={!shared} onClick={() => setShared(false)} className="mac-segment">Só eu</button>
+          </div>
         </div>
       </div>
     </Dialog>
@@ -227,22 +232,14 @@ function SortableHeader({ label, sortKey, sort, onSort, className = "", align = 
 }) {
   const active = sort.key === sortKey;
   return (
-    <th className={`relative px-3 py-2 text-mac-caption font-normal text-(--text-secondary) text-left ${className}`}>
+    <th aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"} className={`finder-th relative px-2 py-1 text-[11px] leading-[14px] text-left ${active ? "font-bold text-(--text-primary)" : "font-medium text-(--text-secondary)"} ${className}`}>
       <button
         onClick={() => onSort(sortKey)}
-        className={`group/sort flex items-center gap-1 w-full hover:text-(--text-primary) transition-colors duration-fast ${active ? "text-(--text-primary) font-medium" : ""} ${align === "right" ? "justify-end" : "justify-between"}`}
+        className={`flex items-center gap-1 w-full ${align === "right" ? "justify-end" : "justify-between"}`}
       >
-        {align === "right" && (active ? (
-          sort.dir === "asc" ? <ChevronUp className="w-3 h-3 shrink-0" /> : <ChevronDown className="w-3 h-3 shrink-0" />
-        ) : (
-          <ChevronsUpDown className="w-3 h-3 shrink-0 opacity-0 group-hover/sort:opacity-40 transition-opacity duration-fast" />
-        ))}
+        {align === "right" && active && (sort.dir === "asc" ? <ChevronUp className="w-2.5 h-2.5 shrink-0" strokeWidth={3} /> : <ChevronDown className="w-2.5 h-2.5 shrink-0" strokeWidth={3} />)}
         <span className="truncate">{label}</span>
-        {align === "left" && (active ? (
-          sort.dir === "asc" ? <ChevronUp className="w-3 h-3 shrink-0" /> : <ChevronDown className="w-3 h-3 shrink-0" />
-        ) : (
-          <ChevronsUpDown className="w-3 h-3 shrink-0 opacity-0 group-hover/sort:opacity-40 transition-opacity duration-fast" />
-        ))}
+        {align === "left" && active && (sort.dir === "asc" ? <ChevronUp className="w-2.5 h-2.5 shrink-0" strokeWidth={3} /> : <ChevronDown className="w-2.5 h-2.5 shrink-0" strokeWidth={3} />)}
       </button>
       {onResizeStart && (
         <ColumnResizeHandle label={label} width={width ?? 0} onMouseDown={onResizeStart}
@@ -274,7 +271,7 @@ function ColumnResizeHandle({ label, width, onMouseDown, onReset, onNudge }: {
         else if (e.key === "ArrowLeft") { e.preventDefault(); onNudge(-step); }
         else if (e.key === "Home") { e.preventDefault(); onReset(); }
       }}
-      className="absolute top-0 right-0 h-full w-2 cursor-col-resize select-none hover:bg-teal-400/40 active:bg-teal-400/60 focus-visible:outline-hidden focus-visible:bg-teal-500/60"
+      className="absolute top-0 right-0 h-full w-2 cursor-col-resize select-none hover:bg-teal-400/40 active:bg-teal-400/60 focus-visible:outline-hidden focus-visible:bg-(--accent)/60"
     />
   );
 }
@@ -306,7 +303,7 @@ export default function Documents() {
   }, [documents]);
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(saved?.folderId ?? null);
   const [breadcrumbs, setBreadcrumbs] = useState<Array<{ id: string | null; name: string }>>(
-    saved?.breadcrumbs ?? [{ id: null, name: "Início" }]
+    (saved?.breadcrumbs ?? [{ id: null, name: "Documentos" }]).map((b, i) => (i === 0 && b.id === null ? { ...b, name: "Documentos" } : b))
   );
 
   // Histórico de navegação (voltar/avançar) — Finder/Explorer sempre têm esses
@@ -367,29 +364,11 @@ export default function Documents() {
       .catch(() => setSidebarFavorites([]));
   }, [current?.id]);
   useEffect(() => { loadSidebarFavorites(); }, [loadSidebarFavorites]);
-  function openSidebarFavorite(fav: SidebarFavorite) {
-    if (fav.item_type === "folder" && fav.folder_id) {
-      jumpToFolder(fav.folder_id);
-    } else if (fav.document_id) {
-      setSearchParams({ folder_id: fav.document_folder_id ?? "", doc: fav.document_id });
-    }
-  }
 
   const [loading, setLoading] = useState(true);
   // Regra dos 200ms: só mostra skeleton se a carga passar de 200ms, e uma vez
   // visível fica pelo menos 500ms — evita o "flicker" em resposta de cache quente.
   const showSkeleton = useDelayedLoading(loading);
-  // Seções da sidebar recolhíveis (Ancorados/Locais) — o Finder real deixa
-  // cada grupo com um chevron de disclosure independente, a sidebar do Docke
-  // até agora era estática (sem essa possibilidade).
-  const [collapsedSidebarSections, setCollapsedSidebarSections] = useState<Set<string>>(new Set());
-  function toggleSidebarSection(key: string) {
-    setCollapsedSidebarSections((prev) => {
-      const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
-  }
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showBulkMetadata, setShowBulkMetadata] = useState(false);
   const [detailDoc, setDetailDoc] = useState<Document | null>(null);
@@ -409,6 +388,7 @@ export default function Documents() {
   const [requestingFolder, setRequestingFolder] = useState<Folder | null>(null);
   const [sharingDoc, setSharingDoc] = useState<Document | null>(null);
   const [showTreeDrawer, setShowTreeDrawer] = useState(false);
+  const [mobileMenu, setMobileMenu] = useState<HTMLElement | null>(null);
   const [copyingFolder, setCopyingFolder] = useState<Folder | null>(null);
   const [sharedFiles, setSharedFiles] = useState<File[] | undefined>(undefined);
   // Vista da pasta (B1.2.7): agrupar, filtrar por valor de metadado e vistas salvas.
@@ -961,42 +941,7 @@ export default function Documents() {
   useEffect(() => {
     if (!selectionMode) setSelected(new Set());
   }, [selectionMode]);
-  const [toolbarMenuOpen, setToolbarMenuOpen] = useState(false);
-  const toolbarMenuRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!toolbarMenuOpen) return;
-    function handle(e: MouseEvent) {
-      if (toolbarMenuRef.current && !toolbarMenuRef.current.contains(e.target as Node)) setToolbarMenuOpen(false);
-    }
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, [toolbarMenuOpen]);
-
-  // Seletor de níveis ocultos do breadcrumb truncado (mobile)
-  const [crumbMenuOpen, setCrumbMenuOpen] = useState(false);
-  const crumbMenuRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!crumbMenuOpen) return;
-    function handle(e: MouseEvent) {
-      if (crumbMenuRef.current && !crumbMenuRef.current.contains(e.target as Node)) setCrumbMenuOpen(false);
-    }
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, [crumbMenuOpen]);
-
-  // ADR-017.2: desabilita o blur da moldura durante scroll ativo (custo de
-  // GPU) e restaura 150ms após o scroll parar — transição imperceptível.
   const tableWrapRef = useRef<HTMLDivElement>(null);
-  const [tableScrolling, setTableScrolling] = useState(false);
-  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleTableScroll = useCallback(() => {
-    setTableScrolling(true);
-    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
-    scrollTimeoutRef.current = setTimeout(() => setTableScrolling(false), 150);
-  }, []);
-  useEffect(() => () => {
-    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
-  }, []);
 
   const PAGE = 200;
   // Com mais de uma página, o filtro e a ordenação vão para o servidor.
@@ -1137,7 +1082,7 @@ export default function Documents() {
         const target = all.find((f) => f.id === linkedFolderId);
         if (!target) { setSemAcesso(linkedFolderId); return; }
 
-        const chain: Array<{ id: string | null; name: string }> = [{ id: null, name: "Início" }];
+        const chain: Array<{ id: string | null; name: string }> = [{ id: null, name: "Documentos" }];
         const ancestorIds: string[] = [];
         let cur: (Folder & { path: string }) | undefined = target;
         while (cur) {
@@ -1290,7 +1235,7 @@ export default function Documents() {
 
   function navigateHome() {
     setCurrentFolderId(null);
-    setBreadcrumbs([{ id: null, name: "Início" }]);
+    setBreadcrumbs([{ id: null, name: "Documentos" }]);
     setDetailDoc(null);
     setFocusedId(null);
   }
@@ -1308,7 +1253,7 @@ export default function Documents() {
       const target = all.find((f) => f.id === targetFolderId);
       if (!target) return;
 
-      const chain: Array<{ id: string | null; name: string }> = [{ id: null, name: "Início" }];
+      const chain: Array<{ id: string | null; name: string }> = [{ id: null, name: "Documentos" }];
       const ancestorIds: string[] = [];
       let cur: (Folder & { path: string }) | undefined = target;
       while (cur) {
@@ -1494,6 +1439,28 @@ export default function Documents() {
   function dropOnFolder(f: Folder, copy = false) {
     dropOnTarget({ id: f.id, name: f.name }, copy);
   }
+
+  // A barra lateral (árvore de pastas global) conversa com esta tela por eventos:
+  // soltar documentos numa pasta, mover uma pasta e recarregar quando algo muda.
+  useEffect(() => { window.dispatchEvent(new CustomEvent("docke:pastas")); }, [folderTreeVersion]);
+  useEffect(() => { window.dispatchEvent(new CustomEvent("docke:ancorados")); }, [sidebarFavorites]);
+  useEffect(() => {
+    function onDrop(e: Event) {
+      const d = (e as CustomEvent<{ folderId: string; ids: string[]; folderName: string }>).detail;
+      moveDocuments(d.ids, d.folderId, d.folderName);
+      setDragDocIds(null);
+    }
+    function onMoved(e: Event) {
+      const d = (e as CustomEvent<{ folderId: string; newParent: string | null; oldParent: string | null; name: string }>).detail;
+      onTreeMove(d.folderId, d.newParent, d.oldParent, d.name);
+    }
+    window.addEventListener("docke:soltar-documentos", onDrop);
+    window.addEventListener("docke:pasta-movida", onMoved);
+    return () => {
+      window.removeEventListener("docke:soltar-documentos", onDrop);
+      window.removeEventListener("docke:pasta-movida", onMoved);
+    };
+  });
 
   async function moveDocuments(ids: string[], targetFolderId: string, targetFolderName: string) {
     if (!ids.length || targetFolderId === currentFolderId) return;
@@ -1797,318 +1764,124 @@ export default function Documents() {
     // de janela. Antes eram dois glass-panel flutuando lado a lado com
     // gap-4, lendo como "duas caixas" em vez de uma janela coesa (mesmo
     // ajuste feito em Settings/SettingsLayout.tsx).
-    <div
-      className={`flex h-[calc(100%+3rem)] -mt-6 py-2 glass-panel glass-highlight-line rounded-(--radius-panel) glass-shadow overflow-hidden ${
-        tableScrolling ? "glass-scroll-active" : ""
-      } glass-blur-table`}
-    >
-      {/* Sidebar de pastas — desktop only (lg+) */}
-      <aside className="hidden lg:flex flex-col w-[220px] shrink-0 border-r border-(--border-default)">
-        <div className="px-3 py-3 border-b border-(--border-default) shrink-0">
-          <h2 className="text-mac-body font-semibold text-(--text-secondary)">Pastas</h2>
-        </div>
-        <div className="flex-1 overflow-y-auto p-1.5">
-          {/* Seção "Ancorados" — mesmo agrupamento por rótulo em caixa alta que
-              o Finder usa pra "Favorites": atalho direto pra itens ancorados,
-              cruzando pastas, sem precisar navegar até eles (ADENDO-09 §13). */}
-          {sidebarFavorites.length > 0 && (
-            <>
-              <button
-                onClick={() => toggleSidebarSection("ancorados")}
-                className="w-full flex items-center gap-1 px-2.5 pt-1.5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-(--text-tertiary) hover:text-(--text-secondary) transition-colors duration-fast"
-              >
-                <ChevronDown className={`w-2.5 h-2.5 shrink-0 transition-transform duration-fast ${collapsedSidebarSections.has("ancorados") ? "-rotate-90" : ""}`} />
-                Ancorados
-              </button>
-              {!collapsedSidebarSections.has("ancorados") &&
-                sidebarFavorites.slice(0, 6).map((fav) => (
-                  <button
-                    key={fav.id}
-                    onClick={() => openSidebarFavorite(fav)}
-                    className="w-full flex items-center gap-1.5 h-8 pl-3 pr-2 text-mac-body rounded-[6px] transition-colors duration-fast text-left text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)"
-                  >
-                    {fav.item_type === "folder" ? (
-                      <Folder className="w-4 h-4 text-(--text-accent) shrink-0" />
-                    ) : (
-                      (() => { const s = getFileStyle(fav.item_name); const Icon = s.icon; return <Icon className={`w-4 h-4 shrink-0 ${s.iconColor} ${s.fillColor}`} />; })()
-                    )}
-                    <span className="truncate">{fav.item_name}</span>
-                  </button>
-                ))}
-            </>
-          )}
-
-          {/* Seções separadas só por respiro vertical, sem linha divisória —
-              é assim que o Finder separa Favorites/Locations/Tags na sidebar.
-              Cada seção agora tem seu próprio chevron de disclosure, igual à
-              referência real do Finder (docs/pdf/figma_extracted/Sidebars.pdf). */}
-          <button
-            onClick={() => toggleSidebarSection("locais")}
-            className={`w-full flex items-center gap-1 px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-(--text-tertiary) hover:text-(--text-secondary) transition-colors duration-fast ${sidebarFavorites.length > 0 ? "pt-3" : "pt-1.5"}`}
-          >
-            <ChevronDown className={`w-2.5 h-2.5 shrink-0 transition-transform duration-fast ${collapsedSidebarSections.has("locais") ? "-rotate-90" : ""}`} />
-            Locais
-          </button>
-          {!collapsedSidebarSections.has("locais") && (
-            <>
-              <button
-                onClick={navigateHome}
-                className={`w-full flex items-center gap-1.5 h-8 pl-3 pr-2 text-mac-body rounded-[6px] transition-colors duration-fast text-left ${
-                  currentFolderId === null
-                    ? "bg-(--tint-accent) text-(--text-accent) font-medium"
-                    : "text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)"
-                }`}
-              >
-                <Home className="w-4 h-4 shrink-0" />
-                Início
-              </button>
-              {current && (
-                <FolderTree
-                  version={folderTreeVersion}
-                  companyId={current.id}
-                  activeFolderId={currentFolderId}
-                  onSelect={(f) => jumpToFolder(f.id)}
-                  onDropDocuments={(folderId, documentIds, folderName) => {
-                    moveDocuments(documentIds, folderId, folderName);
-                    setDragDocIds(null);
-                  }}
-                  onMove={onTreeMove}
-                />
-              )}
-            </>
-          )}
-        </div>
-      </aside>
-
+    <div className="flex h-full min-h-0">
       {/* Main area — o vidro/blur (ADR-017: blur raso, sem re-render no scroll)
           agora vive no wrapper externo, compartilhado com a sidebar. */}
       <div ref={tableWrapRef} className="relative flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Toolbar */}
-        <div className="flex items-center gap-3 px-4 sm:px-6 py-3 border-b border-(--border-default) shrink-0">
-          {/* Voltar/avançar — todo navegador de arquivos de verdade (Finder,
-              Explorer) tem esse par de botões na ponta esquerda da barra de
-              ferramentas; histórico independente do breadcrumb (que só
-              reflete o caminho atual). */}
-          <div className="hidden sm:flex items-center gap-0.5 shrink-0">
-            <Tooltip label="Voltar">
-              <button
-                onClick={goBack}
-                disabled={!canGoBack}
-                className="h-7 w-7 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) transition-colors duration-fast disabled:opacity-(--opacity-disabled) disabled:pointer-events-none"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-            </Tooltip>
-            <Tooltip label="Avançar">
-              <button
-                onClick={goForward}
-                disabled={!canGoForward}
-                className="h-7 w-7 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) transition-colors duration-fast disabled:opacity-(--opacity-disabled) disabled:pointer-events-none"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </Tooltip>
-          </div>
-
-          {/* Título da janela (sm+) — o Finder real só mostra o nome da pasta
-              atual na toolbar (nunca uma trilha clicável: "Use a path control
-              in the window body, not the window frame", HIG). A trilha
-              navegável completa mora na barra de caminho no rodapé, abaixo. */}
-          <div className="hidden sm:flex items-center gap-2 flex-1 min-w-0">
-            {/* Tablet (768–1023 px): a árvore abre num painel (achados A4-04, A4-11). */}
-            <button
-              onClick={() => setShowTreeDrawer(true)}
-              className="lg:hidden flex items-center gap-1.5 h-8 pointer-coarse:h-11 px-3 rounded-full border border-(--border-control) text-mac-body text-(--text-primary) hover:bg-(--bg-hover) shrink-0"
-            >
-              <Folder className="w-3.5 h-3.5 text-(--text-accent)" aria-hidden /> Pastas
-            </button>
-            <h1 className="text-mac-body font-semibold text-(--text-primary) truncate">
-              {breadcrumbs[breadcrumbs.length - 1].name}
-            </h1>
-            {currentPrivacy !== "normal" && (
+        {/* Barra de ferramentas da janela (Finder no macOS 27): voltar e
+            avançar, nome da pasta, visualização, organizar, nova pasta, enviar
+            e o filtro em pílula no lugar da busca geral. No celular, o título
+            grande com o caminho embaixo. */}
+        <div className="px-4 md:p-0">
+          <PageHeader
+            title={breadcrumbs[breadcrumbs.length - 1].name}
+            subtitle={breadcrumbs.length > 1 ? breadcrumbs.slice(0, -1).map((b) => b.name).join(" › ") : current?.name}
+            leading={
+              <ToolbarGroup label="Navegação">
+                <ToolbarButton inGroup label="Voltar" onClick={goBack} disabled={!canGoBack}><ChevronLeft aria-hidden /></ToolbarButton>
+                <ToolbarButton inGroup label="Avançar" onClick={goForward} disabled={!canGoForward}><ChevronRight aria-hidden /></ToolbarButton>
+              </ToolbarGroup>
+            }
+            titleAccessory={currentPrivacy !== "normal" ? (
               <span title={currentPrivacy === "sensivel" ? "Dado sensível (LGPD): link público bloqueado" : "Dado pessoal (LGPD)"}
-                className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-mac-caption2 font-medium ${currentPrivacy === "sensivel" ? "bg-(--tint-danger) text-(--text-danger)" : "bg-(--tint-warning) text-(--text-warning)"}`}>
+                className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-mac-caption2 font-semibold ${currentPrivacy === "sensivel" ? "bg-(--tint-danger) text-(--text-danger)" : "bg-(--tint-warning) text-(--text-warning)"}`}>
                 <ShieldAlert className="w-3 h-3" aria-hidden />{PRIVACY_LABEL[currentPrivacy]}
               </span>
-            )}
-          </div>
-
-          {/* Breadcrumbs — versão truncada (mobile): Início, "…" (seletor com as pastas ocultas, em ordem) e a pasta atual */}
-          <nav className="flex sm:hidden items-center gap-1 flex-1 min-w-0">
-            <button onClick={() => navigateBreadcrumb(0)} className="shrink-0 text-(--text-secondary) hover:text-(--text-accent) transition-colors duration-fast">
-              <Home className="w-4 h-4" />
-            </button>
-            {breadcrumbs.length > 2 && (
-              <>
-                <ChevronRight className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0" />
-                <div className="relative" ref={crumbMenuRef}>
-                  <button
-                    onClick={() => setCrumbMenuOpen((v) => !v)}
-                    className="shrink-0 text-mac-body text-(--text-secondary) hover:text-(--text-accent) transition-colors duration-fast"
-                  >
-                    …
-                  </button>
-                  {crumbMenuOpen && (
-                    <div className="popover-tail-left absolute top-full left-0 mt-1 w-56 glass-panel glass-blur-strong rounded-(--radius-popover) shadow-dropdown py-1 z-50">
-                      {breadcrumbs.slice(1, -1).map((crumb, i) => (
-                        <button
-                          key={crumb.id}
-                          onClick={() => { navigateBreadcrumb(i + 1); setCrumbMenuOpen(false); }}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-left text-(--text-primary) hover:bg-teal-600 hover:text-white [&:hover_svg]:text-white transition-colors duration-fast"
-                        >
-                          <FolderOpen className="w-3.5 h-3.5 text-(--text-accent) shrink-0" />
-                          <span className="truncate">{crumb.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-            {breadcrumbs.length > 1 && (
-              <>
-                <ChevronRight className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0" />
-                <span className="text-mac-body font-medium text-(--text-primary) truncate">
-                  {breadcrumbs[breadcrumbs.length - 1].name}
-                </span>
-              </>
-            )}
-          </nav>
-
-          {/* Actions */}
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Filtro rápido — Finder/Explorer sempre têm um campo de busca na
-                própria toolbar, distinto da busca global do app (ADENDO-09 §13). */}
-            <div className="hidden md:flex items-center relative">
-              <Search className="absolute left-2.5 w-3.5 h-3.5 text-(--text-placeholder) pointer-events-none" />
-              <input
-                type="text"
+            ) : undefined}
+            search={
+              <ToolbarSearchField
                 value={filterQuery}
                 onChange={(e) => setFilterQuery(e.target.value)}
+                onClear={() => setFilterQuery("")}
                 placeholder="Filtrar nesta pasta"
-                className="h-7 w-[150px] focus:w-[210px] pl-7 pr-2 text-mac-caption bg-black/3 dark:bg-white/4 border border-transparent rounded-full text-(--text-primary) placeholder:text-(--text-placeholder) focus:outline-hidden focus:bg-(--bg-card) focus:border-teal-500/50 transition-all duration-fast"
+                aria-label="Filtrar nesta pasta"
+                widthClass="w-[180px] lg:w-[220px]"
               />
-            </div>
-            {/* Controle segmentado — mesmo padrão do agrupador de visualização no
-                Finder (um único "pill" com divisórias), em vez de 3 ícones soltos. */}
-            <div className="hidden sm:flex items-center gap-0.5 p-0.5 rounded-full bg-black/3 dark:bg-white/4">
-              <button
-                onClick={() => setSelectionMode((v) => !v)}
-                title={selectionMode ? "Sair do modo de seleção" : "Selecionar vários"}
-                aria-label="Selecionar vários"
-                aria-pressed={selectionMode}
-                className={`h-7 w-7 pointer-coarse:h-11 pointer-coarse:w-11 flex items-center justify-center rounded-full transition-colors duration-fast ${
-                  selectionMode ? "bg-(--bg-card) text-(--text-accent) shadow-xs" : "text-(--text-secondary) hover:text-(--text-primary)"
-                }`}
-              >
-                <ListChecks className="w-4 h-4" />
-              </button>
-              <button
-                onClick={(e) => setViewMenu(e.currentTarget)}
-                title="Ordenação, colunas e densidade"
-                aria-label="Colunas e densidade"
-                aria-haspopup="menu"
-                className="h-7 w-7 pointer-coarse:h-11 pointer-coarse:w-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-primary) transition-colors duration-fast"
-              >
-                {density === "compact" ? <Rows4 className="w-4 h-4" /> : <Rows3 className="w-4 h-4" />}
-              </button>
-              {viewMenu && (
-                <Menu
-                  anchor={viewMenu}
-                  label="Colunas e densidade"
-                  onClose={() => setViewMenu(null)}
-                  items={[
-                    ...OPT_COLS.map((c) => ({ label: c.menu, checked: visibleCols.includes(c.key), onSelect: () => toggleCol(c.key) })),
-                    ...([["name", "Ordenar por nome"], ["created_at", "Ordenar por criação"], ["updated_at", "Ordenar por modificação"], ["size", "Ordenar por tamanho"], ["kind", "Ordenar por tipo"]] as [SortKey, string][])
-                      .map(([k, l], i) => ({ label: l, checked: sort.key === k, separatorBefore: i === 0, onSelect: () => setSortTo(k, sort.key === k ? sort.dir : "asc") })),
-                    { label: "Ordem decrescente", checked: sort.dir === "desc", onSelect: () => setSortTo(sort.key, sort.dir === "desc" ? "asc" : "desc") },
-                    { label: "Linhas compactas", checked: density === "compact", onSelect: () => chooseDensity("compact"), separatorBefore: true },
-                    { label: "Linhas confortáveis", checked: density === "comfortable", onSelect: () => chooseDensity("comfortable") },
-                    { label: "Linhas espaçosas", checked: density === "spacious", onSelect: () => chooseDensity("spacious") },
-                    ...([["", "Sem agrupar"], ["kind", "Agrupar por tipo"], ["uploader", "Agrupar por quem enviou"], ...resolvedFields.map((f) => [`field:${f.custom_field_id}`, `Agrupar por ${f.label}`])] as [string, string][])
-                      .map(([k, l], i) => ({ label: l, checked: groupBy === k, separatorBefore: i === 0, onSelect: () => setGroupBy(k) })),
-                    ...savedViews.map((v, i) => ({ label: `Vista: ${v.name}${v.folder_id ? "" : " (todas as pastas)"}${v.mine && !v.shared ? " · só você" : ""}`, separatorBefore: i === 0, onSelect: () => applyView(v) })),
-                    { label: "Salvar vista atual…", separatorBefore: savedViews.length === 0, onSelect: () => setSavingView(true) },
-                    ...savedViews.filter((v) => v.mine || canAdmin).map((v) => ({ label: `Apagar vista "${v.name}"`, danger: true, onSelect: () => deleteView(v) })),
-                    { label: "Voltar ao padrão", onSelect: () => { resetCols(); chooseDensity("comfortable"); setGroupBy(""); setFieldFilter(null); }, separatorBefore: true },
-                  ]}
-                />
-              )}
-              <button
-                onClick={() => setView(viewMode === "list" ? "grid" : "list")}
-                title={viewMode === "list" ? "Ver em grade" : "Ver em lista"}
-                aria-label="Ver em grade"
-                aria-pressed={viewMode === "grid"}
-                className="h-7 w-7 pointer-coarse:h-11 pointer-coarse:w-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:text-(--text-primary) transition-colors duration-fast"
-              >
-                {viewMode === "list" ? <LayoutGrid className="w-4 h-4" /> : <List className="w-4 h-4" />}
-              </button>
-            </div>
-            <span className="hidden sm:block shrink-0">
-              <Button variant="secondary" size="sm" onClick={() => setShowNewFolder(true)} disabled={!canWrite} title="Nova pasta (Ctrl+Shift+N)">
-                <FolderPlus className="w-3.5 h-3.5" aria-hidden="true" />
-                Nova pasta
-              </Button>
-            </span>
-
-            {/* Mobile: Nova pasta / seleção / densidade colapsam num menu "..." pra sobrar espaço pro breadcrumb */}
-            <div className="relative sm:hidden" ref={toolbarMenuRef}>
-              <button
-                onClick={() => setToolbarMenuOpen((v) => !v)}
-                title="Mais ações"
-                aria-label="Mais ações"
-                className="h-8 w-8 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) transition-colors duration-fast"
-              >
-                <MoreHorizontal className="w-4 h-4" />
-              </button>
-              {toolbarMenuOpen && (
-                <div className="popover-tail-right absolute top-full right-0 mt-1 w-52 glass-panel glass-blur-strong rounded-(--radius-popover) shadow-dropdown py-1 z-50">
-                  <button
-                    onClick={() => { setToolbarMenuOpen(false); setSelectionMode((v) => !v); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-600 hover:text-white transition-colors duration-fast"
-                  >
-                    <ListChecks className="w-4 h-4" />
-                    {selectionMode ? "Sair da seleção" : "Selecionar vários"}
-                  </button>
-                  <button
-                    onClick={() => { setToolbarMenuOpen(false); setShowNewFolder(true); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-600 hover:text-white transition-colors duration-fast"
-                  >
-                    <FolderPlus className="w-4 h-4" />
-                    Nova pasta
-                  </button>
-                  <button
-                    onClick={() => { setToolbarMenuOpen(false); toggleDensity(); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-600 hover:text-white transition-colors duration-fast"
-                  >
-                    {density === "comfortable" ? <Rows3 className="w-4 h-4" /> : <Rows4 className="w-4 h-4" />}
-                    {density === "comfortable" ? "Densidade compacta" : "Densidade confortável"}
-                  </button>
-                  <button
-                    onClick={() => { setToolbarMenuOpen(false); setView(viewMode === "list" ? "grid" : "list"); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-mac-body text-(--text-primary) hover:bg-teal-600 hover:text-white transition-colors duration-fast"
-                  >
-                    {viewMode === "list" ? <LayoutGrid className="w-4 h-4" /> : <List className="w-4 h-4" />}
-                    {viewMode === "list" ? "Ver em grade" : "Ver em lista"}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <Button size="sm" onClick={() => setShowUpload(true)} disabled={!canWrite} aria-label="Enviar documentos">
-              <Upload className="w-3.5 h-3.5" aria-hidden />
-              <span className="hidden sm:inline">Enviar</span>
-            </Button>
-          </div>
+            }
+            mobileActions={
+              <>
+                <ToolbarButton label="Mais ações" aria-haspopup="menu" onClick={(e) => setMobileMenu(e.currentTarget)}><MoreHorizontal aria-hidden /></ToolbarButton>
+                <ToolbarButton prominent label="Enviar documentos" onClick={() => setShowUpload(true)} disabled={!canWrite}><Upload aria-hidden /></ToolbarButton>
+              </>
+            }
+            mobileBelow={breadcrumbs.length > 1 ? (
+              <nav aria-label="Caminho" className="mt-2 flex items-center gap-1 overflow-x-auto text-[15px]">
+                {breadcrumbs.map((crumb, i) => (
+                  <span key={crumb.id ?? "raiz"} className="flex shrink-0 items-center gap-1">
+                    {i > 0 && <ChevronRight className="w-3.5 h-3.5 text-(--text-tertiary)" aria-hidden />}
+                    {i < breadcrumbs.length - 1 ? (
+                      <button onClick={() => navigateBreadcrumb(i)} className="text-(--text-accent)">{i === 0 ? <Home className="w-4 h-4" aria-label="Documentos" /> : crumb.name}</button>
+                    ) : (
+                      <span className="font-medium text-(--text-primary)">{crumb.name}</span>
+                    )}
+                  </span>
+                ))}
+              </nav>
+            ) : undefined}
+          >
+            <ToolbarGroup label="Visualização">
+              <ToolbarButton inGroup selected={viewMode === "grid"} label="Ícones" onClick={() => setView("grid")}><LayoutGrid aria-hidden /></ToolbarButton>
+              <ToolbarButton inGroup selected={viewMode === "list"} label="Lista" onClick={() => setView("list")}><List aria-hidden /></ToolbarButton>
+            </ToolbarGroup>
+            <ToolbarGroup label="Organizar">
+              <ToolbarButton inGroup selected={selectionMode} label={selectionMode ? "Sair do modo de seleção" : "Selecionar vários"} onClick={() => setSelectionMode((v) => !v)}>
+                <ListChecks aria-hidden />
+              </ToolbarButton>
+              <ToolbarButton inGroup label="Ordenação, colunas e densidade" aria-haspopup="menu" onClick={(e) => setViewMenu(e.currentTarget)}>
+                {density === "compact" ? <Rows4 aria-hidden /> : <Rows3 aria-hidden />}
+              </ToolbarButton>
+              <ToolbarButton inGroup label="Nova pasta (Ctrl+Shift+N)" onClick={() => setShowNewFolder(true)} disabled={!canWrite}>
+                <FolderPlus aria-hidden />
+              </ToolbarButton>
+            </ToolbarGroup>
+            <ToolbarButton prominent label="Enviar documentos" onClick={() => setShowUpload(true)} disabled={!canWrite}>
+              <Upload aria-hidden />
+            </ToolbarButton>
+          </PageHeader>
+          {viewMenu && (
+            <Menu
+              anchor={viewMenu}
+              label="Colunas e densidade"
+              onClose={() => setViewMenu(null)}
+              items={[
+                ...OPT_COLS.map((c) => ({ label: c.menu, checked: visibleCols.includes(c.key), onSelect: () => toggleCol(c.key) })),
+                ...([["name", "Ordenar por nome"], ["created_at", "Ordenar por criação"], ["updated_at", "Ordenar por modificação"], ["size", "Ordenar por tamanho"], ["kind", "Ordenar por tipo"]] as [SortKey, string][])
+                  .map(([k, l], i) => ({ label: l, checked: sort.key === k, separatorBefore: i === 0, onSelect: () => setSortTo(k, sort.key === k ? sort.dir : "asc") })),
+                { label: "Ordem decrescente", checked: sort.dir === "desc", onSelect: () => setSortTo(sort.key, sort.dir === "desc" ? "asc" : "desc") },
+                { label: "Linhas compactas", checked: density === "compact", onSelect: () => chooseDensity("compact"), separatorBefore: true },
+                { label: "Linhas confortáveis", checked: density === "comfortable", onSelect: () => chooseDensity("comfortable") },
+                { label: "Linhas espaçosas", checked: density === "spacious", onSelect: () => chooseDensity("spacious") },
+                ...([["", "Sem agrupar"], ["kind", "Agrupar por tipo"], ["uploader", "Agrupar por quem enviou"], ...resolvedFields.map((f) => [`field:${f.custom_field_id}`, `Agrupar por ${f.label}`])] as [string, string][])
+                  .map(([k, l], i) => ({ label: l, checked: groupBy === k, separatorBefore: i === 0, onSelect: () => setGroupBy(k) })),
+                ...savedViews.map((v, i) => ({ label: `Vista: ${v.name}${v.folder_id ? "" : " (todas as pastas)"}${v.mine && !v.shared ? " · só você" : ""}`, separatorBefore: i === 0, onSelect: () => applyView(v) })),
+                { label: "Salvar vista atual…", separatorBefore: savedViews.length === 0, onSelect: () => setSavingView(true) },
+                ...savedViews.filter((v) => v.mine || canAdmin).map((v) => ({ label: `Apagar vista "${v.name}"`, danger: true, onSelect: () => deleteView(v) })),
+                { label: "Voltar ao padrão", onSelect: () => { resetCols(); chooseDensity("comfortable"); setGroupBy(""); setFieldFilter(null); }, separatorBefore: true },
+              ]}
+            />
+          )}
+          {mobileMenu && (
+            <Menu
+              anchor={mobileMenu}
+              align="end"
+              label="Mais ações"
+              onClose={() => setMobileMenu(null)}
+              items={[
+                { label: selectionMode ? "Sair da seleção" : "Selecionar vários", icon: <ListChecks />, onSelect: () => setSelectionMode((v) => !v) },
+                { label: "Nova pasta", icon: <FolderPlus />, disabled: !canWrite, onSelect: () => setShowNewFolder(true) },
+                { label: viewMode === "list" ? "Ver em ícones" : "Ver em lista", icon: viewMode === "list" ? <LayoutGrid /> : <List />, onSelect: () => setView(viewMode === "list" ? "grid" : "list") },
+                { label: density === "comfortable" ? "Linhas compactas" : "Linhas confortáveis", icon: density === "comfortable" ? <Rows4 /> : <Rows3 />, onSelect: () => toggleDensity() },
+              ]}
+            />
+          )}
         </div>
 
         {/* File list — pb extra no mobile e no desktop (lg+): essa página cancela o
             padding vertical do AppShell (-my-6), então precisa da própria folga pra não
-            ficar atrás da barra inferior mobile nem do Dock flutuante desktop */}
+            ficar atrás da barra inferior mobile nem da borda da janela no desktop */}
         <div
           ref={scrollBodyRef}
-          className="flex-1 overflow-y-auto pb-20 md:pb-24 relative"
-          onScroll={handleTableScroll}
+          className="flex-1 overflow-y-auto pb-6 relative"
           onMouseDown={handleBodyMouseDown}
         >
           {/* Triagem (B1.1.8): só aparece quando a pasta aberta é a "Entrada" da empresa. */}
@@ -2194,7 +1967,7 @@ export default function Documents() {
                     {sec === "folder" ? "Pastas" : "Documentos"} <span className="font-normal text-(--text-tertiary)">{lista.length.toLocaleString("pt-BR")}</span>
                   </p>
                 )}
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-1">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-x-1 gap-y-2">
               {lista.map((item) => {
                 if (item.kind === "folder") {
                   const f = item.data;
@@ -2208,9 +1981,7 @@ export default function Documents() {
                       aria-label={`Pasta ${f.name}`}
                       tabIndex={focusedId === f.id || (!focusedId && items[0]?.data.id === f.id) ? 0 : -1}
                       onFocus={() => setFocusedId(f.id)}
-                      className={`group relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-(--radius-control) cursor-pointer transition-colors duration-fast outline-none focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${
-                        selected.has(f.id) ? "bg-teal-600" : "hover:bg-(--bg-hover)"
-                      } ${isDropTarget ? "spring-target bg-(--tint-accent) outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""} ${dragFolderIds?.includes(f.id) ? "opacity-40" : ""} ${droppedOn === f.id ? "drop-pulse" : ""}`}
+                      className={`group relative flex flex-col items-center gap-1 py-2 px-1.5 rounded-[8px] cursor-default outline-none focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${isDropTarget ? "spring-target bg-(--control-fill)" : ""} ${dragFolderIds?.includes(f.id) ? "opacity-40" : ""} ${droppedOn === f.id ? "drop-pulse" : ""}`}
                       onClick={(e) => selectDocClick(e, f.id)}
                       onDoubleClick={() => openFolder(f)}
                       onContextMenu={(e) => openContextMenu(e, "folder", f)}
@@ -2255,7 +2026,9 @@ export default function Documents() {
                       >
                         <MoreHorizontal className="w-4 h-4" aria-hidden />
                       </button>
-                      <Folder className={`w-10 h-10 shrink-0 ${selected.has(f.id) ? "text-white fill-white/25" : "text-(--text-accent) fill-teal-500/20"}`} aria-hidden />
+                      <span className={`flex h-[80px] items-end justify-center rounded-[6px] px-1.5 pb-1 ${selected.has(f.id) || isDropTarget ? "bg-(--control-fill)" : ""}`} aria-hidden>
+                        <MacFolderIcon className="w-[72px] h-[58px]" open={isDropTarget} />
+                      </span>
                       {renaming?.kind === "folder" && renaming.id === f.id ? (
                         <input
                           ref={renameInputRef}
@@ -2271,7 +2044,7 @@ export default function Documents() {
                           className="w-full h-6 px-1 text-mac-caption text-center bg-(--bg-page) border border-teal-500 rounded-badge text-(--text-primary) focus:outline-hidden"
                         />
                       ) : (
-                        <span className={`text-mac-caption text-center leading-tight w-full line-clamp-2 ${selected.has(f.id) ? "text-white" : "text-(--text-primary)"}`}>{f.name}</span>
+                        <span className={`max-w-full px-1.5 py-px rounded-[4px] text-[12px] leading-[15px] font-medium text-center line-clamp-2 ${selected.has(f.id) ? "bg-(--selection-bg) text-(--selection-text)" : "text-(--text-primary)"}`}>{f.name}</span>
                       )}
                     </div>
                   );
@@ -2290,9 +2063,7 @@ export default function Documents() {
                     aria-label={d.name}
                     tabIndex={focusedId === d.id || (!focusedId && items[0]?.data.id === d.id) ? 0 : -1}
                     onFocus={() => setFocusedId(d.id)}
-                    className={`group relative flex flex-col items-center gap-1.5 py-3 px-2 rounded-(--radius-control) cursor-pointer transition-colors duration-fast outline-none focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${
-                      isSelected ? "bg-teal-600" : "hover:bg-(--bg-hover)"
-                    } ${isDragging ? "opacity-40" : ""}`}
+                    className={`group relative flex flex-col items-center gap-1 py-2 px-1.5 rounded-[8px] cursor-default outline-none focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${isDragging ? "opacity-40" : ""}`}
                     onClick={(e) => selectDocClick(e, d.id)}
                     onDoubleClick={() => setPreviewDoc(d)}
                     onContextMenu={(e) => openContextMenu(e, "document", d)}
@@ -2315,7 +2086,7 @@ export default function Documents() {
                       onClick={(e) => { e.stopPropagation(); openMenuAt(e.currentTarget, "document", d); }}
                       aria-label={`Ações de ${d.name}`}
                       aria-haspopup="menu"
-                      className={`absolute top-1 right-1 flex sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 focus-visible:opacity-100 w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 items-center justify-center rounded-full transition-all duration-fast z-10 ${isSelected ? "text-white hover:bg-white/20" : "text-(--text-secondary) hover:bg-(--bg-hover)"}`}
+                      className="absolute top-1 right-1 flex sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 focus-visible:opacity-100 w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 items-center justify-center rounded-full transition-all duration-fast z-10 text-(--text-secondary) hover:bg-(--control-fill)"
                     >
                       <MoreHorizontal className="w-4 h-4" aria-hidden />
                     </button>
@@ -2339,9 +2110,8 @@ export default function Documents() {
                     ) : (
                       // Nome em até duas linhas sem perder a extensão (A4-21): a base corta
                       // com reticências e a extensão fica sempre visível embaixo.
-                      <span className={`text-mac-caption text-center leading-tight w-full flex flex-col items-center ${isSelected ? "text-white" : "text-(--text-primary)"}`} title={d.name}>
-                        <span className="w-full line-clamp-2 break-words [hyphens:none]">{splitExt(d.name)[0]}</span>
-                        {splitExt(d.name)[1] && <span className={`shrink-0 ${isSelected ? "text-white/80" : "text-(--text-secondary)"}`}>{splitExt(d.name)[1]}</span>}
+                      <span className={`max-w-full px-1.5 py-px rounded-[4px] text-[12px] leading-[15px] font-medium text-center ${isSelected ? "bg-(--selection-bg) text-(--selection-text)" : "text-(--text-primary)"}`} title={d.name}>
+                        <span className="line-clamp-2 break-words [hyphens:none]">{d.name}</span>
                       </span>
                     )}
                   </div>
@@ -2361,7 +2131,7 @@ export default function Documents() {
               aria-label={`Conteúdo de ${breadcrumbs[breadcrumbs.length - 1].name}`}
               aria-multiselectable="true"
               aria-rowcount={folders.length + total + 1}
-              className={`w-full table-auto sm:table-fixed select-none ${DENSITY_PAD[density]}`}
+              className={`finder-table w-full table-auto sm:table-fixed select-none ${DENSITY_PAD[density]}`}
             >
               <colgroup>
                 {selectionMode && <col style={{ width: 40 }} />}
@@ -2381,7 +2151,7 @@ export default function Documents() {
                 <col style={{ width: 76 }} />
               </colgroup>
               <thead
-                className="sticky top-0 bg-(--glass-panel-bg) backdrop-blur-xl border-b border-(--border-default)"
+                className="sticky top-0 z-[2] bg-(--window-bg) shadow-[0_0.5px_0_var(--separator)]"
                 onContextMenu={(e) => { e.preventDefault(); setViewMenu({ x: e.clientX, y: e.clientY }); }}
               >
                 <tr>
@@ -2444,9 +2214,8 @@ export default function Documents() {
                         aria-label={`Pasta ${f.name}`}
                         aria-selected={isFolderSel}
                         onFocus={() => setFocusedId(f.id)}
-                        className={`border-b border-(--border-default) transition-colors duration-fast group cursor-pointer outline-none focus-visible:shadow-[inset_3px_0_0_var(--focus-ring)] ${
-                          isFolderSel ? "bg-teal-600" : "odd:bg-black/4 dark:odd:bg-white/[0.035] hover:bg-(--bg-hover) focus-visible:bg-teal-500/12"
-                        } ${isDropTarget ? "spring-target bg-(--tint-accent) outline-solid outline-2 outline-teal-400 -outline-offset-2" : ""} ${dragFolderIds?.includes(f.id) ? "opacity-40" : ""} ${droppedOn === f.id ? "drop-pulse" : ""}`}
+                        data-drop={isDropTarget || undefined}
+                        className={`group cursor-default outline-none ${isDropTarget ? "spring-target" : ""} ${dragFolderIds?.includes(f.id) ? "opacity-40" : ""} ${droppedOn === f.id ? "drop-pulse" : ""}`}
                         onClick={(e) => selectDocClick(e, f.id)}
                         onDoubleClick={() => openFolder(f)}
                         onContextMenu={(e) => openContextMenu(e, "folder", f)}
@@ -2521,7 +2290,7 @@ export default function Documents() {
                               </button>
                               {/* Clique seleciona, duplo clique ou Enter abre (igual à grade e ao Finder); no celular, o toque abre. */}
                               <span className={`flex items-center gap-2 text-mac-body min-w-0 ${isFolderSel ? "text-white" : "text-(--text-primary)"}`}>
-                                <Folder className={`w-4 h-4 shrink-0 ${isFolderSel ? "text-white fill-white/25" : "text-(--text-accent) fill-teal-500/20"}`} aria-hidden />
+                                <MacFolderIcon className="w-[18px] h-[15px] shrink-0" />
                                 <span className="truncate">{f.name}</span>
                               </span>
                             </div>
@@ -2564,13 +2333,13 @@ export default function Documents() {
                       {expanded && expanded !== "loading" && expanded.folders.map((nf) => (
                         <tr
                           key={`nested-folder-${nf.id}`}
-                          className="reveal border-b border-(--border-default) odd:bg-black/4 dark:odd:bg-white/[0.035] hover:bg-(--bg-hover) transition-colors duration-fast cursor-pointer"
+                          className="reveal cursor-default"
                           onClick={() => openFolder(nf)}
                         >
                           {selectionMode && <td className="px-4 py-2" />}
                           <td className="px-3 py-2 pl-10">
                             <div className="flex items-center gap-2 text-mac-body text-(--text-secondary)">
-                              <Folder className="w-3.5 h-3.5 text-(--text-accent)/70 fill-teal-500/15 shrink-0" />
+                              <MacFolderIcon className="w-[18px] h-[15px] shrink-0 opacity-80" />
                               <span className="truncate">{nf.name}</span>
                             </div>
                           </td>
@@ -2589,7 +2358,7 @@ export default function Documents() {
                         return (
                           <tr
                             key={`nested-doc-${nd.id}`}
-                            className="reveal border-b border-(--border-default) odd:bg-black/4 dark:odd:bg-white/[0.035] hover:bg-(--bg-hover) transition-colors duration-fast cursor-pointer"
+                            className="reveal cursor-default"
                             onClick={() => setDetailDoc(nd)}
                           >
                             {selectionMode && <td className="px-4 py-2" />}
@@ -2628,9 +2397,9 @@ export default function Documents() {
                   return (
                     <Fragment key={`doc-${d.id}`}>
                     {novoGrupo && (
-                      <tr className="bg-(--bg-hover)">
+                      <tr className="finder-group">
                         <th scope="colgroup" colSpan={(selectionMode ? 1 : 0) + 2 + shownCols.length + resolvedFields.length}
-                          className="px-3 py-1.5 text-left text-mac-caption font-semibold text-(--text-secondary)">
+                          className="pl-4 pr-3 pt-5 pb-1.5 text-left text-[11px] font-bold text-(--text-secondary)">
                           {grupo} <span className="font-normal text-(--text-tertiary)">· {visibleDocuments.filter((x) => groupLabel(x) === grupo).length}</span>
                         </th>
                       </tr>
@@ -2640,9 +2409,7 @@ export default function Documents() {
                       tabIndex={focusedId === d.id || (!focusedId && items[0]?.data.id === d.id) ? 0 : -1}
                       aria-selected={isSelected}
                       onFocus={() => setFocusedId(d.id)}
-                      className={`border-b border-(--border-default) transition-colors duration-fast group cursor-pointer outline-none focus-visible:shadow-[inset_3px_0_0_var(--focus-ring)] ${
-                        isSelected ? "bg-teal-600" : "odd:bg-black/4 dark:odd:bg-white/[0.035] hover:bg-(--bg-hover) focus-visible:bg-teal-500/12"
-                      } ${isDragging ? "opacity-40" : ""}`}
+                      className={`group cursor-default outline-none ${isDragging ? "opacity-40" : ""}`}
                       onClick={(e) => selectDocClick(e, d.id)}
                       onDoubleClick={() => setPreviewDoc(d)}
                       onContextMenu={(e) => openContextMenu(e, "document", d)}
@@ -2660,11 +2427,7 @@ export default function Documents() {
                       )}
                       <td className="px-3 py-2" data-col="name">
                         <div className="flex items-center gap-2">
-                          {(() => { const s = getFileStyle(d.name); const Icon = s.icon; return (
-                            <div className={`w-6 h-6 rounded-badge flex items-center justify-center shrink-0 ${isSelected ? "bg-white/20" : s.bgColor}`}>
-                              <Icon className={`w-3.5 h-3.5 ${isSelected ? "text-white" : `${s.iconColor} ${s.fillColor}`}`} aria-hidden />
-                            </div>
-                          ); })()}
+                          {(() => { const Icon = getFileStyle(d.name).icon; return <Icon className="w-[18px] h-[18px] shrink-0" aria-hidden />; })()}
                           {isRenaming ? (
                             <div className="flex items-center gap-0.5 flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
                               <input
@@ -2802,7 +2565,7 @@ export default function Documents() {
                     setDragOverFolderId(`crumb-${idx}`);
                   }}
                   onDragLeave={() => setDragOverFolderId((v) => (v === `crumb-${idx}` ? null : v))}
-                  onDrop={(e) => { e.preventDefault(); dropOnTarget({ id: crumb.id ?? null, name: idx === 0 ? "Início" : crumb.name }, e.altKey); }}
+                  onDrop={(e) => { e.preventDefault(); dropOnTarget({ id: crumb.id ?? null, name: idx === 0 ? "Documentos" : crumb.name }, e.altKey); }}
                   className={`text-mac-caption hover:text-(--text-accent) transition-colors duration-fast rounded-[4px] px-0.5 ${dragOverFolderId === `crumb-${idx}` ? "bg-(--tint-accent) text-(--text-accent) outline-solid outline-1 outline-teal-400" : ""} ${
                     idx === breadcrumbs.length - 1
                       ? "text-(--text-primary) font-medium"
@@ -2842,7 +2605,7 @@ export default function Documents() {
           {/* Metadado navegável (B1.2.7): clicar num valor da coluna filtra; aqui limpa. */}
           {fieldFilter && (
             <button onClick={() => setFieldFilter(null)} aria-label={`Tirar o filtro ${fieldFilter.label} = ${fieldFilter.value}`}
-              className="shrink-0 ml-2 inline-flex items-center gap-1 rounded-full px-2 min-h-6 pointer-coarse:min-h-9 bg-(--tint-accent) text-(--text-primary) hover:bg-teal-500/25">
+              className="shrink-0 ml-2 inline-flex items-center gap-1 rounded-full px-2 min-h-6 pointer-coarse:min-h-9 bg-(--tint-accent) text-(--text-primary) hover:bg-(--accent)/25">
               {fieldFilter.label} = {fieldFilter.value} <X className="w-3 h-3" aria-hidden />
             </button>
           )}
@@ -2860,7 +2623,7 @@ export default function Documents() {
           doc={detailDoc}
           companyId={current.id}
           variant={isDesktop ? "panel" : "modal"}
-          path={`${current.name} › ${breadcrumbs.slice(1).map((b) => b.name).join(" › ") || "Início"}`}
+          path={`${current.name} › ${breadcrumbs.slice(1).map((b) => b.name).join(" › ") || "Documentos"}`}
           canEdit={canWrite}
           onClose={() => setDetailDoc(null)}
           onPreview={() => setPreviewDoc(detailDoc)}

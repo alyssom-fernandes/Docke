@@ -487,9 +487,7 @@ export function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit,
   const body = (
     <div className="space-y-4">
       <div className="flex items-start gap-3">
-        <div className={`w-11 h-11 rounded-(--radius-control) flex items-center justify-center shrink-0 ${s.bgColor}`}>
-          <FileIcon className={`w-5 h-5 ${s.iconColor} ${s.fillColor}`} aria-hidden />
-        </div>
+        <FileIcon className="w-11 h-11 shrink-0" aria-hidden />
         <div className="flex-1 min-w-0">
           <h2 ref={headingRef} tabIndex={-1} className="text-mac-body font-semibold text-(--text-primary) break-words focus:outline-hidden">{doc.name}</h2>
           <p className="text-mac-caption text-(--text-secondary) mt-0.5 break-words">{path}</p>
@@ -549,7 +547,7 @@ export function DetailDrawer({ doc, companyId, variant = "modal", path, canEdit,
   if (variant === "panel") {
     // Painel lateral persistente (não modal), entra deslizando (A5-05).
     return (
-      <aside aria-label={`Detalhes de ${doc.name}`} className="panel-in hidden lg:flex flex-col w-[340px] shrink-0 border-l border-(--border-default) overflow-hidden">
+      <aside aria-label={`Detalhes de ${doc.name}`} className="panel-in hidden lg:flex flex-col w-[320px] shrink-0 border-l border-(--separator) bg-(--window-bg) overflow-hidden">
         <div className="flex items-center justify-between px-5 h-12 border-b border-(--border-default) shrink-0">
           <p className="text-mac-body font-semibold text-(--text-secondary)">Detalhes</p>
           <button onClick={onClose} aria-label="Fechar detalhes" className="w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-full text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)">

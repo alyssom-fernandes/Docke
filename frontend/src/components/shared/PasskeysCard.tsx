@@ -45,7 +45,7 @@ export default function PasskeysCard() {
   return (
     <section className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) p-6" aria-label="Passkeys">
       <div className="flex items-start gap-3">
-        <span className="w-8 h-8 rounded-[9px] flex items-center justify-center shrink-0 bg-teal-600" aria-hidden="true">
+        <span className="w-8 h-8 rounded-[9px] flex items-center justify-center shrink-0 bg-(--accent)" aria-hidden="true">
           <Fingerprint className="w-4 h-4 text-white" strokeWidth={2.25} />
         </span>
         <div className="min-w-0">

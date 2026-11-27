@@ -24,6 +24,7 @@ import {
   type Template, type Instance, type Dependency, type Member,
   STATUS, StatusChip, URGENCY, OPEN_STATUSES, CRIT_LABEL, MESES, dueText, scheduleText, friendly,
 } from "@/components/obligations/shared";
+import { PageHeader, ToolbarGroup, ToolbarButton } from "@/components/layout/window";
 
 type Tab = "pendencias" | "calendario" | "configuracao" | "matriz" | "aso";
 type Load<T> = { state: "loading" | "ok" | "error"; data: T };
@@ -179,52 +180,47 @@ export default function Obligations() {
 
   return (
     <div className="space-y-6 sm:space-y-6 max-w-[1440px] w-full mx-auto">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Obrigações</h1>
-          <p className="text-mac-caption text-(--text-secondary) mt-0.5">
-            {grupo ? `Todas as ${companies.length} empresas que você acessa` : current.name} · o que precisa ser comprovado, até quando e por quem.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {/* Calendário e exportação (B3.5.10): as abertas para a agenda do celular ou planilha. */}
-          <Button variant="ghost" size="sm" onClick={() => exportar("ics")}><CalendarDays className="w-4 h-4" aria-hidden="true" /> Para a agenda</Button>
-          <Button variant="ghost" size="sm" onClick={() => exportar("csv")}><FileSpreadsheet className="w-4 h-4" aria-hidden="true" /> Planilha</Button>
-        </div>
+      <PageHeader title="Obrigações" subtitle={grupo ? `Todas as ${companies.length} empresas que você acessa` : current.name}>
+        {/* Calendário e exportação (B3.5.10): as abertas para a agenda do celular ou planilha. */}
+        <ToolbarGroup label="Exportar">
+          <ToolbarButton inGroup label="Para a agenda (.ics)" onClick={() => exportar("ics")}><CalendarDays aria-hidden="true" /></ToolbarButton>
+          <ToolbarButton inGroup label="Planilha (CSV)" onClick={() => exportar("csv")}><FileSpreadsheet aria-hidden="true" /></ToolbarButton>
+        </ToolbarGroup>
         {isAdmin && !grupo && (
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={() => setShowCatalog(true)}><Sparkles className="w-4 h-4" aria-hidden="true" /> Modelos prontos</Button>
-            <Button onClick={() => setShowTemplate("nova")}><Plus className="w-4 h-4" aria-hidden="true" /> Nova obrigação</Button>
-          </div>
+          <>
+            <ToolbarButton showLabel label="Modelos prontos" onClick={() => setShowCatalog(true)}><Sparkles aria-hidden="true" /></ToolbarButton>
+            <ToolbarButton prominent label="Nova obrigação" onClick={() => setShowTemplate("nova")}><Plus aria-hidden="true" /></ToolbarButton>
+          </>
         )}
-      </div>
+      </PageHeader>
+      <p className="text-mac-footnote text-(--text-secondary) mb-3!">O que precisa ser comprovado, até quando e por quem.</p>
 
       {/* Abas e escopo */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div role="tablist" aria-label="Visões de obrigações" className="flex items-center gap-0.5 p-0.5 rounded-full bg-(--bg-hover)">
+        <div role="tablist" aria-label="Visões de obrigações" className="mac-segmented">
           {([["pendencias", "Pendências"], ["matriz", "Matriz"], ["calendario", "Calendário"], ["configuracao", "Cadastro"], ["aso", "Exames (ASO)"]] as const)
             .filter(([id]) => (grupo ? id === "pendencias" || id === "matriz" : id !== "matriz" && (id !== "aso" || isAdmin)))
             .map(([id, label]) => (
               <button key={id} role="tab" aria-selected={tab === id} onClick={() => setParam({ aba: id === "pendencias" ? null : id })}
-                className={`px-3 h-8 pointer-coarse:h-10 rounded-full text-mac-body font-medium transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${tab === id ? "bg-(--bg-card) text-(--text-primary) shadow-sm" : "text-(--text-secondary) hover:text-(--text-primary)"}`}>
+                className="mac-segment">
                 {label}
               </button>
             ))}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {companies.length > 1 && (
-            <div role="group" aria-label="Escopo" className="flex items-center gap-0.5 p-0.5 rounded-full bg-(--bg-hover)">
+            <div role="group" aria-label="Escopo" className="mac-segmented">
               {([["empresa", "Esta empresa"], ["grupo", "Todas as empresas"]] as const).map(([v, label]) => (
                 <button key={v} aria-pressed={(v === "grupo") === grupo}
                   onClick={() => setParam({ escopo: v === "grupo" ? "grupo" : null, aba: null, empresa: null })}
-                  className={`px-3 h-8 pointer-coarse:h-10 rounded-full text-mac-body font-medium transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${(v === "grupo") === grupo ? "bg-(--bg-card) text-(--text-primary) shadow-sm" : "text-(--text-secondary) hover:text-(--text-primary)"}`}>
+                  className="mac-segment">
                   {label}
                 </button>
               ))}
             </div>
           )}
           <button aria-pressed={mine} onClick={() => setParam({ minhas: mine ? null : "1" })}
-            className={`inline-flex items-center gap-1.5 px-3 h-8 pointer-coarse:h-10 rounded-full border text-mac-body font-medium transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${mine ? "bg-teal-600 text-white border-teal-600" : "border-(--border-control) text-(--text-primary) hover:bg-(--bg-hover)"}`}>
+            className={`inline-flex items-center gap-1.5 px-3 h-7 pointer-coarse:h-9 rounded-full text-[13px] font-medium transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${mine ? "bg-(--accent) text-white" : "bg-(--control-fill) text-(--text-primary) hover:bg-(--control-fill-hover)"}`}>
             <User className="w-3.5 h-3.5" aria-hidden="true" /> Só as minhas
           </button>
         </div>
@@ -276,7 +272,7 @@ export default function Obligations() {
                       return (
                         <li key={e.company_id}>
                           <button aria-pressed={on} onClick={() => setParam({ empresa: on ? null : e.company_id })}
-                            className={`text-left rounded-(--radius-control) border px-3 py-2 min-h-11 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${on ? "border-teal-600 bg-(--tint-accent)" : "border-(--border-default) hover:bg-(--bg-hover)"}`}>
+                            className={`text-left rounded-(--radius-control) border px-3 py-2 min-h-11 transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${on ? "border-(--accent) bg-(--tint-accent)" : "border-(--border-default) hover:bg-(--bg-hover)"}`}>
                             <span className="block text-mac-body font-medium text-(--text-primary)">{e.name}</span>
                             <span className="block text-mac-caption text-(--text-secondary)">
                               {e.overdue > 0 ? <span className="text-(--text-danger) font-medium">{e.overdue} atrasada{e.overdue > 1 ? "s" : ""}</span> : "nada atrasado"}
@@ -416,7 +412,7 @@ function InstanceGroups({ list, showCompany, onOpen }: { list: Instance[]; showC
         if (!items.length) return null;
         return (
           <section key={g.id} aria-label={`${g.title}: ${items.length}`} className="glass-panel glass-blur-card glass-highlight-line rounded-(--radius-panel) overflow-hidden">
-            <h3 className="px-4 sm:px-5 py-2 border-b border-(--border-default) text-mac-caption font-semibold uppercase tracking-[0.06em] text-(--text-secondary)">
+            <h3 className="px-4 sm:px-5 py-2 border-b border-(--border-default) text-[11px] font-bold text-(--text-secondary)">
               {g.title} · {items.length}
             </h3>
             <ul>

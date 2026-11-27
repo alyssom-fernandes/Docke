@@ -1,5 +1,5 @@
 import { useEffect, useState, type ElementType, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   FileText, FolderOpen, Anchor, Upload, Download, RefreshCw, AlertTriangle, ChevronRight, SlidersHorizontal,
   ArrowUpRight, ArrowDownRight, Minus,
@@ -22,6 +22,7 @@ import {
   UploadsLineChart, FolderBarChart, FolderChartBreadcrumb,
   type DailyUpload, type FolderBreakdown, type FolderCrumb,
 } from "@/components/dashboard/StatsCharts";
+import { PageHeader, ToolbarGroup, ToolbarButton } from "@/components/layout/window";
 
 // ─── Período do gráfico de envios (fica por empresa, entre visitas) ──────────
 
@@ -163,9 +164,7 @@ function FileBadge({ name }: { name: string }) {
   const s = getFileStyle(name);
   const Icon = s.icon;
   return (
-    <span className={`w-7 h-7 rounded-badge flex items-center justify-center shrink-0 ${s.bgColor}`} aria-hidden="true">
-      <Icon className={`w-4 h-4 ${s.iconColor} ${s.fillColor}`} />
-    </span>
+    <Icon className="w-7 h-7 shrink-0" />
   );
 }
 
@@ -223,6 +222,7 @@ function StatCard({ to, label, value, icon: Icon, context, trend, ariaLabel }: {
 
 export default function Dashboard() {
   usePageTitle("Início");
+  const navigate = useNavigate();
   const { current } = useCompany();
   const { user } = useAuthContext();
   const { error: showError, success } = useToast();
@@ -342,28 +342,23 @@ export default function Dashboard() {
 
   return (
     <div className="cascade flex flex-col gap-4 sm:gap-6 max-w-[1440px] w-full mx-auto">
-      <div className="flex items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-mac-title1 sm:text-mac-large font-bold display-type text-(--text-primary)">Início</h1>
-          <p className="text-mac-caption text-(--text-secondary) truncate">{current.name}</p>
-        </div>
-        {/* No celular, só os ícones ao lado do título (estética P4): a faixa de botões ocupava uma linha inteira. */}
-        <div className="flex items-center gap-1 shrink-0">
-          {s && (
-            <span className="hidden sm:inline text-mac-caption text-(--text-secondary) mr-1" title={s.refreshed_at ? fullDate(s.refreshed_at) : undefined}>
-              {s.refreshed_at ? `Atualizado ${relativeDate(s.refreshed_at)}` : "Números ao vivo"}
-            </span>
-          )}
-          <Button variant="ghost" size="sm" onClick={refreshAll} disabled={refreshing || cooldown > 0}
-            aria-label={cooldown > 0 ? `Atualizar o Início: aguarde ${cooldown} segundos` : "Atualizar o Início"} title="Atualizar">
-            <RefreshCw className={`w-4 h-4 sm:w-3.5 sm:h-3.5 ${refreshing ? "animate-spin" : ""}`} aria-hidden="true" />
-            <span className="hidden sm:inline">{cooldown > 0 ? `Aguarde ${cooldown}s` : "Atualizar"}</span>
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setCustomizing(true)} aria-label="Personalizar o Início" title="Personalizar">
-            <SlidersHorizontal className="w-4 h-4 sm:w-3.5 sm:h-3.5" aria-hidden="true" /> <span className="hidden sm:inline">Personalizar</span>
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Início"
+        subtitle={s?.refreshed_at ? `${current.name} · atualizado ${relativeDate(s.refreshed_at)}` : current.name}
+      >
+        <ToolbarGroup label="Início">
+          <ToolbarButton inGroup onClick={refreshAll} disabled={refreshing || cooldown > 0}
+            label={cooldown > 0 ? `Atualizar: aguarde ${cooldown} s` : "Atualizar"} title={s?.refreshed_at ? `Atualizado em ${fullDate(s.refreshed_at)}` : "Atualizar"}>
+            <RefreshCw className={refreshing ? "animate-spin" : ""} aria-hidden="true" />
+          </ToolbarButton>
+          <ToolbarButton inGroup label="Personalizar o Início" onClick={() => setCustomizing(true)}>
+            <SlidersHorizontal aria-hidden="true" />
+          </ToolbarButton>
+        </ToolbarGroup>
+        <ToolbarButton prominent label="Enviar documentos" onClick={() => navigate("/documents?acao=enviar")}>
+          <Upload aria-hidden="true" />
+        </ToolbarButton>
+      </PageHeader>
 
       {/* 1. O que fazer hoje — primeira coisa da tela (A3-01, A3-02). */}
       <TodayPanel />
@@ -400,12 +395,12 @@ export default function Dashboard() {
           <Panel
             id="inicio-recentes" title="Recentes" className="lg:col-span-2"
             action={
-              <div role="tablist" aria-label="Quais recentes" className="flex items-center gap-0.5 p-0.5 rounded-full bg-(--bg-hover)">
+              <div role="tablist" aria-label="Quais recentes" className="mac-segmented is-small">
                 {([["abertos", "Abertos por você", "Abertos"], ["enviados", "Enviados na empresa", "Enviados"]] as const).map(([v, label, curto]) => (
                   <button
                     key={v} role="tab" aria-selected={recentTab === v}
                     onClick={() => { setRecentTab(v); localStorage.setItem("docke_inicio_recentes", v); }}
-                    className={`px-2.5 h-7 pointer-coarse:h-10 rounded-full text-mac-caption font-medium transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${recentTab === v ? "bg-(--bg-card) text-(--text-primary) shadow-sm" : "text-(--text-secondary) hover:text-(--text-primary)"}`}
+                    className="mac-segment"
                   >
                     <span className="sm:hidden">{curto}</span><span className="hidden sm:inline">{label}</span>
                   </button>
@@ -423,7 +418,7 @@ export default function Dashboard() {
               ) : (
                 <div className="px-5 py-6 flex flex-wrap items-center gap-3">
                   <p className="flex-1 text-mac-body text-(--text-secondary)">Nenhum documento nesta empresa ainda.</p>
-                  <Link to="/documents?acao=enviar" className="inline-flex items-center gap-1.5 h-8 pointer-coarse:h-11 px-4 rounded-full bg-teal-600 text-white text-mac-body font-medium hover:bg-teal-700">
+                  <Link to="/documents?acao=enviar" className="inline-flex items-center gap-1.5 h-8 pointer-coarse:h-11 px-4 rounded-full bg-(--accent) text-white text-mac-body font-medium hover:bg-(--accent-hover)">
                     <Upload className="w-3.5 h-3.5" aria-hidden="true" /> Enviar documentos
                   </Link>
                 </div>
@@ -505,11 +500,11 @@ export default function Dashboard() {
             id="inicio-envios" title="Envios por dia"
             action={
               <div className="flex items-center gap-2">
-                <div role="radiogroup" aria-label="Período do gráfico de envios" className="flex items-center gap-0.5 p-0.5 rounded-full bg-(--bg-hover)">
+                <div role="radiogroup" aria-label="Período do gráfico de envios" className="mac-segmented is-small">
                   {PERIOD_OPTIONS.map((p) => (
                     <button
                       key={p} role="radio" aria-checked={period === p} onClick={() => changePeriod(p)}
-                      className={`px-2 h-6 pointer-coarse:h-9 rounded-full text-mac-caption font-medium transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${period === p ? "bg-teal-600 text-white" : "text-(--text-secondary) hover:text-(--text-primary)"}`}
+                      className="mac-segment"
                     >
                       {p}d
                     </button>

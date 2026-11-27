@@ -1,5 +1,5 @@
 import { KeyboardEvent, useEffect, useId, useRef, useState } from "react";
-import { ChevronDown, Check } from "lucide-react";
+import { ChevronsUpDown, Check } from "lucide-react";
 
 export interface DropdownOption {
   value: string;
@@ -98,10 +98,12 @@ export default function Dropdown({
         disabled={disabled}
         onClick={() => setOpen((v) => !v)}
         onKeyDown={onKeyDown}
-        className="w-full h-9 pointer-coarse:h-11 px-3 flex items-center justify-between gap-2 text-mac-body pointer-coarse:text-[16px] bg-(--bg-card) border border-(--border-control) rounded-(--radius-control) text-left focus:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) disabled:opacity-(--opacity-disabled) disabled:cursor-not-allowed"
+        className="mac-popup w-full h-7 pointer-coarse:h-11 pl-2.5 pr-1.5 flex items-center justify-between gap-2 text-[13px] font-medium pointer-coarse:text-[16px] text-left focus:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) disabled:opacity-(--opacity-disabled) disabled:cursor-not-allowed"
       >
         <span className={`truncate ${selected ? "text-(--text-primary)" : "text-(--text-placeholder)"}`}>{selected?.label ?? placeholder}</span>
-        <ChevronDown className={`w-3.5 h-3.5 shrink-0 text-(--text-secondary) transition-transform duration-150 ${open ? "rotate-180" : ""}`} aria-hidden />
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] bg-(--accent) text-white" aria-hidden>
+          <ChevronsUpDown className="w-3 h-3" strokeWidth={2.5} />
+        </span>
       </button>
       {open && (
         <ul
@@ -110,7 +112,7 @@ export default function Dropdown({
           role="listbox"
           aria-labelledby={ariaLabelledby}
           aria-label={ariaLabelledby ? undefined : ariaLabel ?? placeholder}
-          className="menu-in absolute z-50 mt-1 w-full max-h-64 overflow-y-auto py-1 glass-panel glass-blur-strong rounded-(--radius-popover) shadow-dropdown"
+          className="menu-in absolute z-50 mt-1 w-full min-w-[160px] max-h-64 overflow-y-auto p-[5px] glass-dialog glass-blur-strong rounded-(--radius-popover) shadow-dropdown"
         >
           {options.map((opt, i) => (
             <li
@@ -122,9 +124,9 @@ export default function Dropdown({
               onMouseEnter={() => setActive(i)}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => choose(i)}
-              style={{ paddingLeft: 12 + (opt.depth ?? 0) * 14 }}
-              className={`mx-1 flex items-center justify-between gap-2 h-8 pointer-coarse:h-11 pr-2.5 rounded-[6px] text-mac-body cursor-pointer select-none ${
-                i === active ? "bg-teal-600 text-white" : "text-(--text-primary)"
+              style={{ paddingLeft: 8 + (opt.depth ?? 0) * 14 }}
+              className={`flex items-center justify-between gap-2 h-6 pointer-coarse:h-11 pr-2 rounded-[6px] text-[13px] cursor-default select-none ${
+                i === active ? "bg-(--selection-bg) text-(--selection-text)" : "text-(--text-primary)"
               }`}
             >
               <span className="truncate">{opt.label}</span>

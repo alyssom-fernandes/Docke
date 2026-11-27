@@ -19,7 +19,7 @@ import { applyTheme, getTheme, getThemePreference } from "@/lib/theme";
 applyTheme(getTheme(), getThemePreference() !== "system");
 // "Seguir o sistema": acompanha a troca do sistema sem recarregar.
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
-  if (getThemePreference() === "system" && localStorage.getItem("docke-theme-system") === "1") applyTheme(e.matches ? "dark" : "light", false);
+  if (getThemePreference() === "system") applyTheme(e.matches ? "dark" : "light", false);
 });
 import { AuthProvider } from "@/lib/AuthContext";
 import { ToastProvider } from "@/lib/toast";

@@ -19,7 +19,8 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     function handle(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+      // Com Caps Lock (ou Shift) a tecla chega como "K": o atalho vale igual.
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "k") {
         e.preventDefault();
         toggle();
       }
