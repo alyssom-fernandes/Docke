@@ -224,6 +224,47 @@ function MfaSection() {
 
 // Fase 2.9: botão "verificar integridade da cadeia" — só admin/supremo, é
 // ferramenta de auditoria, não algo que todo membro da empresa precisa ver.
+// Marca d'água configurável (B2.4.7): só administradores da empresa.
+function WatermarkSection() {
+  const { current } = useCompany();
+  const { success, error: showError } = useToast();
+  const [cfg, setCfg] = useState<{ texto: string | null; intensidade: string; previa: boolean; link: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!current) return;
+    api.get(`/companies/${current.id}/watermark`).then((r) => setCfg(r.data)).catch(() => setCfg(null));
+  }, [current?.id]);
+  if (!current || (current.permission_level !== "admin" && current.permission_level !== "supremo") || !cfg) return null;
+  async function salvar(novo: typeof cfg) {
+    if (!novo || !current) return;
+    setBusy(true);
+    try { const r = await api.put(`/companies/${current.id}/watermark`, novo); setCfg(r.data); success("Marca d'água atualizada."); }
+    catch (e) { showError(friendlyError(e, "Não foi possível salvar a marca d'água.")); }
+    finally { setBusy(false); }
+  }
+  return (
+    <Cartao icon={ShieldCheck} cor="bg-slate-500" titulo="Marca d'água" className="mt-4"
+      descricao="Texto repetido por cima da prévia, com o nome de quem abriu e a data. Desestimula foto da tela sem mexer no arquivo.">
+      <div className="space-y-3 max-w-[520px]">
+        <Input label="Texto extra (opcional)" placeholder="Ex.: CONFIDENCIAL" maxLength={60} value={cfg.texto ?? ""}
+          onChange={(e) => setCfg({ ...cfg, texto: e.target.value })} onBlur={() => salvar(cfg)} disabled={busy} />
+        <div role="radiogroup" aria-label="Intensidade" className="mac-segmented w-fit">
+          {([["padrao", "Padrão"], ["fraca", "Fraca"], ["media", "Média"], ["forte", "Forte"]] as const).map(([v, l]) => (
+            <button key={v} type="button" role="radio" aria-checked={cfg.intensidade === v} className="mac-segment" disabled={busy}
+              onClick={() => salvar({ ...cfg, intensidade: v })}>{l}</button>
+          ))}
+        </div>
+        <label className="flex items-center gap-2 text-mac-body text-(--text-primary)">
+          <Checkbox checked={cfg.previa} disabled={busy} onChange={(e) => salvar({ ...cfg, previa: e.target.checked })} /> Na prévia dentro do Docke
+        </label>
+        <label className="flex items-center gap-2 text-mac-body text-(--text-primary)">
+          <Checkbox checked={cfg.link} disabled={busy} onChange={(e) => salvar({ ...cfg, link: e.target.checked })} /> Nos links enviados para fora
+        </label>
+      </div>
+    </Cartao>
+  );
+}
+
 function IntegritySection() {
   const { current } = useCompany();
   const [checking, setChecking] = useState(false);
@@ -387,6 +428,7 @@ export default function Security() {
       </Cartao>
       <MfaSection />
       <SessionsSection />
+      <WatermarkSection />
       <IntegritySection />
     </div>
   );

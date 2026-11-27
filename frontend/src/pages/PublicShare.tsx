@@ -68,7 +68,11 @@ export default function PublicShare() {
   const [aceite, setAceite] = useState(false);
   const precisaTermo = !!info?.terms_text;
   // Marca d'água da prévia pública (B3.2.4): quem disse ser, quando e de onde veio.
-  const marca = [visitante.trim() || "Visitante", new Date().toLocaleDateString("pt-BR"), info?.company_name ?? ""].filter(Boolean).join(" · ");
+  // Marca d'água configurável pela empresa (B2.4.7).
+  const cfgMarca = (info as { watermark?: { texto?: string | null; intensidade?: string | null; link?: boolean | null } | null } | null)?.watermark ?? null;
+  const marca = [cfgMarca?.texto ?? "", visitante.trim() || "Visitante", new Date().toLocaleDateString("pt-BR"), info?.company_name ?? ""].filter(Boolean).join(" · ");
+  const forcaMarca = (cfgMarca?.intensidade && cfgMarca.intensidade !== "padrao" ? cfgMarca.intensidade : "media") as "fraca" | "media" | "forte";
+  const mostrarMarca = cfgMarca?.link !== false;
   const termoOk = !precisaTermo || (aceite && visitante.trim().length >= 2);
 
   useEffect(() => {
@@ -244,14 +248,14 @@ export default function PublicShare() {
               {content.mime_type.startsWith("image/") ? (
                 <div className="relative w-fit mx-auto mb-4">
                   <img src={content.preview_url} alt={content.name} className="max-w-full max-h-[400px] rounded-(--radius-control)" />
-                  <Watermark label={marca} strength="media" />
+                  {mostrarMarca && <Watermark label={marca} strength={forcaMarca} />}
                 </div>
               ) : content.mime_type === "application/pdf" ? (
                 <div className="relative h-[min(70vh,640px)] mb-4 rounded-(--radius-control) border border-(--border-default) overflow-hidden text-left">
                   <Suspense fallback={<div className="h-full flex items-center justify-center text-mac-body text-(--text-secondary)">Abrindo o PDF…</div>}>
                     <PdfViewer url={content.preview_url} />
                   </Suspense>
-                  <Watermark label={marca} strength="media" />
+                  {mostrarMarca && <Watermark label={marca} strength={forcaMarca} />}
                 </div>
               ) : null}
               {canDownload ? (

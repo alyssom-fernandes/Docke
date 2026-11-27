@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { AlertTriangle, RefreshCw, Plus, Sparkles, Lock, Pencil, Archive, Trash2, Download, FileText, Folder, Search, ShieldAlert } from "lucide-react";
+import { AlertTriangle, RefreshCw, Plus, Sparkles, Lock, Pencil, Archive, Trash2, Download, FileText, Folder, Search, ShieldAlert, UserRound } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import api from "@/lib/api";
 import { useCompany } from "@/lib/CompanyContext";
@@ -28,7 +28,7 @@ interface Policy {
 }
 interface Assignment { id: string; folder_path: string | null; folder_id: string | null; folder_label: string | null; policy_id: string; policy_name: string; document_count: number; match_tipo_fiscal?: string | null; match_field_id?: string | null; match_field_value?: string | null; match_field_label?: string | null }
 interface Hold {
-  id: string; resource_type: "document" | "folder"; resource_id: string; resource_name: string | null; resource_path: string | null;
+  id: string; resource_type: "document" | "folder" | "custodian"; resource_id: string; custodian_documents?: number; resource_name: string | null; resource_path: string | null;
   folder_id: string | null; reason: string; process_number: string | null; review_date: string | null; created_at: string;
   created_by_name: string | null; released_at: string | null; released_by_name: string | null; release_reason: string | null;
 }
@@ -797,7 +797,7 @@ function HoldTab({ companyId, isAdmin, holds, folders, onChanged }: { companyId:
   const [showHistory, setShowHistory] = useState(false);
   const active = holds.filter((h) => !h.released_at);
   const released = holds.filter((h) => h.released_at);
-  const target = (h: Hold) => (h.resource_type === "folder" ? `/documents?folder_id=${h.resource_id}` : `/documents?folder_id=${h.folder_id ?? ""}&doc=${h.resource_id}`);
+  const target = (h: Hold) => (h.resource_type === "folder" ? `/documents?folder_id=${h.resource_id}` : h.resource_type === "custodian" ? `/activity?pessoa=${h.resource_id}` : `/documents?folder_id=${h.folder_id ?? ""}&doc=${h.resource_id}`);
 
   return (
     <div className="space-y-4">
@@ -809,10 +809,10 @@ function HoldTab({ companyId, isAdmin, holds, folders, onChanged }: { companyId:
         <ul className="glass-panel glass-blur-card rounded-(--radius-panel) divide-y divide-(--border-default)">
           {active.map((h) => (
             <li key={h.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
-              {h.resource_type === "folder" ? <Folder className="w-4 h-4 mt-0.5 text-(--text-secondary)" aria-hidden="true" /> : <FileText className="w-4 h-4 mt-0.5 text-(--text-secondary)" aria-hidden="true" />}
+              {h.resource_type === "folder" ? <Folder className="w-4 h-4 mt-0.5 text-(--text-secondary)" aria-hidden="true" /> : h.resource_type === "custodian" ? <UserRound className="w-4 h-4 mt-0.5 text-(--text-secondary)" aria-hidden="true" /> : <FileText className="w-4 h-4 mt-0.5 text-(--text-secondary)" aria-hidden="true" />}
               <div className="flex-1 min-w-56">
                 <Link to={target(h)} className="text-mac-body text-(--text-accent) hover:underline">{h.resource_name ?? "Item excluído"}</Link>
-                <p className="text-mac-caption text-(--text-secondary)">{h.resource_type === "folder" ? "Pasta" : "Documento"}{h.resource_path ? ` em ${h.resource_path}` : ""}</p>
+                <p className="text-mac-caption text-(--text-secondary)">{h.resource_type === "custodian" ? `Custodiante: tudo o que enviou nesta empresa (${h.custodian_documents ?? 0} ${h.custodian_documents === 1 ? "documento" : "documentos"} hoje)` : h.resource_type === "folder" ? "Pasta" : "Documento"}{h.resource_path ? ` em ${h.resource_path}` : ""}</p>
                 <p className="text-mac-caption text-(--text-primary)">{h.reason}{h.process_number ? ` · processo ${h.process_number}` : ""}</p>
                 <p className="text-mac-caption text-(--text-secondary)">
                   Desde {fmtDate(h.created_at)}{h.created_by_name ? `, por ${h.created_by_name}` : ""}{h.review_date ? ` · revisar em ${fmtDate(h.review_date)}` : ""}
@@ -846,7 +846,14 @@ function HoldTab({ companyId, isAdmin, holds, folders, onChanged }: { companyId:
 function HoldDialog({ companyId, folders, onClose, onCreated }: { companyId: string; folders: FolderOption[]; onClose: () => void; onCreated: () => void }) {
   const { success, error: showError } = useToast();
   const uid = useId();
-  const [type, setType] = useState<"folder" | "document">("folder");
+  const [type, setType] = useState<"folder" | "document" | "custodian">("folder");
+  // Custodiante (B3.4.3): a pessoa cujos documentos enviados ficam protegidos.
+  const [pessoa, setPessoa] = useState("");
+  const [membros, setMembros] = useState<{ user_id: string; full_name: string }[]>([]);
+  useEffect(() => {
+    if (type !== "custodian" || membros.length) return;
+    api.get<{ user_id: string; full_name: string }[]>(`/companies/${companyId}/members`).then((r) => setMembros(Array.isArray(r.data) ? r.data : [])).catch(() => setMembros([]));
+  }, [type, companyId, membros.length]);
   const [folderId, setFolderId] = useState("");
   const [doc, setDoc] = useState<{ id: string; name: string } | null>(null);
   const [q, setQ] = useState("");
@@ -862,7 +869,7 @@ function HoldDialog({ companyId, folders, onClose, onCreated }: { companyId: str
     return () => clearTimeout(t);
   }, [q, type, doc, companyId]);
 
-  const resourceId = type === "folder" ? folderId : doc?.id ?? "";
+  const resourceId = type === "folder" ? folderId : type === "custodian" ? pessoa : doc?.id ?? "";
   async function save() {
     setSaving(true);
     try {
@@ -876,12 +883,18 @@ function HoldDialog({ companyId, folders, onClose, onCreated }: { companyId: str
       footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={saving} disabled={!resourceId || !reason.trim()} onClick={save}>Bloquear</Button></>}>
       <div className="space-y-4">
         <div role="group" aria-label="O que bloquear" className="flex gap-1.5">
-          {([["folder", "Uma pasta inteira"], ["document", "Um documento"]] as const).map(([v, l]) => (
+          {([["folder", "Uma pasta inteira"], ["document", "Um documento"], ["custodian", "Uma pessoa"]] as const).map(([v, l]) => (
             <button key={v} type="button" aria-pressed={type === v} onClick={() => { setType(v); setDoc(null); }}
               className={`px-3 h-9 pointer-coarse:h-11 rounded-full text-mac-body font-medium border transition-colors duration-fast focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-(--focus-ring) ${type === v ? "bg-(--accent) text-white border-(--accent)" : "border-(--border-control) text-(--text-primary) hover:bg-(--bg-hover)"}`}>{l}</button>
           ))}
         </div>
-        {type === "folder" ? (
+        {type === "custodian" ? (
+          <div><label id={`${uid}-p`} className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Pessoa (custodiante)</label>
+            <Dropdown ariaLabelledby={`${uid}-p`} value={pessoa} onChange={setPessoa} placeholder="Escolha a pessoa"
+              options={[...membros].sort((a, b) => a.full_name.localeCompare(b.full_name, "pt-BR")).map((m) => ({ value: m.user_id, label: m.full_name }))} />
+            <p className="mt-1 text-mac-caption text-(--text-secondary)">Tudo o que ela enviou nesta empresa fica protegido, inclusive o que enviar depois, até a liberação.</p>
+          </div>
+        ) : type === "folder" ? (
           <div><label id={`${uid}-f`} className="block text-mac-caption font-medium text-(--text-secondary) mb-1">Pasta (inclui subpastas)</label>
             <Dropdown ariaLabelledby={`${uid}-f`} value={folderId} onChange={setFolderId} placeholder="Escolha a pasta"
               options={[...folders].sort((a, b) => a.path.localeCompare(b.path)).map((f) => ({ value: f.id, label: f.name, depth: f.path.split(".").length - 1 }))} />

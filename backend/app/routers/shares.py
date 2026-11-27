@@ -501,6 +501,12 @@ async def share_info(
 
     # Quem enviou, de qual empresa, até quando vale e o tamanho (A1-11).
     ctx = await conn.fetchrow("SELECT company_name, sender_name FROM public.share_public_context($1)", share["id"])
+    # Marca d'água configurada pela empresa (B2.4.7); sem leitura, vale o padrão.
+    try:
+        marca = await conn.fetchval("SELECT watermark FROM public.companies WHERE id = $1", share["company_id"])
+        marca = json.loads(marca) if isinstance(marca, str) else marca
+    except Exception:  # noqa: BLE001
+        marca = None
     return {
         "resource_type": share["resource_type"],
         "name": name,
@@ -512,6 +518,7 @@ async def share_info(
         "size_bytes": size_bytes,
         "company_name": ctx["company_name"] if ctx else None,
         "sender_name": ctx["sender_name"] if ctx else None,
+        "watermark": {k: (marca or {}).get(k) for k in ("texto", "intensidade", "link")} if marca else None,
     }
 
 

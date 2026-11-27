@@ -9,8 +9,8 @@ import type { PdfViewerHandle } from "./PdfViewer";
 const PageOrganizer = lazy(() => import("@/components/documents/PageOrganizer"));
 import CommentsPanel, { type Comentario } from "./CommentsPanel";
 import PreviewInfoPanel from "./PreviewInfoPanel";
-import Watermark from "./Watermark";
-import { useFeature } from "@/lib/CompanyContext";
+import Watermark, { type WatermarkConfig } from "./Watermark";
+import { useCompany, useFeature } from "@/lib/CompanyContext";
 
 // pdf.js (~400 KB) só é baixado quando alguém abre um PDF.
 const PdfViewer = lazy(() => import("./PdfViewer"));
@@ -135,8 +135,27 @@ function getWatermarkLabel(): string {
   }
 }
 
+// Marca d'água configurada pela empresa (B2.4.7), lida uma vez por empresa.
+const marcaCache = new Map<string, Promise<WatermarkConfig | null>>();
+function useMarcaDaEmpresa(): WatermarkConfig | null {
+  const { current } = useCompany();
+  const [cfg, setCfg] = useState<WatermarkConfig | null>(null);
+  useEffect(() => {
+    if (!current) return;
+    let p = marcaCache.get(current.id);
+    if (!p) { p = api.get<WatermarkConfig>(`/companies/${current.id}/watermark`).then((r) => r.data).catch(() => null); marcaCache.set(current.id, p); }
+    let vivo = true;
+    p.then((c) => { if (vivo) setCfg(c); });
+    return () => { vivo = false; };
+  }, [current?.id]);
+  return cfg;
+}
+
 function PreviewWatermark({ label }: { label: string }) {
-  return <Watermark label={label} />;
+  const cfg = useMarcaDaEmpresa();
+  if (cfg?.previa === false) return null;
+  const forca = cfg?.intensidade && cfg.intensidade !== "padrao" ? cfg.intensidade : "fraca";
+  return <Watermark label={cfg?.texto ? `${cfg.texto} · ${label}` : label} strength={forca} />;
 }
 
 /** Imprime só um nó (o DANFE): copia para a raiz e esconde o resto na impressão. */

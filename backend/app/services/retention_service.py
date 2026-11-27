@@ -184,7 +184,10 @@ class RetentionService:
         return await conn.fetch(
             f"""
             SELECT h.*, cu.full_name AS created_by_name, ru.full_name AS released_by_name,
-                   COALESCE(d.name, f.name) AS resource_name,
+                   COALESCE(d.name, f.name, cust.full_name) AS resource_name,
+                   (SELECT count(*) FROM public.documents cd
+                     WHERE h.resource_type = 'custodian' AND cd.company_id = h.company_id
+                       AND cd.uploaded_by = h.resource_id AND cd.deleted_at IS NULL) AS custodian_documents,
                    COALESCE(d.folder_id, f.id)::text AS folder_id,
                    (SELECT string_agg(anc.name, ' / ' ORDER BY nlevel(anc.path))
                       FROM public.folders anc
@@ -193,6 +196,7 @@ class RetentionService:
             LEFT JOIN public.documents d ON h.resource_type = 'document' AND d.id = h.resource_id
             LEFT JOIN public.folders df ON df.id = d.folder_id
             LEFT JOIN public.folders f ON h.resource_type = 'folder' AND f.id = h.resource_id
+            LEFT JOIN public.users cust ON h.resource_type = 'custodian' AND cust.id = h.resource_id
             LEFT JOIN public.users cu ON cu.id = h.created_by
             LEFT JOIN public.users ru ON ru.id = h.released_by
             WHERE h.company_id = $1 {clause}
@@ -217,6 +221,17 @@ class RetentionService:
 
     @staticmethod
     async def resource_name(conn: asyncpg.Connection, company_id: UUID, resource_type: str, resource_id: UUID) -> str | None:
+        if resource_type == "custodian":
+            # Custodiante (B3.4.3): pessoa com acesso à empresa ou que enviou documento nela.
+            return await conn.fetchval(
+                """
+                SELECT u.full_name FROM public.users u
+                WHERE u.id = $1 AND (
+                  EXISTS (SELECT 1 FROM public.user_company_access a WHERE a.user_id = u.id AND a.company_id = $2)
+                  OR EXISTS (SELECT 1 FROM public.documents d WHERE d.uploaded_by = u.id AND d.company_id = $2))
+                """,
+                resource_id, company_id,
+            )
         table = "documents" if resource_type == "document" else "folders"
         return await conn.fetchval(
             f"SELECT name FROM public.{table} WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL", resource_id, company_id,
